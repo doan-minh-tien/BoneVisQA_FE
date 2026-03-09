@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* Medical Course Management Design System */
+  --primary: #0891B2;
+  --primary-light: #22D3EE;
+  --secondary: #22D3EE;
+  --accent: #22C55E;
+  --background: #F0FDFA;
+  --foreground: #134E4A;
+  --muted: #5EEAD4;
+  --muted-foreground: #0D9488;
+  --card: #FFFFFF;
+  --card-foreground: #134E4A;
+  --border: #99F6E4;
+  --input: #CCFBF1;
+  --ring: #0891B2;
+  --destructive: #EF4444;
+  --warning: #F59E0B;
+  --success: #22C55E;
+
+  /* Sidebar */
+  --sidebar-bg: #0F766E;
+  --sidebar-text: #F0FDFA;
+  --sidebar-hover: #14B8A6;
+  --sidebar-active: #2DD4BF;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --font-sans: 'Figtree', 'Noto Sans', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #042F2E;
+    --foreground: #F0FDFA;
+    --card: #0F766E;
+    --card-foreground: #F0FDFA;
+    --border: #115E59;
+    --input: #134E4A;
+    --muted: #134E4A;
+    --muted-foreground: #5EEAD4;
+    --sidebar-bg: #022C22;
+    --sidebar-hover: #0F766E;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Figtree', 'Noto Sans', sans-serif;
+  min-height: 100vh;
+}
+
+/* Smooth transitions */
+button, a, input, select, textarea {
+  transition: all 150ms ease-in-out;
+}
+
+/* Focus states for accessibility */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

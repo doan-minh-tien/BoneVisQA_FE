@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(python:*)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(PYTHONIOENCODING=utf-8 python -X utf8:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(pip install:*)",
+      "Bash(xargs ls -la)",
+      "Bash(npx lucide-react --list)",
+      "Bash(npx next build)",
+      "Bash(taskkill //F //IM node.exe)"
+    ]
+  }
+}

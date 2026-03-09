@@ -1,0 +1,12 @@
+{
+  // Disable Simple Browser (embedded browser tab)
+  "simpleBrowser.show": false,
+
+  // Open links in external browser (Chrome)
+  "workbench.externalBrowser": "chrome",
+
+  // Disable preview features
+  "workbench.editorAssociations": {
+    "*.html": "default"
+  }
+}
