@@ -26,28 +26,34 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    // TODO: Replace with real authentication API
-    const account = demoAccounts.find(
-      (acc) => acc.email === email && acc.password === password
-    );
+    // Demo accounts login (no API needed)
+    const demo = demoAccounts.find((a) => a.email === email && a.password === password);
+    if (demo) {
+      localStorage.setItem('token', 'demo');
+      localStorage.setItem('userId', '');
+      localStorage.setItem('fullName', demo.label);
+      localStorage.setItem('email', demo.email);
+      localStorage.setItem('roles', JSON.stringify([demo.role]));
 
-    if (account) {
-      router.push(roleRoutes[account.role]);
-    } else {
-      setError('Invalid email or password. Try a demo account below.');
+      router.push(roleRoutes[demo.role]);
+      return;
     }
+
+    setError('Invalid email or password.');
+    setLoading(false);
   };
 
   const handleDemoLogin = (account: typeof demoAccounts[0]) => {
     setEmail(account.email);
     setPassword(account.password);
     setError('');
-    router.push(roleRoutes[account.role]);
   };
 
   return (
@@ -128,9 +134,10 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="w-full py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
             >
-              Sign in
+              {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
         </div>

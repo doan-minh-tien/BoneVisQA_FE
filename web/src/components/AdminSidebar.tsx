@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useLogout } from '@/lib/useLogout';
 import {
   LayoutDashboard,
   Users,
-  GraduationCap,
-  UserCog,
-  BookOpen,
-  ShieldCheck,
-  BarChart3,
+  FileText,
+  BrainCircuit,
+  Activity,
   Settings,
   LogOut,
   Stethoscope,
@@ -18,16 +17,15 @@ import {
 const adminMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/admin/dashboard' },
   { icon: Users, label: 'Users', href: '/admin/users' },
-  { icon: GraduationCap, label: 'Students', href: '/admin/students' },
-  { icon: UserCog, label: 'Lecturers', href: '/admin/lecturers' },
-  { icon: BookOpen, label: 'Courses', href: '/admin/courses' },
-  { icon: ShieldCheck, label: 'Roles & Permissions', href: '/admin/roles' },
-  { icon: BarChart3, label: 'Reports', href: '/admin/reports' },
+  { icon: FileText, label: 'Cases', href: '/admin/cases' },
+  { icon: BrainCircuit, label: 'AI Config', href: '/admin/ai-config' },
+  { icon: Activity, label: 'System Logs', href: '/admin/logs' },
   { icon: Settings, label: 'Settings', href: '/admin/settings' },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const logout = useLogout();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar-bg text-sidebar-text flex flex-col z-50">
@@ -88,7 +86,7 @@ export default function AdminSidebar() {
             <p className="text-xs opacity-70 truncate">admin@bonevisqa.com</p>
           </div>
         </Link>
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
+        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
           <LogOut className="w-5 h-5" />
           <span>Logout</span>
         </button>
