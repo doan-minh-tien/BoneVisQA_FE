@@ -6,25 +6,19 @@ import {
   LayoutDashboard,
   Users,
   ClipboardList,
-  Calendar,
   BarChart3,
   Bell,
-  FileText,
   Settings,
   LogOut,
   GraduationCap,
-  MessageSquare,
 } from 'lucide-react';
 
 const lecturerMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
-  { icon: Users, label: 'My Classes', href: '/lecturer/classes', badge: '3' },
-  { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments', badge: '8' },
-  { icon: Calendar, label: 'Schedule', href: '/lecturer/schedule' },
+  { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
+  { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },
   { icon: BarChart3, label: 'Analytics', href: '/lecturer/analytics' },
-  { icon: MessageSquare, label: 'Student Q&A', href: '/lecturer/qa' },
   { icon: Bell, label: 'Announcements', href: '/lecturer/announcements' },
-  { icon: FileText, label: 'Reports', href: '/lecturer/reports' },
   { icon: Settings, label: 'Settings', href: '/lecturer/settings' },
 ];
 
