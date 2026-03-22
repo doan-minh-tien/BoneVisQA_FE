@@ -422,10 +422,13 @@ export default function ClassDetailPage() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-muted-foreground">{classAssignments.length} assignments</p>
-              <button className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer">
+              <Link
+                href={`/lecturer/assignments/create?classId=${classId}`}
+                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
+              >
                 <Plus className="w-4 h-4" />
                 New Assignment
-              </button>
+              </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {classAssignments.map((assignment) => (
