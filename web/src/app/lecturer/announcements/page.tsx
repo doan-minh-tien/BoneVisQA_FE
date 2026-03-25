@@ -1,144 +1,301 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import {
-  Bell, Plus, Send, X, Users, Calendar, Edit, Trash2,
-  CheckCircle, Clock, Pin, ChevronDown, ChevronRight,
+  Bell,
+  Plus,
+  Send,
+  Calendar,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  BookOpen,
 } from 'lucide-react';
-
-interface Announcement {
-  id: string;
-  title: string;
-  content: string;
-  targetClasses: string[];
-  createdAt: string;
-  pinned: boolean;
-  status: 'sent' | 'draft';
-}
-
-const initialAnnouncements: Announcement[] = [
-  { id: '1', title: 'New Fracture Classification Cases Available', content: 'Three new fracture classification cases have been added to the case library. Please review Cases #15-#17 before next week\'s clinical rotation. Focus on AO/OTA classification for distal radius and tibial plateau fractures.', targetClasses: ['SE1801', 'SE1802', 'SE1803', 'SE1804'], createdAt: '2026-03-22 10:00', pinned: true, status: 'sent' },
-  { id: '2', title: 'Quiz: Knee Pathology - Due Friday', content: 'A new quiz on Knee Pathology has been assigned. Please complete it by Friday 5:00 PM. The quiz covers Kellgren-Lawrence grading, meniscal tears, and ligament injuries. You have 2 attempts.', targetClasses: ['SE1803'], createdAt: '2026-03-20 14:30', pinned: false, status: 'sent' },
-  { id: '3', title: 'Reminder: Clinical Rotation Preparation', content: 'Please ensure you have completed all assigned cases and quizzes before the upcoming clinical rotation starting next Monday. Check your assignment page for any pending tasks.', targetClasses: ['SE1801', 'SE1802'], createdAt: '2026-03-18 09:00', pinned: false, status: 'sent' },
-  { id: '4', title: 'Spine Imaging Module Released', content: 'The new Spine Imaging module is now available with 5 comprehensive cases covering compression fractures, disc herniation, and spinal metastasis.', targetClasses: ['SE1801', 'SE1804'], createdAt: '2026-03-15 11:00', pinned: false, status: 'sent' },
-  { id: '5', title: 'Draft: End of Semester Review', content: 'End of semester review schedule and topics to be covered...', targetClasses: [], createdAt: '2026-03-22 08:00', pinned: false, status: 'draft' },
-];
-
-const allClasses = ['SE1801', 'SE1802', 'SE1803', 'SE1804'];
+import {
+  getLecturerClasses,
+  getClassAnnouncements,
+  createAnnouncement,
+  type ClassItem,
+  type Announcement,
+} from '@/lib/api';
 
 export default function LecturerAnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Create form
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
-  const [newClasses, setNewClasses] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  // Expand
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const toggleClass = (cls: string) => {
-    setNewClasses((prev) => prev.includes(cls) ? prev.filter((c) => c !== cls) : [...prev, cls]);
+  // Filter
+  const [filterClass, setFilterClass] = useState('all');
+
+  useEffect(() => {
+    async function fetchAll() {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const userId = localStorage.getItem('userId') || '';
+        const classList = await getLecturerClasses(userId, token);
+        setClasses(classList);
+
+        // Fetch announcements for all classes in parallel
+        const allAnnouncements = await Promise.all(
+          classList.map((c) => getClassAnnouncements(c.id, token).catch(() => [] as Announcement[])),
+        );
+        // Flatten and deduplicate by id
+        const flat = allAnnouncements.flat();
+        const unique = Array.from(new Map(flat.map((a) => [a.id, a])).values());
+        // Sort by createdAt desc
+        unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setAnnouncements(unique);
+      } catch {
+        // silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAll();
+  }, []);
+
+  const handleSend = async () => {
+    if (!newTitle.trim() || !newContent.trim() || !selectedClassId) {
+      setCreateError('Please fill in all fields and select a class.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const token = localStorage.getItem('token') || '';
+      const created = await createAnnouncement(
+        selectedClassId,
+        { title: newTitle.trim(), content: newContent.trim() },
+        token,
+      );
+      setAnnouncements((prev) => [created, ...prev]);
+      setShowCreate(false);
+      setNewTitle('');
+      setNewContent('');
+      setSelectedClassId('');
+    } catch {
+      setCreateError('Failed to send announcement. Please try again.');
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const handleSend = () => {
-    if (!newTitle.trim() || !newContent.trim()) return;
-    const announcement: Announcement = {
-      id: `a-${Date.now()}`, title: newTitle.trim(), content: newContent.trim(),
-      targetClasses: newClasses.length > 0 ? newClasses : allClasses,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      pinned: false, status: 'sent',
-    };
-    setAnnouncements((prev) => [announcement, ...prev]);
-    setNewTitle(''); setNewContent(''); setNewClasses([]); setShowCreate(false);
-  };
-
-  const handleSaveDraft = () => {
-    if (!newTitle.trim()) return;
-    const draft: Announcement = {
-      id: `a-${Date.now()}`, title: newTitle.trim(), content: newContent.trim(),
-      targetClasses: newClasses, createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      pinned: false, status: 'draft',
-    };
-    setAnnouncements((prev) => [draft, ...prev]);
-    setNewTitle(''); setNewContent(''); setNewClasses([]); setShowCreate(false);
-  };
-
-  const handleDelete = (id: string) => setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-  const handleTogglePin = (id: string) => setAnnouncements((prev) => prev.map((a) => a.id === id ? { ...a, pinned: !a.pinned } : a));
-
-  const sorted = [...announcements].sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return b.createdAt.localeCompare(a.createdAt);
-  });
+  const filtered =
+    filterClass === 'all'
+      ? announcements
+      : announcements.filter((a) => a.classId === filterClass);
 
   return (
     <div className="min-h-screen">
-      <Header title="Announcements" subtitle={`${announcements.filter((a) => a.status === 'sent').length} sent, ${announcements.filter((a) => a.status === 'draft').length} drafts`} />
+      <Header title="Announcements" subtitle={`${announcements.length} total`} />
+
       <div className="p-6 max-w-4xl mx-auto">
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium mb-6"><Plus className="w-4 h-4" />New Announcement</button>
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setFilterClass('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                filterClass === 'all'
+                  ? 'bg-primary text-white'
+                  : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              All
+            </button>
+            {classes.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setFilterClass(c.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                  filterClass === c.id
+                    ? 'bg-primary text-white'
+                    : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {c.className}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            New Announcement
+          </button>
+        </div>
 
         {/* Create Form */}
         {showCreate && (
           <div className="bg-card rounded-xl border border-border p-6 mb-6">
             <h3 className="font-semibold text-card-foreground mb-4">New Announcement</h3>
+
+            {createError && (
+              <div className="mb-4 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                {createError}
+              </div>
+            )}
+
             <div className="space-y-4">
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Title</label><input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Announcement title..." className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" /></div>
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Content</label><textarea value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="Write your announcement..." rows={4} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" /></div>
               <div>
-                <label className="block text-sm font-medium text-card-foreground mb-1.5">Target Classes</label>
-                <div className="flex flex-wrap gap-2">
-                  {allClasses.map((cls) => (
-                    <button key={cls} onClick={() => toggleClass(cls)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition-all ${newClasses.includes(cls) ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary' : 'border-border text-muted-foreground hover:bg-input'}`}>{cls}</button>
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                  Target Class
+                </label>
+                <select
+                  value={selectedClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">Select a class...</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.className} — {c.semester}
+                    </option>
                   ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{newClasses.length === 0 ? 'No class selected = send to all classes' : `${newClasses.length} class(es) selected`}</p>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Announcement title..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                  Content
+                </label>
+                <textarea
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="Write your announcement..."
+                  rows={4}
+                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
               </div>
             </div>
+
             <div className="flex gap-2 mt-5">
-              <button onClick={handleSend} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer transition-colors"><Send className="w-4 h-4" />Send Now</button>
-              <button onClick={handleSaveDraft} className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors">Save Draft</button>
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-input cursor-pointer transition-colors">Cancel</button>
+              <button
+                onClick={handleSend}
+                disabled={creating}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {creating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {creating ? 'Sending...' : 'Send Now'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreate(false);
+                  setCreateError('');
+                  setNewTitle('');
+                  setNewContent('');
+                  setSelectedClassId('');
+                }}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
 
-        {/* Announcements List */}
-        <div className="space-y-3">
-          {sorted.map((a) => {
-            const isExp = expandedId === a.id;
-            return (
-              <div key={a.id} className={`bg-card rounded-xl border overflow-hidden ${a.pinned ? 'border-primary/30' : 'border-border'} ${a.status === 'draft' ? 'opacity-70' : ''}`}>
-                <div className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <button onClick={() => setExpandedId(isExp ? null : a.id)} className="flex items-start gap-2 text-left cursor-pointer flex-1 min-w-0">
-                      {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {a.pinned && <Pin className="w-3.5 h-3.5 text-primary" />}
+        {/* Content */}
+        {loading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border">
+            <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
+            <p className="text-sm text-muted-foreground">Loading announcements...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border">
+            <Bell className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-lg font-semibold text-card-foreground mb-1">No announcements</h3>
+            <p className="text-sm text-muted-foreground">
+              {announcements.length === 0
+                ? 'Create an announcement to notify your students.'
+                : 'No announcements for this class.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((a) => {
+              const isExp = expandedId === a.id;
+              return (
+                <div
+                  key={a.id}
+                  className="bg-card rounded-xl border border-border overflow-hidden"
+                >
+                  <div className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        onClick={() => setExpandedId(isExp ? null : a.id)}
+                        className="flex items-start gap-2 text-left cursor-pointer flex-1 min-w-0"
+                      >
+                        {isExp ? (
+                          <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        )}
+                        <div className="min-w-0">
                           <p className="text-sm font-medium text-card-foreground">{a.title}</p>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(a.createdAt).toLocaleDateString('vi-VN', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            {a.className && (
+                              <span className="flex items-center gap-1">
+                                <BookOpen className="w-3 h-3" />
+                                {a.className}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{a.createdAt}</span>
-                          {a.targetClasses.length > 0 && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{a.targetClasses.join(', ')}</span>}
-                          {a.status === 'draft' && <span className="px-2 py-0.5 bg-warning/10 text-warning rounded text-xs font-medium">Draft</span>}
-                        </div>
-                      </div>
-                    </button>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => handleTogglePin(a.id)} title={a.pinned ? 'Unpin' : 'Pin'} className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${a.pinned ? 'bg-primary/10 text-primary' : 'hover:bg-input text-muted-foreground'}`}><Pin className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => handleDelete(a.id)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-destructive/10 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
+                      </button>
                     </div>
-                  </div>
 
-                  {isExp && (
-                    <div className="mt-3 ml-6">
-                      <p className="text-sm text-muted-foreground leading-relaxed">{a.content}</p>
-                    </div>
-                  )}
+                    {isExp && (
+                      <div className="mt-3 ml-6">
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {a.content}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

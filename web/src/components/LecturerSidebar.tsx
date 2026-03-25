@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   ClipboardList,
+  FolderOpen,
   BarChart3,
   Bell,
   Settings,
@@ -16,6 +17,7 @@ import {
 const lecturerMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
   { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
+  { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
   { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },
   { icon: BarChart3, label: 'Analytics', href: '/lecturer/analytics' },
   { icon: Bell, label: 'Announcements', href: '/lecturer/announcements' },
