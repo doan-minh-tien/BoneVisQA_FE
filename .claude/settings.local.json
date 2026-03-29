@@ -11,7 +11,9 @@
       "Bash(xargs ls -la)",
       "Bash(npx lucide-react --list)",
       "Bash(npx next build)",
-      "Bash(taskkill //F //IM node.exe)"
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(curl -s -X POST \"https://bonevisqa.onrender.com/api/Auths/login\" -H \"Content-Type: application/json\" -d '{\"\"\"\"email\"\"\"\":\"\"\"\"student@bonevisqa.com\"\"\"\",\"\"\"\"password\"\"\"\":\"\"\"\"123456\"\"\"\"}')",
+      "Bash(curl -s -X POST \"https://bonevisqa.onrender.com/api/Auths/login\" -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"lecturer@bonevisqa.com\"\",\"\"password\"\":\"\"123456\"\"}')"
     ]
   }
 }
