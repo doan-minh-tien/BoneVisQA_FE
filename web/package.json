@@ -10,8 +10,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+<<<<<<< HEAD
+<<<<<<< Updated upstream
+=======
+    "@react-oauth/google": "^0.13.4",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.1",
+>>>>>>> Stashed changes
+=======
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.100.1",
+>>>>>>> main
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "react": "19.2.3",
