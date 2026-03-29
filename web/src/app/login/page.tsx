@@ -79,7 +79,6 @@ export default function LoginPage() {
           setAvailableRoles(data.roles.map((r) => r.toLowerCase()));
           setUserName(data.fullName);
           setShowRolePicker(true);
-          setLoading(false);
           return;
         }
 

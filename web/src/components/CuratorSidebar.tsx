@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useLogout } from '@/lib/useLogout';
 import {
   LayoutDashboard,
   FileText,
   Database,
   ShieldCheck,
   Tags,
-  History,
-  ClipboardCheck,
   Settings,
   LogOut,
   BookOpen,
@@ -17,17 +16,16 @@ import {
 
 const curatorMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/curator/dashboard' },
-  { icon: FileText, label: 'Document Library', href: '/curator/documents', badge: '5' },
-  { icon: Database, label: 'Indexing Pipeline', href: '/curator/indexing', badge: '2' },
+  { icon: FileText, label: 'Documents', href: '/curator/documents' },
+  { icon: Database, label: 'Indexing Pipeline', href: '/curator/indexing' },
   { icon: ShieldCheck, label: 'Content Quality', href: '/curator/quality' },
   { icon: Tags, label: 'Tags & Topics', href: '/curator/tags' },
-  { icon: History, label: 'Version History', href: '/curator/versions' },
-  { icon: ClipboardCheck, label: 'Reports', href: '/curator/reports' },
   { icon: Settings, label: 'Settings', href: '/curator/settings' },
 ];
 
 export default function CuratorSidebar() {
   const pathname = usePathname();
+  const logout = useLogout();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar-bg text-sidebar-text flex flex-col z-50">
@@ -56,7 +54,7 @@ export default function CuratorSidebar() {
                 <Link
                   href={item.href}
                   className={`
-                    flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer
+                    flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer
                     transition-colors duration-150
                     ${
                       isActive
@@ -65,15 +63,8 @@ export default function CuratorSidebar() {
                     }
                   `}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="px-2 py-0.5 bg-destructive rounded-full text-xs font-medium">
-                      {item.badge}
-                    </span>
-                  )}
+                  <Icon className="w-5 h-5" />
+                  <span>{item.label}</span>
                 </Link>
               </li>
             );
@@ -95,7 +86,7 @@ export default function CuratorSidebar() {
             <p className="text-xs opacity-70 truncate">Content Manager</p>
           </div>
         </Link>
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
+        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
           <LogOut className="w-5 h-5" />
           <span>Logout</span>
         </button>

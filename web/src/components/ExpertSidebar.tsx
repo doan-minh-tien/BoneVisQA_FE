@@ -2,32 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useLogout } from '@/lib/useLogout';
 import {
   LayoutDashboard,
   FolderOpen,
   MessageSquareText,
-  CheckCircle,
   FileText,
-  ClipboardCheck,
   Settings,
   LogOut,
   Stethoscope,
-  AlertCircle,
 } from 'lucide-react';
 
 const expertMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/expert/dashboard' },
-  { icon: FolderOpen, label: 'Case Library', href: '/expert/cases', badge: '8' },
-  { icon: MessageSquareText, label: 'Q&A Reviews', href: '/expert/reviews', badge: '12' },
-  { icon: CheckCircle, label: 'Approved Cases', href: '/expert/approved' },
-  { icon: FileText, label: 'Quiz Management', href: '/expert/quiz' },
-  { icon: ClipboardCheck, label: 'Reports', href: '/expert/reports' },
-  { icon: AlertCircle, label: 'Pending Items', href: '/expert/pending', badge: '5' },
+  { icon: FolderOpen, label: 'Cases', href: '/expert/cases' },
+  { icon: MessageSquareText, label: 'Q&A Reviews', href: '/expert/reviews' },
+  { icon: FileText, label: 'Quizzes', href: '/expert/quizzes' },
   { icon: Settings, label: 'Settings', href: '/expert/settings' },
 ];
 
 export default function ExpertSidebar() {
   const pathname = usePathname();
+  const logout = useLogout();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar-bg text-sidebar-text flex flex-col z-50">
@@ -56,7 +52,7 @@ export default function ExpertSidebar() {
                 <Link
                   href={item.href}
                   className={`
-                    flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer
+                    flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer
                     transition-colors duration-150
                     ${
                       isActive
@@ -65,15 +61,8 @@ export default function ExpertSidebar() {
                     }
                   `}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="px-2 py-0.5 bg-destructive rounded-full text-xs font-medium">
-                      {item.badge}
-                    </span>
-                  )}
+                  <Icon className="w-5 h-5" />
+                  <span>{item.label}</span>
                 </Link>
               </li>
             );
@@ -95,7 +84,7 @@ export default function ExpertSidebar() {
             <p className="text-xs opacity-70 truncate">Clinical Expert</p>
           </div>
         </Link>
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
+        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
           <LogOut className="w-5 h-5" />
           <span>Logout</span>
         </button>

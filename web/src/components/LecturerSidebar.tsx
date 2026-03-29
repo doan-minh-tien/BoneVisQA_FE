@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useLogout } from '@/lib/useLogout';
 import {
   LayoutDashboard,
   Users,
@@ -13,8 +14,16 @@ import {
   LogOut,
   GraduationCap,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-const lecturerMenuItems = [
+type LecturerMenuItem = {
+  icon: LucideIcon;
+  label: string;
+  href: string;
+  badge?: string;
+};
+
+const lecturerMenuItems: LecturerMenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
   { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
   { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
@@ -26,6 +35,7 @@ const lecturerMenuItems = [
 
 export default function LecturerSidebar() {
   const pathname = usePathname();
+  const logout = useLogout();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar-bg text-sidebar-text flex flex-col z-50">
@@ -93,7 +103,7 @@ export default function LecturerSidebar() {
             <p className="text-xs opacity-70 truncate">Course Coordinator</p>
           </div>
         </Link>
-        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
+        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
           <LogOut className="w-5 h-5" />
           <span>Logout</span>
         </button>
