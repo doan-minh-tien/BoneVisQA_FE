@@ -1,160 +1,143 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Header from '@/components/Header';
-import StatCard from '@/components/StatCard';
-import ClassCard from '@/components/lecturer/ClassCard';
 import {
   Users,
   BookOpen,
-  TrendingUp,
   GraduationCap,
   Plus,
   Search,
+  Calendar,
+  Loader2,
 } from 'lucide-react';
-
-// Mock data
-const allClasses = [
-  {
-    id: '1',
-    name: 'Orthopedics - Advanced Imaging',
-    code: 'ORTH-301',
-    cohort: 'Year 3 - Cohort 2024',
-    studentCount: 68,
-    completionRate: 87,
-    nextSession: 'Tomorrow, 9:00 AM',
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    name: 'Musculoskeletal Radiology',
-    code: 'RAD-205',
-    cohort: 'Year 2 - Cohort 2025',
-    studentCount: 72,
-    completionRate: 92,
-    nextSession: 'Friday, 10:30 AM',
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    name: 'Clinical Practice - Bone Diseases',
-    code: 'CLIN-401',
-    cohort: 'Year 4 - Cohort 2023',
-    studentCount: 44,
-    completionRate: 95,
-    nextSession: 'Next Monday, 1:00 PM',
-    status: 'active' as const,
-  },
-  {
-    id: '4',
-    name: 'Introduction to Bone Anatomy',
-    code: 'ANAT-101',
-    cohort: 'Year 1 - Cohort 2026',
-    studentCount: 90,
-    completionRate: 0,
-    nextSession: 'Mar 20, 2026',
-    status: 'upcoming' as const,
-  },
-  {
-    id: '5',
-    name: 'Pediatric Orthopedics',
-    code: 'PEDI-302',
-    cohort: 'Year 3 - Cohort 2024',
-    studentCount: 55,
-    completionRate: 0,
-    nextSession: 'Apr 5, 2026',
-    status: 'upcoming' as const,
-  },
-  {
-    id: '6',
-    name: 'Bone Pathology Fundamentals',
-    code: 'PATH-201',
-    cohort: 'Year 2 - Cohort 2024',
-    studentCount: 65,
-    completionRate: 100,
-    nextSession: '',
-    status: 'completed' as const,
-  },
-];
-
-const classStats = [
-  {
-    title: 'Total Classes',
-    value: '6',
-    change: '3 active this semester',
-    changeType: 'neutral' as const,
-    icon: BookOpen,
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'Active Classes',
-    value: '3',
-    change: 'All on track',
-    changeType: 'positive' as const,
-    icon: GraduationCap,
-    iconColor: 'bg-success/10 text-success',
-  },
-  {
-    title: 'Total Students',
-    value: '394',
-    change: 'Across all classes',
-    changeType: 'neutral' as const,
-    icon: Users,
-    iconColor: 'bg-accent/10 text-accent',
-  },
-  {
-    title: 'Avg. Completion',
-    value: '91%',
-    change: '+3% from last month',
-    changeType: 'positive' as const,
-    icon: TrendingUp,
-    iconColor: 'bg-warning/10 text-warning',
-  },
-];
-
-const statusFilters = ['all', 'active', 'upcoming', 'completed'] as const;
+import { getLecturerClasses, createClass, type ClassItem } from '@/lib/api';
 
 export default function LecturerClassesPage() {
-  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [semesterFilter, setSemesterFilter] = useState('all');
 
-  const filteredClasses = allClasses.filter((c) => {
-    const matchesFilter = activeFilter === 'all' || c.status === activeFilter;
-    const matchesSearch =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.code.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
+  // Create class dialog
+  const [showCreate, setShowCreate] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newSemester, setNewSemester] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const handleCreateClass = async () => {
+    if (!newClassName.trim() || !newSemester.trim()) {
+      setCreateError('Please fill in all fields.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const token = localStorage.getItem('token') || '';
+      const userId = localStorage.getItem('userId') || '';
+      const created = await createClass(
+        { className: newClassName.trim(), semester: newSemester.trim(), lecturerId: userId },
+        token,
+      );
+      setClasses((prev) => [created, ...prev]);
+      setShowCreate(false);
+      setNewClassName('');
+      setNewSemester('');
+    } catch {
+      setCreateError('Failed to create class. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  useEffect(() => {
+    async function fetchClasses() {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const userId = localStorage.getItem('userId') || '';
+        const data = await getLecturerClasses(userId, token);
+        setClasses(data);
+      } catch {
+        setError('Failed to load classes.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchClasses();
+  }, []);
+
+  // Get unique semesters for filter
+  const semesters = Array.from(new Set(classes.map((c) => c.semester))).sort();
+
+  const filteredClasses = classes.filter((c) => {
+    const matchSearch = c.className.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSemester = semesterFilter === 'all' || c.semester === semesterFilter;
+    return matchSearch && matchSemester;
   });
 
   return (
     <div className="min-h-screen">
-      <Header
-        title="My Classes"
-        subtitle="Manage and monitor all your classes"
-      />
+      <Header title="My Classes" subtitle="Manage and monitor all your classes" />
 
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {classStats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+              <BookOpen className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-card-foreground">{classes.length}</p>
+              <p className="text-sm text-muted-foreground">Total Classes</p>
+            </div>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
+              <GraduationCap className="w-6 h-6 text-success" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-card-foreground">{semesters.length}</p>
+              <p className="text-sm text-muted-foreground">Semesters</p>
+            </div>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center">
+              <Users className="w-6 h-6 text-accent" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-card-foreground">{filteredClasses.length}</p>
+              <p className="text-sm text-muted-foreground">Showing</p>
+            </div>
+          </div>
         </div>
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            {statusFilters.map((filter) => (
+            <button
+              onClick={() => setSemesterFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 cursor-pointer ${
+                semesterFilter === 'all'
+                  ? 'bg-primary text-white'
+                  : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              All
+            </button>
+            {semesters.map((sem) => (
               <button
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors duration-150 cursor-pointer ${
-                  activeFilter === filter
+                key={sem}
+                onClick={() => setSemesterFilter(sem)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 cursor-pointer ${
+                  semesterFilter === sem
                     ? 'bg-primary text-white'
                     : 'bg-card border border-border text-muted-foreground hover:bg-muted'
                 }`}
               >
-                {filter === 'all' ? 'All' : filter}
+                {sem}
               </button>
             ))}
           </div>
@@ -170,32 +153,144 @@ export default function LecturerClassesPage() {
                 className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary w-64"
               />
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer">
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
+            >
               <Plus className="w-4 h-4" />
               <span className="font-medium text-sm">Create Class</span>
             </button>
           </div>
         </div>
 
-        {/* Classes Grid */}
-        {filteredClasses.length > 0 ? (
+        {/* Content */}
+        {loading ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border">
+            <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
+            <p className="text-sm text-muted-foreground">Loading classes...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16 bg-card rounded-xl border border-border">
+            <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-lg font-semibold text-card-foreground mb-1">Error</h3>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+        ) : filteredClasses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredClasses.map((classItem) => (
-              <ClassCard key={classItem.id} {...classItem} />
+            {filteredClasses.map((cls) => (
+              <Link
+                key={cls.id}
+                href={`/lecturer/classes/${cls.id}`}
+                className="block bg-card rounded-xl border-2 border-border p-5 hover:shadow-lg hover:border-primary/30 transition-all duration-200 cursor-pointer group"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-3 py-1 rounded-full text-xs font-medium border bg-primary/10 text-primary border-primary/20">
+                        {cls.semester}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold text-lg text-card-foreground group-hover:text-primary transition-colors">
+                      {cls.className}
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">Created</p>
+                    <p className="text-sm font-medium text-card-foreground">
+                      {new Date(cls.createdAt).toLocaleDateString('vi-VN', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </Link>
             ))}
           </div>
         ) : (
           <div className="text-center py-16 bg-card rounded-xl border border-border">
             <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-card-foreground mb-1">
-              No classes found
-            </h3>
+            <h3 className="text-lg font-semibold text-card-foreground mb-1">No classes found</h3>
             <p className="text-sm text-muted-foreground">
-              Try adjusting your search or filter criteria
+              {classes.length === 0
+                ? 'You have no classes yet. Create one to get started.'
+                : 'Try adjusting your search or filter criteria'}
             </p>
           </div>
         )}
       </div>
+
+      {/* Create Class Dialog */}
+      {showCreate && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCreate(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-card-foreground mb-1">Create New Class</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Fill in the details below to create a new class.
+            </p>
+
+            {createError && (
+              <div className="mb-4 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                {createError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                  Class Name
+                </label>
+                <input
+                  type="text"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  placeholder="e.g. Orthopedics - Class A"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                  Semester
+                </label>
+                <input
+                  type="text"
+                  value={newSemester}
+                  onChange={(e) => setNewSemester(e.target.value)}
+                  placeholder="e.g. Spring 2026"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreate(false);
+                  setCreateError('');
+                  setNewClassName('');
+                  setNewSemester('');
+                }}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateClass}
+                disabled={creating}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {creating ? 'Creating...' : 'Create Class'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,16 +7,26 @@ import {
   LayoutDashboard,
   Users,
   ClipboardList,
+  FolderOpen,
   BarChart3,
   Bell,
   Settings,
   LogOut,
   GraduationCap,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-const lecturerMenuItems = [
+type LecturerMenuItem = {
+  icon: LucideIcon;
+  label: string;
+  href: string;
+  badge?: string;
+};
+
+const lecturerMenuItems: LecturerMenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
   { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
+  { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
   { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },
   { icon: BarChart3, label: 'Analytics', href: '/lecturer/analytics' },
   { icon: Bell, label: 'Announcements', href: '/lecturer/announcements' },

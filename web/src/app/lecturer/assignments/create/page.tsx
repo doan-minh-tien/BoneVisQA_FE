@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -97,7 +97,7 @@ const steps = [
   { label: 'Review', icon: Eye, description: 'Review & publish' },
 ];
 
-export default function CreateAssignmentPage() {
+function CreateAssignmentPageContent() {
   const searchParams = useSearchParams();
   const preselectedClassId = searchParams.get('classId');
 
@@ -989,6 +989,20 @@ function ReviewItem({
         <p className={`text-sm font-medium text-card-foreground ${multiline ? 'whitespace-pre-wrap' : ''}`}>{value}</p>
       )}
     </div>
+  );
+}
+
+export default function CreateAssignmentPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
+      <CreateAssignmentPageContent />
+    </Suspense>
   );
 }
 
