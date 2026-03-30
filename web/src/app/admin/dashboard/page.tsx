@@ -8,32 +8,12 @@ import {
   GraduationCap,
   UserCog,
   BookOpen,
-  TrendingUp,
-  Calendar,
-  Clock,
-  AlertCircle,
-  Award,
-  ShieldCheck,
-  Activity,
-  FileText,
 } from 'lucide-react';
 
-// Giữ lại dữ liệu cứng cho các phần chưa có API
-const recentUsers = [
-  { name: 'Nguyen Van A', email: 'nguyenvana@edu.vn', role: 'Student', status: 'Active', joinedAt: '2 hours ago' },
-  { name: 'Tran Thi B', email: 'tranthib@edu.vn', role: 'Student', status: 'Active', joinedAt: '5 hours ago' },
-  { name: 'Le Van C', email: 'levanc@edu.vn', role: 'Lecturer', status: 'Pending', joinedAt: '1 day ago' },
-  { name: 'Pham Thi D', email: 'phamthid@edu.vn', role: 'Expert', status: 'Active', joinedAt: '1 day ago' },
-  { name: 'Hoang Van E', email: 'hoangvane@edu.vn', role: 'Student', status: 'Active', joinedAt: '2 days ago' },
-];
-
-const systemActivity = [
-  { type: 'user', message: '12 new student registrations approved', time: '30 min ago' },
-  { type: 'alert', message: 'RAG indexing pipeline completed successfully', time: '1 hour ago' },
-  { type: 'course', message: 'New course "Advanced Radiology" created by Dr. Tran', time: '2 hours ago' },
-  { type: 'system', message: 'System backup completed', time: '4 hours ago' },
-  { type: 'alert', message: 'AI model updated to latest version', time: '6 hours ago' },
-];
+import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
+import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
+import SystemActivityFeed from '@/components/admin/dashboard/SystemActivityFeed';
+import QuickStats from '@/components/admin/dashboard/QuickStats';
 
 interface UserStatResult {
   totalUsers: number;
@@ -78,7 +58,7 @@ export default function AdminDashboardPage() {
     fetchStats();
   }, []);
 
-  // Map dữ liệu từ API cho Stats
+  // Map data from API for Stats
   const totalUsers = statsData?.totalUsers || 0;
   const newUsers = statsData?.newUsersThisMonth || 0;
   const students = statsData?.usersByRole?.Student || 0;
@@ -113,7 +93,7 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'Active Courses',
-      value: '48', // Hardcode tạm do API chưa trả về
+      value: '48', // Hardcoded temporarily until API returns it
       change: '+3 new this semester',
       changeType: 'positive' as const,
       icon: BookOpen,
@@ -147,169 +127,14 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Recent Users Table */}
-            <div className="bg-card rounded-xl border border-border">
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" />
-                  <h2 className="font-semibold text-card-foreground">Recent Users</h2>
-                </div>
-                <a href="/admin/users" className="text-sm text-primary hover:underline">
-                  View all
-                </a>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Name</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Role</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Status</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Joined</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {recentUsers.map((user, idx) => (
-                      <tr key={idx} className="hover:bg-input/50 transition-colors duration-150">
-                        <td className="px-5 py-3">
-                          <div>
-                            <p className="text-sm font-medium text-card-foreground">{user.name}</p>
-                            <p className="text-xs text-muted-foreground">{user.email}</p>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.role === 'Student'
-                              ? 'bg-primary/10 text-primary'
-                              : user.role === 'Lecturer'
-                              ? 'bg-accent/10 text-accent'
-                              : 'bg-warning/10 text-warning'
-                          }`}>
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-                            user.status === 'Active' ? 'text-success' : 'text-warning'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              user.status === 'Active' ? 'bg-success' : 'bg-warning'
-                            }`} />
-                            {user.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">{user.joinedAt}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Role Distribution */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <ShieldCheck className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-card-foreground">User Distribution by Role</h2>
-              </div>
-              {isLoading ? (
-                <div className="h-40 flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {roleDistribution.map((item) => (
-                    <div key={item.role}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-sm font-medium text-card-foreground">{item.role}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {item.count.toLocaleString()} ({item.percentage}%)
-                        </span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${item.color} transition-all duration-300 rounded-full`}
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <RecentUsersTable />
+            <RoleDistributionChart isLoading={isLoading} roleDistribution={roleDistribution} />
           </div>
 
           {/* Right Column */}
           <div className="space-y-6">
-            {/* System Activity */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Activity className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-card-foreground">System Activity</h2>
-              </div>
-              <div className="space-y-3">
-                {systemActivity.map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      activity.type === 'alert'
-                        ? 'bg-warning/10 text-warning'
-                        : activity.type === 'system'
-                        ? 'bg-success/10 text-success'
-                        : activity.type === 'course'
-                        ? 'bg-accent/10 text-accent'
-                        : 'bg-primary/10 text-primary'
-                    }`}>
-                      {activity.type === 'alert' && <AlertCircle className="w-4 h-4" />}
-                      {activity.type === 'user' && <Users className="w-4 h-4" />}
-                      {activity.type === 'course' && <BookOpen className="w-4 h-4" />}
-                      {activity.type === 'system' && <ShieldCheck className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-card-foreground">{activity.message}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                <h2 className="font-semibold text-card-foreground">Platform Stats</h2>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-card-foreground">Total Cases</span>
-                  </div>
-                  <span className="text-sm font-semibold text-card-foreground">1,245</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-card-foreground">Quizzes Created</span>
-                  </div>
-                  <span className="text-sm font-semibold text-card-foreground">328</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-card-foreground">AI Q&A Sessions</span>
-                  </div>
-                  <span className="text-sm font-semibold text-card-foreground">5,672</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-card-foreground">Avg. Response Time</span>
-                  </div>
-                  <span className="text-sm font-semibold text-card-foreground">1.2s</span>
-                </div>
-              </div>
-            </div>
+            <SystemActivityFeed />
+            <QuickStats />
           </div>
         </div>
 
