@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import {
@@ -15,41 +18,7 @@ import {
   FileText,
 } from 'lucide-react';
 
-const stats = [
-  {
-    title: 'Total Users',
-    value: '3,156',
-    change: '+84 this month',
-    changeType: 'positive' as const,
-    icon: Users,
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'Students',
-    value: '2,847',
-    change: '+12% from last month',
-    changeType: 'positive' as const,
-    icon: GraduationCap,
-    iconColor: 'bg-accent/10 text-accent',
-  },
-  {
-    title: 'Lecturers',
-    value: '156',
-    change: '98% active',
-    changeType: 'neutral' as const,
-    icon: UserCog,
-    iconColor: 'bg-warning/10 text-warning',
-  },
-  {
-    title: 'Active Courses',
-    value: '48',
-    change: '+3 new this semester',
-    changeType: 'positive' as const,
-    icon: BookOpen,
-    iconColor: 'bg-success/10 text-success',
-  },
-];
-
+// Giữ lại dữ liệu cứng cho các phần chưa có API
 const recentUsers = [
   { name: 'Nguyen Van A', email: 'nguyenvana@edu.vn', role: 'Student', status: 'Active', joinedAt: '2 hours ago' },
   { name: 'Tran Thi B', email: 'tranthib@edu.vn', role: 'Student', status: 'Active', joinedAt: '5 hours ago' },
@@ -66,15 +35,102 @@ const systemActivity = [
   { type: 'alert', message: 'AI model updated to latest version', time: '6 hours ago' },
 ];
 
-const roleDistribution = [
-  { role: 'Students', count: 2847, percentage: 90.2, color: 'bg-primary' },
-  { role: 'Lecturers', count: 156, percentage: 4.9, color: 'bg-accent' },
-  { role: 'Experts', count: 89, percentage: 2.8, color: 'bg-warning' },
-  { role: 'Curators', count: 52, percentage: 1.7, color: 'bg-secondary' },
-  { role: 'Admins', count: 12, percentage: 0.4, color: 'bg-destructive' },
-];
+interface UserStatResult {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  pendingUsers: number;
+  newUsersThisMonth: number;
+  usersByRole: {
+    Student?: number;
+    Lecturer?: number;
+    Admin?: number;
+    Expert?: number;
+  };
+}
 
 export default function AdminDashboardPage() {
+  const [statsData, setStatsData] = useState<UserStatResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+        const response = await fetch(`${apiUrl}/api/admin/users`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setStatsData(data.result);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user stats:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchStats();
+  }, []);
+
+  // Map dữ liệu từ API cho Stats
+  const totalUsers = statsData?.totalUsers || 0;
+  const newUsers = statsData?.newUsersThisMonth || 0;
+  const students = statsData?.usersByRole?.Student || 0;
+  const lecturers = statsData?.usersByRole?.Lecturer || 0;
+  const experts = statsData?.usersByRole?.Expert || 0;
+  const admins = statsData?.usersByRole?.Admin || 0;
+
+  const currentStats = [
+    {
+      title: 'Total Users',
+      value: totalUsers.toString(),
+      change: `+${newUsers} this month`,
+      changeType: 'positive' as const,
+      icon: Users,
+      iconColor: 'bg-primary/10 text-primary',
+    },
+    {
+      title: 'Students',
+      value: students.toString(),
+      change: 'active members',
+      changeType: 'positive' as const,
+      icon: GraduationCap,
+      iconColor: 'bg-accent/10 text-accent',
+    },
+    {
+      title: 'Lecturers',
+      value: lecturers.toString(),
+      change: 'active teaching',
+      changeType: 'positive' as const,
+      icon: UserCog,
+      iconColor: 'bg-warning/10 text-warning',
+    },
+    {
+      title: 'Active Courses',
+      value: '48', // Hardcode tạm do API chưa trả về
+      change: '+3 new this semester',
+      changeType: 'positive' as const,
+      icon: BookOpen,
+      iconColor: 'bg-success/10 text-success',
+    },
+  ];
+
+  const roleDistribution = [
+    { role: 'Students', count: students, color: 'bg-primary' },
+    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
+    { role: 'Experts', count: experts, color: 'bg-warning' },
+    { role: 'Admins', count: admins, color: 'bg-destructive' },
+  ].map(item => ({
+    ...item,
+    percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
+  })).sort((a,b) => b.count - a.count);
+
   return (
     <div className="min-h-screen">
       <Header title="Admin Dashboard" subtitle="System overview and management" />
@@ -82,7 +138,7 @@ export default function AdminDashboardPage() {
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {stats.map((stat) => (
+          {currentStats.map((stat) => (
             <StatCard key={stat.title} {...stat} />
           ))}
         </div>
@@ -156,24 +212,30 @@ export default function AdminDashboardPage() {
                 <ShieldCheck className="w-5 h-5 text-primary" />
                 <h2 className="font-semibold text-card-foreground">User Distribution by Role</h2>
               </div>
-              <div className="space-y-3">
-                {roleDistribution.map((item) => (
-                  <div key={item.role}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm font-medium text-card-foreground">{item.role}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {item.count.toLocaleString()} ({item.percentage}%)
-                      </span>
+              {isLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {roleDistribution.map((item) => (
+                    <div key={item.role}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-medium text-card-foreground">{item.role}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {item.count.toLocaleString()} ({item.percentage}%)
+                        </span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${item.color} transition-all duration-300 rounded-full`}
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={`h-full ${item.color} transition-all duration-300 rounded-full`}
-                        style={{ width: `${item.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
