@@ -2,7 +2,10 @@ import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import CaseCard from '@/components/student/CaseCard';
 import QuickActionCard from '@/components/student/QuickActionCard';
-import ProgressRing from '@/components/student/ProgressRing';
+import TopicProgressCard from '@/components/student/dashboard/TopicProgressCard';
+import RecentActivityCard from '@/components/student/dashboard/RecentActivityCard';
+import LearningInsights from '@/components/student/dashboard/LearningInsights';
+import OverallProgressCard from '@/components/student/dashboard/OverallProgressCard';
 import {
   BookOpen,
   Trophy,
@@ -192,112 +195,18 @@ export default function StudentDashboardPage() {
           {/* Right Column - Progress & Activity */}
           <div className="space-y-6">
             {/* Overall Progress */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Overall Progress</h2>
-              <div className="flex flex-col items-center">
-                <ProgressRing progress={68} size={140} strokeWidth={10} />
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-muted-foreground">68 of 100 cases completed</p>
-                  <p className="text-xs text-muted-foreground mt-1">You're doing great!</p>
-                </div>
-              </div>
-            </div>
+            <OverallProgressCard progress={68} completedCases={68} totalCases={100} />
 
             {/* Topic Progress */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Progress by Topic</h2>
-              <div className="space-y-4">
-                {topicProgress.map((topic) => (
-                  <div key={topic.name}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-card-foreground">{topic.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {topic.completed}/{topic.total}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${topic.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <TopicProgressCard topics={topicProgress} />
 
             {/* Recent Activity */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Recent Activity</h2>
-              <div className="space-y-3">
-                {recentActivity.map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        activity.type === 'quiz'
-                          ? 'bg-warning/10 text-warning'
-                          : activity.type === 'achievement'
-                          ? 'bg-success/10 text-success'
-                          : 'bg-primary/10 text-primary'
-                      }`}
-                    >
-                      {activity.type === 'quiz' && <Trophy className="w-4 h-4" />}
-                      {activity.type === 'case' && <BookOpen className="w-4 h-4" />}
-                      {activity.type === 'achievement' && <Award className="w-4 h-4" />}
-                      {activity.type === 'qa' && <MessageSquare className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-card-foreground">
-                        {activity.message}
-                        {'score' in activity && (
-                          <span className="ml-2 text-success font-medium">
-                            {activity.score}%
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <RecentActivityCard activities={recentActivity} />
           </div>
         </div>
 
         {/* Learning Insights */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-2">
-              <TrendingUp className="w-6 h-6 text-primary" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">+15%</p>
-            <p className="text-sm text-muted-foreground">Accuracy This Week</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center mx-auto mb-2">
-              <Clock className="w-6 h-6 text-accent" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">4.5h</p>
-            <p className="text-sm text-muted-foreground">Study Time This Week</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center mx-auto mb-2">
-              <Award className="w-6 h-6 text-warning" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">12</p>
-            <p className="text-sm text-muted-foreground">Badges Earned</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center mx-auto mb-2">
-              <Target className="w-6 h-6 text-success" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">87%</p>
-            <p className="text-sm text-muted-foreground">Goal Achievement</p>
-          </div>
-        </div>
+        <LearningInsights />
       </div>
     </div>
   );

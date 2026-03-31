@@ -2,40 +2,12 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
-import Link from 'next/link';
-import {
-  Trophy,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Play,
-  RotateCcw,
-  Filter,
-} from 'lucide-react';
+import { Filter, Trophy } from 'lucide-react';
+import QuizStats from '@/components/student/quiz/QuizStats';
+import QuizCard from '@/components/student/quiz/QuizCard';
+import { Quiz, TabKey } from '@/components/student/quiz/types';
 
-type QuizStatus = 'completed' | 'not_started';
-type Difficulty = 'basic' | 'intermediate' | 'advanced';
-type TabKey = 'all' | 'not_started' | 'completed';
 
-interface Quiz {
-  id: string;
-  title: string;
-  topic: string;
-  difficulty: Difficulty;
-  totalQuestions: number;
-  duration: string;
-  status: QuizStatus;
-  score?: number;
-  correctAnswers?: number;
-  wrongAnswers?: number;
-  completedAt?: string;
-}
-
-const difficultyConfig: Record<Difficulty, { color: string; label: string }> = {
-  basic: { color: 'text-success bg-success/10', label: 'Basic' },
-  intermediate: { color: 'text-warning bg-warning/10', label: 'Intermediate' },
-  advanced: { color: 'text-destructive bg-destructive/10', label: 'Advanced' },
-};
 
 // Mock data
 const quizzes: Quiz[] = [
@@ -135,18 +107,6 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'completed', label: 'Completed' },
 ];
 
-function getScoreColor(score: number) {
-  if (score >= 80) return 'text-success';
-  if (score >= 60) return 'text-warning';
-  return 'text-destructive';
-}
-
-function getScoreBg(score: number) {
-  if (score >= 80) return 'bg-success/10 border-success/20';
-  if (score >= 60) return 'bg-warning/10 border-warning/20';
-  return 'bg-destructive/10 border-destructive/20';
-}
-
 export default function StudentQuizPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('all');
@@ -169,24 +129,12 @@ export default function StudentQuizPage() {
 
       <div className="p-6 max-w-[1200px] mx-auto">
         {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-2xl font-bold text-card-foreground">{quizzes.length}</p>
-            <p className="text-sm text-muted-foreground">Total Quizzes</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-2xl font-bold text-success">{completedCount}</p>
-            <p className="text-sm text-muted-foreground">Completed</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-2xl font-bold text-warning">{notStartedCount}</p>
-            <p className="text-sm text-muted-foreground">Not Started</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className={`text-2xl font-bold ${getScoreColor(Math.round(avgScore))}`}>{Math.round(avgScore)}%</p>
-            <p className="text-sm text-muted-foreground">Avg. Score</p>
-          </div>
-        </div>
+        <QuizStats 
+          totalQuizzes={quizzes.length}
+          completedCount={completedCount}
+          notStartedCount={notStartedCount}
+          avgScore={avgScore}
+        />
 
         {/* Tabs + Filter */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -223,85 +171,9 @@ export default function StudentQuizPage() {
 
         {/* Quiz List */}
         <div className="space-y-3">
-          {filtered.map((quiz) => {
-            const diff = difficultyConfig[quiz.difficulty];
-            const isCompleted = quiz.status === 'completed';
-
-            return (
-              <div
-                key={quiz.id}
-                className="bg-card rounded-xl border border-border p-5 hover:shadow-sm transition-shadow"
-              >
-                <div className="flex flex-col md:flex-row md:items-center gap-4">
-                  {/* Left: Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-card-foreground truncate">{quiz.title}</h3>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${diff.color}`}>
-                        {diff.label}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{quiz.topic}</p>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Trophy className="w-3.5 h-3.5" />
-                        {quiz.totalQuestions} questions
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {quiz.duration}
-                      </span>
-                      {isCompleted && quiz.completedAt && (
-                        <span>Completed {quiz.completedAt}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right: Score or Action */}
-                  {isCompleted ? (
-                    <div className="flex items-center gap-4">
-                      {/* Score */}
-                      <div className={`rounded-xl border px-5 py-3 text-center min-w-[100px] ${getScoreBg(quiz.score!)}`}>
-                        <p className={`text-2xl font-bold ${getScoreColor(quiz.score!)}`}>{quiz.score}%</p>
-                        <p className="text-[11px] text-muted-foreground">Score</p>
-                      </div>
-
-                      {/* Correct / Wrong */}
-                      <div className="hidden sm:flex flex-col gap-1 min-w-[90px]">
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <CheckCircle className="w-4 h-4 text-success" />
-                          <span className="text-success font-medium">{quiz.correctAnswers}</span>
-                          <span className="text-muted-foreground">correct</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <XCircle className="w-4 h-4 text-destructive" />
-                          <span className="text-destructive font-medium">{quiz.wrongAnswers}</span>
-                          <span className="text-muted-foreground">wrong</span>
-                        </div>
-                      </div>
-
-                      {/* Retry */}
-                      <Link
-                        href={`/student/quiz/${quiz.id}`}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input/50 transition-colors"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Retry
-                      </Link>
-                    </div>
-                  ) : (
-                    <Link
-                      href={`/student/quiz/${quiz.id}`}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
-                    >
-                      <Play className="w-4 h-4" />
-                      Start Quiz
-                    </Link>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map((quiz) => (
+            <QuizCard key={quiz.id} quiz={quiz} />
+          ))}
 
           {filtered.length === 0 && (
             <div className="text-center py-16 text-muted-foreground">

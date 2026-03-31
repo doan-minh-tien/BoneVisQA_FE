@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Header from "@/components/Header";
 import {
   Users,
@@ -8,6 +8,8 @@ import {
   Filter,
   ChevronDown,
   ChevronRight,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 import { User, Role, Status, initialUsers, roleConfig, allRoles } from "@/components/admin/users/types";
@@ -15,15 +17,59 @@ import UserTable from "@/components/admin/users/UserTable";
 import AssignRoleDialog from "@/components/admin/users/AssignRoleDialog";
 import ConfirmDialog from "@/components/admin/users/ConfirmDialog";
 import RevokeDialog from "@/components/admin/users/RevokeDialog";
+import { getAdminUsersByRole, assignAdminRole, revokeAdminRole } from "@/lib/api";
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<Role | "Pending">("Pending");
   const [filterStatus, setFilterStatus] = useState<Status | "All">("All");
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
   const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(
     new Set(),
   );
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
+        const data = await getAdminUsersByRole(activeTab, token);
+        const fetchedUsers = Array.isArray(data) ? data : (data.users || data.result || data.data || []);
+        
+        if (!Array.isArray(fetchedUsers)) {
+           setErrorMsg(`Data parsed is not an array. Type: ${typeof fetchedUsers}`);
+        }
+        
+        const mappedUsers: User[] = fetchedUsers.map((u: any) => ({
+          id: u.id || u.applicationUserId || u.userId || Math.random().toString(),
+          name: u.fullName || u.name || "Unknown",
+          email: u.email || "",
+          role: activeTab === "Pending" ? "Unassigned" : (u.roles?.[0] || activeTab),
+          status: activeTab === "Pending" ? "Pending" : (u.isActive === false ? "Inactive" : "Active"),
+          joinedAt: u.createdAt ? new Date(u.createdAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          className: u.schoolCohort || u.className || undefined,
+        }));
+        setUsers(mappedUsers);
+      } catch (err: any) {
+        setErrorMsg(`Exception: ${err.message}`);
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, [activeTab]);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     user: User;
@@ -39,53 +85,32 @@ export default function AdminUsersPage() {
   const handleRevokeRole = async () => {
     if (!revokeDialog) return;
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-      const response = await fetch(`${apiUrl}/api/admin/${revokeDialog.id}/revoke-role`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem("token") || "" : ""}`,
-        },
-        body: JSON.stringify({ roles: ["Pending"] }),
-      });
+      const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
+      const response = await revokeAdminRole(revokeDialog.id, token);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        alert(errorData?.message || "Failed to revoke role");
+      if (!response) {
+        showToast("Empty response from server", "error");
         return;
       }
 
-      // ĐỌC PAYLOAD TỪ BE TRẢ VỀ
-      const data = await response.json();
-      
-      // CẬP NHẬT GIAO DIỆN local
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === revokeDialog.id
-            ? {
-                ...u,
-                role: "Unassigned", // Dựng local thành Unassigned
-                status: "Pending", // Dựng local thành Pending
-              }
-            : u,
-        ),
-      );
+      // Xoá user khỏi UI tab hiện tại
+      setUsers((prev) => prev.filter((u) => u.id !== revokeDialog.id));
 
       setRevokeDialog(null);
-      alert(data.message || "Revoke role successfully.");
-    } catch (error) {
+      showToast(response.message || "Đã thu hồi quyền thành công!");
+    } catch (error: any) {
       console.warn("Error revoking role:", error);
-      alert("Có lỗi xảy ra khi thu hồi quyền!");
+      showToast(error.message || "Có lỗi xảy ra khi thu hồi quyền!", "error");
     }
   };
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
-      // Logic for Tabs
+      // Logic for Tabs (already filtered by API, just local state safety check)
       if (activeTab === "Pending") {
         if (u.status !== "Pending") return false;
       } else {
-        if (u.role !== activeTab || u.status === "Pending") return false;
+        if (u.status === "Pending") return false;
       }
 
       const matchSearch =
@@ -140,44 +165,24 @@ export default function AdminUsersPage() {
 
   const handleAssignRole = async (user: User, selectedRole: Role) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-
-      // GỌI API
-      const response = await fetch(
-        `${apiUrl}/api/admin/${user.id}/assign-role`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${typeof window !== 'undefined' ? localStorage.getItem("token") || "" : ""}`
-          },
-          body: JSON.stringify({ roles: [selectedRole] }),
-        },
-      );
-
-      if (!response.ok) {
-        // Nếu lỗi, không ném exception Error ra ngoài để tránh Next.js hiển thị màn hình đỏ
-        const errorData = await response.json().catch(() => null);
-        alert(errorData?.message || "Failed to assign role");
+      const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
+      
+      const response = await assignAdminRole(user.id, selectedRole, token);
+      
+      if (!response) {
+        showToast("Empty response from server", "error");
         return;
       }
 
-      // ĐỌC PAYLOAD TỪ BE TRẢ VỀ
-      const data = await response.json();
-      const assignedRole = data.result?.roles?.[0] as Role || selectedRole;
-      const isUserActive = data.result ? data.result.isActive : true;
-
-      // CẬP NHẬT GIAO DIỆN
-      setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, role: assignedRole, status: isUserActive ? "Active" : "Inactive" } : u)),
-      );
+      // Xoá user khỏi UI tab Pending (hoặc Cập nhật role tuỳ cách hiển thị hiện tại)
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
 
       setAssignRoleDialog(null);
-      alert(data.message || "Assign role successfully.");
+      showToast(response.message || `Đã phân quyền ${selectedRole} thành công!`);
       
-    } catch (error) {
+    } catch (error: any) {
       console.warn("Error assigning role:", error);
-      alert("Có lỗi xảy ra khi phân quyền!");
+      showToast(error.message || "Có lỗi xảy ra khi phân quyền!", "error");
     }
   };
 
@@ -261,13 +266,23 @@ export default function AdminUsersPage() {
 
         {/* Data Container Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-          {filtered.length === 0 ? (
+          {errorMsg ? (
+            <div className="flex flex-col items-center justify-center p-16 text-center bg-red-50/50">
+              <h3 className="text-lg font-bold text-red-600">Lỗi khi gọi API</h3>
+              <p className="text-red-500 mt-2 max-w-lg break-all">{errorMsg}</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-16 text-center">
               <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
                 <Users className="w-10 h-10 text-slate-300" />
               </div>
               <h3 className="text-lg font-bold text-slate-700">No users found</h3>
               <p className="text-slate-500 mt-1">Try adjusting your search or filters</p>
+            </div>
+          ) : loading ? (
+            <div className="flex flex-col items-center justify-center p-16 text-center">
+              <div className="w-10 h-10 border-4 border-slate-200 border-t-amber-500 rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-500">Loading users...</p>
             </div>
           ) : activeTab === "Student" ? (
             <div className="flex flex-col">
@@ -349,6 +364,26 @@ export default function AdminUsersPage() {
           onConfirm={handleRevokeRole}
           onCancel={() => setRevokeDialog(null)}
         />
+      )}
+
+      {/* Toast Message UI */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div
+            className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-lg border ${
+              toast.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-500" />
+            )}
+            <p className="font-semibold text-sm">{toast.message}</p>
+          </div>
+        </div>
       )}
     </div>
   );

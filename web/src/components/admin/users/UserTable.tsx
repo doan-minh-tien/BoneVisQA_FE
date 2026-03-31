@@ -17,19 +17,19 @@ export default function UserTable({
       <table className="w-full">
         <thead>
           <tr className="bg-slate-50/50 border-b border-slate-200/60">
-            <th className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
+            <th className="w-[30%] text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
               User Profile
             </th>
-            <th className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
+            <th className="w-[25%] text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
               Contact Info
             </th>
-            <th className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
+            <th className="w-[15%] text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
               Status
             </th>
-            <th className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
+            <th className="w-[15%] text-left text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
               Joined Date
             </th>
-            <th className="text-right text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
+            <th className="w-[15%] text-right text-xs font-bold text-slate-500 uppercase tracking-wider px-6 py-4">
               Actions
             </th>
           </tr>

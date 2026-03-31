@@ -255,3 +255,77 @@ export async function login(email: string, password: string): Promise<LoginRespo
 
   return res.json();
 }
+
+export interface RegisterResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  token: string | null;
+  roles: string[] | null;
+}
+
+export async function register(data: {
+  fullName: string;
+  email: string;
+  password: string;
+  schoolCohort: string;
+}): Promise<RegisterResponse> {
+  const res = await fetch(`${API_URL}/api/Auths/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  const bodyData = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(bodyData?.message || `HTTP ${res.status}`);
+  }
+
+  return bodyData;
+}
+
+export async function assignAdminRole(id: string, role: string, token: string): Promise<any> {
+  const res = await fetch(`${API_URL}/api/Admin/${id}/assign-role?role=${encodeURIComponent(role)}`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` 
+    }
+  });
+
+  const responseText = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(`HTTP ${res.status} - ${responseText || "Unknown Error"}`);
+  try { return responseText ? JSON.parse(responseText) : { success: true }; } catch (e) { return { success: true, message: responseText }; }
+}
+
+export async function revokeAdminRole(id: string, token: string): Promise<any> {
+  const res = await fetch(`${API_URL}/api/Admin/${id}/revoke-role`, {
+    method: 'PUT',
+    headers: { 
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` 
+    }
+  });
+
+  const responseText = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(`HTTP ${res.status} - ${responseText || "Unknown Error"}`);
+  try { return responseText ? JSON.parse(responseText) : { success: true }; } catch (e) { return { success: true, message: responseText }; }
+}
+
+// --- Admin ---
+
+export async function getAdminUsersByRole(role: string, token: string): Promise<any> {
+  const res = await fetch(`${API_URL}/api/Admin/role/${role}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    let errText = "Unknown";
+    try { errText = await res.text(); } catch (e) {}
+    throw new Error(`HTTP ${res.status} - ${errText}`);
+  }
+
+  return res.json();
+}

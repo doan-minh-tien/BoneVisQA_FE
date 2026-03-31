@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import {
@@ -19,7 +19,6 @@ const roleRoutes: Record<string, string> = {
   student: "/student/dashboard",
   lecturer: "/lecturer/dashboard",
   expert: "/expert/dashboard",
-  curator: "/curator/dashboard",
   admin: "/admin/dashboard",
 };
 
@@ -27,7 +26,6 @@ const roleIcons: Record<string, typeof Stethoscope> = {
   student: GraduationCap,
   lecturer: UserCog,
   expert: Stethoscope,
-  curator: BookOpen,
   admin: ShieldCheck,
 };
 
@@ -48,11 +46,6 @@ const roleColors: Record<string, { bg: string; text: string; border: string }> =
       text: "text-warning",
       border: "border-warning",
     },
-    curator: {
-      bg: "bg-secondary/10",
-      text: "text-secondary",
-      border: "border-secondary",
-    },
     admin: {
       bg: "bg-destructive/10",
       text: "text-destructive",
@@ -67,6 +60,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("rememberedEmail");
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   // Role selection state
   const [showRolePicker, setShowRolePicker] = useState(false);
@@ -79,6 +81,12 @@ export default function LoginPage() {
     localStorage.setItem("fullName", data.fullName);
     localStorage.setItem("email", data.email);
     localStorage.setItem("roles", JSON.stringify(data.roles));
+
+    if (rememberMe) {
+      localStorage.setItem("rememberedEmail", email);
+    } else {
+      localStorage.removeItem("rememberedEmail");
+    }
 
     if (data.roles.length > 1) {
       setAvailableRoles(data.roles.map((r: string) => r.toLowerCase()));
@@ -123,7 +131,7 @@ export default function LoginPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ token: credentialResponse.credential }),
+          body: JSON.stringify({ idToken: credentialResponse.credential }),
         },
       );
 
@@ -205,8 +213,6 @@ export default function LoginPage() {
                           "Manage classes, assignments & analytics"}
                         {role === "expert" &&
                           "Review cases, Q&A answers & quizzes"}
-                        {role === "curator" &&
-                          "Manage documents & indexing pipeline"}
                         {role === "admin" &&
                           "System administration & user management"}
                       </p>
@@ -305,6 +311,8 @@ export default function LoginPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 rounded border-border accent-primary"
                   />
                   <span className="text-sm text-card-foreground">
@@ -339,8 +347,14 @@ export default function LoginPage() {
                 onError={() =>
                   setError("Google Login failed. Please try again.")
                 }
-                useOneTap
               />
+            </div>
+
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <a href="/register" className="text-primary hover:underline font-medium">
+                Register now
+              </a>
             </div>
           </div>
         </div>

@@ -5,36 +5,23 @@ import Header from '@/components/Header';
 import {
   FolderOpen,
   Search,
-  Filter,
   CheckCircle,
   XCircle,
   Loader2,
   Eye,
-  ShieldCheck,
-  ShieldOff,
-  BookOpen,
   Plus,
-  X,
 } from 'lucide-react';
 import {
   getLecturerCases,
   getLecturerClasses,
   approveCase,
-  assignCasesToClass,
   type CaseDto,
   type ClassItem,
 } from '@/lib/api';
+import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
+import CasesTable from '@/components/lecturer/cases/CasesTable';
 
 type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
-
-const difficultyColors: Record<string, string> = {
-  easy: 'bg-success/10 text-success',
-  basic: 'bg-success/10 text-success',
-  medium: 'bg-warning/10 text-warning',
-  intermediate: 'bg-warning/10 text-warning',
-  hard: 'bg-destructive/10 text-destructive',
-  advanced: 'bg-destructive/10 text-destructive',
-};
 
 export default function LecturerCasesPage() {
   const [cases, setCases] = useState<CaseDto[]>([]);
@@ -90,24 +77,11 @@ export default function LecturerCasesPage() {
     }
   };
 
-  const handleAssign = async () => {
-    if (!assignClassId || selectedCases.size === 0) {
-      setAssignError('Please select a class and at least one case.');
-      return;
-    }
-    setAssigning(true);
-    setAssignError('');
-    try {
-      const token = localStorage.getItem('token') || '';
-      await assignCasesToClass(assignClassId, Array.from(selectedCases), token);
-      setShowAssign(false);
-      setSelectedCases(new Set());
-      setAssignClassId('');
-    } catch {
-      setAssignError('Failed to assign cases. Please try again.');
-    } finally {
-      setAssigning(false);
-    }
+  // We removed handleAssign here as it is moved to AssignCasesDialog.
+  // We just need a way to close dialog and clear states.
+  const handleAssignSuccess = () => {
+    setShowAssign(false);
+    setSelectedCases(new Set());
   };
 
   const toggleCaseSelection = (id: string) => {
@@ -238,221 +212,25 @@ export default function LecturerCasesPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedCases.size === filtered.length && filtered.length > 0}
-                      onChange={() => {
-                        if (selectedCases.size === filtered.length) {
-                          setSelectedCases(new Set());
-                        } else {
-                          setSelectedCases(new Set(filtered.map((c) => c.id)));
-                        }
-                      }}
-                      className="w-4 h-4 accent-primary cursor-pointer"
-                    />
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Title
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Category
-                  </th>
-                  <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Difficulty
-                  </th>
-                  <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Status
-                  </th>
-                  <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Approved
-                  </th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Created
-                  </th>
-                  <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.map((c) => {
-                  const isToggling = togglingIds.has(c.id);
-                  return (
-                    <tr key={c.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedCases.has(c.id)}
-                          onChange={() => toggleCaseSelection(c.id)}
-                          className="w-4 h-4 accent-primary cursor-pointer"
-                        />
-                      </td>
-                      <td className="px-5 py-3">
-                        <p className="text-sm font-medium text-card-foreground">
-                          {c.title || 'Untitled'}
-                        </p>
-                        {c.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                            {c.description}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        {c.categoryName ? (
-                          <span className="px-2.5 py-1 bg-primary/10 text-primary text-xs rounded font-medium">
-                            {c.categoryName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        {c.difficulty ? (
-                          <span
-                            className={`px-2.5 py-1 text-xs rounded font-medium ${
-                              difficultyColors[c.difficulty.toLowerCase()] ?? 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            {c.difficulty}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 text-xs font-medium ${
-                            c.isActive ? 'text-success' : 'text-muted-foreground'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              c.isActive ? 'bg-success' : 'bg-muted-foreground'
-                            }`}
-                          />
-                          {c.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        {c.isApproved ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            Yes
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
-                            <ShieldOff className="w-3.5 h-3.5" />
-                            No
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-muted-foreground">
-                        {c.createdAt
-                          ? new Date(c.createdAt).toLocaleDateString('vi-VN', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                            })
-                          : '—'}
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={() => handleToggleApprove(c)}
-                          disabled={isToggling}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                            c.isApproved
-                              ? 'text-warning hover:bg-warning/10'
-                              : 'text-success hover:bg-success/10'
-                          }`}
-                        >
-                          {isToggling ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : c.isApproved ? (
-                            <ShieldOff className="w-3.5 h-3.5" />
-                          ) : (
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                          )}
-                          {isToggling ? '...' : c.isApproved ? 'Unapprove' : 'Approve'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+            <CasesTable
+              cases={filtered}
+              selectedCases={selectedCases}
+              onSelectAll={setSelectedCases}
+              onSelect={toggleCaseSelection}
+              onToggleApprove={handleToggleApprove}
+              togglingIds={togglingIds}
+            />
         )}
       </div>
 
       {/* Assign to Class Dialog */}
       {showAssign && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowAssign(false)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-card-foreground">Assign Cases to Class</h3>
-                <p className="text-sm text-muted-foreground">
-                  {selectedCases.size} case(s) selected
-                </p>
-              </div>
-              <button
-                onClick={() => setShowAssign(false)}
-                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-
-            {assignError && (
-              <div className="mb-4 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                {assignError}
-              </div>
-            )}
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">
-                Select Class
-              </label>
-              <select
-                value={assignClassId}
-                onChange={(e) => setAssignClassId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
-              >
-                <option value="">Choose a class...</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.className} — {cls.semester}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowAssign(false);
-                  setAssignError('');
-                }}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAssign}
-                disabled={assigning}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {assigning ? 'Assigning...' : 'Assign'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AssignCasesDialog
+          onClose={() => setShowAssign(false)}
+          onSuccess={handleAssignSuccess}
+          selectedCases={selectedCases}
+          classes={classes}
+        />
       )}
     </div>
   );

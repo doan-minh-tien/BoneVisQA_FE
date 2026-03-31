@@ -3,17 +3,17 @@ import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import ClassCard from '@/components/lecturer/ClassCard';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
-import StudentPerformanceCard from '@/components/lecturer/StudentPerformanceCard';
+import TopPerformersCard from '@/components/lecturer/dashboard/TopPerformersCard';
+import NeedsAttentionCard from '@/components/lecturer/dashboard/NeedsAttentionCard';
+import RecentAnnouncementsCard from '@/components/lecturer/dashboard/RecentAnnouncementsCard';
+import QuickStats from '@/components/lecturer/dashboard/QuickStats';
 import {
   Users,
   ClipboardList,
   TrendingUp,
   Award,
-  Plus,
   Bell,
   BarChart3,
-  Calendar,
-  MessageSquare,
 } from 'lucide-react';
 
 // Mock data
@@ -252,85 +252,18 @@ export default function LecturerDashboardPage() {
           {/* Right Column - Student Performance */}
           <div className="space-y-6">
             {/* Top Performers */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-card-foreground">Top Performers</h2>
-                <Award className="w-5 h-5 text-warning" />
-              </div>
-              <div className="space-y-3">
-                {topPerformers.map((student, idx) => (
-                  <StudentPerformanceCard key={idx} {...student} />
-                ))}
-              </div>
-            </div>
+            <TopPerformersCard performers={topPerformers} />
 
             {/* Needs Attention */}
-            <div className="bg-card rounded-xl border border-destructive/20 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-card-foreground">Needs Attention</h2>
-                <span className="px-2 py-1 bg-destructive/10 text-destructive text-xs font-medium rounded">
-                  {needsAttention.length} students
-                </span>
-              </div>
-              <div className="space-y-3">
-                {needsAttention.map((student, idx) => (
-                  <StudentPerformanceCard key={idx} {...student} />
-                ))}
-              </div>
-            </div>
+            <NeedsAttentionCard students={needsAttention} />
 
             {/* Recent Announcements */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Recent Announcements</h2>
-              <div className="space-y-3">
-                {recentAnnouncements.map((announcement, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
-                    <Bell className={`w-4 h-4 mt-0.5 ${announcement.priority === 'high' ? 'text-destructive' : 'text-primary'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-card-foreground">{announcement.title}</p>
-                      <p className="text-xs text-muted-foreground">{announcement.date}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <RecentAnnouncementsCard announcements={recentAnnouncements} />
           </div>
         </div>
 
         {/* Bottom Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-2">
-              <Calendar className="w-6 h-6 text-primary" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">12</p>
-            <p className="text-sm text-muted-foreground">Sessions This Week</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center mx-auto mb-2">
-              <MessageSquare className="w-6 h-6 text-success" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">28</p>
-            <p className="text-sm text-muted-foreground">Student Questions</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center mx-auto mb-2">
-              <ClipboardList className="w-6 h-6 text-warning" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">45</p>
-            <p className="text-sm text-muted-foreground">Pending Gradings</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center mx-auto mb-2">
-              <TrendingUp className="w-6 h-6 text-accent" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">+8%</p>
-            <p className="text-sm text-muted-foreground">Performance Growth</p>
-          </div>
-        </div>
+        <QuickStats />
       </div>
     </div>
   );
