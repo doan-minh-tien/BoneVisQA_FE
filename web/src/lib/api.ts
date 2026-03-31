@@ -329,3 +329,73 @@ export async function getAdminUsersByRole(role: string, token: string): Promise<
 
   return res.json();
 }
+
+export interface DocumentDto {
+  id: string;
+  title: string;
+  filePath: string;
+  categoryId: string | null;
+  indexingStatus: string;
+  version: number;
+  isOutdated: boolean;
+  createdAt: string;
+}
+
+export async function getAdminDocuments(token: string): Promise<DocumentDto[]> {
+  const res = await fetch(`${API_URL}/api/Admin/document`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    let errText = "Unknown";
+    try { errText = await res.text(); } catch (e) {}
+    throw new Error(`HTTP ${res.status} - ${errText}`);
+  }
+
+  return res.json();
+}
+
+export async function getAdminDocumentById(id: string, token: string): Promise<DocumentDto> {
+  const res = await fetch(`${API_URL}/api/Admin/document/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    let errText = "Unknown";
+    try { errText = await res.text(); } catch (e) {}
+    throw new Error(`HTTP ${res.status} - ${errText}`);
+  }
+
+  return res.json();
+}
+
+export async function uploadAdminDocument(formData: FormData, token: string): Promise<DocumentDto> {
+  const res = await fetch(`${API_URL}/api/Admin/document-upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let errText = "Unknown error";
+    try { errText = await res.text(); } catch (e) {}
+    throw new Error(`Upload failed (${res.status}): ${errText}`);
+  }
+
+  return res.json();
+}
+
+export async function reindexAdminDocument(id: string, token: string): Promise<{ message: string }> {
+  const res = await fetch(`${API_URL}/api/Admin/document/${id}/reindex`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    let errText = "Unknown error";
+    try { errText = await res.text(); } catch (e) {}
+    throw new Error(`Reindex failed (${res.status}): ${errText}`);
+  }
+
+  return res.json();
+}
