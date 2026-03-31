@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import StatCard from '@/components/StatCard';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
@@ -152,9 +151,12 @@ const statusConfig = {
 
 const tabs = ['Students', 'Assignments', 'Settings'] as const;
 
-export default function ClassDetailPage() {
-  const params = useParams();
-  const classId = params.id as string;
+export default function ClassDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: classId } = use(params);
   const [activeTab, setActiveTab] = useState<string>('Students');
 
   // Stats state

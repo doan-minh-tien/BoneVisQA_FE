@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ChevronRight,
@@ -97,9 +96,16 @@ const steps = [
   { label: 'Review', icon: Eye, description: 'Review & publish' },
 ];
 
-function CreateAssignmentPageContent() {
-  const searchParams = useSearchParams();
-  const preselectedClassId = searchParams.get('classId');
+function CreateAssignmentPageContent({
+  searchParams,
+}: {
+  searchParams: Promise<{ classId?: string | string[] }>;
+}) {
+  const resolvedSearchParams = use(searchParams);
+  const classIdParam = resolvedSearchParams.classId;
+  const preselectedClassId = Array.isArray(classIdParam)
+    ? classIdParam[0]
+    : classIdParam;
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
@@ -992,18 +998,12 @@ function ReviewItem({
   );
 }
 
-export default function CreateAssignmentPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
-          Loading…
-        </div>
-      }
-    >
-      <CreateAssignmentPageContent />
-    </Suspense>
-  );
+export default function CreateAssignmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ classId?: string | string[] }>;
+}) {
+  return <CreateAssignmentPageContent searchParams={searchParams} />;
 }
 
 function ChecklistItem({ done, label }: { done: boolean; label: string }) {

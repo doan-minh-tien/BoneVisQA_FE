@@ -2,76 +2,47 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import {
-  Stethoscope,
+  GoogleOAuthProvider,
+  GoogleLogin,
+  type CredentialResponse,
+} from "@react-oauth/google";
+import {
+  Activity,
+  Cpu,
   Eye,
   EyeOff,
-  GraduationCap,
-  UserCog,
-  BookOpen,
-  ShieldCheck,
-  ArrowLeft,
+  ScanSearch,
+  Stethoscope,
 } from "lucide-react";
 import { login } from "@/lib/api";
+import { http, getApiErrorMessage } from "@/lib/api/client";
+import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
 
-const roleRoutes: Record<string, string> = {
-  student: "/student/dashboard",
-  lecturer: "/lecturer/dashboard",
-  expert: "/expert/dashboard",
-  curator: "/curator/dashboard",
-  admin: "/admin/dashboard",
-};
-
-const roleIcons: Record<string, typeof Stethoscope> = {
-  student: GraduationCap,
-  lecturer: UserCog,
-  expert: Stethoscope,
-  curator: BookOpen,
-  admin: ShieldCheck,
-};
-
-const roleColors: Record<string, { bg: string; text: string; border: string }> =
-  {
-    student: {
-      bg: "bg-primary/10",
-      text: "text-primary",
-      border: "border-primary",
-    },
-    lecturer: {
-      bg: "bg-accent/10",
-      text: "text-accent",
-      border: "border-accent",
-    },
-    expert: {
-      bg: "bg-warning/10",
-      text: "text-warning",
-      border: "border-warning",
-    },
-    curator: {
-      bg: "bg-secondary/10",
-      text: "text-secondary",
-      border: "border-secondary",
-    },
-    admin: {
-      bg: "bg-destructive/10",
-      text: "text-destructive",
-      border: "border-destructive",
-    },
-  };
+function getRouteForRole(role: string | null | undefined) {
+  switch (role?.trim().toLowerCase()) {
+    case "student":
+      return { activeRole: "student", route: "/student/dashboard" };
+    case "lecturer":
+      return { activeRole: "lecturer", route: "/lecturer/dashboard" };
+    case "expert":
+      return { activeRole: "expert", route: "/expert/dashboard" };
+    case "admin":
+      return { activeRole: "admin", route: "/admin/dashboard" };
+    default:
+      return { activeRole: null, route: "/" };
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Role selection state
-  const [showRolePicker, setShowRolePicker] = useState(false);
-  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
-  const [userName, setUserName] = useState("");
 
   const handleLoginSuccess = (data: any) => {
     localStorage.setItem("token", data.token);
@@ -79,17 +50,18 @@ export default function LoginPage() {
     localStorage.setItem("fullName", data.fullName);
     localStorage.setItem("email", data.email);
     localStorage.setItem("roles", JSON.stringify(data.roles));
+    const primaryRole = Array.isArray(data.roles)
+      ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
+      : null;
+    const { activeRole, route } = getRouteForRole(primaryRole);
 
-    if (data.roles.length > 1) {
-      setAvailableRoles(data.roles.map((r: string) => r.toLowerCase()));
-      setUserName(data.fullName);
-      setShowRolePicker(true);
-      return;
+    if (activeRole) {
+      localStorage.setItem("activeRole", activeRole);
+    } else {
+      localStorage.removeItem("activeRole");
     }
 
-    const role = data.roles[0]?.toLowerCase();
-    localStorage.setItem("activeRole", role);
-    router.push(roleRoutes[role] ?? "/");
+    router.push(route);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,248 +75,239 @@ export default function LoginPage() {
         handleLoginSuccess(data);
         return;
       }
-      setError(data.message || "Invalid email or password.");
-    } catch {
-      setError("Cannot connect to server. Please try again.");
+
+      const msg = data.message || "Invalid email or password.";
+      setError(msg);
+      toast.error(msg);
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err);
+      setError(message || "Cannot connect to server. Please try again.");
+      toast.error(message || "Cannot connect to server. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLoginSuccess = async (credentialResponse: any) => {
+  const handleGoogleLoginSuccess = async (
+    credentialResponse: CredentialResponse,
+  ) => {
     setError("");
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "https://bonevisqa.onrender.com/api/Auths/google-login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ token: credentialResponse.credential }),
-        },
-      );
+      if (!credentialResponse.credential) {
+        throw new Error("Google did not return a credential token.");
+      }
 
-      const data = await response.json();
+      const { data } = await http.post("/api/Auths/google-login", {
+        token: credentialResponse.credential,
+      });
 
-      if (response.ok && data.success && data.token && data.roles) {
+      if (data.success && data.token && data.roles) {
         handleLoginSuccess(data);
       } else {
-        setError(data.message || "Google login failed.");
+        const message = data.message || "Google login failed.";
+        setError(message);
+        toast.error(message);
       }
-    } catch (err) {
-      setError("Cannot connect to server. Please try again later.");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err);
+      console.warn("Google login failed:", message);
+      setError(message || "Cannot connect to server. Please try again later.");
+      toast.error(message || "Google login failed.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRoleSelect = (role: string) => {
-    localStorage.setItem("activeRole", role);
-    router.push(roleRoutes[role] ?? "/");
-  };
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
+  const hasGoogleClientId = googleClientId.length > 0;
 
-  if (showRolePicker) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-md">
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
-              <Stethoscope className="w-9 h-9 text-white" />
+  const loginCard = (
+    <div className="min-h-screen w-full bg-slate-950">
+      <div className="grid min-h-screen w-full lg:grid-cols-[1.22fr_1fr]">
+        <section className="relative hidden overflow-hidden bg-slate-950 lg:flex">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(0,229,255,0.12),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(0,123,255,0.18),transparent_28%),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:auto,auto,32px_32px,32px_32px]" />
+          <div className="relative z-10 flex w-full flex-col justify-between px-12 py-14 xl:px-16">
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-accent/30 bg-cyan-accent/10">
+                <Stethoscope className="h-7 w-7 text-cyan-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold tracking-tight text-white">BoneVisQA</p>
+                <p className="text-sm text-slate-300">Radiology Education</p>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-foreground">BoneVisQA</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Medical Education Platform
-            </p>
+
+            <div className="grid flex-1 place-items-center py-10">
+              <div className="relative flex h-[420px] w-[420px] items-center justify-center rounded-[40px] border border-cyan-accent/10 bg-white/[0.02]">
+                <div className="absolute inset-8 rounded-[32px] border border-cyan-accent/15" />
+                <div className="absolute inset-x-12 top-16 h-[220px] rounded-[28px] border border-cyan-accent/25 bg-cyan-accent/[0.02] shadow-[0_0_45px_rgba(0,229,255,0.08)]" />
+                <div className="absolute inset-x-20 top-24 h-[170px] rounded-[24px] border-2 border-cyan-accent/80 shadow-[0_0_30px_rgba(0,229,255,0.26)] animate-pulse">
+                  <span className="absolute -top-3 left-5 rounded-full border border-cyan-accent/60 bg-slate-950 px-3 py-1 text-[10px] font-semibold tracking-[0.28em] text-cyan-accent">
+                    AI BONE ANALYSIS
+                  </span>
+                </div>
+                <div className="absolute inset-x-16 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-cyan-accent to-transparent opacity-80 animate-pulse" />
+                <div className="absolute inset-x-24 bottom-24 flex items-center justify-between text-cyan-accent/80">
+                  <ScanSearch className="h-10 w-10" />
+                  <Cpu className="h-10 w-10" />
+                  <Activity className="h-10 w-10" />
+                </div>
+                <div className="absolute bottom-12 left-12 right-12 grid grid-cols-3 gap-3 text-xs text-slate-400">
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                    Lesion localization
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                    Multimodal retrieval
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                    Explainable report
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              <h1 className="text-5xl font-bold leading-tight tracking-tight text-white">
+                BoneVisQA
+              </h1>
+              <p className="mt-4 text-lg leading-relaxed text-slate-300">
+                AI-Powered Interactive Visual Question Answering for Radiology.
+              </p>
+              <p className="mt-3 max-w-lg text-sm leading-6 text-slate-400">
+                A medical imaging workspace for students, lecturers, experts, and administrators
+                to analyze radiographs, validate AI reasoning, and accelerate radiology education.
+              </p>
+            </div>
           </div>
+        </section>
 
-          <div className="bg-card rounded-2xl border border-border p-8 shadow-sm">
-            <button
-              onClick={() => {
-                setShowRolePicker(false);
-                setAvailableRoles([]);
-              }}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-card-foreground mb-4 cursor-pointer transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to login
-            </button>
+        <section className="flex min-h-screen items-center justify-center bg-surface px-6 py-10">
+          <div className="w-full max-w-md">
+            <div className="mb-8 text-center lg:text-left">
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
+                Secure access
+              </p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-text-main">
+                Sign in to BoneVisQA
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                Continue to your clinical workspace with your institutional account.
+              </p>
+            </div>
 
-            <h2 className="text-xl font-semibold text-card-foreground mb-2">
-              Welcome, {userName}!
-            </h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Your account has multiple roles. Choose one to continue:
-            </p>
+            <div className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+              {error ? (
+                <div className="mb-5 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
+                  {error}
+                </div>
+              ) : null}
 
-            <div className="space-y-3">
-              {availableRoles.map((role) => {
-                const Icon = roleIcons[role] ?? ShieldCheck;
-                const colors = roleColors[role] ?? roleColors.admin;
-
-                return (
-                  <button
-                    key={role}
-                    onClick={() => handleRoleSelect(role)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:${colors.border} hover:${colors.bg} cursor-pointer transition-all duration-150 group`}
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="mb-1.5 block text-sm font-medium text-text-main"
                   >
-                    <div
-                      className={`w-12 h-12 rounded-xl ${colors.bg} flex items-center justify-center`}
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="doctor@hospital.edu"
+                    required
+                    className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="mb-1.5 block text-sm font-medium text-text-main"
+                  >
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main"
                     >
-                      <Icon className={`w-6 h-6 ${colors.text}`} />
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full" isLoading={loading} disabled={loading}>
+                  {loading ? "Signing in..." : "Sign In"}
+                </Button>
+              </form>
+
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border-color" />
+                <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-muted">
+                  Or continue with
+                </span>
+                <div className="h-px flex-1 bg-border-color" />
+              </div>
+
+              {!hasGoogleClientId ? (
+                <div className="w-full rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                  Missing Google Client ID in .env file
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border-color bg-background p-3">
+                  <div className="mb-3 flex items-center gap-3 text-sm text-text-muted">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
+                      <span className="text-sm font-bold text-[#4285F4]">G</span>
                     </div>
-                    <div className="text-left flex-1">
-                      <p className="font-semibold text-card-foreground capitalize">
-                        {role}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {role === "student" && "Access cases, quizzes & AI Q&A"}
-                        {role === "lecturer" &&
-                          "Manage classes, assignments & analytics"}
-                        {role === "expert" &&
-                          "Review cases, Q&A answers & quizzes"}
-                        {role === "curator" &&
-                          "Manage documents & indexing pipeline"}
-                        {role === "admin" &&
-                          "System administration & user management"}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+                    <span>Sign in with Google</span>
+                  </div>
+                  <div className="flex justify-center">
+                    <GoogleLogin
+                      onSuccess={handleGoogleLoginSuccess}
+                      onError={() => {
+                        const msg =
+                          "Google sign-in popup failed or was closed. Please try again.";
+                        console.warn("Google login onError:", msg);
+                        setError(msg);
+                        toast.error(msg);
+                      }}
+                      useOneTap={false}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </section>
       </div>
-    );
-  }
+    </div>
+  );
 
-  // Khai báo sẵn Client ID để chạy mà không bị lỗi
-  const googleClientId =
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-    "460789969186-6fv8r174fiioshd1b57s32dfu8167ji5.apps.googleusercontent.com";
+  if (!hasGoogleClientId) return loginCard;
 
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-md">
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
-              <Stethoscope className="w-9 h-9 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">BoneVisQA</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Medical Education Platform
-            </p>
-          </div>
-
-          <div className="bg-card rounded-2xl border border-border p-8 shadow-sm">
-            <h2 className="text-xl font-semibold text-card-foreground mb-6">
-              Sign in to your account
-            </h2>
-
-            {error && (
-              <div className="mb-4 px-4 py-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-card-foreground mb-1.5"
-                >
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-card-foreground mb-1.5"
-                >
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring pr-11"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-border accent-primary"
-                  />
-                  <span className="text-sm text-card-foreground">
-                    Remember me
-                  </span>
-                </label>
-                <a href="#" className="text-sm text-primary hover:underline">
-                  Forgot password?
-                </a>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
-              >
-                {loading ? "Signing in..." : "Sign in"}
-              </button>
-            </form>
-
-            <div className="mt-6 flex items-center justify-center">
-              <div className="h-px bg-border flex-1"></div>
-              <span className="px-3 text-sm text-muted-foreground">
-                Or continue with
-              </span>
-              <div className="h-px bg-border flex-1"></div>
-            </div>
-
-            <div className="mt-6 flex justify-center">
-              <GoogleLogin
-                onSuccess={handleGoogleLoginSuccess}
-                onError={() =>
-                  setError("Google Login failed. Please try again.")
-                }
-                useOneTap
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      {loginCard}
     </GoogleOAuthProvider>
   );
 }
