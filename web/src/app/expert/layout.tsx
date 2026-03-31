@@ -1,4 +1,4 @@
-import ExpertSidebar from '@/components/ExpertSidebar';
+import { AppShell } from '@/components/AppShell';
 
 export default function ExpertLayout({
   children,
@@ -6,11 +6,6 @@ export default function ExpertLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <ExpertSidebar />
-      <main className="ml-64">
-        {children}
-      </main>
-    </div>
+    <AppShell role="expert">{children}</AppShell>
   );
 }

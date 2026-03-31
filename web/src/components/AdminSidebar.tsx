@@ -12,11 +12,13 @@ import {
   Settings,
   LogOut,
   Stethoscope,
+  Database,
 } from 'lucide-react';
 
 const adminMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/admin/dashboard' },
   { icon: Users, label: 'Users', href: '/admin/users' },
+  { icon: Database, label: 'Knowledge Base', href: '/admin/documents' },
   { icon: FileText, label: 'Cases', href: '/admin/cases' },
   { icon: BrainCircuit, label: 'AI Config', href: '/admin/ai-config' },
   { icon: Activity, label: 'System Logs', href: '/admin/logs' },

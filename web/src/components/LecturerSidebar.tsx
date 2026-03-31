@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   GraduationCap,
+  ListFilter,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -26,6 +27,7 @@ type LecturerMenuItem = {
 const lecturerMenuItems: LecturerMenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
   { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
+  { icon: ListFilter, label: 'QA Triage', href: '/lecturer/qa-triage' },
   { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
   { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },
   { icon: BarChart3, label: 'Analytics', href: '/lecturer/analytics' },
