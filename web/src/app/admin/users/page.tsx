@@ -195,7 +195,7 @@ export default function AdminUsersPage() {
 
       // GỌI API
       const response = await fetch(
-        `${apiUrl}/api/admin/${user.id}/assign-role`,
+        `${apiUrl}/api/Admin/${user.id}/assign-role`,
         {
           method: "POST",
           headers: {
