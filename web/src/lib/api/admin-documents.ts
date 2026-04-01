@@ -1,16 +1,16 @@
 import { http, getApiErrorMessage } from './client';
 import type { CategoryOption, DocumentUploadResponse, TagOption } from './types';
 
-const ADMIN = '/api/Admin';
+const ADMIN_DOCUMENTS = '/api/admin/documents';
 
 export async function fetchDocumentCategories(): Promise<CategoryOption[]> {
-  const { data } = await http.get<unknown[] | { items?: unknown[] }>(`${ADMIN}/categories`);
+  const { data } = await http.get<unknown[] | { items?: unknown[] }>(`${ADMIN_DOCUMENTS}/categories`);
   const list = Array.isArray(data) ? data : data?.items ?? [];
   return list.map((row) => mapCategory(row));
 }
 
 export async function fetchDocumentTags(): Promise<TagOption[]> {
-  const { data } = await http.get<unknown[] | { items?: unknown[] }>(`${ADMIN}/tags`);
+  const { data } = await http.get<unknown[] | { items?: unknown[] }>(`${ADMIN_DOCUMENTS}/tags`);
   const list = Array.isArray(data) ? data : data?.items ?? [];
   return list.map((row) => mapTag(row));
 }
@@ -54,7 +54,7 @@ export async function uploadAdminDocument(
 
   try {
     const { data } = await http.post<DocumentUploadResponse>(
-      `${ADMIN}/document-upload`,
+      `${ADMIN_DOCUMENTS}/document-upload`,
       form,
       {
         headers: { 'Content-Type': 'multipart/form-data' },

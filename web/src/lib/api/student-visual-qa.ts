@@ -1,19 +1,20 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { VisualQaReport } from './types';
-import type { BoundingBox } from '@/components/student/MedicalImageViewer';
+import type { PercentageBoundingBox, VisualQaReport } from './types';
+import { serializePercentageBoundingBox } from '@/lib/utils/annotations';
 
 export async function postStudentVisualQa(
   file: File,
   questionText: string,
-  annotationBox?: BoundingBox | null,
+  annotationBox?: PercentageBoundingBox | null,
   onUploadProgress?: (percent: number) => void,
 ): Promise<VisualQaReport> {
   const form = new FormData();
   form.append('CustomImage', file);
   form.append('QuestionText', questionText);
-  if (annotationBox && annotationBox.width > 0 && annotationBox.height > 0) {
-    form.append('CustomCoordinates', JSON.stringify(annotationBox));
+  const serializedBox = serializePercentageBoundingBox(annotationBox);
+  if (serializedBox) {
+    form.append('CustomCoordinates', serializedBox);
   }
 
   try {

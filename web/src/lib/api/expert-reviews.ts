@@ -1,6 +1,7 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
 import type { ExpertReviewItem, VisualQaReport } from './types';
+import { parsePercentageBoundingBox } from '@/lib/utils/annotations';
 
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
@@ -9,6 +10,12 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!id) return null;
   const reportRaw = r.report ?? r.structuredReport ?? r.aiReport;
   const report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+  const customCoordinates = parsePercentageBoundingBox(
+    r.customCoordinates ??
+      r.annotationCoordinates ??
+      r.questionCoordinates ??
+      r.coordinates,
+  );
 
   return {
     id,
@@ -16,6 +23,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     className: r.className !== undefined ? String(r.className) : undefined,
     question: String(r.question ?? ''),
     imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
+    customCoordinates,
     askedAt: String(r.askedAt ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,

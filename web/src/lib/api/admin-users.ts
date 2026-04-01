@@ -1,6 +1,8 @@
 import { http, getApiErrorMessage } from './client';
 import type { AdminUser } from './types';
 
+const ADMIN_USERS = '/api/admin/users';
+
 function normalizeUsersResponse(data: unknown): AdminUser[] {
   const rawList =
     Array.isArray(data)
@@ -44,7 +46,7 @@ function normalizeUsersResponse(data: unknown): AdminUser[] {
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   try {
-    const { data } = await http.get<unknown>('/api/Admin/users');
+    const { data } = await http.get<unknown>(ADMIN_USERS);
     return normalizeUsersResponse(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -53,7 +55,7 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
 
 export async function assignAdminUserRole(userId: string, role: string): Promise<void> {
   try {
-    await http.post(`/api/Admin/${userId}/assign-role`, { roles: [role] });
+    await http.post(`${ADMIN_USERS}/${userId}/assign-role`, { roles: [role] });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -61,7 +63,7 @@ export async function assignAdminUserRole(userId: string, role: string): Promise
 
 export async function toggleAdminUserStatus(userId: string, isActive: boolean): Promise<void> {
   try {
-    await http.put(`/api/admin/users/${userId}/toggle-status`, { isActive });
+    await http.put(`${ADMIN_USERS}/${userId}/toggle-status`, { isActive });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import Header from '@/components/Header';
+import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -11,7 +12,7 @@ import {
   uploadAdminDocument,
 } from '@/lib/api/admin-documents';
 import type { CategoryOption, TagOption } from '@/lib/api/types';
-import { FileText, Upload, X } from 'lucide-react';
+import { FileText, Loader2, Trash2, Upload } from 'lucide-react';
 
 const MAX_BYTES = 50 * 1024 * 1024;
 
@@ -58,6 +59,7 @@ export default function AdminDocumentsPage() {
         return;
       }
       setFile(f);
+      setProgress(0);
     },
     [toast],
   );
@@ -118,6 +120,7 @@ export default function AdminDocumentsPage() {
         toast.success('Document uploaded successfully.');
       }
       setFile(null);
+      setCategoryId('');
       setSelectedTagIds(new Set());
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Upload failed';
@@ -136,45 +139,50 @@ export default function AdminDocumentsPage() {
       />
       <div className="mx-auto max-w-4xl p-6">
         <form onSubmit={handleSubmit} className="space-y-8">
-          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Document file
-            </h2>
-            <p className="mt-1 text-sm text-card-foreground">
-              PDF only · Maximum <strong>50MB</strong> (enforced client- and server-side)
-            </p>
-            <div
-              {...getRootProps()}
-              className={`mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 transition-colors ${
-                isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-input/20 hover:bg-input/40'
-              }`}
-            >
-              <input {...getInputProps()} />
-              <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-              <p className="text-center text-sm font-medium text-card-foreground">
-                Drag and drop a medical PDF here
-              </p>
-              <p className="mt-1 text-center text-xs text-muted-foreground">or click to browse</p>
-            </div>
-            {file && (
-              <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-input/30 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="h-8 w-8 shrink-0 text-primary" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(file.size / (1024 * 1024)).toFixed(2)} MB
-                    </p>
+          <SectionCard
+            title="Document file"
+            description="PDF only. Single-file upload is enforced for backend chunking stability, with a hard limit of 50MB."
+          >
+            {!file ? (
+              <div
+                {...getRootProps()}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 transition-colors ${
+                  isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-input/20 hover:bg-input/40'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
+                <p className="text-center text-sm font-medium text-card-foreground">
+                  Drag and drop a medical PDF here
+                </p>
+                <p className="mt-1 text-center text-xs text-muted-foreground">
+                  or click to browse your local device
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border bg-background/65 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <FileText className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-card-foreground">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(file.size / (1024 * 1024)).toFixed(2)} MB selected
+                      </p>
+                    </div>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setFile(null)}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove
+                  </Button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setFile(null)}
-                  className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  aria-label="Remove file"
-                >
-                  <X className="h-5 w-5" />
-                </button>
               </div>
             )}
             {submitting && (
@@ -191,12 +199,9 @@ export default function AdminDocumentsPage() {
                 </div>
               </div>
             )}
-          </section>
+          </SectionCard>
 
-          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Classification
-            </h2>
+          <SectionCard title="Classification" description="Choose the backend category and any supporting tags before upload.">
             <div className="mt-4 grid gap-6 md:grid-cols-2">
               <div>
                 <label htmlFor="category" className="block text-sm font-medium text-card-foreground">
@@ -210,19 +215,32 @@ export default function AdminDocumentsPage() {
                   onChange={(e) => setCategoryId(e.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="">Select CategoryId…</option>
+                  <option value="">
+                    {loadingMeta ? 'Loading categories...' : 'Select a document category'}
+                  </option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
+                {!loadingMeta && categories.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No categories are currently available from the backend.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="mt-6">
               <p className="text-sm font-medium text-card-foreground">Tags (multi-select)</p>
-              <p className="text-xs text-muted-foreground">Choose one or more TagIds</p>
-              <div className="mt-3 flex flex-wrap gap-3">
+              <p className="text-xs text-muted-foreground">Choose any tags that should improve retrieval precision.</p>
+              {loadingMeta ? (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  Loading tags...
+                </div>
+              ) : tags.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-3">
                 {tags.map((t) => (
                   <label
                     key={t.id}
@@ -237,12 +255,14 @@ export default function AdminDocumentsPage() {
                     <span>{t.name}</span>
                   </label>
                 ))}
-              </div>
-              {tags.length === 0 && !loadingMeta && (
-                <p className="mt-2 text-xs text-muted-foreground">No tags returned from API.</p>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+                  The backend returned no tags for selection yet.
+                </div>
               )}
             </div>
-          </section>
+          </SectionCard>
 
           <div className="flex justify-end gap-3">
             <Button
@@ -257,7 +277,7 @@ export default function AdminDocumentsPage() {
             >
               Clear
             </Button>
-            <Button type="submit" isLoading={submitting} disabled={loadingMeta}>
+            <Button type="submit" isLoading={submitting} disabled={loadingMeta || !file || !categoryId}>
               <Upload className="h-4 w-4" />
               Upload to knowledge base
             </Button>

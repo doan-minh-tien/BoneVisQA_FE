@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import Header from '@/components/Header';
+import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -200,14 +201,21 @@ export default function ExpertReviewsPage() {
                               </p>
                               <div className="overflow-hidden rounded-lg border border-border-color bg-black p-2">
                                 {item.imageUrl ? (
-                                  <Image
-                                    src={item.imageUrl}
-                                    alt="Study"
-                                    width={1200}
-                                    height={900}
-                                    unoptimized
-                                    className="mx-auto max-h-[420px] max-w-full object-contain"
-                                  />
+                                  <div className="relative mx-auto w-fit">
+                                    <Image
+                                      src={item.imageUrl}
+                                      alt="Study"
+                                      width={1200}
+                                      height={900}
+                                      unoptimized
+                                      className="mx-auto max-h-[420px] max-w-full object-contain"
+                                    />
+                                    <AnnotationOverlay
+                                      box={item.customCoordinates}
+                                      label="STUDENT ROI"
+                                      className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+                                    />
+                                  </div>
                                 ) : (
                                   <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">
                                     No image available for this request.

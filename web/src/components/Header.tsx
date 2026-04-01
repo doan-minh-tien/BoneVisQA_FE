@@ -1,7 +1,8 @@
 'use client';
 
-import { Bell, Search } from 'lucide-react';
 import { useMemo } from 'react';
+import { Bell, Search } from 'lucide-react';
+import { useAuth } from '@/lib/useAuth';
 
 interface HeaderProps {
   title: string;
@@ -9,21 +10,18 @@ interface HeaderProps {
 }
 
 export default function Header({ title, subtitle }: HeaderProps) {
-  const fullName =
-    typeof window !== 'undefined' ? localStorage.getItem('fullName') || 'Dr. Sarah Nguyen' : 'Dr. Sarah Nguyen';
+  const { user } = useAuth();
+  const fullName = user?.fullName?.trim() || 'BoneVisQA User';
   const roleLabel = useMemo(() => {
-    if (typeof window === 'undefined') return 'Senior Lecturer';
-    const activeRole = localStorage.getItem('activeRole');
-    if (!activeRole) return 'Senior Lecturer';
-    const normalized = activeRole.toLowerCase();
-    const labelMap: Record<string, string> = {
-      admin: 'System Administrator',
-      lecturer: 'Senior Lecturer',
-      expert: 'Clinical Expert',
-      student: 'Medical Student',
-    };
-    return labelMap[normalized] ?? 'Radiology Staff';
-  }, []);
+    const activeRole = user?.activeRole;
+    const labelMap = {
+      Admin: 'System Administrator',
+      Lecturer: 'Senior Lecturer',
+      Expert: 'Clinical Expert',
+      Student: 'Medical Student',
+    } as const;
+    return activeRole ? labelMap[activeRole] : 'Authenticated Session';
+  }, [user?.activeRole]);
 
   const initials = useMemo(() => {
     return fullName

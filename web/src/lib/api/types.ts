@@ -173,12 +173,20 @@ export interface AdminUser {
   schoolCohort?: string;
 }
 
+export interface PercentageBoundingBox {
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  heightPct: number;
+}
+
 export interface ExpertReviewItem {
   id: string;
   studentName: string;
   className?: string;
   question: string;
   imageUrl?: string;
+  customCoordinates?: PercentageBoundingBox | null;
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;

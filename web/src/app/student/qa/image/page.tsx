@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CitationList } from '@/components/shared/CitationList';
 import {
   ArrowLeft,
   CheckCircle,
@@ -15,12 +16,11 @@ import {
 } from 'lucide-react';
 import {
   MedicalImageViewer,
-  type BoundingBox,
 } from '@/components/student/MedicalImageViewer';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
-import type { VisualQaReport } from '@/lib/api/types';
+import type { PercentageBoundingBox, VisualQaReport } from '@/lib/api/types';
 
 export default function StudentVisualQaImagePage() {
   const toast = useToast();
@@ -30,7 +30,7 @@ export default function StudentVisualQaImagePage() {
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
-  const [annotationBox, setAnnotationBox] = useState<BoundingBox | null>(null);
+  const [annotationBox, setAnnotationBox] = useState<PercentageBoundingBox | null>(null);
 
   useEffect(() => {
     if (!file) {
@@ -78,13 +78,6 @@ export default function StudentVisualQaImagePage() {
       setUploadPct(0);
     }
   };
-
-  const hasCitations =
-    report &&
-    report.citations.some((c) => {
-      const url = c.documentUrl;
-      return url && String(url).trim().length > 0;
-    });
 
   const confidenceScore = report
     ? Math.min(
@@ -148,10 +141,10 @@ export default function StudentVisualQaImagePage() {
                   <span className="truncate">{file.name}</span>
                 </div>
               ) : null}
-              {annotationBox && annotationBox.width > 0 && annotationBox.height > 0 ? (
+              {annotationBox && annotationBox.widthPct > 0 && annotationBox.heightPct > 0 ? (
                 <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  Annotation saved: x {annotationBox.x.toFixed(1)}, y {annotationBox.y.toFixed(1)},
-                  w {annotationBox.width.toFixed(1)}, h {annotationBox.height.toFixed(1)}
+                  Annotation saved: x {annotationBox.xPct.toFixed(1)}%, y {annotationBox.yPct.toFixed(1)}%,
+                  w {annotationBox.widthPct.toFixed(1)}%, h {annotationBox.heightPct.toFixed(1)}%
                 </div>
               ) : null}
             </div>
@@ -349,39 +342,7 @@ export default function StudentVisualQaImagePage() {
                   </section>
                 ) : null}
 
-                {hasCitations ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Citations
-                    </h3>
-                    <ul className="space-y-2 rounded-xl border border-border-color bg-surface p-5 text-sm">
-                      {report.citations.map((c, idx) => {
-                        const url = c.documentUrl ?? '';
-                        const order = c.chunkOrder;
-                        if (!url?.trim()) return null;
-                        const href =
-                          order !== undefined && order !== null
-                            ? `${url}#chunk-${order}`
-                            : url;
-                        const label =
-                          c.title?.trim() ||
-                          `Source ${idx + 1}${order != null ? ` · chunk ${order}` : ''}`;
-                        return (
-                          <li key={idx}>
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-cyan-accent underline hover:text-cyan-accent/80"
-                            >
-                              {label}
-                            </a>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </section>
-                ) : null}
+                <CitationList citations={report.citations} />
               </article>
             )}
           </div>

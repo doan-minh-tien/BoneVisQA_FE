@@ -2,17 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Hand, Pencil, RefreshCcw, ScanSearch, ZoomIn, ZoomOut } from 'lucide-react';
+import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { Button } from '@/components/ui/button';
+import type { PercentageBoundingBox } from '@/lib/api/types';
+import {
+  buildPercentageBoundingBox,
+  isValidPercentageBoundingBox,
+} from '@/lib/utils/annotations';
 
 const MIN = 0.5;
 const MAX = 4;
-
-export interface BoundingBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 
 export function MedicalImageViewer({
   src,
@@ -21,17 +20,18 @@ export function MedicalImageViewer({
 }: {
   src: string | null;
   alt: string;
-  onAnnotationComplete?: (box: BoundingBox) => void;
+  onAnnotationComplete?: (box: PercentageBoundingBox) => void;
 }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isDrawMode, setIsDrawMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [boundingBox, setBoundingBox] = useState<BoundingBox | null>(null);
+  const [boundingBox, setBoundingBox] = useState<PercentageBoundingBox | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const drag = useRef(false);
   const drawStart = useRef<{ x: number; y: number } | null>(null);
+  const latestBoundingBox = useRef<PercentageBoundingBox | null>(null);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -59,8 +59,9 @@ export function MedicalImageViewer({
     setTx(0);
     setTy(0);
     setBoundingBox(null);
+    latestBoundingBox.current = null;
     drawStart.current = null;
-    onAnnotationComplete?.({ x: 0, y: 0, width: 0, height: 0 });
+    onAnnotationComplete?.({ xPct: 0, yPct: 0, widthPct: 0, heightPct: 0 });
   };
 
   const getRelativePoint = useCallback((clientX: number, clientY: number) => {
@@ -77,6 +78,18 @@ export function MedicalImageViewer({
       height: rect.height,
     };
   }, []);
+
+  const finalizeAnnotation = useCallback(() => {
+    drawStart.current = null;
+    const box = latestBoundingBox.current;
+    if (isValidPercentageBoundingBox(box)) {
+      onAnnotationComplete?.(box);
+    }
+  }, [onAnnotationComplete]);
+
+  useEffect(() => {
+    latestBoundingBox.current = boundingBox;
+  }, [boundingBox]);
 
   if (!src) {
     return (
@@ -102,7 +115,9 @@ export function MedicalImageViewer({
             const point = getRelativePoint(e.clientX, e.clientY);
             if (!point) return;
             drawStart.current = { x: point.x, y: point.y };
-            setBoundingBox({ x: point.x, y: point.y, width: 0, height: 0 });
+            const nextBox = buildPercentageBoundingBox(drawStart.current, point);
+            latestBoundingBox.current = nextBox;
+            setBoundingBox(nextBox);
             return;
           }
 
@@ -116,11 +131,9 @@ export function MedicalImageViewer({
             const point = getRelativePoint(e.clientX, e.clientY);
             if (!point) return;
 
-            const x = Math.min(drawStart.current.x, point.x);
-            const y = Math.min(drawStart.current.y, point.y);
-            const width = Math.abs(point.x - drawStart.current.x);
-            const height = Math.abs(point.y - drawStart.current.y);
-            setBoundingBox({ x, y, width, height });
+            const nextBox = buildPercentageBoundingBox(drawStart.current, point);
+            latestBoundingBox.current = nextBox;
+            setBoundingBox(nextBox);
             return;
           }
 
@@ -130,10 +143,7 @@ export function MedicalImageViewer({
         }}
         onMouseUp={() => {
           if (isDrawMode) {
-            drawStart.current = null;
-            if (boundingBox && boundingBox.width > 0 && boundingBox.height > 0) {
-              onAnnotationComplete?.(boundingBox);
-            }
+            finalizeAnnotation();
             return;
           }
           drag.current = false;
@@ -141,10 +151,7 @@ export function MedicalImageViewer({
         }}
         onMouseLeave={() => {
           if (isDrawMode) {
-            drawStart.current = null;
-            if (boundingBox && boundingBox.width > 0 && boundingBox.height > 0) {
-              onAnnotationComplete?.(boundingBox);
-            }
+            finalizeAnnotation();
             return;
           }
           drag.current = false;
@@ -181,21 +188,11 @@ export function MedicalImageViewer({
                 });
               }}
             />
-            {boundingBox && boundingBox.width > 0 && boundingBox.height > 0 ? (
-              <div
-                className="pointer-events-none absolute rounded-xl border-2 border-cyan-accent shadow-[0_0_22px_rgba(0,229,255,0.35)]"
-                style={{
-                  left: `${boundingBox.x}px`,
-                  top: `${boundingBox.y}px`,
-                  width: `${boundingBox.width}px`,
-                  height: `${boundingBox.height}px`,
-                }}
-              >
-                <span className="absolute -top-3 left-3 rounded-full border border-cyan-accent/70 bg-black/90 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] text-cyan-accent">
-                  ANNOTATION
-                </span>
-              </div>
-            ) : null}
+            <AnnotationOverlay
+              box={boundingBox}
+              label="ANNOTATION"
+              className="border-cyan-accent text-cyan-accent"
+            />
           </div>
         </div>
 

@@ -26,9 +26,9 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 const kindStyles: Record<ToastKind, string> = {
-  success: 'border-success/40 bg-success/10 text-card-foreground',
-  error: 'border-destructive/50 bg-destructive/10 text-destructive',
-  info: 'border-border bg-card text-card-foreground',
+  success: 'border-success/40 bg-surface text-card-foreground shadow-[0_18px_40px_rgba(16,185,129,0.18)]',
+  error: 'border-destructive/50 bg-surface text-destructive shadow-[0_18px_40px_rgba(239,68,68,0.18)]',
+  info: 'border-border bg-surface text-card-foreground shadow-[0_18px_40px_rgba(15,23,42,0.14)]',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -55,13 +55,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="fixed bottom-4 right-4 z-[200] flex max-w-md flex-col gap-2 pointer-events-none"
+        className="fixed left-1/2 top-6 z-[200] flex w-full max-w-xl -translate-x-1/2 flex-col gap-3 px-4 pointer-events-none"
         aria-live="polite"
       >
         {items.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto rounded-xl border px-4 py-3 text-sm shadow-lg ${kindStyles[t.kind]}`}
+            className={`pointer-events-auto rounded-2xl border px-5 py-4 text-sm backdrop-blur ${kindStyles[t.kind]}`}
           >
             {t.message}
           </div>
