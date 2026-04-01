@@ -1,4 +1,4 @@
-import { Clock, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 interface AssignmentCardProps {

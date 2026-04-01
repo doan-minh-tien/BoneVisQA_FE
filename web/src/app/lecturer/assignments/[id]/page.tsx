@@ -12,9 +12,6 @@ import {
   ArrowLeft,
   Settings,
   Trash2,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   AlertCircle,
 } from 'lucide-react';
 

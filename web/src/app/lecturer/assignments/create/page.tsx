@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import {
   ChevronRight,
@@ -111,7 +111,7 @@ function CreateAssignmentPageContent({
   const [formData, setFormData] = useState({
     title: '',
     type: '',
-    selectedClasses: [] as string[],
+    selectedClasses: preselectedClassId ? [preselectedClassId] : ([] as string[]),
     description: '',
     dueDate: '',
     maxScore: 100,
@@ -122,12 +122,6 @@ function CreateAssignmentPageContent({
     shuffleQuestions: false,
     showResults: true,
   });
-
-  useEffect(() => {
-    if (preselectedClassId) {
-      setFormData((prev) => ({ ...prev, selectedClasses: [preselectedClassId] }));
-    }
-  }, [preselectedClassId]);
 
   const isQuiz = formData.type === 'Quiz';
 
