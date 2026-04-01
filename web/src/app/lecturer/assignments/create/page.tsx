@@ -2,6 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ChevronRight,
   ArrowLeft,
@@ -31,6 +32,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { assignCasesToClass, assignQuizToClass } from '@/lib/api/lecturer';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
 import type { ClassItem } from '@/lib/api/types';
 
@@ -97,6 +99,7 @@ function CreateAssignmentPageContent({
 }: {
   searchParams: Promise<{ classId?: string | string[] }>;
 }) {
+  const router = useRouter();
   const toast = useToast();
   const resolvedSearchParams = use(searchParams);
   const classIdParam = resolvedSearchParams.classId;
@@ -107,17 +110,22 @@ function CreateAssignmentPageContent({
   const [currentStep, setCurrentStep] = useState(0);
   const [availableClasses, setAvailableClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: '',
     selectedClasses: preselectedClassId ? [preselectedClassId] : ([] as string[]),
     description: '',
+    caseIdsInput: '',
+    quizId: '',
     dueDate: '',
     maxScore: 100,
     allowLate: false,
+    isMandatory: true,
     instructions: '',
     questions: [createEmptyQuestion()] as Question[],
     timeLimitMinutes: 60,
+    passingScore: 70,
     shuffleQuestions: false,
     showResults: true,
   });
@@ -227,6 +235,70 @@ function CreateAssignmentPageContent({
   );
 
   const selectedType = assignmentTypes.find((t) => t.value === formData.type);
+  const parsedCaseIds = useMemo(
+    () =>
+      formData.caseIdsInput
+        .split(/[,\n]/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    [formData.caseIdsInput],
+  );
+
+  const validateSubmission = () => {
+    if (formData.selectedClasses.length === 0) {
+      throw new Error('Select at least one class before publishing.');
+    }
+
+    if (isQuiz && !formData.quizId.trim()) {
+      throw new Error('Enter the backend quiz ID before publishing.');
+    }
+
+    if (!isQuiz && parsedCaseIds.length === 0) {
+      throw new Error('Enter at least one backend case ID before publishing.');
+    }
+  };
+
+  const handlePublish = async () => {
+    try {
+      validateSubmission();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Assignment validation failed.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await Promise.all(
+        formData.selectedClasses.map((classId) =>
+          isQuiz
+            ? assignQuizToClass(classId, {
+                quizId: formData.quizId.trim(),
+                closeTime: formData.dueDate || undefined,
+                timeLimitMinutes: formData.timeLimitMinutes || undefined,
+                passingScore: formData.passingScore || undefined,
+              })
+            : assignCasesToClass(classId, {
+                caseIds: parsedCaseIds,
+                dueDate: formData.dueDate || undefined,
+                isMandatory: formData.isMandatory,
+              }),
+        ),
+      );
+
+      toast.success(
+        isQuiz
+          ? 'Quiz assignment published successfully.'
+          : 'Case assignment published successfully.',
+      );
+
+      const destinationClassId = formData.selectedClasses[0];
+      router.push(destinationClassId ? `/lecturer/classes/${destinationClassId}` : '/lecturer/dashboard');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to publish assignment.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -432,11 +504,53 @@ function CreateAssignmentPageContent({
                   </div>
                 </div>
 
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h2 className="text-sm font-semibold text-card-foreground mb-1 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
+                      <span className="text-xs font-bold text-primary">4</span>
+                    </div>
+                    Assignment Source
+                    <span className="text-destructive">*</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground mb-3 ml-8">
+                    Point this assignment to the existing backend resource students should receive.
+                  </p>
+
+                  {isQuiz ? (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-muted-foreground">Quiz ID</label>
+                      <input
+                        type="text"
+                        value={formData.quizId}
+                        onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
+                        placeholder="Enter the persisted quiz ID from the backend"
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-muted-foreground">Case IDs</label>
+                      <textarea
+                        value={formData.caseIdsInput}
+                        onChange={(e) => setFormData({ ...formData, caseIdsInput: e.target.value })}
+                        placeholder="Paste one or more backend case IDs separated by commas or new lines"
+                        rows={4}
+                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none transition-all"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {parsedCaseIds.length > 0
+                          ? `${parsedCaseIds.length} case ID${parsedCaseIds.length === 1 ? '' : 's'} ready for assignment.`
+                          : 'Add at least one case ID to enable publishing.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Description */}
                 <div className="bg-card rounded-xl border border-border p-5">
                   <h2 className="text-sm font-semibold text-card-foreground mb-1 flex items-center gap-2">
                     <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center">
-                      <span className="text-xs font-bold text-muted-foreground">4</span>
+                      <span className="text-xs font-bold text-muted-foreground">5</span>
                     </div>
                     Description
                     <span className="text-xs font-normal text-muted-foreground">(optional)</span>
@@ -462,7 +576,7 @@ function CreateAssignmentPageContent({
                     <CalendarDays className="w-4 h-4 text-primary" />
                     Schedule & Scoring
                   </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className={`grid grid-cols-1 ${isQuiz ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                         Due Date & Time <span className="text-destructive">*</span>
@@ -504,6 +618,22 @@ function CreateAssignmentPageContent({
                         </div>
                       </div>
                     )}
+                    {isQuiz && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">Passing Score</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={formData.passingScore}
+                            onChange={(e) => setFormData({ ...formData, passingScore: Number(e.target.value) })}
+                            min={0}
+                            max={100}
+                            className="w-full px-4 py-2.5 pr-12 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">%</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -521,6 +651,15 @@ function CreateAssignmentPageContent({
                       onChange={() => setFormData({ ...formData, allowLate: !formData.allowLate })}
                       icon={<AlertCircle className="w-4 h-4 text-warning" />}
                     />
+                    {!isQuiz && (
+                      <ToggleRow
+                        title="Mandatory Assignment"
+                        description="Require every selected student to complete this case set"
+                        value={formData.isMandatory}
+                        onChange={() => setFormData({ ...formData, isMandatory: !formData.isMandatory })}
+                        icon={<Check className="w-4 h-4 text-success" />}
+                      />
+                    )}
                     {isQuiz && (
                       <>
                         <ToggleRow
@@ -747,12 +886,33 @@ function CreateAssignmentPageContent({
                       </div>
                     </div>
 
+                    <div className={`grid grid-cols-1 ${!isQuiz ? 'md:grid-cols-2' : ''} gap-3`}>
+                      <ReviewItem
+                        label={isQuiz ? 'Quiz ID' : 'Case IDs'}
+                        value={
+                          isQuiz
+                            ? formData.quizId || '—'
+                            : parsedCaseIds.length > 0
+                              ? parsedCaseIds.join(', ')
+                              : '—'
+                        }
+                        multiline={!isQuiz}
+                      />
+                      {!isQuiz && (
+                        <ReviewItem
+                          label="Mandatory"
+                          value={formData.isMandatory ? 'Required' : 'Optional'}
+                          icon={<Check className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                    </div>
+
                     {formData.description && (
                       <ReviewItem label="Description" value={formData.description} />
                     )}
 
                     {/* Config grid */}
-                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3`}>
+                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
                       <ReviewItem
                         label="Due Date"
                         value={formData.dueDate ? new Date(formData.dueDate).toLocaleString() : '—'}
@@ -773,6 +933,13 @@ function CreateAssignmentPageContent({
                           label="Time Limit"
                           value={`${formData.timeLimitMinutes} min`}
                           icon={<Clock className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Passing Score"
+                          value={`${formData.passingScore}%`}
+                          icon={<Star className="w-3.5 h-3.5" />}
                         />
                       )}
                     </div>
@@ -846,9 +1013,15 @@ function CreateAssignmentPageContent({
 
               <div className="flex items-center gap-3">
                 {currentStep === lastStep && (
-                  <button className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors text-sm cursor-pointer">
+                  <button
+                    onClick={handlePublish}
+                    disabled={isSubmitting}
+                    className={`flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg transition-colors text-sm ${
+                      isSubmitting ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted cursor-pointer'
+                    }`}
+                  >
                     <Save className="w-4 h-4" />
-                    Save Draft
+                    Save Assignment
                   </button>
                 )}
 
@@ -866,9 +1039,15 @@ function CreateAssignmentPageContent({
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (
-                  <button className="flex items-center gap-2 px-5 py-2.5 bg-success text-white rounded-lg hover:bg-success/90 transition-colors text-sm font-medium shadow-sm shadow-success/20 cursor-pointer">
-                    <Send className="w-4 h-4" />
-                    Publish Assignment
+                  <button
+                    onClick={handlePublish}
+                    disabled={isSubmitting}
+                    className={`flex items-center gap-2 px-5 py-2.5 bg-success text-white rounded-lg transition-colors text-sm font-medium shadow-sm shadow-success/20 ${
+                      isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-success/90 cursor-pointer'
+                    }`}
+                  >
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {isSubmitting ? 'Publishing...' : 'Publish Assignment'}
                   </button>
                 )}
               </div>
@@ -955,6 +1134,10 @@ function CreateAssignmentPageContent({
                   <ChecklistItem done={!!formData.title} label="Assignment title" />
                   <ChecklistItem done={!!formData.type} label="Assignment type" />
                   <ChecklistItem done={formData.selectedClasses.length > 0} label="At least one class" />
+                  <ChecklistItem
+                    done={isQuiz ? !!formData.quizId.trim() : parsedCaseIds.length > 0}
+                    label={isQuiz ? 'Quiz target selected' : 'Case targets selected'}
+                  />
                   <ChecklistItem done={!!formData.dueDate} label="Due date set" />
                   {isQuiz && (
                     <ChecklistItem

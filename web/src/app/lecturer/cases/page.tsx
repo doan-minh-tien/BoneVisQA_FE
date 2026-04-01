@@ -93,7 +93,10 @@ export default function LecturerCasesPage() {
     setAssigning(true);
     setAssignError('');
     try {
-      await assignCasesToClass(assignClassId, Array.from(selectedCases));
+      await assignCasesToClass(assignClassId, {
+        caseIds: Array.from(selectedCases),
+        isMandatory: true,
+      });
       setShowAssign(false);
       setSelectedCases(new Set());
       setAssignClassId('');

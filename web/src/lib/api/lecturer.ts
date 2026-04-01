@@ -76,12 +76,43 @@ export async function getLecturerCases(): Promise<CaseDto[]> {
   }
 }
 
-export async function assignCasesToClass(classId: string, caseIds: string[]): Promise<CaseDto[]> {
+export async function assignCasesToClass(
+  classId: string,
+  payload: { caseIds: string[]; dueDate?: string; isMandatory: boolean },
+): Promise<CaseDto[]> {
   try {
-    const { data } = await http.post<CaseDto[]>(`/api/Lecturers/classes/${classId}/cases`, {
-      caseIds,
-    });
+    const { data } = await http.post<CaseDto[]>(
+      `/api/lecturer/classes/${classId}/assignments/cases`,
+      {
+      caseIds: payload.caseIds,
+      dueDate: payload.dueDate,
+      isMandatory: payload.isMandatory,
+      },
+    );
     return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function assignQuizToClass(
+  classId: string,
+  payload: {
+    quizId: string;
+    openTime?: string;
+    closeTime?: string;
+    timeLimitMinutes?: number;
+    passingScore?: number;
+  },
+): Promise<void> {
+  try {
+    await http.post(`/api/lecturer/classes/${classId}/assignments/quizzes`, {
+      quizId: payload.quizId,
+      openTime: payload.openTime,
+      closeTime: payload.closeTime,
+      timeLimitMinutes: payload.timeLimitMinutes,
+      passingScore: payload.passingScore,
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
