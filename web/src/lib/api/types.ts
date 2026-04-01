@@ -163,6 +163,19 @@ export interface StudentQuizSubmissionResult {
   correctAnswers: number;
 }
 
+export interface StudentCaseHistoryItem {
+  id: string;
+  title: string;
+  thumbnailUrl?: string;
+  boneLocation: string;
+  lesionType: string;
+  difficulty: 'basic' | 'intermediate' | 'advanced';
+  duration?: string;
+  progress?: number;
+  status?: 'Pending' | 'PendingExpert' | 'Approved' | 'Revised' | string;
+  askedAt?: string;
+}
+
 export interface AdminUser {
   id: string;
   fullName: string;
