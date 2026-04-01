@@ -15,8 +15,9 @@ import {
   ScanSearch,
   Stethoscope,
 } from "lucide-react";
-import { login } from "@/lib/api";
+import { login } from "@/lib/api/auth";
 import { http, getApiErrorMessage } from "@/lib/api/client";
+import type { LoginResponse } from "@/lib/api/types";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 
@@ -44,7 +45,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLoginSuccess = (data: any) => {
+  const handleLoginSuccess = (data: LoginResponse) => {
     localStorage.setItem("token", data.token);
     localStorage.setItem("userId", data.userId);
     localStorage.setItem("fullName", data.fullName);

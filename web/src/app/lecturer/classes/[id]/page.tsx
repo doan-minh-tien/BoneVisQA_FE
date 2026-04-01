@@ -6,9 +6,7 @@ import StatCard from '@/components/StatCard';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
 import {
   Users,
-  TrendingUp,
   Award,
-  BookOpen,
   ArrowLeft,
   Settings,
   Clock,
@@ -31,9 +29,8 @@ import {
   enrollStudent,
   removeStudent,
   getClassStats,
-  type StudentEnrollment,
-  type ClassStats,
-} from '@/lib/api';
+} from '@/lib/api/lecturer';
+import type { StudentEnrollment, ClassStats } from '@/lib/api/types';
 
 // Mock class data
 const classesData: Record<string, {
@@ -180,11 +177,9 @@ export default function ClassDetailPage({
 
 
   useEffect(() => {
-    const token = localStorage.getItem('token') || '';
-
     async function fetchStudents() {
       try {
-        const data = await getClassStudents(classId, token);
+        const data = await getClassStudents(classId);
         setStudents(data);
       } catch {
         // silently fail
@@ -195,7 +190,7 @@ export default function ClassDetailPage({
 
     async function fetchStats() {
       try {
-        const data = await getClassStats(classId, token);
+        const data = await getClassStats(classId);
         setClassStats(data);
       } catch {
         // silently fail
@@ -211,8 +206,7 @@ export default function ClassDetailPage({
     setAvailableLoading(true);
     setAvailableSearch('');
     try {
-      const token = localStorage.getItem('token') || '';
-      const data = await getAvailableStudents(classId, token);
+      const data = await getAvailableStudents(classId);
       setAvailableStudents(data);
     } catch {
       setAvailableStudents([]);
@@ -224,8 +218,7 @@ export default function ClassDetailPage({
   const handleEnroll = async (studentId: string) => {
     setEnrollingIds((prev) => new Set(prev).add(studentId));
     try {
-      const token = localStorage.getItem('token') || '';
-      await enrollStudent(classId, studentId, token);
+      await enrollStudent(classId, studentId);
       // Move from available to enrolled
       const enrolled = availableStudents.find((s) => s.studentId === studentId);
       if (enrolled) {
@@ -247,8 +240,7 @@ export default function ClassDetailPage({
     if (!removeTarget) return;
     setRemoving(true);
     try {
-      const token = localStorage.getItem('token') || '';
-      await removeStudent(classId, removeTarget.studentId, token);
+      await removeStudent(classId, removeTarget.studentId);
       setStudents((prev) => prev.filter((s) => s.studentId !== removeTarget.studentId));
     } catch {
       // silently fail

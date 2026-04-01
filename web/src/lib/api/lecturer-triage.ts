@@ -1,6 +1,5 @@
 import { http, getApiErrorMessage } from './client';
-import type { ClassItem } from '@/lib/api';
-import type { LecturerTriageRow } from './types';
+import type { ClassItem, LecturerTriageRow } from './types';
 
 export async function fetchLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {

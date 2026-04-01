@@ -4,13 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import type { ClassItem } from '@/lib/api';
 import {
   escalateToExpert,
   fetchLecturerClasses,
   fetchLecturerTriageList,
 } from '@/lib/api/lecturer-triage';
-import type { LecturerTriageRow } from '@/lib/api/types';
+import type { ClassItem, LecturerTriageRow } from '@/lib/api/types';
 import { AlertTriangle, ArrowUpRight, Loader2 } from 'lucide-react';
 
 function similarityRatio(raw: number): number {

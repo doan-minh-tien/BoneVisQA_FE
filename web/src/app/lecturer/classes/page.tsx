@@ -12,7 +12,8 @@ import {
   Calendar,
   Loader2,
 } from 'lucide-react';
-import { getLecturerClasses, createClass, type ClassItem } from '@/lib/api';
+import { getLecturerClasses, createClass } from '@/lib/api/lecturer';
+import type { ClassItem } from '@/lib/api/types';
 
 export default function LecturerClassesPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -36,12 +37,12 @@ export default function LecturerClassesPage() {
     setCreating(true);
     setCreateError('');
     try {
-      const token = localStorage.getItem('token') || '';
       const userId = localStorage.getItem('userId') || '';
-      const created = await createClass(
-        { className: newClassName.trim(), semester: newSemester.trim(), lecturerId: userId },
-        token,
-      );
+      const created = await createClass({
+        className: newClassName.trim(),
+        semester: newSemester.trim(),
+        lecturerId: userId,
+      });
       setClasses((prev) => [created, ...prev]);
       setShowCreate(false);
       setNewClassName('');
@@ -56,9 +57,8 @@ export default function LecturerClassesPage() {
   useEffect(() => {
     async function fetchClasses() {
       try {
-        const token = localStorage.getItem('token') || '';
         const userId = localStorage.getItem('userId') || '';
-        const data = await getLecturerClasses(userId, token);
+        const data = await getLecturerClasses(userId);
         setClasses(data);
       } catch {
         setError('Failed to load classes.');

@@ -5,14 +5,12 @@ import Header from '@/components/Header';
 import {
   FolderOpen,
   Search,
-  Filter,
   CheckCircle,
   XCircle,
   Loader2,
   Eye,
   ShieldCheck,
   ShieldOff,
-  BookOpen,
   Plus,
   X,
 } from 'lucide-react';
@@ -21,9 +19,8 @@ import {
   getLecturerClasses,
   approveCase,
   assignCasesToClass,
-  type CaseDto,
-  type ClassItem,
-} from '@/lib/api';
+} from '@/lib/api/lecturer';
+import type { CaseDto, ClassItem } from '@/lib/api/types';
 
 type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
 
@@ -54,11 +51,10 @@ export default function LecturerCasesPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const token = localStorage.getItem('token') || '';
         const userId = localStorage.getItem('userId') || '';
         const [casesData, classesData] = await Promise.all([
-          getLecturerCases(token),
-          getLecturerClasses(userId, token),
+          getLecturerCases(),
+          getLecturerClasses(userId),
         ]);
         setCases(casesData);
         setClasses(classesData);
@@ -74,8 +70,7 @@ export default function LecturerCasesPage() {
   const handleToggleApprove = async (c: CaseDto) => {
     setTogglingIds((prev) => new Set(prev).add(c.id));
     try {
-      const token = localStorage.getItem('token') || '';
-      await approveCase(c.id, !c.isApproved, token);
+      await approveCase(c.id, !c.isApproved);
       setCases((prev) =>
         prev.map((item) => (item.id === c.id ? { ...item, isApproved: !item.isApproved } : item)),
       );
@@ -98,8 +93,7 @@ export default function LecturerCasesPage() {
     setAssigning(true);
     setAssignError('');
     try {
-      const token = localStorage.getItem('token') || '';
-      await assignCasesToClass(assignClassId, Array.from(selectedCases), token);
+      await assignCasesToClass(assignClassId, Array.from(selectedCases));
       setShowAssign(false);
       setSelectedCases(new Set());
       setAssignClassId('');

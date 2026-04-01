@@ -39,6 +39,140 @@ export interface LecturerTriageRow {
   escalated?: boolean;
 }
 
+export interface ClassItem {
+  id: string;
+  className: string;
+  semester: string;
+  lecturerId: string;
+  createdAt: string;
+}
+
+export interface StudentEnrollment {
+  enrollmentId: string;
+  studentId: string;
+  studentName: string | null;
+  studentEmail: string | null;
+  studentCode: string | null;
+  className: string | null;
+  enrolledAt: string | null;
+}
+
+export interface CaseDto {
+  id: string;
+  title: string | null;
+  description: string | null;
+  difficulty: string | null;
+  categoryName: string | null;
+  isApproved: boolean;
+  isActive: boolean;
+  createdAt: string | null;
+}
+
+export interface Announcement {
+  id: string;
+  classId: string;
+  className: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ClassStats {
+  classId: string;
+  totalStudents: number;
+  totalCasesViewed: number;
+  totalQuestionsAsked: number;
+  avgQuizScore: number | null;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  token: string;
+  roles: string[];
+}
+
+export interface LecturerDashboardStats {
+  totalClasses: number;
+  totalStudents: number;
+  totalQuestions: number;
+  escalatedItems: number;
+  pendingReviews: number;
+  averageQuizScore: number;
+}
+
+export interface StudentProfile {
+  id: string;
+  fullName: string;
+  email: string;
+  schoolCohort: string;
+  avatarUrl: string;
+  isActive: boolean;
+  roles: string[];
+}
+
+export interface StudentProfileUpdatePayload {
+  fullName: string;
+  schoolCohort: string;
+  avatarUrl: string;
+}
+
+export interface StudentProgress {
+  totalCasesViewed: number;
+  totalQuestionsAsked: number;
+  avgQuizScore: number;
+  totalQuizAttempts: number;
+  completedQuizzes: number;
+  escalatedAnswers: number;
+  latestQuizScore: number;
+  quizAccuracyRate: number;
+}
+
+export interface StudentQuizQuestion {
+  questionId: string;
+  questionText: string;
+  type: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+}
+
+export interface StudentPracticeQuiz {
+  attemptId: string;
+  quizId: string;
+  title: string;
+  topic: string;
+  questions: StudentQuizQuestion[];
+}
+
+export interface StudentQuizAnswer {
+  questionId: string;
+  studentAnswer: string;
+}
+
+export interface StudentQuizSubmissionResult {
+  attemptId: string;
+  score: number;
+  passingScore: number;
+  passed: boolean;
+  totalQuestions: number;
+  correctAnswers: number;
+}
+
+export interface AdminUser {
+  id: string;
+  fullName: string;
+  email: string;
+  roles: string[];
+  isActive: boolean;
+  createdAt?: string;
+  schoolCohort?: string;
+}
+
 export interface ExpertReviewItem {
   id: string;
   studentName: string;
