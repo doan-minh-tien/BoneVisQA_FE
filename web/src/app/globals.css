@@ -4,36 +4,36 @@
 :root {
   color-scheme: light;
 
-  --background: #F8FAFC;
+  --background: #EEF4FA;
   --surface: #FFFFFF;
-  --sidebar: #FFFFFF;
+  --sidebar: #0F1F35;
   --primary: #007BFF;
   --primary-hover: #0056b3;
   --cyan-accent: #00E5FF;
-  --text-main: #0F172A;
-  --text-muted: #64748B;
-  --border-color: #E2E8F0;
+  --text-main: #10233B;
+  --text-muted: #5F7690;
+  --border-color: #D9E5F2;
   --danger: #EF4444;
   --warning: #F59E0B;
   --success: #10B981;
 
   /* Aliases for existing component classes */
   --foreground: var(--text-main);
-  --muted: var(--surface);
+  --muted: #E5EEF7;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: var(--surface);
+  --input: #F8FBFE;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
-  --secondary: var(--surface);
+  --secondary: #EAF2FF;
   --primary-light: var(--cyan-accent);
   --sidebar-bg: var(--sidebar);
-  --sidebar-text: var(--text-main);
-  --sidebar-hover: #F1F5F9;
-  --sidebar-active: #EFF6FF;
+  --sidebar-text: #F8FBFF;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-active: rgba(255, 255, 255, 0.14);
 }
 
 .dark {
@@ -118,8 +118,9 @@ body {
   color: var(--text-main);
   font-family: 'Figtree', 'Noto Sans', sans-serif;
   background-image:
-    radial-gradient(circle at top left, rgba(0, 123, 255, 0.04), transparent 22%),
-    radial-gradient(circle at top right, rgba(148, 163, 184, 0.08), transparent 20%);
+    radial-gradient(circle at top left, rgba(0, 123, 255, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(0, 229, 255, 0.06), transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0));
 }
 
 button,

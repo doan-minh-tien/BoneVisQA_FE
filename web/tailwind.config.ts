@@ -10,15 +10,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#F8FAFC",
+        background: "#EEF4FA",
         surface: "#FFFFFF",
-        sidebar: "#FFFFFF",
+        sidebar: "#0F1F35",
         primary: "#007BFF",
         "primary-hover": "#0056b3",
         "cyan-accent": "#00E5FF",
-        "text-main": "#0F172A",
-        "text-muted": "#64748B",
-        "border-color": "#E2E8F0",
+        "text-main": "#10233B",
+        "text-muted": "#5F7690",
+        "border-color": "#D9E5F2",
         danger: "#EF4444",
         warning: "#F59E0B",
         success: "#10B981",
