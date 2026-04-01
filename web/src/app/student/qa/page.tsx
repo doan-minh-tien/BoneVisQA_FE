@@ -1,4 +1,4 @@
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import Link from 'next/link';
 import { BotMessageSquare, ImageUp, ArrowRight } from 'lucide-react';
 
@@ -34,7 +34,7 @@ const modes = [
 export default function StudentQAPage() {
   return (
     <div className="min-h-screen">
-      <Header title="AI Q&A" subtitle="Choose a mode to start asking questions" />
+      <StudentAppChrome title="AI Q&A" subtitle="Choose a mode to start asking questions" />
 
       <div className="p-6 max-w-4xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

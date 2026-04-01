@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { CaseCatalogCard } from '@/components/student/CaseCatalogCard';
 import { fetchCaseCatalog } from '@/lib/api/student';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
@@ -60,7 +60,7 @@ export default function StudentCaseCatalogPage() {
 
   return (
     <div className="min-h-screen">
-      <Header
+      <StudentAppChrome
         title="Public Case Catalog"
         subtitle="Browse sample bone cases by location, lesion type, and difficulty before opening them in Visual QA"
       />

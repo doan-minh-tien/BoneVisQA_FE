@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import CaseCard from '@/components/student/CaseCard';
 import { fetchStudentCases } from '@/lib/api/student';
 import type { StudentCaseHistoryItem } from '@/lib/api/types';
@@ -58,7 +58,7 @@ export default function StudentHistoryPage() {
 
   return (
     <div className="min-h-screen">
-      <Header
+      <StudentAppChrome
         title="Visual QA History"
         subtitle="Review your submitted cases and see whether a clinical expert has verified the result"
       />

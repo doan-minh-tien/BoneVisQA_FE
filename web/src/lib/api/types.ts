@@ -131,12 +131,15 @@ export interface StudentProfileUpdatePayload {
 export interface StudentProgress {
   totalCasesViewed: number;
   totalQuestionsAsked: number;
-  avgQuizScore: number;
+  /** Null when the student has no scored / completed quiz attempts yet. */
+  avgQuizScore: number | null;
   totalQuizAttempts: number;
   completedQuizzes: number;
   escalatedAnswers: number;
-  latestQuizScore: number;
-  quizAccuracyRate: number;
+  /** Null when the student has no completed quiz with a score yet. */
+  latestQuizScore: number | null;
+  /** Null when there are no submitted quiz answers to compute accuracy from. */
+  quizAccuracyRate: number | null;
 }
 
 export interface StudentTopicStat {

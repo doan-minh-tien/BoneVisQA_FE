@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import Link from 'next/link';
 import {
   Hand,
@@ -71,7 +71,7 @@ export default function TopicSelectionPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Q&A by Topic" subtitle="Select a bone or joint topic to start chatting" />
+      <StudentAppChrome title="Q&A by Topic" subtitle="Select a bone or joint topic to start chatting" />
 
       <div className="p-6 max-w-4xl mx-auto">
         {/* Back + Search */}

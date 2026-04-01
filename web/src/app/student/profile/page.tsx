@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchStudentProfile, updateStudentProfile } from '@/lib/api/student';
@@ -76,7 +76,7 @@ export default function StudentProfilePage() {
   if (loading) {
     return (
       <div className="min-h-screen">
-        <Header title="Profile" subtitle="Manage your personal information" />
+        <StudentAppChrome title="Profile" subtitle="Manage your personal information" />
         <div className="mx-auto max-w-3xl p-6">
           <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border bg-card">
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -92,7 +92,7 @@ export default function StudentProfilePage() {
   if (!profile) {
     return (
       <div className="min-h-screen">
-        <Header title="Profile" subtitle="Manage your personal information" />
+        <StudentAppChrome title="Profile" subtitle="Manage your personal information" />
         <div className="mx-auto max-w-3xl p-6">
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-card-foreground">No profile data available</h2>
@@ -107,7 +107,7 @@ export default function StudentProfilePage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Profile" subtitle="Manage your personal information" />
+      <StudentAppChrome title="Profile" subtitle="Manage your personal information" />
 
       <div className="mx-auto max-w-3xl p-6">
         <form onSubmit={handleSubmit} className="space-y-6">

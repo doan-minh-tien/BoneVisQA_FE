@@ -2,15 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import Header from '@/components/Header';
 import { SectionCard } from '@/components/shared/SectionCard';
-import StatCard from '@/components/StatCard';
 import QuickActionCard from '@/components/student/QuickActionCard';
 import ProgressRing from '@/components/student/ProgressRing';
-import TopicProgressCard from '@/components/student/dashboard/TopicProgressCard';
-import RecentActivityCard from '@/components/student/dashboard/RecentActivityCard';
-import LearningInsights from '@/components/student/dashboard/LearningInsights';
-import OverallProgressCard from '@/components/student/dashboard/OverallProgressCard';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import {
   fetchStudentProgress,
   fetchStudentRecentActivity,
@@ -22,6 +17,7 @@ import type {
   StudentTopicStat,
 } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/lib/useAuth';
 import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
@@ -31,6 +27,7 @@ import {
   ImageUp,
   Loader2,
   MessageSquare,
+  PlayCircle,
   ShieldAlert,
   Target,
   Trophy,
@@ -76,7 +73,18 @@ const quickActions = [
   },
 ];
 
+function formatQuizPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  return `${Math.round(value)}%`;
+}
+
+function clampPercent(value: number | null | undefined): number {
+  if (value == null || Number.isNaN(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
 export default function StudentDashboardPage() {
+  const { user } = useAuth();
   const toast = useToast();
   const [progress, setProgress] = useState<StudentProgress | null>(null);
   const [topicStats, setTopicStats] = useState<StudentTopicStat[]>([]);
@@ -132,17 +140,25 @@ export default function StudentDashboardPage() {
             },
             {
               title: 'Average quiz score',
-              value: `${progress.avgQuizScore}%`,
+              value: formatQuizPercent(progress.avgQuizScore),
               change: `${progress.completedQuizzes} completed quizzes`,
-              changeType: progress.avgQuizScore >= 70 ? 'positive' : 'neutral',
+              changeType:
+                progress.avgQuizScore != null && !Number.isNaN(progress.avgQuizScore) && progress.avgQuizScore >= 70
+                  ? 'positive'
+                  : 'neutral',
               icon: Trophy,
               iconColor: 'bg-warning/10 text-warning',
             },
             {
               title: 'Quiz accuracy',
-              value: `${progress.quizAccuracyRate}%`,
+              value: formatQuizPercent(progress.quizAccuracyRate),
               change: `${progress.totalQuizAttempts} total attempts`,
-              changeType: progress.quizAccuracyRate >= 70 ? 'positive' : 'neutral',
+              changeType:
+                progress.quizAccuracyRate != null &&
+                !Number.isNaN(progress.quizAccuracyRate) &&
+                progress.quizAccuracyRate >= 70
+                  ? 'positive'
+                  : 'neutral',
               icon: Target,
               iconColor: 'bg-success/10 text-success',
             },
@@ -151,32 +167,134 @@ export default function StudentDashboardPage() {
     [progress],
   );
 
-  return (
-    <div className="min-h-screen">
-      <Header title="Welcome back" subtitle="Your live progress snapshot across cases, Q&A, and quizzes" />
+  const firstName = user?.fullName?.trim().split(/\s+/)[0] || 'there';
+  const goalTopic = topicStats[0]?.topicName ?? 'Musculoskeletal focus';
 
-      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+  return (
+    <div className="min-h-screen bg-background text-on-surface">
+      <StudentAppChrome />
+
+      <div className="mx-auto w-full max-w-7xl space-y-10 px-6 py-10 md:px-12">
         {loading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-outline-variant/30 bg-surface-container-lowest shadow-sm">
+            <div className="flex items-center gap-3 text-sm text-on-surface-variant">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               Loading student progress...
             </div>
           </div>
         ) : !progress ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
-            <h2 className="mt-4 text-lg font-semibold text-card-foreground">No progress data available</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+          <div className="rounded-2xl border border-dashed border-outline-variant/50 bg-surface-container-lowest px-6 py-16 text-center shadow-sm">
+            <BookOpen className="mx-auto h-10 w-10 text-on-surface-variant" />
+            <h2 className="mt-4 text-lg font-semibold text-on-surface">No progress data available</h2>
+            <p className="mt-2 text-sm text-on-surface-variant">
               The student progress endpoint returned no data for this account yet.
             </p>
           </div>
         ) : (
           <>
+            <section className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+              <div>
+                <h1 className="font-headline text-4xl font-black tracking-tight text-on-surface md:text-5xl">
+                  Good morning, {firstName}!
+                </h1>
+                <p className="mt-2 max-w-xl text-lg text-on-surface-variant">
+                  {progress.quizAccuracyRate != null && !Number.isNaN(progress.quizAccuracyRate) ? (
+                    <>
+                      You&apos;ve completed {Math.min(100, Math.round(progress.quizAccuracyRate))}% of your weekly
+                      radiology goals.{' '}
+                    </>
+                  ) : (
+                    <>No quiz accuracy recorded yet—complete a quiz to see goal progress. </>
+                  )}
+                  Keep going with a few more case reviews or a quick quiz.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/student/qa/image"
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-bold text-on-primary shadow-md transition-transform hover:scale-[1.02]"
+                >
+                  <PlayCircle className="h-5 w-5 shrink-0" aria-hidden />
+                  Resume learning
+                </Link>
+                <Link
+                  href="/student/quiz"
+                  className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-6 py-3 font-bold text-on-primary-fixed-variant transition-colors hover:bg-surface-container-highest"
+                >
+                  Quick quiz
+                </Link>
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <div className="group flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-8 shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
+                  <BookOpen className="h-6 w-6" />
+                </div>
+                <div>
+                  <span className="font-headline text-4xl font-black tracking-tighter">{progress.totalCasesViewed}</span>
+                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Cases viewed</p>
+                </div>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-container">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${Math.min(100, progress.totalCasesViewed * 5)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="group flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-8 shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary-container text-secondary transition-colors group-hover:bg-secondary group-hover:text-white">
+                  <Trophy className="h-6 w-6" />
+                </div>
+                <div>
+                  <span className="font-headline text-4xl font-black tracking-tighter">
+                    {formatQuizPercent(progress.avgQuizScore)}
+                  </span>
+                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">
+                    Avg. quiz score
+                  </p>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  {progress.completedQuizzes} completed · {progress.totalQuizAttempts} attempts
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-4 rounded-xl bg-gradient-to-br from-white to-blue-50 p-8 shadow-sm dark:from-slate-900 dark:to-slate-800">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-tertiary-fixed text-tertiary">
+                  <Target className="h-6 w-6" />
+                </div>
+                <div>
+                  <span className="font-headline text-xl font-bold text-on-surface">Study focus</span>
+                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Current goal</p>
+                </div>
+                <p className="text-sm text-on-surface-variant">Topic spotlight: {goalTopic}</p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((stat) => (
-                <StatCard key={stat.title} {...stat} />
-              ))}
+              {statCards.map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <div
+                    key={stat.title}
+                    className="flex flex-col gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-5 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-on-surface-variant">{stat.title}</p>
+                        <p className="font-headline text-2xl font-bold text-on-surface">{stat.value}</p>
+                        {stat.change ? (
+                          <p className="mt-1 text-xs text-on-surface-variant">{stat.change}</p>
+                        ) : null}
+                      </div>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.iconColor}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -228,10 +346,13 @@ export default function StudentDashboardPage() {
                 <SectionCard>
                   <h2 className="mb-4 text-lg font-semibold text-card-foreground">Overall Progress</h2>
                   <div className="flex flex-col items-center">
-                    <ProgressRing progress={Math.min(100, progress.quizAccuracyRate)} size={140} strokeWidth={10} />
+                    <ProgressRing progress={clampPercent(progress.quizAccuracyRate)} size={140} strokeWidth={10} />
                     <div className="mt-4 text-center">
                       <p className="text-sm text-muted-foreground">
-                        Latest quiz score: <span className="font-medium text-card-foreground">{progress.latestQuizScore}%</span>
+                        Latest quiz score:{' '}
+                        <span className="font-medium text-card-foreground">
+                          {formatQuizPercent(progress.latestQuizScore)}
+                        </span>
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {progress.completedQuizzes} completed quizzes across {progress.totalQuizAttempts} attempts

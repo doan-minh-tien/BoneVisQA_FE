@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchStudentPracticeQuiz, submitStudentQuiz } from '@/lib/api/student';
@@ -74,7 +74,10 @@ export default function StudentQuizPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Practice Quiz" subtitle="Load a topic-focused quiz from the backend and submit one live attempt" />
+      <StudentAppChrome
+        title="Practice Quiz"
+        subtitle="Load a topic-focused quiz from the backend and submit one live attempt"
+      />
 
       <div className="mx-auto max-w-5xl space-y-6 p-6">
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
