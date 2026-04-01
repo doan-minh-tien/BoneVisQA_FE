@@ -15,7 +15,7 @@ const difficultyFilters = [
   { id: 'advanced', label: 'Advanced' },
 ] as const;
 
-export default function StudentCaseLibraryPage() {
+export default function StudentHistoryPage() {
   const toast = useToast();
   const [items, setItems] = useState<StudentCaseHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,4 +151,3 @@ export default function StudentCaseLibraryPage() {
     </div>
   );
 }
-

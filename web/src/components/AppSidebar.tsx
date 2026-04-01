@@ -48,7 +48,8 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
-    { label: 'Case Catalog', href: '/student/cases/catalog', icon: BookOpen },
+    { label: 'Case Catalog', href: '/student/catalog', icon: BookOpen },
+    { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
   ],
