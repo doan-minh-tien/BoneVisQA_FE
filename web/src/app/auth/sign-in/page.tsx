@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   GoogleOAuthProvider,
@@ -36,7 +37,15 @@ function getRouteForRole(role: string | null | undefined) {
   }
 }
 
-export default function LoginPage() {
+type LoginPageInnerProps = {
+  googleEnabled: boolean;
+};
+
+/**
+ * Renders the full login UI. When googleEnabled, this component must be a descendant of
+ * GoogleOAuthProvider (single provider instance avoids extra GSI initialize warnings).
+ */
+function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
   const router = useRouter();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
@@ -44,35 +53,36 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("rememberedEmail");
     if (savedEmail) {
       setEmail(savedEmail);
-      setRememberMe(true);
     }
   }, []);
 
-  const handleLoginSuccess = (data: LoginResponse) => {
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("userId", data.userId);
-    localStorage.setItem("fullName", data.fullName);
-    localStorage.setItem("email", data.email);
-    localStorage.setItem("roles", JSON.stringify(data.roles));
-    const primaryRole = Array.isArray(data.roles)
-      ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
-      : null;
-    const { activeRole, route } = getRouteForRole(primaryRole);
+  const handleLoginSuccess = useCallback(
+    (data: LoginResponse) => {
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("userId", data.userId);
+      localStorage.setItem("fullName", data.fullName);
+      localStorage.setItem("email", data.email);
+      localStorage.setItem("roles", JSON.stringify(data.roles));
+      const primaryRole = Array.isArray(data.roles)
+        ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
+        : null;
+      const { activeRole, route } = getRouteForRole(primaryRole);
 
-    if (activeRole) {
-      localStorage.setItem("activeRole", activeRole);
-    } else {
-      localStorage.removeItem("activeRole");
-    }
+      if (activeRole) {
+        localStorage.setItem("activeRole", activeRole);
+      } else {
+        localStorage.removeItem("activeRole");
+      }
 
-    router.push(route);
-  };
+      router.push(route);
+    },
+    [router],
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +120,7 @@ export default function LoginPage() {
       }
 
       const { data } = await http.post("/api/Auths/google-login", {
-        token: credentialResponse.credential,
+        idToken: credentialResponse.credential,
       });
 
       if (data.success && data.token && data.roles) {
@@ -130,10 +140,7 @@ export default function LoginPage() {
     }
   };
 
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
-  const hasGoogleClientId = googleClientId.length > 0;
-
-  const loginCard = (
+  return (
     <div className="min-h-screen w-full bg-slate-950">
       <div className="grid min-h-screen w-full lg:grid-cols-[1.22fr_1fr]">
         <section className="relative hidden overflow-hidden bg-slate-950 lg:flex">
@@ -235,12 +242,20 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="password"
-                    className="mb-1.5 block text-sm font-medium text-text-main"
-                  >
-                    Password
-                  </label>
+                  <div className="mb-1.5 flex items-center justify-between px-0.5">
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-medium text-text-main"
+                    >
+                      Password
+                    </label>
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <div className="relative">
                     <input
                       id="password"
@@ -279,7 +294,7 @@ export default function LoginPage() {
                 <div className="h-px flex-1 bg-border-color" />
               </div>
 
-              {!hasGoogleClientId ? (
+              {!googleEnabled ? (
                 <div className="w-full rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
                   Missing Google Client ID in .env file
                 </div>
@@ -296,7 +311,7 @@ export default function LoginPage() {
                       onSuccess={handleGoogleLoginSuccess}
                       onError={() => {
                         const msg =
-                          "Google sign-in popup failed or was closed. Please try again.";
+                          "Google sign-in popup failed or was closed. Check Google Cloud origins for this URL.";
                         console.warn("Google login onError:", msg);
                         setError(msg);
                         toast.error(msg);
@@ -304,20 +319,41 @@ export default function LoginPage() {
                       useOneTap={false}
                     />
                   </div>
+                  <p className="mt-2 text-center text-[11px] text-text-muted">
+                    If Google shows an origin error, add this site URL under Authorized JavaScript
+                    origins in Google Cloud Console (include exact port, e.g. http://localhost:3000).
+                  </p>
                 </div>
               )}
+
+              <p className="mt-8 text-center text-sm text-text-muted">
+                Don't have an account?{" "}
+                <Link
+                  href="/auth/sign-up"
+                  className="font-bold text-primary hover:underline"
+                >
+                  Sign up
+                </Link>
+              </p>
             </div>
           </div>
         </section>
       </div>
     </div>
   );
+}
 
-  if (!hasGoogleClientId) return loginCard;
+export default function LoginPage() {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
+  const hasGoogleClientId = googleClientId.length > 0;
+
+  if (!hasGoogleClientId) {
+    return <LoginPageInner googleEnabled={false} />;
+  }
 
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
-      {loginCard}
+      <LoginPageInner googleEnabled />
     </GoogleOAuthProvider>
   );
 }

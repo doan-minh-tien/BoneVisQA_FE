@@ -21,7 +21,7 @@ export function AppShell({
   useEffect(() => {
     if (!token) {
       const redirect = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
-      router.replace(`/login${redirect}`);
+      router.replace(`/auth/sign-in${redirect}`);
     }
   }, [pathname, router, token]);
 

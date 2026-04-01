@@ -33,3 +33,33 @@ export async function register(payload: RegisterPayload): Promise<RegisterRespon
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+export async function forgotPassword(email: string): Promise<RegisterResponse> {
+  try {
+    const { data } = await http.post<RegisterResponse>('/api/Auths/forgot-password', { email });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<RegisterResponse> {
+  try {
+    const { data } = await http.post<RegisterResponse>('/api/Auths/reset-password', {
+      token,
+      newPassword,
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function googleRegister(idToken: string): Promise<RegisterResponse> {
+  try {
+    const { data } = await http.post<RegisterResponse>('/api/Auths/google-register', { idToken });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
