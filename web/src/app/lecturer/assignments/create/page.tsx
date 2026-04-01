@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ChevronRight,
@@ -28,15 +28,11 @@ import {
   Zap,
   Microscope,
   Stethoscope,
+  Loader2,
 } from 'lucide-react';
-
-const availableClasses = [
-  { id: '1', name: 'Orthopedics - Advanced Imaging', code: 'ORTH-301', students: 32 },
-  { id: '2', name: 'Musculoskeletal Radiology', code: 'RAD-205', students: 28 },
-  { id: '3', name: 'Clinical Practice - Bone Diseases', code: 'CLIN-401', students: 24 },
-  { id: '4', name: 'Introduction to Bone Anatomy', code: 'ANAT-101', students: 45 },
-  { id: '5', name: 'Pediatric Orthopedics', code: 'PEDI-302', students: 19 },
-];
+import { useToast } from '@/components/ui/toast';
+import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
+import type { ClassItem } from '@/lib/api/types';
 
 const assignmentTypes = [
   {
@@ -101,6 +97,7 @@ function CreateAssignmentPageContent({
 }: {
   searchParams: Promise<{ classId?: string | string[] }>;
 }) {
+  const toast = useToast();
   const resolvedSearchParams = use(searchParams);
   const classIdParam = resolvedSearchParams.classId;
   const preselectedClassId = Array.isArray(classIdParam)
@@ -108,6 +105,8 @@ function CreateAssignmentPageContent({
     : classIdParam;
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [availableClasses, setAvailableClasses] = useState<ClassItem[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
   const [formData, setFormData] = useState({
     title: '',
     type: '',
@@ -124,6 +123,40 @@ function CreateAssignmentPageContent({
   });
 
   const isQuiz = formData.type === 'Quiz';
+
+  useEffect(() => {
+    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    if (!userId) {
+      setLoadingClasses(false);
+      toast.error('Missing user session. Please sign in again.');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const classes = await fetchLecturerClasses(userId);
+        if (cancelled) return;
+        setAvailableClasses(classes);
+        setFormData((prev) => ({
+          ...prev,
+          selectedClasses: prev.selectedClasses.filter((id) => classes.some((item) => item.id === id)),
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load lecturer classes.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingClasses(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
 
   const visibleSteps = isQuiz
     ? steps
@@ -185,9 +218,13 @@ function CreateAssignmentPageContent({
   };
 
   const totalQuizPoints = formData.questions.reduce((sum, q) => sum + q.points, 0);
-  const selectedClassData = formData.selectedClasses
-    .map((id) => availableClasses.find((c) => c.id === id))
-    .filter(Boolean);
+  const selectedClassData = useMemo(
+    () =>
+      formData.selectedClasses
+        .map((id) => availableClasses.find((c) => c.id === id))
+        .filter((item): item is ClassItem => Boolean(item)),
+    [availableClasses, formData.selectedClasses],
+  );
 
   const selectedType = assignmentTypes.find((t) => t.value === formData.type);
 
@@ -334,7 +371,7 @@ function CreateAssignmentPageContent({
                             key={classId}
                             className="flex items-center gap-1.5 px-2.5 py-1 bg-primary text-white rounded-full text-xs font-medium"
                           >
-                            {cls.code}
+                            {cls.className}
                             <button
                               onClick={() => toggleClass(classId)}
                               className="hover:bg-white/20 rounded-full p-0.5 cursor-pointer"
@@ -348,7 +385,17 @@ function CreateAssignmentPageContent({
                   )}
 
                   <div className="space-y-2">
-                    {availableClasses.map((cls) => {
+                    {loadingClasses ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        Loading your classes...
+                      </div>
+                    ) : availableClasses.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border bg-background px-4 py-4 text-sm text-muted-foreground">
+                        No lecturer classes are available yet. Create a class first, then return to assign this activity.
+                      </div>
+                    ) : (
+                      availableClasses.map((cls) => {
                       const isSelected = formData.selectedClasses.includes(cls.id);
                       return (
                         <button
@@ -359,15 +406,16 @@ function CreateAssignmentPageContent({
                               ? 'bg-primary/5 border-primary/40'
                               : 'bg-background border-border hover:bg-muted/40'
                           }`}
+                          disabled={loadingClasses}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? 'bg-primary/15' : 'bg-muted'}`}>
                               <BookOpen className={`w-4 h-4 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-card-foreground">{cls.name}</p>
+                              <p className="text-sm font-medium text-card-foreground">{cls.className}</p>
                               <p className="text-xs text-muted-foreground">
-                                {cls.code} · {cls.students} students
+                                Semester {cls.semester || 'Not specified'}
                               </p>
                             </div>
                           </div>
@@ -380,7 +428,7 @@ function CreateAssignmentPageContent({
                           </div>
                         </button>
                       );
-                    })}
+                    }))}
                   </div>
                 </div>
 
@@ -687,10 +735,10 @@ function CreateAssignmentPageContent({
                       <div className="flex flex-wrap gap-2">
                         {selectedClassData.length > 0 ? (
                           selectedClassData.map((cls) => (
-                            <div key={cls!.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-medium">
+                            <div key={cls.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-medium">
                               <Users className="w-3 h-3" />
-                              {cls!.code}
-                              <span className="text-primary/60">· {cls!.students} students</span>
+                              {cls.className}
+                              <span className="text-primary/60">· Semester {cls.semester || 'N/A'}</span>
                             </div>
                           ))
                         ) : (
@@ -858,8 +906,8 @@ function CreateAssignmentPageContent({
                   {formData.selectedClasses.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {selectedClassData.slice(0, 3).map((cls) => (
-                        <span key={cls!.id} className="text-xs px-2 py-0.5 bg-muted rounded text-muted-foreground">
-                          {cls!.code}
+                        <span key={cls.id} className="text-xs px-2 py-0.5 bg-muted rounded text-muted-foreground">
+                          {cls.className}
                         </span>
                       ))}
                       {selectedClassData.length > 3 && (
@@ -893,7 +941,7 @@ function CreateAssignmentPageContent({
                     {formData.selectedClasses.length > 0 && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Users className="w-3.5 h-3.5" />
-                        {selectedClassData.reduce((sum, c) => sum + (c?.students ?? 0), 0)} students total
+                        {selectedClassData.length} class{selectedClassData.length === 1 ? '' : 'es'} selected
                       </div>
                     )}
                   </div>
