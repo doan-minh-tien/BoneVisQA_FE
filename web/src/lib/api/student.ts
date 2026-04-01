@@ -5,6 +5,8 @@ import type {
   StudentProfile,
   StudentProfileUpdatePayload,
   StudentProgress,
+  StudentRecentActivityItem,
+  StudentTopicStat,
   StudentQuizAnswer,
   StudentQuizSubmissionResult,
 } from './types';
@@ -105,6 +107,65 @@ export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
         ? (data as { items?: unknown[] }).items ?? []
         : [];
     return list.map(mapStudentCase).filter((item): item is StudentCaseHistoryItem => item !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+function mapStudentTopicStat(row: unknown): StudentTopicStat | null {
+  if (!row || typeof row !== 'object') return null;
+  const item = row as Record<string, unknown>;
+  const topicName = String(item.topicName ?? item.topic ?? item.name ?? '');
+  if (!topicName) return null;
+  return {
+    topicName,
+    accuracyRate: Number(item.accuracyRate ?? 0),
+    quizAttempts: Number(item.quizAttempts ?? 0),
+  };
+}
+
+function mapStudentRecentActivity(row: unknown, index: number): StudentRecentActivityItem | null {
+  if (!row || typeof row !== 'object') return null;
+  const item = row as Record<string, unknown>;
+  const title = String(item.title ?? item.activityTitle ?? item.description ?? item.message ?? '');
+  const occurredAt = String(item.occurredAt ?? item.createdAt ?? item.timestamp ?? '');
+  if (!title || !occurredAt) return null;
+
+  return {
+    id: String(item.id ?? item.activityId ?? index),
+    title,
+    description: item.description != null ? String(item.description) : item.message != null ? String(item.message) : undefined,
+    occurredAt,
+    type: String(item.type ?? item.activityType ?? 'activity'),
+    status: item.status != null ? String(item.status) : undefined,
+  };
+}
+
+export async function fetchStudentTopicStats(): Promise<StudentTopicStat[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/student/progress/topic-stats');
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown[] }).items ?? []
+        : [];
+    return list.map(mapStudentTopicStat).filter((item): item is StudentTopicStat => item !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchStudentRecentActivity(): Promise<StudentRecentActivityItem[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/student/progress/recent-activity');
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown[] }).items ?? []
+        : [];
+    return list
+      .map((item, index) => mapStudentRecentActivity(item, index))
+      .filter((item): item is StudentRecentActivityItem => item !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

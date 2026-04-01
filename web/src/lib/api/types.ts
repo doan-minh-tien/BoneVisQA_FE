@@ -104,6 +104,14 @@ export interface LecturerDashboardStats {
   averageQuizScore: number;
 }
 
+export interface LecturerLeaderboardEntry {
+  studentId?: string;
+  studentName: string;
+  totalCasesViewed: number;
+  totalQuestionsAsked: number;
+  averageQuizScore: number;
+}
+
 export interface StudentProfile {
   id: string;
   fullName: string;
@@ -129,6 +137,21 @@ export interface StudentProgress {
   escalatedAnswers: number;
   latestQuizScore: number;
   quizAccuracyRate: number;
+}
+
+export interface StudentTopicStat {
+  topicName: string;
+  accuracyRate: number;
+  quizAttempts: number;
+}
+
+export interface StudentRecentActivityItem {
+  id: string;
+  title: string;
+  description?: string;
+  occurredAt: string;
+  type: string;
+  status?: string;
 }
 
 export interface StudentQuizQuestion {

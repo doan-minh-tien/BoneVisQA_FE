@@ -3,20 +3,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import { SectionCard } from '@/components/shared/SectionCard';
 import StatCard from '@/components/StatCard';
 import QuickActionCard from '@/components/student/QuickActionCard';
 import ProgressRing from '@/components/student/ProgressRing';
-import { fetchStudentProgress } from '@/lib/api/student';
-import type { StudentProgress } from '@/lib/api/types';
+import {
+  fetchStudentProgress,
+  fetchStudentRecentActivity,
+  fetchStudentTopicStats,
+} from '@/lib/api/student';
+import type {
+  StudentProgress,
+  StudentRecentActivityItem,
+  StudentTopicStat,
+} from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
   BotMessageSquare,
+  CheckCircle2,
   Clock,
   ImageUp,
   Loader2,
   MessageSquare,
+  ShieldAlert,
   Target,
   Trophy,
 } from 'lucide-react';
@@ -61,32 +72,27 @@ const quickActions = [
   },
 ];
 
-function DemandPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
 export default function StudentDashboardPage() {
   const toast = useToast();
   const [progress, setProgress] = useState<StudentProgress | null>(null);
+  const [topicStats, setTopicStats] = useState<StudentTopicStat[]>([]);
+  const [recentActivity, setRecentActivity] = useState<StudentRecentActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await fetchStudentProgress();
-        if (!cancelled) setProgress(data);
+        const [progressData, topicData, activityData] = await Promise.all([
+          fetchStudentProgress(),
+          fetchStudentTopicStats(),
+          fetchStudentRecentActivity(),
+        ]);
+        if (!cancelled) {
+          setProgress(progressData);
+          setTopicStats(topicData);
+          setRecentActivity(activityData);
+        }
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Failed to load student progress.');
@@ -171,23 +177,51 @@ export default function StudentDashboardPage() {
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="space-y-6">
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <SectionCard>
                   <h2 className="mb-4 text-lg font-semibold text-card-foreground">Quick Actions</h2>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {quickActions.map((action) => (
                       <QuickActionCard key={action.title} {...action} />
                     ))}
                   </div>
-                </div>
+                </SectionCard>
 
-                <DemandPanel
-                  title="Case continuation feed needs a dedicated endpoint"
-                  description="The old dashboard showed mocked recent cases and topic progress. Those fake cards are removed until the backend exposes personalized case recommendations or recent study history."
-                />
+                <SectionCard
+                  title="Topic mastery"
+                  description="Track quiz accuracy and attempt volume by study topic."
+                >
+                  {topicStats.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      No topic analytics available yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {topicStats.map((topic) => (
+                        <div key={topic.topicName} className="rounded-xl border border-border bg-background/55 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-card-foreground">{topic.topicName}</p>
+                              <p className="text-xs text-muted-foreground">{topic.quizAttempts} quiz attempts</p>
+                            </div>
+                            <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">
+                              {topic.accuracyRate.toFixed(1)}% accuracy
+                            </span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary transition-all"
+                              style={{ width: `${Math.min(100, Math.max(0, topic.accuracyRate))}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SectionCard>
               </div>
 
               <div className="space-y-6">
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <SectionCard>
                   <h2 className="mb-4 text-lg font-semibold text-card-foreground">Overall Progress</h2>
                   <div className="flex flex-col items-center">
                     <ProgressRing progress={Math.min(100, progress.quizAccuracyRate)} size={140} strokeWidth={10} />
@@ -200,7 +234,7 @@ export default function StudentDashboardPage() {
                       </p>
                     </div>
                   </div>
-                </div>
+                </SectionCard>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
@@ -219,10 +253,59 @@ export default function StudentDashboardPage() {
                   </div>
                 </div>
 
-                <DemandPanel
-                  title="Recent activity and achievement feed needs API support"
-                  description="The dashboard no longer invents badges, study streaks, or activity events. Those sections should return from a future student activity timeline endpoint."
-                />
+                <SectionCard title="Recent activity" description="Your latest study, quiz, and expert-review events in chronological order.">
+                  {recentActivity.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      No recent activity has been recorded yet.
+                    </div>
+                  ) : (
+                    <ol className="space-y-4">
+                      {recentActivity.map((activity) => {
+                        const normalizedStatus = activity.status?.toLowerCase();
+                        const statusBadge =
+                          normalizedStatus === 'approved' || normalizedStatus === 'revised'
+                            ? {
+                                label: 'Verified by Expert',
+                                className: 'bg-success/10 text-success',
+                                icon: CheckCircle2,
+                              }
+                            : normalizedStatus === 'pending' || normalizedStatus === 'pendingexpert'
+                              ? {
+                                  label: 'Under Expert Review',
+                                  className: 'bg-warning/10 text-warning',
+                                  icon: ShieldAlert,
+                                }
+                              : null;
+                        const StatusIcon = statusBadge?.icon;
+
+                        return (
+                          <li key={activity.id} className="rounded-xl border border-border bg-background/55 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-card-foreground">{activity.title}</p>
+                                {activity.description ? (
+                                  <p className="mt-1 text-sm text-muted-foreground">{activity.description}</p>
+                                ) : null}
+                              </div>
+                              <span className="shrink-0 text-xs text-muted-foreground">{activity.occurredAt}</span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-cyan-accent/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-accent">
+                                {activity.type}
+                              </span>
+                              {statusBadge && StatusIcon ? (
+                                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.className}`}>
+                                  <StatusIcon className="h-3.5 w-3.5" />
+                                  {statusBadge.label}
+                                </span>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </SectionCard>
               </div>
             </div>
 
