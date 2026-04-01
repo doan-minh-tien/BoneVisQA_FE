@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   BookOpen,
   BotMessageSquare,
+  ClipboardList,
   Trophy,
   UserCircle,
   Settings,
@@ -16,7 +17,8 @@ import {
 
 const studentMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/student/dashboard' },
-  { icon: BookOpen, label: 'Case Library', href: '/student/cases' },
+  { icon: BookOpen, label: 'Case Catalog', href: '/student/catalog' },
+  { icon: ClipboardList, label: 'History', href: '/student/history' },
   { icon: BotMessageSquare, label: 'AI Q&A', href: '/student/qa' },
   { icon: Trophy, label: 'Quizzes', href: '/student/quiz' },
   { icon: UserCircle, label: 'Profile', href: '/student/profile' },

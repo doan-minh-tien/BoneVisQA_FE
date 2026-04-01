@@ -315,7 +315,7 @@ GET /api/lecturer/analytics/overview
 - ✅ Schedule sessions
 - ❌ Add/Delete cases (Expert only)
 - ❌ Manage user accounts (Admin only)
-- ❌ Edit knowledge base (Curator only)
+- ❌ Edit knowledge base (Admin only)
 
 ## Key Features vs Other Roles
 

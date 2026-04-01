@@ -1,4 +1,4 @@
-import LecturerSidebar from '@/components/LecturerSidebar';
+import { AppShell } from '@/components/AppShell';
 
 export default function LecturerLayout({
   children,
@@ -6,11 +6,6 @@ export default function LecturerLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <LecturerSidebar />
-      <main className="ml-64">
-        {children}
-      </main>
-    </div>
+    <AppShell role="lecturer">{children}</AppShell>
   );
 }

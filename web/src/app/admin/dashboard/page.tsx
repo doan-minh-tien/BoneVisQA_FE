@@ -38,7 +38,7 @@ export default function AdminDashboardPage() {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
         const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-        const response = await fetch(`${apiUrl}/api/admin/users`, {
+        const response = await fetch(`${apiUrl}/api/Admin/users`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
