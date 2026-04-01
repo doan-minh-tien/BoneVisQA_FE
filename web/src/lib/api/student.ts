@@ -1,5 +1,6 @@
 import { http, getApiErrorMessage } from './client';
 import type {
+  StudentCaseCatalogItem,
   StudentCaseHistoryItem,
   StudentPracticeQuiz,
   StudentProfile,
@@ -40,6 +41,27 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
     progress: typeof item.progress === 'number' ? item.progress : undefined,
     status: item.status != null ? String(item.status) : undefined,
     askedAt: item.askedAt != null ? String(item.askedAt) : item.createdAt != null ? String(item.createdAt) : undefined,
+  };
+}
+
+function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
+  if (!row || typeof row !== 'object') return null;
+  const item = row as Record<string, unknown>;
+  const id = String(item.id ?? item.caseId ?? '');
+  if (!id) return null;
+
+  return {
+    id,
+    title: String(item.title ?? 'Untitled case'),
+    imageUrl:
+      item.imageUrl != null
+        ? String(item.imageUrl)
+        : item.thumbnailUrl != null
+          ? String(item.thumbnailUrl)
+          : undefined,
+    location: String(item.location ?? item.boneLocation ?? item.regionName ?? 'Unknown location'),
+    lesionType: String(item.lesionType ?? item.categoryName ?? 'Unknown lesion'),
+    difficulty: normalizeDifficulty(item.difficulty),
   };
 }
 
@@ -107,6 +129,29 @@ export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
         ? (data as { items?: unknown[] }).items ?? []
         : [];
     return list.map(mapStudentCase).filter((item): item is StudentCaseHistoryItem => item !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchCaseCatalog(filters: {
+  location?: string;
+  lesionType?: string;
+  difficulty?: string;
+}): Promise<StudentCaseCatalogItem[]> {
+  try {
+    const params = Object.fromEntries(
+      Object.entries(filters).filter(([, value]) => value && String(value).trim().length > 0),
+    );
+    const { data } = await http.get<unknown>('/api/student/cases/catalog', { params });
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown[] }).items ?? []
+        : [];
+    return list
+      .map(mapStudentCaseCatalog)
+      .filter((item): item is StudentCaseCatalogItem => item !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

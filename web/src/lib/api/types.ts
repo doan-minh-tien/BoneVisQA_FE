@@ -199,6 +199,15 @@ export interface StudentCaseHistoryItem {
   askedAt?: string;
 }
 
+export interface StudentCaseCatalogItem {
+  id: string;
+  title: string;
+  imageUrl?: string;
+  location: string;
+  lesionType: string;
+  difficulty: 'basic' | 'intermediate' | 'advanced';
+}
+
 export interface AdminUser {
   id: string;
   fullName: string;

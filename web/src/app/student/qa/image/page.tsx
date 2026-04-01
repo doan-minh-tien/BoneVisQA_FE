@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
@@ -24,6 +25,7 @@ import type { PercentageBoundingBox, VisualQaReport } from '@/lib/api/types';
 
 export default function StudentVisualQaImagePage() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
@@ -31,6 +33,10 @@ export default function StudentVisualQaImagePage() {
   const [uploadPct, setUploadPct] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
   const [annotationBox, setAnnotationBox] = useState<PercentageBoundingBox | null>(null);
+  const [prefillLoading, setPrefillLoading] = useState(false);
+
+  const catalogImageUrl = searchParams.get('catalogImageUrl');
+  const catalogTitle = searchParams.get('catalogTitle');
 
   useEffect(() => {
     if (!file) {
@@ -41,6 +47,39 @@ export default function StudentVisualQaImagePage() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  useEffect(() => {
+    if (!catalogImageUrl || file) return;
+
+    let cancelled = false;
+    (async () => {
+      setPrefillLoading(true);
+      try {
+        const response = await fetch(catalogImageUrl);
+        if (!response.ok) {
+          throw new Error('Unable to preload the selected catalog image.');
+        }
+        const blob = await response.blob();
+        if (cancelled) return;
+        const extension = blob.type.split('/')[1] || 'jpg';
+        const safeTitle = (catalogTitle || 'catalog-case').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+        const prefilledFile = new File([blob], `${safeTitle}.${extension}`, {
+          type: blob.type || 'image/jpeg',
+        });
+        setFile(prefilledFile);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to preload selected catalog case.');
+        }
+      } finally {
+        if (!cancelled) setPrefillLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogImageUrl, catalogTitle, file, toast]);
 
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,6 +178,12 @@ export default function StudentVisualQaImagePage() {
                 <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
                   <UploadCloud className="h-4 w-4 text-cyan-accent" />
                   <span className="truncate">{file.name}</span>
+                </div>
+              ) : null}
+              {!file && prefillLoading ? (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
+                  Preloading selected catalog image...
                 </div>
               ) : null}
               {annotationBox && annotationBox.widthPct > 0 && annotationBox.heightPct > 0 ? (
