@@ -30,7 +30,6 @@ const difficultyConfig = {
 export default function CaseCard({
   id,
   title,
-  thumbnail,
   boneLocation,
   lesionType,
   difficulty,

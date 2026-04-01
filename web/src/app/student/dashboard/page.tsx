@@ -1,303 +1,238 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
-import CaseCard from '@/components/student/CaseCard';
 import QuickActionCard from '@/components/student/QuickActionCard';
 import ProgressRing from '@/components/student/ProgressRing';
+import { fetchStudentProgress } from '@/lib/api/student';
+import type { StudentProgress } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
+import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
-  Trophy,
-  Target,
-  Flame,
-  Play,
   BotMessageSquare,
-  ImageUp,
-  Calendar,
-  TrendingUp,
-  Award,
   Clock,
+  ImageUp,
+  Loader2,
   MessageSquare,
+  Target,
+  Trophy,
 } from 'lucide-react';
 
-// Mock data - sẽ thay bằng API calls
-const studentStats = [
-  {
-    title: 'Cases Studied',
-    value: '24',
-    change: '+6 this week',
-    changeType: 'positive' as const,
-    icon: BookOpen,
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'Quiz Score',
-    value: '87%',
-    change: '+5% improvement',
-    changeType: 'positive' as const,
-    icon: Trophy,
-    iconColor: 'bg-warning/10 text-warning',
-  },
-  {
-    title: 'Study Streak',
-    value: '12 days',
-    change: 'Keep it up!',
-    changeType: 'positive' as const,
-    icon: Flame,
-    iconColor: 'bg-destructive/10 text-destructive',
-  },
-  {
-    title: 'Accuracy Rate',
-    value: '92%',
-    change: '+3% from last month',
-    changeType: 'positive' as const,
-    icon: Target,
-    iconColor: 'bg-success/10 text-success',
-  },
-];
+type StatCardModel = {
+  title: string;
+  value: string | number;
+  change?: string;
+  changeType?: 'positive' | 'negative' | 'neutral';
+  icon: LucideIcon;
+  iconColor?: string;
+};
 
 const quickActions = [
   {
     title: 'AI Q&A by Topic',
-    description: 'Ask about bone regions using RAG chatbot',
+    description: 'Use the knowledge base Q&A workflow for text-first study.',
     icon: BotMessageSquare,
-    href: '/student/qa?mode=topic',
+    href: '/student/qa/topic',
     iconColor: 'bg-primary/10 text-primary',
-    badge: 'New',
   },
   {
     title: 'AI Q&A by Image',
-    description: 'Upload X-ray/CT/MRI for AI analysis',
+    description: 'Upload an X-ray, CT, or MRI and ask one focused clinical question.',
     icon: ImageUp,
-    href: '/student/qa?mode=image',
+    href: '/student/qa/image',
     iconColor: 'bg-warning/10 text-warning',
   },
   {
-    title: 'Start Quick Quiz',
-    description: '5-minute quiz on long bone fractures',
-    icon: Play,
-    href: '/student/quiz/quick',
-    iconColor: 'bg-accent/10 text-accent',
+    title: 'Practice Quiz',
+    description: 'Load a live quiz attempt from the backend by topic.',
+    icon: Trophy,
+    href: '/student/quiz',
+    iconColor: 'bg-cyan-accent/10 text-cyan-accent',
   },
   {
-    title: 'View Schedule',
-    description: 'Check upcoming assignments',
-    icon: Calendar,
-    href: '/student/schedule',
-    iconColor: 'bg-secondary/10 text-secondary',
+    title: 'My Profile',
+    description: 'Review cohort information and update your visible profile fields.',
+    icon: BookOpen,
+    href: '/student/profile',
+    iconColor: 'bg-success/10 text-success',
   },
 ];
 
-const recentCases = [
-  {
-    id: '1',
-    title: 'Distal Radius Fracture - Case Study',
-    thumbnail: '/cases/case1.jpg',
-    boneLocation: 'Wrist',
-    lesionType: 'Fracture',
-    difficulty: 'basic' as const,
-    duration: '12 min',
-    progress: 75,
-  },
-  {
-    id: '2',
-    title: 'Osteoarthritis of the Knee Joint',
-    thumbnail: '/cases/case2.jpg',
-    boneLocation: 'Knee',
-    lesionType: 'Degenerative',
-    difficulty: 'intermediate' as const,
-    duration: '18 min',
-    progress: 45,
-  },
-  {
-    id: '3',
-    title: 'Complex Tibial Plateau Fracture',
-    thumbnail: '/cases/case3.jpg',
-    boneLocation: 'Tibia',
-    lesionType: 'Fracture',
-    difficulty: 'advanced' as const,
-    duration: '25 min',
-    progress: 0,
-  },
-  {
-    id: '4',
-    title: 'Shoulder Dislocation Analysis',
-    thumbnail: '/cases/case4.jpg',
-    boneLocation: 'Shoulder',
-    lesionType: 'Dislocation',
-    difficulty: 'intermediate' as const,
-    duration: '15 min',
-    progress: 100,
-  },
-];
-
-const topicProgress = [
-  { name: 'Long Bone Fractures', progress: 85, total: 20, completed: 17 },
-  { name: 'Spine Lesions', progress: 60, total: 15, completed: 9 },
-  { name: 'Joint Diseases', progress: 40, total: 18, completed: 7 },
-  { name: 'Bone Tumors', progress: 25, total: 12, completed: 3 },
-];
-
-const recentActivity = [
-  { type: 'quiz', message: 'Completed "Fracture Classification" quiz', score: 90, time: '2 hours ago' },
-  { type: 'case', message: 'Studied Hip Fracture case', time: '5 hours ago' },
-  { type: 'achievement', message: 'Earned "Week Warrior" badge', time: '1 day ago' },
-  { type: 'qa', message: 'Asked question on Spine X-ray', time: '1 day ago' },
-];
+function DemandPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-card-foreground">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+    </div>
+  );
+}
 
 export default function StudentDashboardPage() {
+  const toast = useToast();
+  const [progress, setProgress] = useState<StudentProgress | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchStudentProgress();
+        if (!cancelled) setProgress(data);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load student progress.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  const statCards = useMemo<StatCardModel[]>(
+    () =>
+      progress
+        ? [
+            {
+              title: 'Cases viewed',
+              value: progress.totalCasesViewed,
+              change: 'Pulled from live progress analytics',
+              changeType: 'neutral' as const,
+              icon: BookOpen,
+              iconColor: 'bg-primary/10 text-primary',
+            },
+            {
+              title: 'Questions asked',
+              value: progress.totalQuestionsAsked,
+              change: `${progress.escalatedAnswers} escalated to experts`,
+              changeType: 'neutral' as const,
+              icon: MessageSquare,
+              iconColor: 'bg-cyan-accent/10 text-cyan-accent',
+            },
+            {
+              title: 'Average quiz score',
+              value: `${progress.avgQuizScore}%`,
+              change: `${progress.completedQuizzes} completed quizzes`,
+              changeType: progress.avgQuizScore >= 70 ? 'positive' : 'neutral',
+              icon: Trophy,
+              iconColor: 'bg-warning/10 text-warning',
+            },
+            {
+              title: 'Quiz accuracy',
+              value: `${progress.quizAccuracyRate}%`,
+              change: `${progress.totalQuizAttempts} total attempts`,
+              changeType: progress.quizAccuracyRate >= 70 ? 'positive' : 'neutral',
+              icon: Target,
+              iconColor: 'bg-success/10 text-success',
+            },
+          ]
+        : [],
+    [progress],
+  );
+
   return (
     <div className="min-h-screen">
-      <Header
-        title="Welcome back, Student!"
-        subtitle="Continue your learning journey"
-      />
+      <Header title="Welcome back" subtitle="Your live progress snapshot across cases, Q&A, and quizzes" />
 
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {studentStats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Left Column - Continue Learning */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Quick Actions */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {quickActions.map((action) => (
-                  <QuickActionCard key={action.title} {...action} />
-                ))}
-              </div>
-            </div>
-
-            {/* Continue Learning */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-card-foreground">Continue Learning</h2>
-                <a href="/student/cases" className="text-sm text-primary hover:underline">
-                  View all cases
-                </a>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {recentCases.map((case_) => (
-                  <CaseCard key={case_.id} {...case_} />
-                ))}
-              </div>
+      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+        {loading ? (
+          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Loading student progress...
             </div>
           </div>
+        ) : !progress ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
+            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
+            <h2 className="mt-4 text-lg font-semibold text-card-foreground">No progress data available</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The student progress endpoint returned no data for this account yet.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {statCards.map((stat) => (
+                <StatCard key={stat.title} {...stat} />
+              ))}
+            </div>
 
-          {/* Right Column - Progress & Activity */}
-          <div className="space-y-6">
-            {/* Overall Progress */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Overall Progress</h2>
-              <div className="flex flex-col items-center">
-                <ProgressRing progress={68} size={140} strokeWidth={10} />
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-muted-foreground">68 of 100 cases completed</p>
-                  <p className="text-xs text-muted-foreground mt-1">You're doing great!</p>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <h2 className="mb-4 text-lg font-semibold text-card-foreground">Quick Actions</h2>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {quickActions.map((action) => (
+                      <QuickActionCard key={action.title} {...action} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Topic Progress */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Progress by Topic</h2>
-              <div className="space-y-4">
-                {topicProgress.map((topic) => (
-                  <div key={topic.name}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-card-foreground">{topic.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {topic.completed}/{topic.total}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${topic.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                <DemandPanel
+                  title="Case continuation feed needs a dedicated endpoint"
+                  description="The old dashboard showed mocked recent cases and topic progress. Those fake cards are removed until the backend exposes personalized case recommendations or recent study history."
+                />
               </div>
-            </div>
 
-            {/* Recent Activity */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h2 className="text-lg font-semibold text-card-foreground mb-4">Recent Activity</h2>
-              <div className="space-y-3">
-                {recentActivity.map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        activity.type === 'quiz'
-                          ? 'bg-warning/10 text-warning'
-                          : activity.type === 'achievement'
-                          ? 'bg-success/10 text-success'
-                          : 'bg-primary/10 text-primary'
-                      }`}
-                    >
-                      {activity.type === 'quiz' && <Trophy className="w-4 h-4" />}
-                      {activity.type === 'case' && <BookOpen className="w-4 h-4" />}
-                      {activity.type === 'achievement' && <Award className="w-4 h-4" />}
-                      {activity.type === 'qa' && <MessageSquare className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-card-foreground">
-                        {activity.message}
-                        {'score' in activity && (
-                          <span className="ml-2 text-success font-medium">
-                            {activity.score}%
-                          </span>
-                        )}
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <h2 className="mb-4 text-lg font-semibold text-card-foreground">Overall Progress</h2>
+                  <div className="flex flex-col items-center">
+                    <ProgressRing progress={Math.min(100, progress.quizAccuracyRate)} size={140} strokeWidth={10} />
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Latest quiz score: <span className="font-medium text-card-foreground">{progress.latestQuizScore}%</span>
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{activity.time}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {progress.completedQuizzes} completed quizzes across {progress.totalQuizAttempts} attempts
+                      </p>
                     </div>
                   </div>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
+                    <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                      <Clock className="h-6 w-6 text-primary" />
+                    </div>
+                    <p className="text-2xl font-bold text-card-foreground">{progress.totalQuizAttempts}</p>
+                    <p className="text-sm text-muted-foreground">Quiz Attempts</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
+                    <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-accent/10">
+                      <MessageSquare className="h-6 w-6 text-cyan-accent" />
+                    </div>
+                    <p className="text-2xl font-bold text-card-foreground">{progress.escalatedAnswers}</p>
+                    <p className="text-sm text-muted-foreground">Escalated Answers</p>
+                  </div>
+                </div>
+
+                <DemandPanel
+                  title="Recent activity and achievement feed needs API support"
+                  description="The dashboard no longer invents badges, study streaks, or activity events. Those sections should return from a future student activity timeline endpoint."
+                />
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Learning Insights */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-2">
-              <TrendingUp className="w-6 h-6 text-primary" />
+            <div className="flex justify-end">
+              <Link href="/student/quiz" className="text-sm font-medium text-primary hover:underline">
+                Open live practice quizzes
+              </Link>
             </div>
-            <p className="text-2xl font-bold text-card-foreground">+15%</p>
-            <p className="text-sm text-muted-foreground">Accuracy This Week</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center mx-auto mb-2">
-              <Clock className="w-6 h-6 text-accent" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">4.5h</p>
-            <p className="text-sm text-muted-foreground">Study Time This Week</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center mx-auto mb-2">
-              <Award className="w-6 h-6 text-warning" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">12</p>
-            <p className="text-sm text-muted-foreground">Badges Earned</p>
-          </div>
-
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <div className="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center mx-auto mb-2">
-              <Target className="w-6 h-6 text-success" />
-            </div>
-            <p className="text-2xl font-bold text-card-foreground">87%</p>
-            <p className="text-sm text-muted-foreground">Goal Achievement</p>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -27,6 +27,7 @@ export function MedicalImageViewer({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isDrawMode, setIsDrawMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [boundingBox, setBoundingBox] = useState<BoundingBox | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const drag = useRef(false);
@@ -52,13 +53,6 @@ export function MedicalImageViewer({
       node.removeEventListener('wheel', handleWheel);
     };
   }, []);
-
-  useEffect(() => {
-    if (!src) {
-      setBoundingBox(null);
-      setImageSize({ width: 0, height: 0 });
-    }
-  }, [src]);
 
   const reset = () => {
     setScale(1);
@@ -113,6 +107,7 @@ export function MedicalImageViewer({
           }
 
           drag.current = true;
+          setIsDragging(true);
           start.current = { x: e.clientX, y: e.clientY, tx, ty };
         }}
         onMouseMove={(e) => {
@@ -142,6 +137,7 @@ export function MedicalImageViewer({
             return;
           }
           drag.current = false;
+          setIsDragging(false);
         }}
         onMouseLeave={() => {
           if (isDrawMode) {
@@ -152,6 +148,7 @@ export function MedicalImageViewer({
             return;
           }
           drag.current = false;
+          setIsDragging(false);
         }}
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05),transparent_58%)]" />
@@ -159,7 +156,7 @@ export function MedicalImageViewer({
           className="flex h-full w-full items-center justify-center p-4"
           style={{
             transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-            transition: drag.current ? 'none' : 'transform 80ms ease-out',
+            transition: isDragging ? 'none' : 'transform 80ms ease-out',
           }}
         >
           <div
