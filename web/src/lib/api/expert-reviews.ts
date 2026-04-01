@@ -1,7 +1,35 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { ExpertReviewItem, VisualQaReport } from './types';
+import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from './types';
 import { parsePercentageBoundingBox } from '@/lib/utils/annotations';
+
+function mapExpertCitation(row: unknown): ExpertReviewCitation | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  const chunkId = String(r.chunkId ?? r.id ?? r.chunkID ?? '');
+  const sourceText = String(r.sourceText ?? r.text ?? r.chunkText ?? r.content ?? '');
+  if (!chunkId || !sourceText) return null;
+
+  const rawFlagged = r.flagged ?? r.isFlagged ?? r.hasBeenFlagged;
+
+  return {
+    chunkId,
+    sourceText,
+    referenceUrl:
+      r.referenceUrl !== undefined
+        ? String(r.referenceUrl)
+        : r.documentUrl !== undefined
+          ? String(r.documentUrl)
+          : undefined,
+    pageNumber:
+      r.pageNumber !== undefined && r.pageNumber !== null
+        ? Number(r.pageNumber)
+        : r.chunkOrder !== undefined && r.chunkOrder !== null
+          ? Number(r.chunkOrder)
+          : undefined,
+    flagged: typeof rawFlagged === 'boolean' ? rawFlagged : undefined,
+  };
+}
 
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
@@ -16,6 +44,16 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
       r.questionCoordinates ??
       r.coordinates,
   );
+  const citationSource = Array.isArray(r.citations)
+    ? r.citations
+    : Array.isArray(r.evidence)
+      ? r.evidence
+      : Array.isArray(r.ragCitations)
+        ? r.ragCitations
+        : [];
+  const citations = citationSource
+    .map(mapExpertCitation)
+    .filter((item): item is ExpertReviewCitation => item !== null);
 
   return {
     id,
@@ -27,6 +65,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     askedAt: String(r.askedAt ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,
+    citations,
   };
 }
 
@@ -58,6 +97,17 @@ export async function putExpertReview(
     await http.put(`/api/Expert/reviews/${requestId}`, JSON.stringify(payload), {
       headers: { 'Content-Type': 'application/json' },
     });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function flagRagChunk(
+  chunkId: string,
+  payload: { reason: string },
+): Promise<void> {
+  try {
+    await http.post(`/api/expert/reviews/chunks/${chunkId}/flag`, payload);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

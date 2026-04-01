@@ -235,4 +235,13 @@ export interface ExpertReviewItem {
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;
+  citations?: ExpertReviewCitation[];
+}
+
+export interface ExpertReviewCitation {
+  chunkId: string;
+  sourceText: string;
+  referenceUrl?: string;
+  pageNumber?: number;
+  flagged?: boolean;
 }
