@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
-import { Settings, Bell, Shield, Save, RotateCcw, CheckCircle, User } from 'lucide-react';
+import { Bell, Shield, Save, RotateCcw, CheckCircle, User } from 'lucide-react';
 
 export default function ExpertSettingsPage() {
   const [saved, setSaved] = useState(false);

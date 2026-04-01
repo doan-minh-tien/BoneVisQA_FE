@@ -1,7 +1,7 @@
 'use client';
 
 import { Bell, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 interface HeaderProps {
   title: string;
@@ -9,23 +9,20 @@ interface HeaderProps {
 }
 
 export default function Header({ title, subtitle }: HeaderProps) {
-  const [fullName, setFullName] = useState('Dr. Sarah Nguyen');
-  const [roleLabel, setRoleLabel] = useState('Senior Lecturer');
-
-  useEffect(() => {
-    const storedName = localStorage.getItem('fullName');
+  const fullName =
+    typeof window !== 'undefined' ? localStorage.getItem('fullName') || 'Dr. Sarah Nguyen' : 'Dr. Sarah Nguyen';
+  const roleLabel = useMemo(() => {
+    if (typeof window === 'undefined') return 'Senior Lecturer';
     const activeRole = localStorage.getItem('activeRole');
-    if (storedName) setFullName(storedName);
-    if (activeRole) {
-      const normalized = activeRole.toLowerCase();
-      const labelMap: Record<string, string> = {
-        admin: 'System Administrator',
-        lecturer: 'Senior Lecturer',
-        expert: 'Clinical Expert',
-        student: 'Medical Student',
-      };
-      setRoleLabel(labelMap[normalized] ?? 'Radiology Staff');
-    }
+    if (!activeRole) return 'Senior Lecturer';
+    const normalized = activeRole.toLowerCase();
+    const labelMap: Record<string, string> = {
+      admin: 'System Administrator',
+      lecturer: 'Senior Lecturer',
+      expert: 'Clinical Expert',
+      student: 'Medical Student',
+    };
+    return labelMap[normalized] ?? 'Radiology Staff';
   }, []);
 
   const initials = useMemo(() => {

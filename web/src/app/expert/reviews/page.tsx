@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -198,11 +199,13 @@ export default function ExpertReviewsPage() {
                                 Imaging
                               </p>
                               <div className="overflow-hidden rounded-lg border border-border-color bg-black p-2">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
                                 {item.imageUrl ? (
-                                  <img
+                                  <Image
                                     src={item.imageUrl}
                                     alt="Study"
+                                    width={1200}
+                                    height={900}
+                                    unoptimized
                                     className="mx-auto max-h-[420px] max-w-full object-contain"
                                   />
                                 ) : (
