@@ -1,269 +1,305 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
-import ClassCard from '@/components/lecturer/ClassCard';
-import AssignmentCard from '@/components/lecturer/AssignmentCard';
-import TopPerformersCard from '@/components/lecturer/dashboard/TopPerformersCard';
-import NeedsAttentionCard from '@/components/lecturer/dashboard/NeedsAttentionCard';
-import RecentAnnouncementsCard from '@/components/lecturer/dashboard/RecentAnnouncementsCard';
-import QuickStats from '@/components/lecturer/dashboard/QuickStats';
+import { SectionCard } from '@/components/shared/SectionCard';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import {
-  Users,
-  ClipboardList,
-  TrendingUp,
-  Award,
+  fetchLecturerClassLeaderboard,
+  fetchLecturerDashboardStats,
+} from '@/lib/api/lecturer-dashboard';
+import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
+import type { ClassItem, LecturerDashboardStats, LecturerLeaderboardEntry } from '@/lib/api/types';
+import type { LucideIcon } from 'lucide-react';
+import {
   Bell,
-  BarChart3,
+  BookOpen,
+  ClipboardList,
+  Loader2,
+  MessageSquare,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 
-// Mock data
-const lecturerStats = [
-  {
-    title: 'Total Students',
-    value: '184',
-    change: '+12 this semester',
-    changeType: 'positive' as const,
-    icon: Users,
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'Active Classes',
-    value: '3',
-    change: 'All on track',
-    changeType: 'neutral' as const,
-    icon: ClipboardList,
-    iconColor: 'bg-accent/10 text-accent',
-  },
-  {
-    title: 'Avg. Class Performance',
-    value: '87%',
-    change: '+5% improvement',
-    changeType: 'positive' as const,
-    icon: TrendingUp,
-    iconColor: 'bg-success/10 text-success',
-  },
-  {
-    title: 'Completion Rate',
-    value: '92%',
-    change: 'Above target',
-    changeType: 'positive' as const,
-    icon: Award,
-    iconColor: 'bg-warning/10 text-warning',
-  },
-];
-
-const activeClasses = [
-  {
-    id: '1',
-    name: 'Orthopedics - Advanced Imaging',
-    code: 'ORTH-301',
-    cohort: 'Year 3 - Cohort 2024',
-    studentCount: 68,
-    completionRate: 87,
-    nextSession: 'Tomorrow, 9:00 AM',
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    name: 'Musculoskeletal Radiology',
-    code: 'RAD-205',
-    cohort: 'Year 2 - Cohort 2025',
-    studentCount: 72,
-    completionRate: 92,
-    nextSession: 'Friday, 10:30 AM',
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    name: 'Clinical Practice - Bone Diseases',
-    code: 'CLIN-401',
-    cohort: 'Year 4 - Cohort 2023',
-    studentCount: 44,
-    completionRate: 95,
-    nextSession: 'Next Monday, 1:00 PM',
-    status: 'active' as const,
-  },
-];
-
-const pendingAssignments = [
-  {
-    id: '1',
-    title: 'Case Analysis: Complex Tibial Fractures',
-    className: 'ORTH-301',
-    dueDate: 'Today, 11:59 PM',
-    totalStudents: 68,
-    submitted: 52,
-    graded: 28,
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    title: 'Quiz: Knee Osteoarthritis Classification',
-    className: 'RAD-205',
-    dueDate: 'Tomorrow, 11:59 PM',
-    totalStudents: 72,
-    submitted: 45,
-    graded: 45,
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    title: 'Practical Exam: X-ray Interpretation',
-    className: 'CLIN-401',
-    dueDate: 'Jan 25, 2026',
-    totalStudents: 44,
-    submitted: 8,
-    graded: 2,
-    status: 'overdue' as const,
-  },
-];
-
-const topPerformers = [
-  {
-    studentName: 'Nguyen Van A',
-    studentId: 'SE171589',
-    averageScore: 96,
-    trend: 'up' as const,
-    completedCases: 24,
-    totalCases: 25,
-    lastActivity: '2 hours ago',
-    status: 'excellent' as const,
-  },
-  {
-    studentName: 'Tran Thi B',
-    studentId: 'SE182539',
-    averageScore: 94,
-    trend: 'up' as const,
-    completedCases: 23,
-    totalCases: 25,
-    lastActivity: '5 hours ago',
-    status: 'excellent' as const,
-  },
-  {
-    studentName: 'Le Van C',
-    studentId: 'SE183031',
-    averageScore: 91,
-    trend: 'stable' as const,
-    completedCases: 22,
-    totalCases: 25,
-    lastActivity: '1 day ago',
-    status: 'good' as const,
-  },
-];
-
-const needsAttention = [
-  {
-    studentName: 'Pham Thi D',
-    studentId: 'SE160640',
-    averageScore: 62,
-    trend: 'down' as const,
-    completedCases: 15,
-    totalCases: 25,
-    lastActivity: '5 days ago',
-    status: 'needs-attention' as const,
-  },
-  {
-    studentName: 'Hoang Van E',
-    studentId: 'SE175421',
-    averageScore: 68,
-    trend: 'down' as const,
-    completedCases: 17,
-    totalCases: 25,
-    lastActivity: '3 days ago',
-    status: 'needs-attention' as const,
-  },
-];
-
-const recentAnnouncements = [
-  { title: 'New case library update', date: '2 hours ago', priority: 'normal' },
-  { title: 'Midterm exam schedule', date: '1 day ago', priority: 'high' },
-  { title: 'Guest lecture next week', date: '2 days ago', priority: 'normal' },
-];
+type StatCardModel = {
+  title: string;
+  value: string | number;
+  change?: string;
+  changeType?: 'positive' | 'negative' | 'neutral';
+  icon: LucideIcon;
+  iconColor?: string;
+};
 
 export default function LecturerDashboardPage() {
+  const toast = useToast();
+  const [stats, setStats] = useState<LecturerDashboardStats | null>(null);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [leaderboard, setLeaderboard] = useState<LecturerLeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+        const [dashboardStats, classList] = await Promise.all([
+          fetchLecturerDashboardStats(),
+          userId ? fetchLecturerClasses(userId) : Promise.resolve([]),
+        ]);
+        if (!cancelled) {
+          setStats(dashboardStats);
+          setClasses(classList);
+          if (classList.length > 0) {
+            setSelectedClassId(classList[0].id);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load lecturer dashboard.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!selectedClassId) {
+      setLeaderboard([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoadingLeaderboard(true);
+      try {
+        const data = await fetchLecturerClassLeaderboard(selectedClassId);
+        if (!cancelled) {
+          setLeaderboard(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load class leaderboard.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingLeaderboard(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId, toast]);
+
+  const statCards = useMemo<StatCardModel[]>(
+    () =>
+      stats
+        ? [
+            {
+              title: 'Active classes',
+              value: stats.totalClasses,
+              change: `${stats.totalStudents} students under supervision`,
+              changeType: 'neutral' as const,
+              icon: ClipboardList,
+              iconColor: 'bg-primary/10 text-primary',
+            },
+            {
+              title: 'Student questions',
+              value: stats.totalQuestions,
+              change: `${stats.escalatedItems} escalated for clinical validation`,
+              changeType: 'neutral' as const,
+              icon: MessageSquare,
+              iconColor: 'bg-cyan-accent/10 text-cyan-accent',
+            },
+            {
+              title: 'Pending reviews',
+              value: stats.pendingReviews,
+              change: 'Awaiting expert follow-up',
+              changeType: stats.pendingReviews > 0 ? 'negative' : 'positive',
+              icon: Bell,
+              iconColor: 'bg-warning/10 text-warning',
+            },
+            {
+              title: 'Average quiz score',
+              value: `${stats.averageQuizScore}%`,
+              change: 'Across submitted student attempts',
+              changeType: stats.averageQuizScore >= 70 ? 'positive' : 'neutral',
+              icon: TrendingUp,
+              iconColor: 'bg-success/10 text-success',
+            },
+          ]
+        : [],
+    [stats],
+  );
+
   return (
     <div className="min-h-screen">
-      <Header
-        title="Lecturer Dashboard"
-        subtitle="Manage classes and track student progress"
-      />
+      <Header title="Lecturer Dashboard" subtitle="Live class activity, triage throughput, and quiz performance" />
 
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {lecturerStats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
+      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/lecturer/announcements">
+            <Button>
+              <Bell className="h-4 w-4" />
+              Send Announcement
+            </Button>
+          </Link>
+          <Link href="/lecturer/analytics">
+            <Button variant="outline">
+              <TrendingUp className="h-4 w-4" />
+              View Analytics
+            </Button>
+          </Link>
+          <Link href="/lecturer/qa-triage">
+            <Button variant="outline">
+              <MessageSquare className="h-4 w-4" />
+              Open Triage Workbench
+            </Button>
+          </Link>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3 mb-6">
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors duration-150 cursor-pointer">
-            <Bell className="w-5 h-5" />
-            <span className="font-medium">Send Announcement</span>
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors duration-150 cursor-pointer">
-            <BarChart3 className="w-5 h-5" />
-            <span className="font-medium">View Analytics</span>
-          </button>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Left Column - Classes & Assignments */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Active Classes */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">My Classes</h2>
-                  <p className="text-sm text-muted-foreground">3 active classes this semester</p>
-                </div>
-                <a href="/lecturer/classes" className="text-sm text-primary hover:underline cursor-pointer">
-                  View all
-                </a>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {activeClasses.slice(0, 2).map((class_) => (
-                  <ClassCard key={class_.id} {...class_} />
-                ))}
-              </div>
-            </div>
-
-            {/* Pending Assignments */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-card-foreground">Pending Assignments</h2>
-                  <p className="text-sm text-muted-foreground">8 assignments require attention</p>
-                </div>
-                <a href="/lecturer/assignments" className="text-sm text-primary hover:underline cursor-pointer">
-                  View all
-                </a>
-              </div>
-              <div className="space-y-4">
-                {pendingAssignments.map((assignment) => (
-                  <AssignmentCard key={assignment.id} {...assignment} />
-                ))}
-              </div>
+        {loading ? (
+          <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-border bg-card">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Loading dashboard metrics...
             </div>
           </div>
-
-          {/* Right Column - Student Performance */}
-          <div className="space-y-6">
-            {/* Top Performers */}
-            <TopPerformersCard performers={topPerformers} />
-
-            {/* Needs Attention */}
-            <NeedsAttentionCard students={needsAttention} />
-
-            {/* Recent Announcements */}
-            <RecentAnnouncementsCard announcements={recentAnnouncements} />
+        ) : !stats ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
+            <Users className="mx-auto h-10 w-10 text-muted-foreground" />
+            <h2 className="mt-4 text-lg font-semibold text-card-foreground">No dashboard data available</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The lecturer stats endpoint returned no data. Verify the backend seed data or account scope.
+            </p>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {statCards.map((stat) => (
+                <StatCard key={stat.title} {...stat} />
+              ))}
+            </div>
 
-        {/* Bottom Quick Stats */}
-        <QuickStats />
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+              <div className="space-y-6">
+                <SectionCard title="Operational snapshot">
+                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border bg-background/70 p-4">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Users className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-medium text-card-foreground">Students</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.totalStudents}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Across all active lecturer classes</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background/70 p-4">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-accent/10 text-cyan-accent">
+                        <MessageSquare className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-medium text-card-foreground">Escalations</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.escalatedItems}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Requests forwarded to experts</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background/70 p-4">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-success/10 text-success">
+                        <BookOpen className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-medium text-card-foreground">Quiz performance</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.averageQuizScore}%</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Average score from submitted quizzes</p>
+                    </div>
+                  </div>
+                </SectionCard>
+              </div>
+
+              <div className="space-y-6">
+                <SectionCard
+                  title="Student leaderboard"
+                  description="Monitor who is excelling and who needs support in the selected class."
+                >
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="max-w-sm flex-1">
+                      <label htmlFor="leaderboard-class" className="text-sm font-medium text-card-foreground">
+                        Class
+                      </label>
+                      <select
+                        id="leaderboard-class"
+                        value={selectedClassId}
+                        onChange={(e) => setSelectedClassId(e.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="">Select class...</option>
+                        {classes.map((classItem) => (
+                          <option key={classItem.id} value={classItem.id}>
+                            {classItem.className} ({classItem.semester})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <Link href="/lecturer/classes" className="text-sm font-medium text-primary hover:underline">
+                      Manage classes
+                    </Link>
+                  </div>
+
+                  {!selectedClassId ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      Select a class to load leaderboard analytics.
+                    </div>
+                  ) : loadingLeaderboard ? (
+                    <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-border bg-background/60">
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        Loading student leaderboard...
+                      </div>
+                    </div>
+                  ) : leaderboard.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      No leaderboard data available for this class yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-border">
+                      <table className="w-full min-w-[520px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            <th className="px-4 py-3">Student</th>
+                            <th className="px-4 py-3">Cases Viewed</th>
+                            <th className="px-4 py-3">Questions Asked</th>
+                            <th className="px-4 py-3">Avg Quiz Score</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {leaderboard.map((entry, index) => (
+                            <tr key={`${entry.studentId ?? entry.studentName}-${index}`} className="even:bg-slate-50/55 hover:bg-blue-50/70">
+                              <td className="px-4 py-3 font-medium text-card-foreground">{entry.studentName}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{entry.totalCasesViewed}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{entry.totalQuestionsAsked}</td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
+                                  {entry.averageQuizScore.toFixed(1)}%
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </SectionCard>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

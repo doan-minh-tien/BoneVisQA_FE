@@ -1,4 +1,4 @@
-import StudentSidebar from '@/components/StudentSidebar';
+import { AppShell } from '@/components/AppShell';
 
 export default function StudentLayout({
   children,
@@ -6,11 +6,6 @@ export default function StudentLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <StudentSidebar />
-      <main className="ml-64">
-        {children}
-      </main>
-    </div>
+    <AppShell role="student">{children}</AppShell>
   );
 }

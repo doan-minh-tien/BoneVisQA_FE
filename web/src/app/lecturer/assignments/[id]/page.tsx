@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import StatCard from '@/components/StatCard';
 import {
@@ -13,9 +12,6 @@ import {
   ArrowLeft,
   Settings,
   Trash2,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   AlertCircle,
 } from 'lucide-react';
 
@@ -112,9 +108,12 @@ const submissionStatusConfig = {
 
 const tabs = ['Submissions', 'Settings'] as const;
 
-export default function AssignmentDetailPage() {
-  const params = useParams();
-  const assignmentId = params.id as string;
+export default function AssignmentDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: assignmentId } = use(params);
   const [activeTab, setActiveTab] = useState<string>('Submissions');
 
   const assignment = assignmentsData[assignmentId] || assignmentsData['1'];

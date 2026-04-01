@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShieldCheck, ShieldOff, Loader2 } from 'lucide-react';
-import { type CaseDto } from '@/lib/api';
+import type { CaseDto } from '@/lib/api/types';
 
 const difficultyColors: Record<string, string> = {
   easy: 'bg-success/10 text-success',

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
+import CasesTable from '@/components/lecturer/cases/CasesTable';
 import {
   FolderOpen,
   Search,
@@ -9,17 +11,17 @@ import {
   XCircle,
   Loader2,
   Eye,
+  ShieldCheck,
+  ShieldOff,
   Plus,
 } from 'lucide-react';
 import {
   getLecturerCases,
   getLecturerClasses,
   approveCase,
-  type CaseDto,
-  type ClassItem,
-} from '@/lib/api';
-import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
-import CasesTable from '@/components/lecturer/cases/CasesTable';
+  assignCasesToClass,
+} from '@/lib/api/lecturer';
+import type { CaseDto, ClassItem } from '@/lib/api/types';
 
 type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
 
@@ -41,11 +43,10 @@ export default function LecturerCasesPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const token = localStorage.getItem('token') || '';
         const userId = localStorage.getItem('userId') || '';
         const [casesData, classesData] = await Promise.all([
-          getLecturerCases(token),
-          getLecturerClasses(userId, token),
+          getLecturerCases(),
+          getLecturerClasses(userId),
         ]);
         setCases(casesData);
         setClasses(classesData);
@@ -61,8 +62,7 @@ export default function LecturerCasesPage() {
   const handleToggleApprove = async (c: CaseDto) => {
     setTogglingIds((prev) => new Set(prev).add(c.id));
     try {
-      const token = localStorage.getItem('token') || '';
-      await approveCase(c.id, !c.isApproved, token);
+      await approveCase(c.id, !c.isApproved);
       setCases((prev) =>
         prev.map((item) => (item.id === c.id ? { ...item, isApproved: !item.isApproved } : item)),
       );
@@ -77,11 +77,33 @@ export default function LecturerCasesPage() {
     }
   };
 
-  // We removed handleAssign here as it is moved to AssignCasesDialog.
-  // We just need a way to close dialog and clear states.
+  const handleAssign = async () => {
+    if (!assignClassId || selectedCases.size === 0) {
+      setAssignError('Please select a class and at least one case.');
+      return;
+    }
+    setAssigning(true);
+    setAssignError('');
+    try {
+      await assignCasesToClass(assignClassId, {
+        caseIds: Array.from(selectedCases),
+        isMandatory: true,
+      });
+      setShowAssign(false);
+      setSelectedCases(new Set());
+      setAssignClassId('');
+    } catch {
+      setAssignError('Failed to assign cases. Please try again.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const handleAssignSuccess = () => {
     setShowAssign(false);
     setSelectedCases(new Set());
+    setAssignClassId('');
+    setAssignError('');
   };
 
   const toggleCaseSelection = (id: string) => {

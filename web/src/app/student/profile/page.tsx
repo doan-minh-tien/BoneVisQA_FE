@@ -1,237 +1,227 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
-import { Camera, Save } from 'lucide-react';
-
-// Mock data - sẽ thay bằng API calls
-const initialProfile = {
-  firstName: 'Nguyen Van',
-  lastName: 'A',
-  email: 'student@bonevisqa.com',
-  phone: '0901234567',
-  dateOfBirth: '2002-05-15',
-  gender: 'male',
-  studentId: 'SE171234',
-  university: 'FPT University',
-  faculty: 'Software Engineering',
-  cohort: 'K20',
-  academicYear: '4',
-};
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { fetchStudentProfile, updateStudentProfile } from '@/lib/api/student';
+import type { StudentProfile, StudentProfileUpdatePayload } from '@/lib/api/types';
+import { Camera, Loader2, Save, ShieldCheck } from 'lucide-react';
 
 export default function StudentProfilePage() {
-  const [profile, setProfile] = useState(initialProfile);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [form, setForm] = useState<StudentProfileUpdatePayload>({
+    fullName: '',
+    schoolCohort: '',
+    avatarUrl: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setProfile({ ...profile, [e.target.name]: e.target.value });
-    setSaved(false);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchStudentProfile();
+        if (cancelled) return;
+        setProfile(data);
+        setForm({
+          fullName: data.fullName ?? '',
+          schoolCohort: data.schoolCohort ?? '',
+          avatarUrl: data.avatarUrl ?? '',
+        });
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load student profile.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const initials = useMemo(() => {
+    const source = form.fullName || profile?.fullName || 'BV';
+    return source
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('');
+  }, [form.fullName, profile?.fullName]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Call API to save profile
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setSaving(true);
+    try {
+      const updated = await updateStudentProfile(form);
+      setProfile(updated);
+      setForm({
+        fullName: updated.fullName ?? '',
+        schoolCohort: updated.schoolCohort ?? '',
+        avatarUrl: updated.avatarUrl ?? '',
+      });
+      toast.success('Profile updated successfully.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile.');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen">
+        <Header title="Profile" subtitle="Manage your personal information" />
+        <div className="mx-auto max-w-3xl p-6">
+          <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border bg-card">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Loading student profile...
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen">
+        <Header title="Profile" subtitle="Manage your personal information" />
+        <div className="mx-auto max-w-3xl p-6">
+          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
+            <h2 className="text-lg font-semibold text-card-foreground">No profile data available</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The student profile endpoint returned no user record for this session.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
       <Header title="Profile" subtitle="Manage your personal information" />
 
-      <div className="p-6 max-w-3xl mx-auto">
+      <div className="mx-auto max-w-3xl p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Avatar */}
-          <div className="bg-card rounded-xl border border-border p-6 flex items-center gap-6">
+          <div className="flex items-center gap-6 rounded-2xl border border-border bg-card p-6 shadow-sm">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-3xl font-bold text-primary">
-                {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
+              {form.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.avatarUrl}
+                  alt={form.fullName || 'Student avatar'}
+                  className="h-24 w-24 rounded-full border border-border object-cover"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 text-3xl font-bold text-primary">
+                  {initials || 'BV'}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-md">
+                <Camera className="h-4 w-4" />
               </div>
-              <button
-                type="button"
-                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/90 cursor-pointer"
-              >
-                <Camera className="w-4 h-4" />
-              </button>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-card-foreground">
-                {profile.firstName} {profile.lastName}
-              </h2>
-              <p className="text-sm text-muted-foreground">{profile.studentId} - {profile.university}</p>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold text-card-foreground">{form.fullName}</h2>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
-            </div>
-          </div>
-
-          {/* Personal Information */}
-          <div className="bg-card rounded-xl border border-border p-6">
-            <h3 className="text-lg font-semibold text-card-foreground mb-5">Personal Information</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  First Name
-                </label>
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  value={profile.firstName}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Last Name
-                </label>
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  value={profile.lastName}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={profile.email}
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/30 text-muted-foreground cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Phone Number
-                </label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={profile.phone}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="dateOfBirth" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Date of Birth
-                </label>
-                <input
-                  id="dateOfBirth"
-                  name="dateOfBirth"
-                  type="date"
-                  value={profile.dateOfBirth}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="gender" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Gender
-                </label>
-                <select
-                  id="gender"
-                  name="gender"
-                  value={profile.gender}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  {form.schoolCohort || 'No cohort assigned'}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                    profile.isActive ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
+                  }`}
                 >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </select>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {profile.isActive ? 'Active account' : 'Inactive account'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Academic Information */}
-          <div className="bg-card rounded-xl border border-border p-6">
-            <h3 className="text-lg font-semibold text-card-foreground mb-5">Academic Information</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label htmlFor="studentId" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Student ID
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Editable profile fields</h3>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-card-foreground">
+                  Full name
                 </label>
                 <input
-                  id="studentId"
-                  name="studentId"
-                  type="text"
-                  value={profile.studentId}
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/30 text-muted-foreground cursor-not-allowed"
+                  id="fullName"
+                  value={form.fullName}
+                  onChange={(e) => setForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                  className="w-full rounded-xl border border-border bg-input px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
 
               <div>
-                <label htmlFor="university" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  University
+                <label htmlFor="schoolCohort" className="mb-1.5 block text-sm font-medium text-card-foreground">
+                  School cohort
                 </label>
                 <input
-                  id="university"
-                  name="university"
-                  type="text"
-                  value={profile.university}
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/30 text-muted-foreground cursor-not-allowed"
+                  id="schoolCohort"
+                  value={form.schoolCohort}
+                  onChange={(e) => setForm((prev) => ({ ...prev, schoolCohort: e.target.value }))}
+                  placeholder="e.g. Orthopedics - Cohort 2023"
+                  className="w-full rounded-xl border border-border bg-input px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
 
               <div>
-                <label htmlFor="faculty" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Faculty / Major
+                <label htmlFor="avatarUrl" className="mb-1.5 block text-sm font-medium text-card-foreground">
+                  Avatar URL
                 </label>
                 <input
-                  id="faculty"
-                  name="faculty"
-                  type="text"
-                  value={profile.faculty}
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/30 text-muted-foreground cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="cohort" className="block text-sm font-medium text-card-foreground mb-1.5">
-                  Cohort
-                </label>
-                <input
-                  id="cohort"
-                  name="cohort"
-                  type="text"
-                  value={profile.cohort}
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/30 text-muted-foreground cursor-not-allowed"
+                  id="avatarUrl"
+                  value={form.avatarUrl}
+                  onChange={(e) => setForm((prev) => ({ ...prev, avatarUrl: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full rounded-xl border border-border bg-input px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             </div>
           </div>
 
-          {/* Save Button */}
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Read-only account context</h3>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-card-foreground">Email</p>
+                <div className="rounded-xl border border-border bg-background/60 px-4 py-2.5 text-sm text-muted-foreground">
+                  {profile.email}
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-card-foreground">Roles</p>
+                <div className="flex min-h-[46px] flex-wrap gap-2 rounded-xl border border-border bg-background/60 px-4 py-2.5">
+                  {profile.roles.length > 0 ? (
+                    profile.roles.map((role) => (
+                      <span key={role} className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-primary">
+                        {role}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No roles returned</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-4">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
+            <Button type="submit" isLoading={saving} disabled={saving}>
+              {!saving && <Save className="h-4 w-4" />}
               Save Changes
-            </button>
-            {saved && (
-              <span className="text-sm text-success font-medium">Profile saved successfully!</span>
-            )}
+            </Button>
           </div>
         </form>
       </div>

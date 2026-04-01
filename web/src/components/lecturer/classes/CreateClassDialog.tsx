@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { createClass } from '@/lib/api';
+import { createClass } from '@/lib/api/lecturer';
+import type { ClassItem } from '@/lib/api/types';
 
 interface CreateClassDialogProps {
   onClose: () => void;
-  onSuccess: (createdClass: any) => void;
+  onSuccess: (createdClass: ClassItem) => void;
 }
 
 export default function CreateClassDialog({ onClose, onSuccess }: CreateClassDialogProps) {
@@ -20,12 +21,12 @@ export default function CreateClassDialog({ onClose, onSuccess }: CreateClassDia
     setCreating(true);
     setCreateError('');
     try {
-      const token = localStorage.getItem('token') || '';
       const userId = localStorage.getItem('userId') || '';
-      const created = await createClass(
-        { className: newClassName.trim(), semester: newSemester.trim(), lecturerId: userId },
-        token,
-      );
+      const created = await createClass({
+        className: newClassName.trim(),
+        semester: newSemester.trim(),
+        lecturerId: userId,
+      });
       onSuccess(created);
       onClose();
     } catch {

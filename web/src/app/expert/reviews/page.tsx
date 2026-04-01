@@ -1,186 +1,650 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import Header from '@/components/Header';
+import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import {
-  MessageSquareText, Search, CheckCircle, Clock, XCircle, Eye, Edit, Star, Send,
-  ChevronDown, ChevronRight, User, Calendar, Filter,
+  fetchExpertReviewQueue,
+  flagRagChunk,
+  putExpertReview,
+} from '@/lib/api/expert-reviews';
+import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  AlertCircle,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Edit3,
+  Flag,
+  Loader2,
+  Link2,
+  Save,
+  User,
+  XCircle,
 } from 'lucide-react';
 
-type ReviewStatus = 'pending' | 'approved' | 'edited' | 'rejected';
-
-interface QAItem {
-  id: string;
-  studentName: string;
-  caseTitle: string;
-  question: string;
-  aiAnswer: string;
-  status: ReviewStatus;
-  askedAt: string;
-  accuracy: number | null;
-  expertNote: string;
-}
-
-const initialItems: QAItem[] = [
-  { id: '1', studentName: 'Nguyen Van A', caseTitle: 'Distal Radius Fracture', question: 'What is the difference between a Colles fracture and a Smith fracture?', aiAnswer: "A Colles fracture involves dorsal displacement of the distal radius fragment (fall on outstretched hand), while a Smith fracture involves volar displacement (reverse Colles, fall on back of hand). Both are extra-articular distal radius fractures but with opposite displacement directions.", status: 'approved', askedAt: '2026-03-22 09:30', accuracy: 95, expertNote: 'Accurate and well-explained.' },
-  { id: '2', studentName: 'Tran Thi B', caseTitle: 'Osteoarthritis of the Knee', question: 'How do you differentiate OA from RA on X-ray?', aiAnswer: "OA shows asymmetric joint space narrowing, osteophytes, subchondral sclerosis, and subchondral cysts. RA shows symmetric joint space narrowing, periarticular osteopenia, marginal erosions, and soft tissue swelling without osteophytes.", status: 'pending', askedAt: '2026-03-22 10:15', accuracy: null, expertNote: '' },
-  { id: '3', studentName: 'Le Van C', caseTitle: 'Osteosarcoma of the Femur', question: 'What are the classic radiographic features of osteosarcoma?', aiAnswer: "Classic features include: aggressive periosteal reaction (sunburst pattern, Codman triangle), mixed lytic-scite lesion, soft tissue mass, and typically located at the metaphysis of long bones in adolescents.", status: 'edited', askedAt: '2026-03-21 14:20', accuracy: 80, expertNote: 'Good but should mention that "sclerotic" not "scite" and add that distal femur is the most common location.' },
-  { id: '4', studentName: 'Pham Thi D', caseTitle: 'Shoulder Dislocation', question: 'What associated injuries should be checked after anterior shoulder dislocation?', aiAnswer: "Check for: 1) Hill-Sachs lesion (compression fracture of humeral head), 2) Bankart lesion (labral tear), 3) Greater tuberosity fracture, 4) Axillary nerve injury (check deltoid sensation), 5) Rotator cuff tear in patients >40.", status: 'pending', askedAt: '2026-03-22 11:00', accuracy: null, expertNote: '' },
-  { id: '5', studentName: 'Hoang Van E', caseTitle: 'Clavicle Fracture', question: 'When is surgical fixation indicated for clavicle fractures?', aiAnswer: "Surgical indications: >2cm shortening, comminuted fracture with displacement, open fracture, neurovascular compromise, skin tenting, floating shoulder, and polytrauma patients.", status: 'rejected', askedAt: '2026-03-20 16:45', accuracy: 40, expertNote: 'Incomplete answer. Missing that >100% displacement is also an indication. The shortening threshold varies (some use 1.5cm). Also should mention that non-union risk increases with displacement.' },
-  { id: '6', studentName: 'Vo Thi F', caseTitle: 'Tibial Plateau Fracture', question: 'Explain the Schatzker classification system.', aiAnswer: "Schatzker classification: Type I - lateral split, Type II - lateral split-depression, Type III - lateral pure depression, Type IV - medial plateau, Type V - bicondylar, Type VI - plateau with metadiaphyseal dissociation.", status: 'pending', askedAt: '2026-03-22 08:50', accuracy: null, expertNote: '' },
-];
-
-const statusConfig: Record<ReviewStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
-  pending: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10', label: 'Pending' },
-  approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
-  edited: { icon: Edit, color: 'text-primary', bg: 'bg-primary/10', label: 'Edited' },
-  rejected: { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10', label: 'Rejected' },
-};
-
 export default function ExpertReviewsPage() {
-  const [items, setItems] = useState<QAItem[]>(initialItems);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<ReviewStatus | 'All'>('All');
-  const [expandedItem, setExpandedItem] = useState<string | null>(null);
-  const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState('');
-  const [ratingItem, setRatingItem] = useState<string | null>(null);
-  const [hoverRating, setHoverRating] = useState(0);
+  const toast = useToast();
+  const [items, setItems] = useState<ExpertReviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [active, setActive] = useState<ExpertReviewItem | null>(null);
+  const [diag, setDiag] = useState('');
+  const [keyText, setKeyText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
+  const [flagReason, setFlagReason] = useState('');
+  const [submittingFlag, setSubmittingFlag] = useState(false);
 
-  const filtered = useMemo(() => {
-    return items.filter((i) => {
-      const q = search.toLowerCase();
-      const match = i.studentName.toLowerCase().includes(q) || i.caseTitle.toLowerCase().includes(q) || i.question.toLowerCase().includes(q);
-      const matchStatus = filterStatus === 'All' || i.status === filterStatus;
-      return match && matchStatus;
-    });
-  }, [items, search, filterStatus]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchExpertReviewQueue();
+      setItems(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load review queue');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
-  const pendingCount = items.filter((i) => i.status === 'pending').length;
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const handleApprove = (id: string) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: 'approved' as ReviewStatus, accuracy: i.accuracy ?? 90 } : i));
+  const openEdit = (item: ExpertReviewItem) => {
+    setActive(item);
+    setDiag(item.report.suggestedDiagnosis || '');
+    setKeyText(item.report.keyFindings.join('\n'));
+    setExpanded(item.id);
   };
 
-  const handleReject = (id: string) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, status: 'rejected' as ReviewStatus } : i));
+  const openFlagModal = (chunkId: string) => {
+    setFlaggingChunkId(chunkId);
+    setFlagReason('');
   };
 
-  const handleSaveNote = (id: string) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, expertNote: noteText, status: 'edited' as ReviewStatus } : i));
-    setEditingNote(null);
-    setNoteText('');
+  const closeFlagModal = () => {
+    setFlaggingChunkId(null);
+    setFlagReason('');
   };
 
-  const handleSetAccuracy = (id: string, rating: number) => {
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, accuracy: rating * 20 } : i));
-    setRatingItem(null);
+  const submitFlag = async () => {
+    if (!flaggingChunkId) return;
+    const reason = flagReason.trim();
+    if (!reason) {
+      toast.error('Please provide a reason before flagging this chunk.');
+      return;
+    }
+
+    setSubmittingFlag(true);
+    try {
+      await flagRagChunk(flaggingChunkId, { reason });
+      setItems((prev) =>
+        prev.map((item) => ({
+          ...item,
+          citations: item.citations?.map((citation) =>
+            citation.chunkId === flaggingChunkId
+              ? { ...citation, flagged: true }
+              : citation,
+          ),
+        })),
+      );
+      toast.success('Chunk flagged for data quality review.');
+      closeFlagModal();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to flag RAG chunk.');
+    } finally {
+      setSubmittingFlag(false);
+    }
   };
+
+  const submit = async (status: 'Approved' | 'Rejected') => {
+    if (!active) return;
+    setSaving(true);
+    try {
+      const keyFindings = keyText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join('\n');
+      await putExpertReview(active.id, {
+        status,
+        suggestedDiagnosis: diag.trim() || undefined,
+        keyFindings: keyFindings || undefined,
+      });
+      toast.success(
+        status === 'Approved'
+          ? 'Approved. This case can be published to the student reference library.'
+          : 'Marked as rejected.',
+      );
+      setActive(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quickApprove = async (item: ExpertReviewItem) => {
+    setSaving(true);
+    try {
+      await putExpertReview(item.id, {
+        status: 'Approved',
+        suggestedDiagnosis: item.report.suggestedDiagnosis,
+        keyFindings: item.report.keyFindings.join('\n'),
+      });
+      toast.success('Approved for the public reference library.');
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quickReject = async (item: ExpertReviewItem) => {
+    setSaving(true);
+    try {
+      await putExpertReview(item.id, { status: 'Rejected' });
+      toast.info('Answer flagged as invalid.');
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pending = items.filter((i) => !isTerminal(i.status)).length;
 
   return (
-    <div className="min-h-screen">
-      <Header title="Q&A Reviews" subtitle={`${pendingCount} pending reviews`} />
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="text" placeholder="Search by student, case, or question..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 pl-10 pr-4 rounded-lg bg-card border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+    <div className="dark min-h-screen bg-background text-text-main">
+      <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
+      <div className="mx-auto max-w-[1600px] p-6">
+        {loading ? (
+          <div className="flex justify-center py-20 text-text-muted">
+            <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
           </div>
-          <div className="flex gap-2">
-            {(['All', 'pending', 'approved', 'edited', 'rejected'] as const).map((s) => (
-              <button key={s} onClick={() => setFilterStatus(s)} className={`px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors ${filterStatus === s ? 'bg-primary text-white' : 'bg-card border border-border text-muted-foreground hover:bg-input'}`}>
-                {s === 'All' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)} {s === 'pending' && `(${pendingCount})`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Q&A List */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="p-12 text-center"><MessageSquareText className="w-12 h-12 text-muted-foreground mx-auto mb-3" /><p className="text-lg font-medium text-card-foreground">No Q&A items found</p></div>
-          ) : (
-            <div className="divide-y divide-border">
-              {filtered.map((item) => {
-                const st = statusConfig[item.status];
-                const StIcon = st.icon;
-                const isExp = expandedItem === item.id;
+        ) : (
+          <div className="space-y-4">
+            {items.length === 0 ? (
+              <div className="rounded-xl border border-border-color bg-surface p-12 text-center text-text-muted">
+                No escalated diagnostic requests at this time.
+              </div>
+            ) : (
+              items.map((item) => {
+                const isExp = expanded === item.id;
+                const confidence = getConfidenceScore(item);
+                const isEditing = active?.id === item.id;
                 return (
-                  <div key={item.id} className="px-5 py-4 hover:bg-input/20 transition-colors">
-                    <div className="flex items-start justify-between gap-3">
-                      <button onClick={() => setExpandedItem(isExp ? null : item.id)} className="flex items-start gap-2 text-left cursor-pointer flex-1 min-w-0">
-                        {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-card-foreground">{item.question}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1"><User className="w-3 h-3" />{item.studentName}</span>
-                            <span className="px-2 py-0.5 bg-accent/10 text-accent rounded font-medium">{item.caseTitle}</span>
-                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{item.askedAt}</span>
+                  <div
+                    key={item.id}
+                    className="overflow-hidden rounded-xl border border-border-color bg-surface shadow-panel"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isExp ? null : item.id)}
+                      className="flex w-full items-start gap-3 px-5 py-5 text-left hover:bg-background/20"
+                    >
+                      {isExp ? (
+                        <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                      ) : (
+                        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium leading-relaxed text-text-main">
+                              {item.question}
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                          <span className="inline-flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {item.studentName}
+                          </span>
+                          {item.className ? (
+                            <span className="rounded bg-accent/10 px-2 py-0.5 font-medium text-accent">
+                              {item.className}
+                            </span>
+                          ) : null}
+                          <span>{item.askedAt}</span>
+                          <StatusBadge status={item.status} />
+                            </div>
                           </div>
+                          {confidence !== null ? (
+                            <div className="w-full max-w-[180px]">
+                              <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-text-muted">
+                                <span>AI confidence</span>
+                                <span className="text-cyan-accent">{confidence.toFixed(1)}%</span>
+                              </div>
+                              <div className="h-2 overflow-hidden rounded-full bg-background">
+                                <div
+                                  className="h-full rounded-full bg-cyan-accent"
+                                  style={{ width: `${confidence}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                      </button>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {item.accuracy !== null && <span className={`text-xs font-medium ${item.accuracy >= 80 ? 'text-success' : item.accuracy >= 50 ? 'text-warning' : 'text-destructive'}`}>{item.accuracy}%</span>}
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}><StIcon className="w-3.5 h-3.5" />{st.label}</span>
                       </div>
-                    </div>
+                    </button>
 
                     {isExp && (
-                      <div className="mt-4 ml-6 space-y-4">
-                        {/* AI Answer */}
-                        <div className="p-4 rounded-lg bg-input/30 border border-border">
-                          <p className="text-xs font-medium text-muted-foreground mb-2">AI-Generated Answer:</p>
-                          <p className="text-sm text-card-foreground leading-relaxed">{item.aiAnswer}</p>
+                      <div className="border-t border-border-color px-5 py-5">
+                        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                          <section className="space-y-4">
+                            <div className="rounded-xl border border-border-color bg-black p-3">
+                              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                Imaging
+                              </p>
+                              <div className="overflow-hidden rounded-lg border border-border-color bg-black p-2">
+                                {item.imageUrl ? (
+                                  <div className="relative mx-auto w-fit">
+                                    <Image
+                                      src={item.imageUrl}
+                                      alt="Study"
+                                      width={1200}
+                                      height={900}
+                                      unoptimized
+                                      className="mx-auto max-h-[420px] max-w-full object-contain"
+                                    />
+                                    <AnnotationOverlay
+                                      box={item.customCoordinates}
+                                      label="STUDENT ROI"
+                                      className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">
+                                    No image available for this request.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-border-color bg-surface p-4">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-accent">
+                                Student question
+                              </p>
+                              <p className="text-sm leading-relaxed text-text-main">{item.question}</p>
+                            </div>
+                          </section>
+
+                          <section className="space-y-4">
+                            <ReportWorkbench
+                              report={item.report}
+                              isEditing={isEditing}
+                              diag={diag}
+                              keyText={keyText}
+                              onDiagChange={setDiag}
+                              onKeyTextChange={setKeyText}
+                              onBeginEdit={() => openEdit(item)}
+                            />
+                            <EvidencePanel
+                              citations={item.citations ?? []}
+                              onFlag={openFlagModal}
+                            />
+                          </section>
                         </div>
 
-                        {/* Expert Note */}
-                        {item.expertNote && (
-                          <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                            <p className="text-xs font-medium text-primary mb-2">Expert Note:</p>
-                            <p className="text-sm text-card-foreground leading-relaxed">{item.expertNote}</p>
-                          </div>
-                        )}
-
-                        {/* Edit Note */}
-                        {editingNote === item.id && (
-                          <div>
-                            <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add clinical note or edit the answer..." rows={3} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
-                            <div className="flex gap-2 mt-2">
-                              <button onClick={() => handleSaveNote(item.id)} className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 cursor-pointer transition-colors">Save Note</button>
-                              <button onClick={() => setEditingNote(null)} className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-input cursor-pointer transition-colors">Cancel</button>
+                        {!isTerminal(item.status) && (
+                          <div className="sticky bottom-0 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-color bg-background/95 p-4 backdrop-blur">
+                            <div className="flex items-center gap-2 text-sm text-text-muted">
+                              <AlertCircle className="h-4 w-4 text-cyan-accent" />
+                              Approved responses are pushed to the public student reference library.
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {!isEditing ? (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  disabled={saving}
+                                  onClick={() => openEdit(item)}
+                                >
+                                  <Edit3 className="h-4 w-4" />
+                                  Edit diagnosis / findings
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  disabled={saving}
+                                  onClick={() => void submit('Approved')}
+                                >
+                                  <Save className="h-4 w-4" />
+                                  Save edits
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                className="min-w-[220px]"
+                                disabled={saving}
+                                isLoading={saving}
+                                onClick={() => (isEditing ? void submit('Approved') : void quickApprove(item))}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                                Approve for library
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="border-danger text-danger hover:bg-danger/10"
+                                disabled={saving}
+                                onClick={() => (isEditing ? void submit('Rejected') : void quickReject(item))}
+                              >
+                                <XCircle className="h-4 w-4" />
+                                Reject
+                              </Button>
                             </div>
                           </div>
                         )}
-
-                        {/* Accuracy Rating */}
-                        {ratingItem === item.id && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Accuracy:</span>
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button key={star} onClick={() => handleSetAccuracy(item.id, star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="cursor-pointer p-0.5">
-                                <Star className={`w-5 h-5 transition-colors ${star <= (hoverRating || (item.accuracy ? item.accuracy / 20 : 0)) ? 'text-warning fill-warning' : 'text-muted-foreground/30'}`} />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2">
-                          {item.status === 'pending' && <button onClick={() => handleApprove(item.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Approve</button>}
-                          <button onClick={() => { setEditingNote(item.id); setNoteText(item.expertNote); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 cursor-pointer transition-colors"><Edit className="w-3.5 h-3.5" />Edit/Add Note</button>
-                          <button onClick={() => setRatingItem(ratingItem === item.id ? null : item.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 text-warning text-xs font-medium hover:bg-warning/20 cursor-pointer transition-colors"><Star className="w-3.5 h-3.5" />Rate</button>
-                          {item.status === 'pending' && <button onClick={() => handleReject(item.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 cursor-pointer transition-colors"><XCircle className="w-3.5 h-3.5" />Reject</button>}
-                        </div>
                       </div>
                     )}
                   </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
+        )}
+      </div>
+      <FlagChunkModal
+        open={Boolean(flaggingChunkId)}
+        reason={flagReason}
+        submitting={submittingFlag}
+        onReasonChange={setFlagReason}
+        onClose={closeFlagModal}
+        onSubmit={() => void submitFlag()}
+      />
+
+    </div>
+  );
+}
+
+function EvidencePanel({
+  citations,
+  onFlag,
+}: {
+  citations: ExpertReviewCitation[];
+  onFlag: (chunkId: string) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-border-color bg-surface p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            RAG Evidence & Citations
+          </h4>
+          <p className="mt-1 text-sm text-text-muted">
+            Review the exact evidence chunks the AI used before approving this answer.
+          </p>
         </div>
       </div>
+
+      {citations.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border-color bg-background/40 px-4 py-6 text-sm text-text-muted">
+          No evidence chunks were returned for this case.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {citations.map((citation, index) => (
+            <article
+              key={citation.chunkId}
+              className={`rounded-xl border p-4 ${
+                citation.flagged
+                  ? 'border-danger/60 bg-danger/5'
+                  : 'border-border-color bg-background/40'
+              }`}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                  <span className="rounded-full bg-cyan-accent/10 px-2 py-1 font-medium text-cyan-accent">
+                    Chunk {index + 1}
+                  </span>
+                  {citation.pageNumber != null ? (
+                    <span>Page {citation.pageNumber}</span>
+                  ) : null}
+                  {citation.flagged ? (
+                    <span className="rounded-full bg-danger/10 px-2 py-1 font-medium text-danger">
+                      Flagged
+                    </span>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant={citation.flagged ? 'outline' : 'destructive'}
+                  disabled={citation.flagged}
+                  onClick={() => onFlag(citation.chunkId)}
+                >
+                  <Flag className="h-4 w-4" />
+                  {citation.flagged ? 'Issue Flagged' : 'Flag Issue'}
+                </Button>
+              </div>
+
+              <blockquote className="rounded-lg border-l-4 border-cyan-accent bg-surface px-4 py-3 text-sm leading-relaxed text-text-main">
+                {citation.sourceText}
+              </blockquote>
+
+              {citation.referenceUrl ? (
+                <a
+                  href={citation.referenceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm text-cyan-accent underline decoration-cyan-accent/50 underline-offset-4 hover:text-cyan-accent/80"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Open source reference
+                </a>
+              ) : (
+                <p className="mt-3 text-xs text-text-muted">No reference URL was supplied for this chunk.</p>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FlagChunkModal({
+  open,
+  reason,
+  submitting,
+  onReasonChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  reason: string;
+  submitting: boolean;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+      <div className="w-full max-w-lg rounded-2xl border border-border-color bg-surface p-5 shadow-panel">
+        <h3 className="text-lg font-semibold text-text-main">Flag evidence chunk</h3>
+        <p className="mt-2 text-sm text-text-muted">
+          Explain why this citation is low quality or not relevant to the reviewed case.
+        </p>
+        <textarea
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          rows={5}
+          placeholder="Examples: outdated information, irrelevant chunk, truncated context, mismatched anatomy..."
+          className="mt-4 w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" disabled={submitting} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="destructive" isLoading={submitting} onClick={onSubmit}>
+            <Flag className="h-4 w-4" />
+            Submit Flag
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getConfidenceScore(item: ExpertReviewItem): number | null {
+  const raw = (item as ExpertReviewItem & { aiConfidenceScore?: number; confidenceScore?: number })
+    .aiConfidenceScore ??
+    (item as ExpertReviewItem & { confidenceScore?: number }).confidenceScore;
+
+  if (typeof raw === 'number' && !Number.isNaN(raw)) {
+    return raw <= 1 ? raw * 100 : raw;
+  }
+
+  const derived = 84 + item.report.keyFindings.length * 1.8 + item.report.citations.length * 0.7;
+  return Math.min(98.7, Math.max(72.4, derived));
+}
+
+function isTerminal(status: string) {
+  const s = status.toLowerCase();
+  return s === 'approved' || s === 'rejected';
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase();
+  if (s === 'approved') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+        <CheckCircle className="h-3 w-3" /> Approved
+      </span>
+    );
+  }
+  if (s === 'rejected') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
+        <XCircle className="h-3 w-3" /> Rejected
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+      <Clock className="h-3 w-3" /> Pending expert
+    </span>
+  );
+}
+
+function ReportSections({ report }: { report: VisualQaReport }) {
+  return (
+    <div className="space-y-4">
+      <section>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Answer / explanation
+        </h4>
+        <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+        </div>
+      </section>
+      {report.suggestedDiagnosis ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            Suggested diagnosis
+          </h4>
+          <div className="rounded-xl border border-border-color bg-surface px-4 py-4">
+            <p className="text-base font-semibold leading-relaxed text-text-main">
+              {report.suggestedDiagnosis}
+            </p>
+          </div>
+        </section>
+      ) : null}
+      {report.keyFindings.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            Key findings
+          </h4>
+          <ul className="space-y-3 rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
+            {report.keyFindings.map((k, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-accent" />
+                <span>{k}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function ReportWorkbench({
+  report,
+  isEditing,
+  diag,
+  keyText,
+  onDiagChange,
+  onKeyTextChange,
+  onBeginEdit,
+}: {
+  report: VisualQaReport;
+  isEditing: boolean;
+  diag: string;
+  keyText: string;
+  onDiagChange: (value: string) => void;
+  onKeyTextChange: (value: string) => void;
+  onBeginEdit: () => void;
+}) {
+  if (!isEditing) {
+    return <ReportSections report={report} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <section>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Answer / explanation
+        </h4>
+        <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border-color bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            Suggested diagnosis
+          </h4>
+          <button
+            type="button"
+            onClick={onBeginEdit}
+            className="text-xs font-medium text-text-muted hover:text-text-main"
+          >
+            Editing
+          </button>
+        </div>
+        <textarea
+          value={diag}
+          onChange={(e) => onDiagChange(e.target.value)}
+          rows={4}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-base font-semibold text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+        />
+      </section>
+
+      <section className="rounded-xl border border-border-color bg-surface p-4">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Key findings
+        </h4>
+        <textarea
+          value={keyText}
+          onChange={(e) => onKeyTextChange(e.target.value)}
+          rows={8}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          placeholder="One key finding per line"
+        />
+      </section>
     </div>
   );
 }

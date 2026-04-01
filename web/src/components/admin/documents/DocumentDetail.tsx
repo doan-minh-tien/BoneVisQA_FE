@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAdminDocumentById, reindexAdminDocument, DocumentDto } from '@/lib/api';
+import {
+  getAdminDocumentById,
+  reindexAdminDocument,
+  type AdminDocumentDetail,
+} from '@/lib/api/admin-documents';
 import {
   FileText,
   Loader2,
@@ -21,7 +25,7 @@ import {
 
 export default function DocumentDetail({ id }: { id: string }) {
   const router = useRouter();
-  const [doc, setDoc] = useState<DocumentDto | null>(null);
+  const [doc, setDoc] = useState<AdminDocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
@@ -32,10 +36,7 @@ export default function DocumentDetail({ id }: { id: string }) {
       try {
         setLoading(true);
         setError(null);
-        const token = localStorage.getItem('token');
-        if (!token) throw new Error('No authentication token found');
-        
-        const data = await getAdminDocumentById(id, token);
+        const data = await getAdminDocumentById(id);
         setDoc(data);
       } catch (err: any) {
         console.error('Error fetching document:', err);
@@ -52,14 +53,11 @@ export default function DocumentDetail({ id }: { id: string }) {
     try {
       setIsReindexing(true);
       setReindexMessage(null);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-      
-      const response = await reindexAdminDocument(id, token);
+      const response = await reindexAdminDocument(id);
       setReindexMessage({ type: 'success', text: response.message || 'Reindexing started.' });
       
       // Refetch doc to see updated status
-      const data = await getAdminDocumentById(id, token);
+      const data = await getAdminDocumentById(id);
       setDoc(data);
     } catch (err: any) {
       console.error('Error reindexing document:', err);

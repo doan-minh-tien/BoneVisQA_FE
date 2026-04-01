@@ -1,10 +1,8 @@
 'use client';
-
-import { useState } from 'react';
 import Header from '@/components/Header';
 import {
   BarChart3, Users, BookOpen, Trophy, TrendingUp, TrendingDown,
-  Download, Filter, Eye, Target, AlertTriangle,
+  Download, Target, AlertTriangle,
 } from 'lucide-react';
 
 interface ClassStat {
@@ -61,8 +59,6 @@ const bottomStudents: StudentStat[] = [
 ];
 
 export default function LecturerAnalyticsPage() {
-  const [selectedClass, setSelectedClass] = useState<string>('All');
-
   const totalStudents = classStats.reduce((s, c) => s + c.studentCount, 0);
   const avgScore = Math.round(classStats.reduce((s, c) => s + c.avgQuizScore, 0) / classStats.length);
   const totalCases = classStats.reduce((s, c) => s + c.casesStudied, 0);

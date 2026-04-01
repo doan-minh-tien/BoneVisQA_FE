@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Header from '@/components/Header';
 import {
-  FileText, Search, Plus, CheckCircle, Clock, Edit, Trash2, X, Eye,
+  FileText, Search, Plus, CheckCircle, Clock, Trash2, Eye,
   ChevronDown, ChevronRight, Users, Calendar, BarChart3, Target,
 } from 'lucide-react';
 

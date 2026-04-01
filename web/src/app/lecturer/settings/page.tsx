@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
-import { Settings, Bell, User, Save, RotateCcw, CheckCircle, GraduationCap } from 'lucide-react';
+import { Bell, User, Save, RotateCcw, CheckCircle, GraduationCap } from 'lucide-react';
 
 export default function LecturerSettingsPage() {
   const [saved, setSaved] = useState(false);

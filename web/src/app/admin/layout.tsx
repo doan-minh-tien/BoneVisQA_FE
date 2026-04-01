@@ -1,4 +1,4 @@
-import AdminSidebar from '@/components/AdminSidebar';
+import { AppShell } from '@/components/AppShell';
 
 export default function AdminLayout({
   children,
@@ -6,11 +6,6 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <AdminSidebar />
-      <main className="ml-64">
-        {children}
-      </main>
-    </div>
+    <AppShell role="admin">{children}</AppShell>
   );
 }
