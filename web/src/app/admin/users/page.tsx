@@ -67,30 +67,6 @@ export default function AdminUsersPage() {
     };
   }, [toast]);
 
-  const [revokeDialog, setRevokeDialog] = useState<User | null>(null);
-
-  const handleRevokeRole = async () => {
-    if (!revokeDialog) return;
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem("token") || "" : "";
-      const response = await revokeAdminRole(revokeDialog.id, token);
-
-      if (!response) {
-        showToast("Empty response from server", "error");
-        return;
-      }
-
-      // Xoá user khỏi UI tab hiện tại
-      setUsers((prev) => prev.filter((u) => u.id !== revokeDialog.id));
-
-      setRevokeDialog(null);
-      showToast(response.message || "Đã thu hồi quyền thành công!");
-    } catch (error: any) {
-      console.warn("Error revoking role:", error);
-      showToast(error.message || "Có lỗi xảy ra khi thu hồi quyền!", "error");
-    }
-  };
-
   const filtered = useMemo(() => {
     return users.filter((u) => {
       if (activeTab !== 'Unassigned' && u.role !== activeTab) return false;
@@ -232,7 +208,6 @@ export default function AdminUsersPage() {
               users={filtered}
               onToggleStatus={(user) => setStatusTarget(user)}
               onOpenAssignRole={(user) => setAssignRoleDialog({ user })}
-              onOpenRevokeRole={(user) => setRevokeDialog(user)}
             />
           )}
         </div>

@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import { SectionCard } from '@/components/shared/SectionCard';
 import StatCard from '@/components/StatCard';
 import QuickActionCard from '@/components/student/QuickActionCard';
+import ProgressRing from '@/components/student/ProgressRing';
 import TopicProgressCard from '@/components/student/dashboard/TopicProgressCard';
 import RecentActivityCard from '@/components/student/dashboard/RecentActivityCard';
 import LearningInsights from '@/components/student/dashboard/LearningInsights';

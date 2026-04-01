@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { uploadAdminDocument } from '@/lib/api';
+import { uploadAdminDocument } from '@/lib/api/admin-documents';
 import { X, UploadCloud, File, Loader2, AlertCircle } from 'lucide-react';
 
 interface UploadDocumentDialogProps {
@@ -78,14 +78,11 @@ export default function UploadDocumentDialog({
 
     try {
       setIsUploading(true);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Authentication token missing. Please log in again.');
-
-      const formData = new FormData();
-      formData.append('File', file);
-      formData.append('Title', title.trim());
-
-      await uploadAdminDocument(formData, token);
+      await uploadAdminDocument({
+        file,
+        categoryId: '',
+        tagIds: [],
+      });
       
       // Cleanup and notify parent
       handleDismiss();

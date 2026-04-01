@@ -9,7 +9,7 @@ import {
   CheckCircle,
   ArrowLeft,
 } from "lucide-react";
-import { register } from "@/lib/api";
+import { register } from "@/lib/api/auth";
 
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);

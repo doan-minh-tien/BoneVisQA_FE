@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
+import CasesTable from '@/components/lecturer/cases/CasesTable';
 import {
   FolderOpen,
   Search,
@@ -95,6 +97,13 @@ export default function LecturerCasesPage() {
     } finally {
       setAssigning(false);
     }
+  };
+
+  const handleAssignSuccess = () => {
+    setShowAssign(false);
+    setSelectedCases(new Set());
+    setAssignClassId('');
+    setAssignError('');
   };
 
   const toggleCaseSelection = (id: string) => {

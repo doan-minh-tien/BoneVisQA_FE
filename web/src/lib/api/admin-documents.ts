@@ -71,3 +71,71 @@ export async function uploadAdminDocument(
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+export interface AdminDocumentDetail {
+  id: string;
+  title: string;
+  createdAt: string;
+  version?: string;
+  categoryId?: string;
+  indexingStatus: string;
+  isOutdated?: boolean;
+  filePath?: string;
+}
+
+export type DocumentDto = AdminDocumentDetail;
+
+function mapAdminDocumentDetail(row: unknown): AdminDocumentDetail {
+  const r = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>;
+  return {
+    id: String(r.id ?? r.documentId ?? ''),
+    title: String(r.title ?? r.fileName ?? r.name ?? ''),
+    createdAt: String(r.createdAt ?? r.uploadedAt ?? new Date().toISOString()),
+    version: r.version != null ? String(r.version) : undefined,
+    categoryId: r.categoryId != null ? String(r.categoryId) : undefined,
+    indexingStatus: String(r.indexingStatus ?? r.status ?? 'Unknown'),
+    isOutdated: Boolean(r.isOutdated ?? false),
+    filePath:
+      r.filePath != null
+        ? String(r.filePath)
+        : r.documentUrl != null
+          ? String(r.documentUrl)
+          : undefined,
+  };
+}
+
+export async function getAdminDocumentById(id: string): Promise<AdminDocumentDetail> {
+  try {
+    const { data } = await http.get<unknown>(`${ADMIN_DOCUMENTS}/${id}`);
+    return mapAdminDocumentDetail(data);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function getAdminDocuments(): Promise<DocumentDto[]> {
+  try {
+    const { data } = await http.get<unknown>(ADMIN_DOCUMENTS);
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? ((data as { items?: unknown[] }).items ?? [])
+        : [];
+    return list.map(mapAdminDocumentDetail);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function reindexAdminDocument(
+  id: string,
+): Promise<{ message?: string; indexingStatus?: string }> {
+  try {
+    const { data } = await http.post<{ message?: string; indexingStatus?: string }>(
+      `${ADMIN_DOCUMENTS}/${id}/reindex`,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import CreateClassDialog from '@/components/lecturer/classes/CreateClassDialog';
 import {
   Users,
   BookOpen,
