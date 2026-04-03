@@ -9,6 +9,7 @@ import {
   UserCog,
   BookOpen,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
@@ -30,6 +31,7 @@ interface UserStatResult {
 }
 
 export default function AdminDashboardPage() {
+  const { t } = useTranslation();
   const [statsData, setStatsData] = useState<UserStatResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -68,7 +70,7 @@ export default function AdminDashboardPage() {
 
   const currentStats = [
     {
-      title: 'Total Users',
+      title: t('dashboard.totalUsers', 'Total Users'),
       value: totalUsers.toString(),
       change: `+${newUsers} this month`,
       changeType: 'positive' as const,
@@ -76,7 +78,7 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-primary/10 text-primary',
     },
     {
-      title: 'Students',
+      title: t('users.roles.student', 'Students'),
       value: students.toString(),
       change: 'active members',
       changeType: 'positive' as const,
@@ -84,7 +86,7 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-accent/10 text-accent',
     },
     {
-      title: 'Lecturers',
+      title: t('users.roles.lecturer', 'Lecturers'),
       value: lecturers.toString(),
       change: 'active teaching',
       changeType: 'positive' as const,
@@ -92,7 +94,7 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-warning/10 text-warning',
     },
     {
-      title: 'Active Courses',
+      title: t('nav.courses', 'Active Courses'),
       value: '48', // Hardcoded temporarily until API returns it
       change: '+3 new this semester',
       changeType: 'positive' as const,
@@ -102,10 +104,10 @@ export default function AdminDashboardPage() {
   ];
 
   const roleDistribution = [
-    { role: 'Students', count: students, color: 'bg-primary' },
-    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
-    { role: 'Experts', count: experts, color: 'bg-warning' },
-    { role: 'Admins', count: admins, color: 'bg-destructive' },
+    { role: t('users.roles.student', 'Students'), count: students, color: 'bg-primary' },
+    { role: t('users.roles.lecturer', 'Lecturers'), count: lecturers, color: 'bg-accent' },
+    { role: t('users.roles.expert', 'Experts'), count: experts, color: 'bg-warning' },
+    { role: t('users.roles.admin', 'Admins'), count: admins, color: 'bg-destructive' },
   ].map(item => ({
     ...item,
     percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
@@ -113,7 +115,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Admin Dashboard" subtitle="System overview and management" />
+      <Header title={t('nav.dashboard', 'Dashboard')} subtitle={t('dashboard.systemHealth', 'System overview and management')} />
 
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Stats Grid */}

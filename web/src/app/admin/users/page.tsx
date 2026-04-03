@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import Header from "@/components/Header";
 import {
   Users,
@@ -186,11 +187,13 @@ export default function AdminUsersPage() {
     }
   };
 
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-screen bg-slate-50/50 pb-12">
       <Header
-        title="User Management"
-        subtitle="Manage user roles, statuses, and permissions"
+        title={t('users.title', 'User Management')}
+        subtitle={t('users.subtitle', 'Manage user roles, statuses, and permissions')}
       />
 
       <div className="max-w-[1600px] mx-auto px-6 mt-8">
@@ -204,7 +207,7 @@ export default function AdminUsersPage() {
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
             }`}
           >
-            Pending Requests
+            {t('users.pendingRequests', 'Pending Requests')}
             {users.filter((u) => u.status === "Pending").length > 0 && (
               <span
                 className={`flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] rounded-full ${activeTab === "Pending" ? "bg-white/20 text-white" : "bg-amber-100 text-amber-700"}`}
@@ -220,6 +223,7 @@ export default function AdminUsersPage() {
             const config = roleConfig[role];
             const Icon = config.icon;
             const isActive = activeTab === role;
+            const roleKey = role.toLowerCase() as 'admin'|'student'|'lecturer'|'expert';
             return (
               <button
                 key={role}
@@ -231,7 +235,7 @@ export default function AdminUsersPage() {
                 }`}
               >
                 <Icon className={`w-4 h-4 ${isActive ? "opacity-100" : "opacity-70"}`} />
-                {role}s
+                {t(`users.roles.${roleKey}`, role) + 's'}
               </button>
             );
           })}
@@ -243,7 +247,7 @@ export default function AdminUsersPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, email or class..."
+              placeholder={t('users.searchPlaceholder', 'Search by name, email or class...')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full h-12 pl-12 pr-4 rounded-xl bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none text-sm placeholder:text-slate-400"

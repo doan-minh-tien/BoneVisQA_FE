@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import './globals.css';
+import I18nProvider from '@/components/providers/I18nProvider';
 
 export const metadata: Metadata = {
-  title: "MedEdu - Medical Course Management",
-  description: "Comprehensive course management system for medical education",
+  title: 'MedEdu - Medical Course Management',
+  description: 'Comprehensive course management system for medical education',
 };
 
 export default function RootLayout({
@@ -13,8 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      {/* Thêm suppressHydrationWarning vào thẻ body */}
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <I18nProvider>{children}</I18nProvider>
+      </body>
     </html>
   );
 }
