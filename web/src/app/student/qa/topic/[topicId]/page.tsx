@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { use, useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Send, Bot, User, Loader2, BookOpen } from 'lucide-react';
 
@@ -43,9 +42,12 @@ function getMockResponse(topic: string, question: string): { content: string; re
   };
 }
 
-export default function TopicChatPage() {
-  const params = useParams();
-  const topicId = params.topicId as string;
+export default function TopicChatPage({
+  params,
+}: {
+  params: Promise<{ topicId: string }>;
+}) {
+  const { topicId } = use(params);
   const topicLabel = topicLabels[topicId] || topicId;
 
   const [messages, setMessages] = useState<Message[]>([

@@ -7,7 +7,6 @@ import {
   Plus,
   Send,
   Calendar,
-  Trash2,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -17,9 +16,8 @@ import {
   getLecturerClasses,
   getClassAnnouncements,
   createAnnouncement,
-  type ClassItem,
-  type Announcement,
-} from '@/lib/api';
+} from '@/lib/api/lecturer';
+import type { ClassItem, Announcement } from '@/lib/api/types';
 
 export default function LecturerAnnouncementsPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -43,14 +41,13 @@ export default function LecturerAnnouncementsPage() {
   useEffect(() => {
     async function fetchAll() {
       try {
-        const token = localStorage.getItem('token') || '';
         const userId = localStorage.getItem('userId') || '';
-        const classList = await getLecturerClasses(userId, token);
+        const classList = await getLecturerClasses(userId);
         setClasses(classList);
 
         // Fetch announcements for all classes in parallel
         const allAnnouncements = await Promise.all(
-          classList.map((c) => getClassAnnouncements(c.id, token).catch(() => [] as Announcement[])),
+          classList.map((c) => getClassAnnouncements(c.id).catch(() => [] as Announcement[])),
         );
         // Flatten and deduplicate by id
         const flat = allAnnouncements.flat();
@@ -75,12 +72,10 @@ export default function LecturerAnnouncementsPage() {
     setCreating(true);
     setCreateError('');
     try {
-      const token = localStorage.getItem('token') || '';
-      const created = await createAnnouncement(
-        selectedClassId,
-        { title: newTitle.trim(), content: newContent.trim() },
-        token,
-      );
+      const created = await createAnnouncement(selectedClassId, {
+        title: newTitle.trim(),
+        content: newContent.trim(),
+      });
       setAnnouncements((prev) => [created, ...prev]);
       setShowCreate(false);
       setNewTitle('');

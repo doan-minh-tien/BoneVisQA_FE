@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getAdminDocuments, DocumentDto } from '@/lib/api';
+import { getAdminDocuments, type DocumentDto } from '@/lib/api/admin-documents';
 import UploadDocumentDialog from './UploadDocumentDialog';
 import {
   FileText,
@@ -28,10 +28,7 @@ export default function DocumentList() {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No authentication token found');
-      
-      const data = await getAdminDocuments(token);
+      const data = await getAdminDocuments();
       setDocuments(data);
     } catch (err: any) {
       console.error('Error fetching documents:', err);

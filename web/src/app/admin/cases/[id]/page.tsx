@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { use, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import {
@@ -198,10 +198,13 @@ const difficultyConfig: Record<Difficulty, { color: string; label: string }> = {
   advanced: { color: 'bg-destructive/10 text-destructive', label: 'Advanced' },
 };
 
-export default function AdminCaseDetailPage() {
-  const params = useParams();
+export default function AdminCaseDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const router = useRouter();
-  const id = params.id as string;
 
   const initial = mockCases[id] || getDefaultCase(id);
   const [caseData, setCaseData] = useState<CaseDetail>(initial);

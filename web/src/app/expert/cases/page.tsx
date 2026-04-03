@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import {
-  FolderOpen, Search, Plus, CheckCircle, Clock, AlertTriangle, Eye,
-  Edit, Trash2, X, ChevronDown, ChevronRight, MapPin, Crosshair, BarChart3,
+  FolderOpen, Search, Plus, CheckCircle, Clock, Eye,
+  Edit, Trash2, ChevronDown, ChevronRight,
 } from 'lucide-react';
 
 type CaseStatus = 'approved' | 'pending' | 'draft';

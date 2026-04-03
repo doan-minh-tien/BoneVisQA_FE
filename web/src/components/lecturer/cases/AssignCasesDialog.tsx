@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { assignCasesToClass, type ClassItem } from '@/lib/api';
+import { assignCasesToClass } from '@/lib/api/lecturer';
+import type { ClassItem } from '@/lib/api/types';
 
 interface AssignCasesDialogProps {
   onClose: () => void;
@@ -27,8 +28,10 @@ export default function AssignCasesDialog({
     setAssigning(true);
     setAssignError('');
     try {
-      const token = localStorage.getItem('token') || '';
-      await assignCasesToClass(assignClassId, Array.from(selectedCases), token);
+      await assignCasesToClass(assignClassId, {
+        caseIds: Array.from(selectedCases),
+        isMandatory: true,
+      });
       onSuccess();
     } catch {
       setAssignError('Failed to assign cases. Please try again.');

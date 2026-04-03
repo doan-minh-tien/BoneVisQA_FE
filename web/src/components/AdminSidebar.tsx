@@ -14,8 +14,9 @@ import {
   Settings,
   LogOut,
   Stethoscope,
-  Files,
+  Database,
 } from 'lucide-react';
+
 
 export default function AdminSidebar() {
   const pathname = usePathname();
@@ -25,7 +26,7 @@ export default function AdminSidebar() {
   const adminMenuItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard'), href: '/admin/dashboard' },
     { icon: Users, label: t('nav.users', 'Users'), href: '/admin/users' },
-    { icon: Files, label: t('nav.documents', 'Documents'), href: '/admin/documents' },
+    { icon: Database, label: t('nav.documents', 'Documents'), href: '/admin/documents' },
     { icon: FileText, label: t('nav.cases', 'Cases'), href: '/admin/cases' },
     { icon: BrainCircuit, label: t('nav.aiConfig', 'AI Config'), href: '/admin/ai-config' },
     { icon: Activity, label: t('nav.systemLogs', 'System Logs'), href: '/admin/logs' },

@@ -1,15 +1,16 @@
-import { BookOpen, Clock, TrendingUp } from 'lucide-react';
-import Link from 'next/link';
+import { BookOpen, CheckCircle2, Clock, ShieldAlert, TrendingUp } from 'lucide-react';
 
 interface CaseCardProps {
   id: string;
   title: string;
-  thumbnail: string;
+  thumbnail?: string;
   boneLocation: string;
   lesionType: string;
   difficulty: 'basic' | 'intermediate' | 'advanced';
   duration?: string;
   progress?: number;
+  status?: string;
+  askedAt?: string;
 }
 
 const difficultyConfig = {
@@ -28,7 +29,6 @@ const difficultyConfig = {
 };
 
 export default function CaseCard({
-  id,
   title,
   thumbnail,
   boneLocation,
@@ -36,20 +36,39 @@ export default function CaseCard({
   difficulty,
   duration = '15 min',
   progress = 0,
+  status,
+  askedAt,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
+  const normalizedStatus = status?.toLowerCase();
+  const reviewBadge =
+    normalizedStatus === 'approved' || normalizedStatus === 'revised'
+      ? {
+          label: 'Verified by Clinical Expert',
+          className: 'border-success/30 bg-success/10 text-success',
+          icon: CheckCircle2,
+        }
+      : normalizedStatus === 'pending' || normalizedStatus === 'pendingexpert'
+        ? {
+            label: 'Under Expert Review',
+            className: 'border-warning/30 bg-warning/10 text-warning',
+            icon: ShieldAlert,
+          }
+        : null;
+  const ReviewIcon = reviewBadge?.icon;
 
   return (
-    <Link
-      href={`/student/cases/${id}`}
-      className="block bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg cursor-pointer transition-all duration-200 group"
-    >
+    <article className="group block overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-lg">
       {/* Thumbnail */}
       <div className="relative h-48 bg-muted overflow-hidden">
-        <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-          {/* Placeholder for X-ray image */}
-          <BookOpen className="w-16 h-16 text-muted-foreground opacity-30" />
-        </div>
+        {thumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={thumbnail} alt={title} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
+            <BookOpen className="h-16 w-16 text-muted-foreground opacity-30" />
+          </div>
+        )}
 
         {/* Difficulty Badge */}
         <div className="absolute top-3 right-3">
@@ -75,6 +94,15 @@ export default function CaseCard({
           {title}
         </h3>
 
+        {reviewBadge && ReviewIcon ? (
+          <div
+            className={`mb-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${reviewBadge.className}`}
+          >
+            <ReviewIcon className="h-3.5 w-3.5" />
+            {reviewBadge.label}
+          </div>
+        ) : null}
+
         {/* Tags */}
         <div className="flex flex-wrap gap-2 mb-3">
           <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">
@@ -89,7 +117,7 @@ export default function CaseCard({
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Clock className="w-4 h-4" />
-            <span>{duration}</span>
+            <span>{askedAt || duration}</span>
           </div>
           {progress > 0 && (
             <div className="flex items-center gap-1 text-accent">
@@ -99,6 +127,6 @@ export default function CaseCard({
           )}
         </div>
       </div>
-    </Link>
+    </article>
   );
 }

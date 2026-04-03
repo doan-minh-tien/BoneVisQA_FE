@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import CreateClassDialog from '@/components/lecturer/classes/CreateClassDialog';
 import {
   Users,
   BookOpen,
@@ -12,8 +13,8 @@ import {
   Calendar,
   Loader2,
 } from 'lucide-react';
-import { getLecturerClasses, type ClassItem } from '@/lib/api';
-import CreateClassDialog from '@/components/lecturer/classes/CreateClassDialog';
+import { getLecturerClasses, createClass } from '@/lib/api/lecturer';
+import type { ClassItem } from '@/lib/api/types';
 
 export default function LecturerClassesPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -24,13 +25,41 @@ export default function LecturerClassesPage() {
 
   // Create class dialog
   const [showCreate, setShowCreate] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newSemester, setNewSemester] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const handleCreateClass = async () => {
+    if (!newClassName.trim() || !newSemester.trim()) {
+      setCreateError('Please fill in all fields.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const userId = localStorage.getItem('userId') || '';
+      const created = await createClass({
+        className: newClassName.trim(),
+        semester: newSemester.trim(),
+        lecturerId: userId,
+      });
+      setClasses((prev) => [created, ...prev]);
+      setShowCreate(false);
+      setNewClassName('');
+      setNewSemester('');
+    } catch {
+      setCreateError('Failed to create class. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchClasses() {
       try {
-        const token = localStorage.getItem('token') || '';
         const userId = localStorage.getItem('userId') || '';
-        const data = await getLecturerClasses(userId, token);
+        const data = await getLecturerClasses(userId);
         setClasses(data);
       } catch {
         setError('Failed to load classes.');
