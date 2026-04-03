@@ -1,4 +1,4 @@
-import { Calendar, Mail, Pencil, Trash2, UserCheck } from 'lucide-react';
+import { Calendar, Mail, Pencil, Trash2, UserCheck, BookOpen } from 'lucide-react';
 
 /** Roles that can be assigned in the admin UI */
 export type UserRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
@@ -13,7 +13,10 @@ export type UiUser = {
   role: DisplayRole;
   status: UserStatus;
   joinedAt: string;
+  /** Raw cohort string from user profile */
   className?: string;
+  /** Display-ready class list (up to 2 shown, rest in dialog) */
+  classList?: Array<{ id: string; className: string; relationType: string }>;
 };
 
 const statusStyle: Record<UserStatus, { dot: string; text: string; bg: string }> = {
@@ -31,12 +34,15 @@ export function UserManagementTable({
   onOpenAssignRole,
   onEdit,
   onDelete,
+  onManageClasses,
 }: {
   users: UiUser[];
   onToggleStatus: (user: UiUser) => void;
   onOpenAssignRole: (user: UiUser, mode: 'assign' | 'change') => void;
   onEdit: (user: UiUser) => void;
   onDelete: (user: UiUser) => void;
+  /** Only Lecturers & Students show the Manage button; others get undefined */
+  onManageClasses: (user: UiUser) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -45,6 +51,9 @@ export function UserManagementTable({
           <tr className="border-b border-slate-200/60 bg-slate-50/50">
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
               User Profile
+            </th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+              Classes
             </th>
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
               Contact Info
@@ -90,6 +99,51 @@ export function UserManagementTable({
                         <span className="text-xs font-medium text-slate-500">{user.role}</span>
                       )}
                     </div>
+                  </div>
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <div className="flex flex-col gap-1">
+                    {user.classList && user.classList.length > 0 ? (
+                      <>
+                        {user.classList.slice(0, 2).map((cls) => (
+                          <span
+                            key={cls.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                            {cls.className}
+                            {cls.relationType === 'Lecturer' && (
+                              <span className="ml-0.5 text-[10px] text-blue-400">(GV)</span>
+                            )}
+                          </span>
+                        ))}
+                        {user.classList.length > 2 && (
+                          <span className="text-[10px] text-slate-400">
+                            +{user.classList.length - 2} more
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onManageClasses(user)}
+                          className="mt-1 w-fit text-xs font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                        >
+                          Manage
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs text-slate-400">No class assigned</span>
+                        {(user.role === 'Lecturer' || user.role === 'Student') && (
+                          <button
+                            type="button"
+                            onClick={() => onManageClasses(user)}
+                            className="mt-1 w-fit text-xs font-semibold text-blue-600 hover:text-blue-800"
+                          >
+                            + Assign class
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">

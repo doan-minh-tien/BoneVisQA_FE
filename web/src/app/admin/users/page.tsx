@@ -14,6 +14,7 @@ import {
   EditUserDialog,
   DeleteConfirmDialog,
 } from '@/components/admin/users/UserDialogs';
+import { ManageClassesDialog } from '@/components/admin/users/ManageClassesDialog';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
 import { ToolbarField } from '@/components/shared/ToolbarField';
@@ -78,6 +79,7 @@ export default function AdminUsersPage() {
   } | null>(null);
   const [editTarget, setEditTarget] = useState<UiUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
+  const [manageClassesTarget, setManageClassesTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   // ── Load users ─────────────────────────────────────────────────────────────
@@ -223,6 +225,19 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleManageClassesUpdated = (
+    userId: string,
+    updatedClasses: Array<{ id: string; className: string; relationType: string }>,
+  ) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? { ...u, classList: updatedClasses }
+          : u,
+      ),
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background pb-12">
       <Header
@@ -324,6 +339,7 @@ export default function AdminUsersPage() {
               onOpenAssignRole={(user, mode) => setAssignRoleDialog({ user, mode })}
               onEdit={(user) => setEditTarget(user)}
               onDelete={(user) => setDeleteTarget(user)}
+              onManageClasses={(user) => setManageClassesTarget(user)}
             />
           )}
         </div>
@@ -378,6 +394,15 @@ export default function AdminUsersPage() {
           onCancel={() => setStatusTarget(null)}
           onConfirm={handleToggleStatus}
           isLoading={submitting}
+        />
+      ) : null}
+
+      {/* Manage Classes */}
+      {manageClassesTarget ? (
+        <ManageClassesDialog
+          user={manageClassesTarget}
+          onCancel={() => setManageClassesTarget(null)}
+          onUpdated={handleManageClassesUpdated}
         />
       ) : null}
     </div>

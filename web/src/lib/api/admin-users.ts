@@ -164,3 +164,65 @@ export async function deleteAdminUser(userId: string): Promise<void> {
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// ── Class management ───────────────────────────────────────────────────────────
+
+export interface UserClassInfo {
+  id: string;
+  className: string;
+  relationType: 'Lecturer' | 'Student';
+  enrolledAt: string | null;
+}
+
+export interface AvailableClass {
+  id: string;
+  className: string;
+  lecturerName: string | null;
+  studentCount: number;
+}
+
+export async function fetchUserClasses(userId: string): Promise<UserClassInfo[]> {
+  try {
+    const { data } = await http.get<{ result?: UserClassInfo[] } | UserClassInfo[]>(
+      `${ADMIN_USERS}/${userId}/classes`,
+    );
+    const list = 'result' in data ? data.result : (data as UserClassInfo[]);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchAvailableClasses(): Promise<AvailableClass[]> {
+  try {
+    const { data } = await http.get<{ result?: AvailableClass[] } | AvailableClass[]>(
+      `${ADMIN_USERS}/classes`,
+    );
+    const list = 'result' in data ? data.result : (data as AvailableClass[]);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function assignUserToClass(userId: string, classId: string): Promise<UserClassInfo> {
+  try {
+    const { data } = await http.post<{ result?: UserClassInfo } | UserClassInfo>(
+      `${ADMIN_USERS}/${userId}/classes`,
+      { classId },
+    );
+    const result = 'result' in data ? data.result : (data as UserClassInfo);
+    if (!result) throw new Error('No result from server.');
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function removeUserFromClass(userId: string, classId: string): Promise<void> {
+  try {
+    await http.delete(`${ADMIN_USERS}/${userId}/classes/${classId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
