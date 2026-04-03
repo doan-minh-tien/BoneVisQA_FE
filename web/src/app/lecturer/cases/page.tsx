@@ -11,15 +11,12 @@ import {
   XCircle,
   Loader2,
   Eye,
-  ShieldCheck,
-  ShieldOff,
   Plus,
 } from 'lucide-react';
 import {
   getLecturerCases,
   getLecturerClasses,
   approveCase,
-  assignCasesToClass,
 } from '@/lib/api/lecturer';
 import type { CaseDto, ClassItem } from '@/lib/api/types';
 
@@ -36,9 +33,6 @@ export default function LecturerCasesPage() {
   // Assign dialog
   const [showAssign, setShowAssign] = useState(false);
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
-  const [assignClassId, setAssignClassId] = useState('');
-  const [assigning, setAssigning] = useState(false);
-  const [assignError, setAssignError] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -77,33 +71,9 @@ export default function LecturerCasesPage() {
     }
   };
 
-  const handleAssign = async () => {
-    if (!assignClassId || selectedCases.size === 0) {
-      setAssignError('Please select a class and at least one case.');
-      return;
-    }
-    setAssigning(true);
-    setAssignError('');
-    try {
-      await assignCasesToClass(assignClassId, {
-        caseIds: Array.from(selectedCases),
-        isMandatory: true,
-      });
-      setShowAssign(false);
-      setSelectedCases(new Set());
-      setAssignClassId('');
-    } catch {
-      setAssignError('Failed to assign cases. Please try again.');
-    } finally {
-      setAssigning(false);
-    }
-  };
-
   const handleAssignSuccess = () => {
     setShowAssign(false);
     setSelectedCases(new Set());
-    setAssignClassId('');
-    setAssignError('');
   };
 
   const toggleCaseSelection = (id: string) => {

@@ -30,9 +30,9 @@ export default function DocumentList() {
       setError(null);
       const data = await getAdminDocuments();
       setDocuments(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching documents:', err);
-      setError(err.message || 'Failed to load documents');
+      setError(err instanceof Error ? err.message : 'Failed to load documents');
     } finally {
       setLoading(false);
     }

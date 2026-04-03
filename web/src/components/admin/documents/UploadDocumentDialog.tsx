@@ -87,9 +87,9 @@ export default function UploadDocumentDialog({
       // Cleanup and notify parent
       handleDismiss();
       onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
-      setError(err.message || 'Failed to upload document.');
+      setError(err instanceof Error ? err.message : 'Failed to upload document.');
     } finally {
       setIsUploading(false);
     }

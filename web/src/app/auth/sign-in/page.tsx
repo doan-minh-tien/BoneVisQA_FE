@@ -327,7 +327,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               )}
 
               <p className="mt-8 text-center text-sm text-text-muted">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link
                   href="/auth/sign-up"
                   className="font-bold text-primary hover:underline"
