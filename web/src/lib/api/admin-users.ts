@@ -3,6 +3,8 @@ import type { AdminUser } from './types';
 
 const ADMIN_USERS = '/api/admin/users';
 
+// ── Normalizers ─────────────────────────────────────────────────────────────
+
 function normalizeUsersResponse(data: unknown): AdminUser[] {
   const rawList =
     Array.isArray(data)
@@ -44,6 +46,8 @@ function normalizeUsersResponse(data: unknown): AdminUser[] {
   return normalized;
 }
 
+// ── READ ────────────────────────────────────────────────────────────────────
+
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   try {
     const { data } = await http.get<unknown>(ADMIN_USERS);
@@ -53,7 +57,84 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
   }
 }
 
-export async function assignAdminUserRole(userId: string, role: string): Promise<void> {
+export async function fetchAdminUser(userId: string): Promise<AdminUser> {
+  try {
+    const { data } = await http.get<{ result?: AdminUser } | AdminUser>(
+      `${ADMIN_USERS}/${userId}`,
+    );
+    const result =
+      'result' in data && data.result ? data.result : (data as AdminUser);
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ── CREATE ───────────────────────────────────────────────────────────────────
+
+export interface CreateUserPayload {
+  email: string;
+  fullName: string;
+  password: string;
+  schoolCohort?: string;
+  role: string;
+  sendWelcomeEmail?: boolean;
+}
+
+export async function createAdminUser(payload: CreateUserPayload): Promise<AdminUser> {
+  try {
+    const { data } = await http.post<{ result?: AdminUser } | AdminUser>(
+      ADMIN_USERS,
+      {
+        email: payload.email,
+        fullName: payload.fullName,
+        password: payload.password,
+        schoolCohort: payload.schoolCohort ?? null,
+        role: payload.role,
+        sendWelcomeEmail: payload.sendWelcomeEmail ?? true,
+      },
+    );
+    const result =
+      'result' in data && data.result ? data.result : (data as AdminUser);
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ── UPDATE ───────────────────────────────────────────────────────────────────
+
+export interface UpdateUserPayload {
+  fullName: string;
+  schoolCohort?: string;
+}
+
+export async function updateAdminUser(
+  userId: string,
+  payload: UpdateUserPayload,
+): Promise<AdminUser> {
+  try {
+    const { data } = await http.put<{ result?: AdminUser } | AdminUser>(
+      `${ADMIN_USERS}/${userId}`,
+      {
+        fullName: payload.fullName,
+        schoolCohort: payload.schoolCohort ?? null,
+      },
+    );
+    const result =
+      'result' in data && data.result ? data.result : (data as AdminUser);
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ── ROLE & STATUS ────────────────────────────────────────────────────────────
+
+export async function assignAdminUserRole(
+  userId: string,
+  role: string,
+): Promise<void> {
   try {
     await http.post(`${ADMIN_USERS}/${userId}/assign-role`, {}, {
       params: { role },
@@ -63,9 +144,22 @@ export async function assignAdminUserRole(userId: string, role: string): Promise
   }
 }
 
-export async function toggleAdminUserStatus(userId: string, isActive: boolean): Promise<void> {
+export async function toggleAdminUserStatus(
+  userId: string,
+  isActive: boolean,
+): Promise<void> {
   try {
     await http.put(`${ADMIN_USERS}/${userId}/toggle-status`, { isActive });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────────────
+
+export async function deleteAdminUser(userId: string): Promise<void> {
+  try {
+    await http.delete(`${ADMIN_USERS}/${userId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

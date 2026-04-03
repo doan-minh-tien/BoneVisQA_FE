@@ -1,4 +1,4 @@
-import { Calendar, Mail, Pencil, UserCheck } from 'lucide-react';
+import { Calendar, Mail, Pencil, Trash2, UserCheck } from 'lucide-react';
 
 /** Roles that can be assigned in the admin UI */
 export type UserRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
@@ -29,10 +29,14 @@ export function UserManagementTable({
   users,
   onToggleStatus,
   onOpenAssignRole,
+  onEdit,
+  onDelete,
 }: {
   users: UiUser[];
   onToggleStatus: (user: UiUser) => void;
   onOpenAssignRole: (user: UiUser, mode: 'assign' | 'change') => void;
+  onEdit: (user: UiUser) => void;
+  onDelete: (user: UiUser) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -119,11 +123,10 @@ export function UserManagementTable({
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex flex-col items-end justify-end gap-2 sm:flex-row sm:items-center">
+                    {/* Role button */}
                     <button
                       type="button"
-                      onClick={() =>
-                        onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')
-                      }
+                      onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
                       className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
                     >
                       {pendingQueue ? (
@@ -133,6 +136,30 @@ export function UserManagementTable({
                       )}
                       {pendingQueue ? 'Assign role' : 'Change role'}
                     </button>
+
+                    {/* Edit button */}
+                    <button
+                      type="button"
+                      onClick={() => onEdit(user)}
+                      title="Edit user details"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 active:scale-95"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+
+                    {/* Delete button */}
+                    <button
+                      type="button"
+                      onClick={() => onDelete(user)}
+                      title="Delete user"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-600 shadow-sm transition-all hover:border-red-300 hover:bg-red-50 active:scale-95"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+
+                    {/* Status toggle */}
                     <button
                       type="button"
                       onClick={() => onToggleStatus(user)}

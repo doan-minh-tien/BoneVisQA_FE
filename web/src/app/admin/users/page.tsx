@@ -9,17 +9,26 @@ import {
   type UserRole,
   type UserStatus,
 } from '@/components/admin/UserManagementTable';
+import {
+  CreateUserDialog,
+  EditUserDialog,
+  DeleteConfirmDialog,
+} from '@/components/admin/users/UserDialogs';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
 import { ToolbarField } from '@/components/shared/ToolbarField';
 import { useToast } from '@/components/ui/toast';
 import {
   assignAdminUserRole,
+  createAdminUser,
+  deleteAdminUser,
   fetchAdminUsers,
   toggleAdminUserStatus,
+  updateAdminUser,
+  type CreateUserPayload,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
-import { ChevronDown, Filter, Loader2, Search, Users } from 'lucide-react';
+import { ChevronDown, Filter, Loader2, Plus, Search, Users } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
 
@@ -59,34 +68,44 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<RoleTab>('Pending');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Dialog states
   const [statusTarget, setStatusTarget] = useState<UiUser | null>(null);
   const [assignRoleDialog, setAssignRoleDialog] = useState<{
     user: UiUser;
     mode: 'assign' | 'change';
   } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [editTarget, setEditTarget] = useState<UiUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // ── Load users ─────────────────────────────────────────────────────────────
+  const loadUsers = async () => {
+    try {
+      const data = await fetchAdminUsers();
+      setUsers(data.map(normalizeUser));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load users.');
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const data = await fetchAdminUsers();
-        if (!cancelled) {
-          setUsers(data.map(normalizeUser));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load users.');
-        }
+        if (!cancelled) setUsers(data.map(normalizeUser));
+      } catch (err) {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load users.');
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [toast]);
 
+  // ── Filter ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return users.filter((u) => {
       if (activeTab === 'Pending' && u.role !== 'Pending') return false;
@@ -119,6 +138,7 @@ export default function AdminUsersPage() {
     [users],
   );
 
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleToggleStatus = async () => {
     if (!statusTarget) return;
     setSubmitting(true);
@@ -134,8 +154,8 @@ export default function AdminUsersPage() {
       );
       toast.success(`User ${nextIsActive ? 'activated' : 'deactivated'} successfully.`);
       setStatusTarget(null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update user status.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update user status.');
     } finally {
       setSubmitting(false);
     }
@@ -148,79 +168,138 @@ export default function AdminUsersPage() {
       setUsers((prev) =>
         prev.map((item) =>
           item.id === user.id
-            ? { ...item, role: selectedRole, status: 'Active' }
+            ? { ...item, role: selectedRole, status: 'Active' as const }
             : item,
         ),
       );
       toast.success(`Role set to ${selectedRole} for ${user.name}.`);
       setAssignRoleDialog(null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to assign role.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to assign role.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleCreateUser = async (payload: CreateUserPayload) => {
+    setSubmitting(true);
+    try {
+      await createAdminUser(payload);
+      toast.success(`User "${payload.fullName}" created successfully.`);
+      setCreateOpen(false);
+      await loadUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create user.');
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditUser = async (userId: string, fullName: string, cohort: string | undefined) => {
+    setSubmitting(true);
+    try {
+      await updateAdminUser(userId, { fullName, schoolCohort: cohort });
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, name: fullName, className: cohort } : u,
+        ),
+      );
+      toast.success('User details updated successfully.');
+      setEditTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update user.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteAdminUser(userId);
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      toast.success('User deleted successfully.');
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete user.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background pb-12">
-      <Header title="User Management" subtitle={`${users.length} accounts loaded from the platform directory`} />
+      <Header
+        title="User Management"
+        subtitle={`${users.length} accounts loaded from the platform directory`}
+      />
 
       <div className="mx-auto max-w-[1600px] space-y-8 p-6">
-        <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
-          <TabButton
-            label="Pending"
-            count={countsByTab.Pending}
-            active={activeTab === 'Pending'}
-            onClick={() => setActiveTab('Pending')}
-            highlight
-          />
-          <TabButton
-            label="Unassigned"
-            count={countsByTab.Unassigned}
-            active={activeTab === 'Unassigned'}
-            onClick={() => setActiveTab('Unassigned')}
-          />
-          {assignableRoles.map((role) => (
+        {/* Header row: Tabs + Create button */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
             <TabButton
-              key={role}
-              label={role}
-              count={countsByTab[role]}
-              active={activeTab === role}
-              onClick={() => setActiveTab(role)}
+              label="Pending"
+              count={countsByTab.Pending}
+              active={activeTab === 'Pending'}
+              onClick={() => setActiveTab('Pending')}
+              highlight
             />
-          ))}
+            <TabButton
+              label="Unassigned"
+              count={countsByTab.Unassigned}
+              active={activeTab === 'Unassigned'}
+              onClick={() => setActiveTab('Unassigned')}
+            />
+            {assignableRoles.map((role) => (
+              <TabButton
+                key={role}
+                label={role}
+                count={countsByTab[role]}
+                active={activeTab === role}
+                onClick={() => setActiveTab(role)}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            Create User
+          </button>
         </div>
 
+        {/* Search + Filter */}
         <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row">
           <ToolbarField>
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by name, email, or cohort..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-12 w-full rounded-xl border border-border bg-input pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by name, email, or cohort..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-12 w-full rounded-xl border border-border bg-input pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
           </ToolbarField>
           <ToolbarField>
-          <div className="relative min-w-[200px]">
-            <Filter className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as UserStatus | 'All')}
-              className="h-12 w-full appearance-none rounded-xl border border-border bg-input pl-12 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            >
-              <option value="All">All statuses</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
+            <div className="relative min-w-[200px]">
+              <Filter className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as UserStatus | 'All')}
+                className="h-12 w-full appearance-none rounded-xl border border-border bg-input pl-12 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                <option value="All">All statuses</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            </div>
           </ToolbarField>
         </div>
 
+        {/* Table */}
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {loading ? (
             <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
@@ -243,26 +322,61 @@ export default function AdminUsersPage() {
               users={filtered}
               onToggleStatus={(user) => setStatusTarget(user)}
               onOpenAssignRole={(user, mode) => setAssignRoleDialog({ user, mode })}
+              onEdit={(user) => setEditTarget(user)}
+              onDelete={(user) => setDeleteTarget(user)}
             />
           )}
         </div>
       </div>
 
-      {statusTarget ? (
-        <UserStatusDialog
-          user={statusTarget}
-          onCancel={() => setStatusTarget(null)}
-          onConfirm={() => void handleToggleStatus()}
-          isLoading={submitting}
+      {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
+
+      {/* Create User */}
+      {createOpen ? (
+        <CreateUserDialog
+          onCancel={() => { setCreateOpen(false); setSubmitting(false); }}
+          onConfirm={handleCreateUser}
         />
       ) : null}
 
+      {/* Edit User */}
+      {editTarget ? (
+        <EditUserDialog
+          userId={editTarget.id}
+          initialFullName={editTarget.name}
+          initialCohort={editTarget.className}
+          onCancel={() => { setEditTarget(null); setSubmitting(false); }}
+          onConfirm={handleEditUser}
+        />
+      ) : null}
+
+      {/* Delete Confirmation */}
+      {deleteTarget ? (
+        <DeleteConfirmDialog
+          userId={deleteTarget.id}
+          userName={deleteTarget.name}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleDeleteUser}
+        />
+      ) : null}
+
+      {/* Role Assignment */}
       {assignRoleDialog ? (
         <UserRoleDialog
           user={assignRoleDialog.user}
           mode={assignRoleDialog.mode}
           onCancel={() => setAssignRoleDialog(null)}
-          onConfirm={(role) => void handleAssignRole(assignRoleDialog.user, role)}
+          onConfirm={(role) => handleAssignRole(assignRoleDialog.user, role)}
+          isLoading={submitting}
+        />
+      ) : null}
+
+      {/* Status Toggle */}
+      {statusTarget ? (
+        <UserStatusDialog
+          user={statusTarget}
+          onCancel={() => setStatusTarget(null)}
+          onConfirm={handleToggleStatus}
           isLoading={submitting}
         />
       ) : null}
