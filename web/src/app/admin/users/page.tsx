@@ -24,7 +24,7 @@ import { ChevronDown, Filter, Loader2, Search, Users } from 'lucide-react';
 const allRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
 
 function normalizeUser(user: AdminUser): UiUser {
-  const primaryRole = (user.roles[0] || 'Unassigned') as UiUser['role'];
+  const primaryRole = (user.roles[0] || 'Pending') as UiUser['role'];
   return {
     id: user.id,
     name: user.fullName,
@@ -41,7 +41,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<UserRole | 'Unassigned' | 'Pending'>('Student');
+  const [activeTab, setActiveTab] = useState<UserRole | 'Pending'>('Student');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [statusTarget, setStatusTarget] = useState<UiUser | null>(null);
   const [assignRoleDialog, setAssignRoleDialog] = useState<{ user: UiUser } | null>(null);
@@ -70,8 +70,8 @@ export default function AdminUsersPage() {
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
-      if (activeTab !== 'Unassigned' && u.role !== activeTab) return false;
-      if (activeTab === 'Unassigned' && u.role !== 'Unassigned') return false;
+      if (activeTab !== 'Pending' && u.role !== activeTab) return false;
+      if (activeTab === 'Pending' && u.role !== 'Pending') return false;
       const matchSearch =
         u.name.toLowerCase().includes(search.toLowerCase()) ||
         u.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -87,7 +87,7 @@ export default function AdminUsersPage() {
       Lecturer: users.filter((u) => u.role === 'Lecturer').length,
       Expert: users.filter((u) => u.role === 'Expert').length,
       Admin: users.filter((u) => u.role === 'Admin').length,
-      Unassigned: users.filter((u) => u.role === 'Unassigned').length,
+      Pending: users.filter((u) => u.role === 'Pending').length,
     }),
     [users],
   );
@@ -148,7 +148,7 @@ export default function AdminUsersPage() {
         <div className="flex items-center gap-2 mb-8 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/60 w-fit overflow-x-auto">
           <TabButton
             label={t('users.pendingRequests', 'Pending Requests')}
-            count={users.filter(u => u.status === 'Pending').length}
+            count={countsByTab.Pending}
             active={activeTab === 'Pending'}
             onClick={() => setActiveTab('Pending')}
           />

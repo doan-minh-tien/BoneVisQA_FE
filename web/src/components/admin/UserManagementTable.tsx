@@ -7,7 +7,7 @@ export type UiUser = {
   id: string;
   name: string;
   email: string;
-  role: UserRole | 'Unassigned';
+  role: UserRole | 'Pending';
   status: UserStatus;
   joinedAt: string;
   className?: string;
@@ -70,7 +70,7 @@ export function UserManagementTable({
                     </div>
                     <div>
                       <span className="block text-sm font-semibold text-slate-900">{user.name}</span>
-                      {user.role === 'Unassigned' ? (
+                      {user.role === 'Pending' ? (
                         <span className="text-xs font-medium text-slate-400">New Registration</span>
                       ) : (
                         <span className="text-xs font-medium text-slate-500">{user.role}</span>
@@ -102,7 +102,7 @@ export function UserManagementTable({
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex items-center justify-end gap-3">
-                    {user.role === 'Unassigned' ? (
+                    {user.role === 'Pending' ? (
                       <button
                         onClick={() => onOpenAssignRole(user)}
                         className="flex cursor-pointer items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-slate-800 hover:shadow-md active:scale-95"
