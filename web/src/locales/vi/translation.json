@@ -1,0 +1,88 @@
+{
+  "common": {
+    "loading": "Đang tải...",
+    "error": "Đã xảy ra lỗi",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "edit": "Chỉnh sửa",
+    "confirm": "Xác nhận",
+    "success": "Thành công",
+    "search": "Tìm kiếm...",
+    "actions": "Thao tác",
+    "status": "Trạng thái"
+  },
+  "nav": {
+    "dashboard": "Bảng điều khiển",
+    "users": "Quản lý Người dùng",
+    "documents": "Kho Tri thức",
+    "courses": "Khóa học",
+    "quizzes": "Bài kiểm tra",
+    "logout": "Đăng xuất",
+    "language": "Ngôn ngữ"
+  },
+  "auth": {
+    "login": "Đăng nhập",
+    "email": "Địa chỉ Email",
+    "password": "Mật khẩu",
+    "rememberMe": "Ghi nhớ tôi",
+    "forgotPassword": "Quên mật khẩu?",
+    "dontHaveAccount": "Chưa có tài khoản?",
+    "signUp": "Đăng ký tại đây",
+    "welcome": "Chào mừng trở lại",
+    "welcomeDesc": "Vui lòng đăng nhập để tiếp tục"
+  },
+  "dashboard": {
+    "quickStats": "Thống kê nhanh",
+    "recentActivity": "Hoạt động gần đây",
+    "totalUsers": "Tổng số Người dùng",
+    "activeUsers": "Đang hoạt động",
+    "totalDocuments": "Hiển thị Tài liệu",
+    "systemHealth": "Trạng thái Hệ thống"
+  },
+  "users": {
+    "title": "Quản lý Người dùng",
+    "subtitle": "Quản lý toàn bộ người dùng và cấp phép sử dụng nền tảng.",
+    "pendingRequests": "Yêu cầu chờ duyệt",
+    "activeUsersList": "Người dùng hoạt động",
+    "roles": {
+      "admin": "Quản trị viên",
+      "student": "Sinh viên",
+      "lecturer": "Giảng viên",
+      "expert": "Chuyên gia",
+      "pending": "Chờ duyệt"
+    },
+    "assignRole": "Cấp quyền",
+    "revokeRole": "Thu hồi quyền",
+    "confirmRevoke": "Bạn có chắc chắn muốn thu hồi quyền của người dùng này?",
+    "searchPlaceholder": "Tìm kiếm tên hoặc email..."
+  },
+  "documents": {
+    "title": "Tài liệu",
+    "subtitle": "Quản lý kho tri thức đa phương tiện và chuẩn hóa nội dung.",
+    "upload": "Tải lên Tài liệu",
+    "uploadTitle": "Tải tài liệu mới",
+    "uploadDesc": "Thêm một tệp PDF hoặc DOC mới vào kho tri thức.",
+    "documentFile": "Tệp Tài liệu",
+    "documentTitle": "Tên Tài liệu",
+    "clickToUpload": "Nhấn để Tải lên",
+    "orDragDrop": "hoặc kéo thả vào đây",
+    "uploading": "Đang tải lên...",
+    "indexingStatus": {
+      "completed": "Hoàn tất",
+      "processing": "Đang xử lý",
+      "failed": "Thất bại",
+      "outdated": "Lỗi thời"
+    },
+    "version": "Phiên bản",
+    "created": "Ngày tạo",
+    "noDocuments": "Không tìm thấy dữ liệu",
+    "documentDetails": "Chi tiết Tài liệu",
+    "documentDetailsDesc": "Xem lại siêu dữ liệu và kiểm tra trạng thái lập chỉ mục.",
+    "reindex": "Lập chỉ mục lại",
+    "openInNewTab": "Mở tab mới",
+    "downloadFile": "Tải xuống Tệp",
+    "actionsTitle": "Thao tác",
+    "actionsDesc": "Mở file gốc để xem xét nội dung hoặc tiến hành trích xuất tri thức."
+  }
+}

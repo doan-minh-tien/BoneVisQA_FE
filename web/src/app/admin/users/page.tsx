@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import Header from "@/components/Header";
 import {
   UiUser,
   UserManagementTable,
@@ -40,7 +41,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<UserRole | 'Unassigned'>('Student');
+  const [activeTab, setActiveTab] = useState<UserRole | 'Unassigned' | 'Pending'>('Student');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [statusTarget, setStatusTarget] = useState<UiUser | null>(null);
   const [assignRoleDialog, setAssignRoleDialog] = useState<{ user: UiUser } | null>(null);
@@ -133,22 +134,28 @@ export default function AdminUsersPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background pb-12">
-      <Header title="User Management" subtitle={`${users.length} accounts loaded from the platform directory`} />
+  const { t } = useTranslation();
 
-      <div className="mx-auto max-w-[1600px] space-y-8 p-6">
-        <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
+  return (
+    <div className="min-h-screen bg-slate-50/50 pb-12">
+      <Header
+        title={t('users.title', 'User Management')}
+        subtitle={t('users.subtitle', 'Manage user roles, statuses, and permissions')}
+      />
+
+      <div className="max-w-[1600px] mx-auto px-6 mt-8">
+        {/* Modern Apple-like Tabs */}
+        <div className="flex items-center gap-2 mb-8 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/60 w-fit overflow-x-auto">
           <TabButton
-            label="Unassigned"
-            count={countsByTab.Unassigned}
-            active={activeTab === 'Unassigned'}
-            onClick={() => setActiveTab('Unassigned')}
+            label={t('users.pendingRequests', 'Pending Requests')}
+            count={users.filter(u => u.status === 'Pending').length}
+            active={activeTab === 'Pending'}
+            onClick={() => setActiveTab('Pending')}
           />
           {allRoles.map((role) => (
             <TabButton
               key={role}
-              label={role}
+              label={t(`users.roles.${role.toLowerCase()}`, role)}
               count={countsByTab[role]}
               active={activeTab === role}
               onClick={() => setActiveTab(role)}
@@ -162,7 +169,7 @@ export default function AdminUsersPage() {
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search by name, email, or cohort..."
+              placeholder={t('users.searchPlaceholder', 'Search by name, email, or class...')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-12 w-full rounded-xl border border-border bg-input pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

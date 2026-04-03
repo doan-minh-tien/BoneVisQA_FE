@@ -1,0 +1,88 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "success": "Success",
+    "search": "Search...",
+    "actions": "Actions",
+    "status": "Status"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "users": "User Management",
+    "documents": "Knowledge Base",
+    "courses": "Courses",
+    "quizzes": "Quizzes",
+    "logout": "Log Out",
+    "language": "Language"
+  },
+  "auth": {
+    "login": "Sign In",
+    "email": "Email Address",
+    "password": "Password",
+    "rememberMe": "Remember Me",
+    "forgotPassword": "Forgot Password?",
+    "dontHaveAccount": "Don't have an account?",
+    "signUp": "Sign up here",
+    "welcome": "Welcome back",
+    "welcomeDesc": "Sign in to your account to continue"
+  },
+  "dashboard": {
+    "quickStats": "Quick Stats",
+    "recentActivity": "Recent Activity",
+    "totalUsers": "Total Users",
+    "activeUsers": "Active Users",
+    "totalDocuments": "Documents",
+    "systemHealth": "System Health"
+  },
+  "users": {
+    "title": "User Management",
+    "subtitle": "Manage all users across the platform.",
+    "pendingRequests": "Pending Requests",
+    "activeUsersList": "Active Users",
+    "roles": {
+      "admin": "Admin",
+      "student": "Student",
+      "lecturer": "Lecturer",
+      "expert": "Expert",
+      "pending": "Pending"
+    },
+    "assignRole": "Assign Role",
+    "revokeRole": "Revoke Role",
+    "confirmRevoke": "Are you sure you want to revoke this user's role?",
+    "searchPlaceholder": "Search by name or email..."
+  },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Manage knowledge base documents and indexing status.",
+    "upload": "Upload Document",
+    "uploadTitle": "Upload Document",
+    "uploadDesc": "Add a new file to the knowledge base.",
+    "documentFile": "Document File",
+    "documentTitle": "Document Title",
+    "clickToUpload": "Click to upload",
+    "orDragDrop": "or drag and drop",
+    "uploading": "Uploading...",
+    "indexingStatus": {
+      "completed": "Completed",
+      "processing": "Processing",
+      "failed": "Failed",
+      "outdated": "Outdated"
+    },
+    "version": "Version",
+    "created": "Created",
+    "noDocuments": "No Documents Found",
+    "documentDetails": "Document Details",
+    "documentDetailsDesc": "View indexing records and metadata.",
+    "reindex": "Reindex Document",
+    "openInNewTab": "Open in New Tab",
+    "downloadFile": "Download File",
+    "actionsTitle": "Document Actions",
+    "actionsDesc": "Access the original file or update the knowledge base."
+  }
+}
