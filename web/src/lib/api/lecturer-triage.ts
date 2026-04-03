@@ -3,7 +3,7 @@ import type { ClassItem, LecturerTriageRow } from './types';
 
 export async function fetchLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<ClassItem[]>('/api/Lecturers/classes', {
+    const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
       params: { lecturerId },
     });
     return Array.isArray(data) ? data : [];
@@ -30,7 +30,7 @@ function mapTriageRow(row: unknown): LecturerTriageRow | null {
 
 export async function fetchLecturerTriageList(classId: string): Promise<LecturerTriageRow[]> {
   try {
-    const { data } = await http.get<unknown>('/api/Lecturers/qa-triage', {
+    const { data } = await http.get<unknown>('/api/lecturer/qa-triage', {
       params: { classId },
     });
     const list = Array.isArray(data)
@@ -46,7 +46,7 @@ export async function fetchLecturerTriageList(classId: string): Promise<Lecturer
 
 export async function escalateToExpert(requestId: string): Promise<void> {
   try {
-    await http.post(`/api/Lecturers/qa-triage/${requestId}/escalate`);
+    await http.post(`/api/lecturer/qa-triage/${requestId}/escalate`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
