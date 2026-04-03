@@ -14,6 +14,7 @@ import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
 import SystemActivityFeed from '@/components/admin/dashboard/SystemActivityFeed';
 import QuickStats from '@/components/admin/dashboard/QuickStats';
+import { http, getApiErrorMessage } from '@/lib/api/client';
 
 interface UserStatResult {
   totalUsers: number;
@@ -32,30 +33,29 @@ interface UserStatResult {
 export default function AdminDashboardPage() {
   const [statsData, setStatsData] = useState<UserStatResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchStats() {
+    let cancelled = false;
+    (async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-        const response = await fetch(`${apiUrl}/api/Admin/users`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setStatsData(data.result);
+        const { data } = await http.get<{ result?: UserStatResult; message?: string }>(
+          '/api/admin/monitoring/users',
+        );
+        if (!cancelled) {
+          setStatsData(data.result ?? (data as unknown as UserStatResult));
         }
-      } catch (error) {
-        console.error("Failed to fetch user stats:", error);
+      } catch (err) {
+        if (!cancelled) {
+          const msg = getApiErrorMessage(err);
+          console.error('Failed to fetch admin stats:', msg);
+          setStatsError(msg);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    }
-    
-    fetchStats();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Map data from API for Stats

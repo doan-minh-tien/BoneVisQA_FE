@@ -1,25 +1,42 @@
 import { AlertTriangle, ChevronDown, Loader2, UserCheck, UserX, X } from 'lucide-react';
-import { useState } from 'react';
-import type { UiUser, UserRole } from './UserManagementTable';
+import { useEffect, useState } from 'react';
+import type { DisplayRole, UiUser, UserRole } from './UserManagementTable';
+
+function isAssignableRole(role: DisplayRole): role is UserRole {
+  return role === 'Student' || role === 'Lecturer' || role === 'Expert' || role === 'Admin';
+}
 
 export function UserRoleDialog({
   user,
+  mode,
   onConfirm,
   onCancel,
   isLoading,
 }: {
   user: UiUser;
+  mode: 'assign' | 'change';
   onConfirm: (role: UserRole) => void;
   onCancel: () => void;
   isLoading: boolean;
 }) {
   const [selectedRole, setSelectedRole] = useState<UserRole>('Student');
 
+  useEffect(() => {
+    if (mode === 'change' && isAssignableRole(user.role)) {
+      setSelectedRole(user.role);
+    } else {
+      setSelectedRole('Student');
+    }
+  }, [user.id, user.role, mode]);
+
+  const isChange = mode === 'change';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative w-full max-w-md animate-in rounded-2xl bg-white p-6 shadow-2xl duration-200 fade-in zoom-in-95">
         <button
+          type="button"
           onClick={onCancel}
           className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
         >
@@ -27,8 +44,14 @@ export function UserRoleDialog({
         </button>
 
         <div className="mb-6">
-          <h3 className="text-xl font-bold text-slate-800">Assign Role</h3>
-          <p className="mt-1 text-sm text-slate-500">Approve this user and grant them access.</p>
+          <h3 className="text-xl font-bold text-slate-800">
+            {isChange ? 'Change role' : 'Assign role'}
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            {isChange
+              ? 'Select a new role for this user. Their account will stay active unless you turn it off in the table.'
+              : 'Approve this user by assigning a role. Their account will be activated automatically.'}
+          </p>
         </div>
 
         <div className="mb-6 flex items-center gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -43,11 +66,16 @@ export function UserRoleDialog({
           <div>
             <p className="text-base font-bold text-slate-800">{user.name}</p>
             <p className="text-sm text-slate-500">{user.email}</p>
+            {isChange && isAssignableRole(user.role) ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-400">Current role: {user.role}</p>
+            ) : null}
           </div>
         </div>
 
         <div className="mb-8">
-          <label className="mb-2 block text-sm font-bold text-slate-700">Select Role to Assign</label>
+          <label className="mb-2 block text-sm font-bold text-slate-700">
+            {isChange ? 'New role' : 'Role to assign'}
+          </label>
           <div className="relative">
             <select
               value={selectedRole}
@@ -65,6 +93,7 @@ export function UserRoleDialog({
 
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onCancel}
             disabled={isLoading}
             className="flex-1 rounded-xl py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
@@ -72,12 +101,13 @@ export function UserRoleDialog({
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => onConfirm(selectedRole)}
             disabled={isLoading}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-bold text-white shadow-md shadow-slate-900/20 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
-            Confirm & Assign
+            {isChange ? 'Save role' : 'Confirm & assign'}
           </button>
         </div>
       </div>
@@ -103,6 +133,7 @@ export function UserStatusDialog({
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative w-full max-w-md animate-in rounded-2xl bg-white p-8 shadow-2xl duration-200 fade-in zoom-in-95">
         <button
+          type="button"
           onClick={onCancel}
           className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
         >
@@ -133,7 +164,7 @@ export function UserStatusDialog({
           ) : (
             <>
               Are you sure you want to activate <strong className="font-bold text-slate-900">{user.name}</strong>?
-              They will be able to log in and access the system.
+              They will be able to log in and access the system (according to their role).
             </>
           )}
         </p>
@@ -149,12 +180,14 @@ export function UserStatusDialog({
 
         <div className="flex gap-4">
           <button
+            type="button"
             onClick={onCancel}
             className="flex-1 rounded-xl py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={isLoading}
             className={`flex-1 rounded-xl py-3 text-sm font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-70 ${

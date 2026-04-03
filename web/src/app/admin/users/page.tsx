@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import {
   UiUser,
   UserManagementTable,
+  type DisplayRole,
   type UserRole,
   type UserStatus,
 } from '@/components/admin/UserManagementTable';
@@ -20,15 +21,31 @@ import {
 import type { AdminUser } from '@/lib/api/types';
 import { ChevronDown, Filter, Loader2, Search, Users } from 'lucide-react';
 
-const allRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
+const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
+
+type RoleTab = UserRole | 'Pending' | 'Unassigned';
 
 function normalizeUser(user: AdminUser): UiUser {
-  const primaryRole = (user.roles[0] || 'Unassigned') as UiUser['role'];
+  const roles = user.roles.map((r) => r.trim()).filter(Boolean);
+  const assigned = roles.find((r) =>
+    assignableRoles.includes(r as UserRole),
+  ) as UserRole | undefined;
+  const hasPending = roles.some((r) => r === 'Pending');
+
+  let displayRole: DisplayRole;
+  if (assigned) {
+    displayRole = assigned;
+  } else if (hasPending) {
+    displayRole = 'Pending';
+  } else {
+    displayRole = 'Unassigned';
+  }
+
   return {
     id: user.id,
     name: user.fullName,
     email: user.email,
-    role: primaryRole,
+    role: displayRole,
     status: user.isActive ? 'Active' : 'Inactive',
     joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A',
     className: user.schoolCohort,
@@ -40,10 +57,13 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<UserRole | 'Unassigned'>('Student');
+  const [activeTab, setActiveTab] = useState<RoleTab>('Pending');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [statusTarget, setStatusTarget] = useState<UiUser | null>(null);
-  const [assignRoleDialog, setAssignRoleDialog] = useState<{ user: UiUser } | null>(null);
+  const [assignRoleDialog, setAssignRoleDialog] = useState<{
+    user: UiUser;
+    mode: 'assign' | 'change';
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -69,8 +89,15 @@ export default function AdminUsersPage() {
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
-      if (activeTab !== 'Unassigned' && u.role !== activeTab) return false;
+      if (activeTab === 'Pending' && u.role !== 'Pending') return false;
       if (activeTab === 'Unassigned' && u.role !== 'Unassigned') return false;
+      if (
+        activeTab !== 'Pending' &&
+        activeTab !== 'Unassigned' &&
+        u.role !== activeTab
+      ) {
+        return false;
+      }
       const matchSearch =
         u.name.toLowerCase().includes(search.toLowerCase()) ||
         u.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -82,11 +109,12 @@ export default function AdminUsersPage() {
 
   const countsByTab = useMemo(
     () => ({
+      Pending: users.filter((u) => u.role === 'Pending').length,
+      Unassigned: users.filter((u) => u.role === 'Unassigned').length,
       Student: users.filter((u) => u.role === 'Student').length,
       Lecturer: users.filter((u) => u.role === 'Lecturer').length,
       Expert: users.filter((u) => u.role === 'Expert').length,
       Admin: users.filter((u) => u.role === 'Admin').length,
-      Unassigned: users.filter((u) => u.role === 'Unassigned').length,
     }),
     [users],
   );
@@ -120,11 +148,11 @@ export default function AdminUsersPage() {
       setUsers((prev) =>
         prev.map((item) =>
           item.id === user.id
-            ? { ...item, role: selectedRole, status: item.status === 'Inactive' ? 'Inactive' : 'Active' }
+            ? { ...item, role: selectedRole, status: 'Active' }
             : item,
         ),
       );
-      toast.success(`Assigned ${selectedRole} role to ${user.name}.`);
+      toast.success(`Role set to ${selectedRole} for ${user.name}.`);
       setAssignRoleDialog(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to assign role.');
@@ -140,12 +168,19 @@ export default function AdminUsersPage() {
       <div className="mx-auto max-w-[1600px] space-y-8 p-6">
         <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
           <TabButton
+            label="Pending"
+            count={countsByTab.Pending}
+            active={activeTab === 'Pending'}
+            onClick={() => setActiveTab('Pending')}
+            highlight
+          />
+          <TabButton
             label="Unassigned"
             count={countsByTab.Unassigned}
             active={activeTab === 'Unassigned'}
             onClick={() => setActiveTab('Unassigned')}
           />
-          {allRoles.map((role) => (
+          {assignableRoles.map((role) => (
             <TabButton
               key={role}
               label={role}
@@ -207,7 +242,7 @@ export default function AdminUsersPage() {
             <UserManagementTable
               users={filtered}
               onToggleStatus={(user) => setStatusTarget(user)}
-              onOpenAssignRole={(user) => setAssignRoleDialog({ user })}
+              onOpenAssignRole={(user, mode) => setAssignRoleDialog({ user, mode })}
             />
           )}
         </div>
@@ -225,6 +260,7 @@ export default function AdminUsersPage() {
       {assignRoleDialog ? (
         <UserRoleDialog
           user={assignRoleDialog.user}
+          mode={assignRoleDialog.mode}
           onCancel={() => setAssignRoleDialog(null)}
           onConfirm={(role) => void handleAssignRole(assignRoleDialog.user, role)}
           isLoading={submitting}
@@ -239,21 +275,36 @@ function TabButton({
   count,
   active,
   onClick,
+  highlight,
 }: {
   label: string;
   count: number;
   active: boolean;
   onClick: () => void;
+  highlight?: boolean;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-        active ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+        active
+          ? highlight
+            ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
+            : 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
+          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
       }`}
     >
       <span>{label}</span>
-      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+          active
+            ? highlight
+              ? 'bg-white/25 text-white'
+              : 'bg-white/20 text-white'
+            : 'bg-slate-100 text-slate-600'
+        }`}
+      >
         {count}
       </span>
     </button>

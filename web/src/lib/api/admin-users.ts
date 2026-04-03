@@ -55,7 +55,9 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
 
 export async function assignAdminUserRole(userId: string, role: string): Promise<void> {
   try {
-    await http.post(`${ADMIN_USERS}/${userId}/assign-role`, { roles: [role] });
+    await http.post(`${ADMIN_USERS}/${userId}/assign-role`, {}, {
+      params: { role },
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
