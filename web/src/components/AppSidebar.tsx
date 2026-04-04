@@ -17,6 +17,7 @@ import {
   UserCog,
   ClipboardList,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -33,6 +34,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
+    { label: 'Medical Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'System Logs', href: '/admin/cases', icon: ClipboardList },
   ],

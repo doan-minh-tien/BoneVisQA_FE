@@ -226,3 +226,51 @@ export async function removeUserFromClass(userId: string, classId: string): Prom
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// ── Medical Student Verification ────────────────────────────────────────────────
+
+export interface PendingVerification {
+  userId: string;
+  fullName: string;
+  email: string;
+  schoolCohort: string | null;
+  isMedicalStudent: boolean;
+  medicalSchool: string | null;
+  medicalStudentId: string | null;
+  verificationStatus: string | null;
+  createdAt: string | null;
+}
+
+export interface ApproveVerificationPayload {
+  isApproved: boolean;
+  notes?: string;
+}
+
+export async function fetchPendingVerifications(): Promise<PendingVerification[]> {
+  try {
+    const { data } = await http.get<{ result?: PendingVerification[] } | PendingVerification[]>(
+      `${ADMIN_USERS}/verifications/pending`,
+    );
+    const list = 'result' in data ? data.result : (data as PendingVerification[]);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function approveMedicalVerification(
+  userId: string,
+  payload: ApproveVerificationPayload,
+): Promise<AdminUser> {
+  try {
+    const { data } = await http.put<{ result?: AdminUser } | AdminUser>(
+      `${ADMIN_USERS}/${userId}/verifications/approve`,
+      payload,
+    );
+    const result = 'result' in data ? data.result : (data as AdminUser);
+    if (!result) throw new Error('No result from server.');
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

@@ -119,19 +119,45 @@ export async function fetchAdminExpertReviewStats(): Promise<AdminExpertReviewSt
   }
 }
 
-export async function fetchAdminRecentUsers(): Promise<AdminRecentUser[]> {
+export interface AdminRecentUsersPage {
+  users: AdminRecentUser[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+function num(v: unknown, fallback: number): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
+/** Danh sách user gần đây (mới nhất trước), có phân trang — BE: GET /api/admin/users?page=&pageSize= */
+export async function fetchAdminRecentUsersPage(
+  page: number,
+  pageSize: number,
+): Promise<AdminRecentUsersPage> {
   try {
     const { data } = await http.get<unknown>('/api/admin/users', {
-      params: { pageSize: 5 },
+      params: { page, pageSize },
     });
-    const list = Array.isArray(data)
-      ? data
-      : data && typeof data === 'object' && 'items' in data
-        ? (data as { items?: unknown[] }).items ?? []
-        : data && typeof data === 'object' && 'result' in data
-          ? (data as { result?: unknown[] }).result ?? []
-          : [];
-    return list.map(mapRecentUser).filter((item): item is AdminRecentUser => item !== null);
+    const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const rawList =
+      Array.isArray(data)
+        ? data
+        : 'result' in body && Array.isArray(body.result)
+          ? body.result
+          : 'items' in body && Array.isArray(body.items)
+            ? body.items
+            : [];
+    const users = rawList.map(mapRecentUser).filter((item): item is AdminRecentUser => item !== null);
+    const totalCount = num(body.totalCount ?? body.TotalCount, users.length);
+    const resPage = num(body.page ?? body.Page, page);
+    const resPageSize = num(body.pageSize ?? body.PageSize, pageSize);
+    return { users, totalCount, page: resPage, pageSize: resPageSize };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

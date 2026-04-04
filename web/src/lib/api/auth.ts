@@ -18,6 +18,9 @@ export interface RegisterPayload {
   email: string;
   password: string;
   schoolCohort: string;
+  isMedicalStudent: boolean;
+  medicalSchool?: string;
+  medicalStudentId?: string;
 }
 
 export interface RegisterResponse {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import {
@@ -22,7 +22,7 @@ import {
   fetchAdminActivityStats,
   fetchAdminRagStats,
   fetchAdminExpertReviewStats,
-  fetchAdminRecentUsers,
+  fetchAdminRecentUsersPage,
   type AdminUserStat,
   type AdminActivityStat,
   type AdminRagStat,
@@ -31,13 +31,19 @@ import {
 } from '@/lib/api/admin-dashboard';
 import { useToast } from '@/components/ui/toast';
 
+const RECENT_USERS_PAGE_SIZE = 8;
+
 export default function AdminDashboardPage() {
   const toast = useToast();
+  const recentListReady = useRef(false);
   const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
   const [activityStats, setActivityStats] = useState<AdminActivityStat | null>(null);
   const [ragStats, setRagStats] = useState<AdminRagStat | null>(null);
   const [expertStats, setExpertStats] = useState<AdminExpertReviewStat | null>(null);
   const [recentUsers, setRecentUsers] = useState<AdminRecentUser[]>([]);
+  const [recentPage, setRecentPage] = useState(1);
+  const [recentTotal, setRecentTotal] = useState(0);
+  const [recentPaging, setRecentPaging] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
 
@@ -45,19 +51,22 @@ export default function AdminDashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [user, rag, expert, users, activity] = await Promise.all([
+        const [user, rag, expert, recentData, activity] = await Promise.all([
           fetchAdminUserStats(),
           fetchAdminRagStats(),
           fetchAdminExpertReviewStats(),
-          fetchAdminRecentUsers(),
+          fetchAdminRecentUsersPage(1, RECENT_USERS_PAGE_SIZE),
           fetchAdminActivityStats(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
         ]);
         if (!cancelled) {
           setUserStats(user);
           setRagStats(rag);
           setExpertStats(expert);
-          setRecentUsers(users);
+          setRecentUsers(recentData.users);
+          setRecentTotal(recentData.totalCount);
+          setRecentPage(1);
           setActivityStats(activity);
+          recentListReady.current = true;
         }
       } catch (err) {
         if (!cancelled) {
@@ -72,6 +81,29 @@ export default function AdminDashboardPage() {
     })();
     return () => { cancelled = true; };
   }, [toast]);
+
+  useEffect(() => {
+    if (!recentListReady.current) return;
+    let cancelled = false;
+    (async () => {
+      setRecentPaging(true);
+      try {
+        const recentData = await fetchAdminRecentUsersPage(recentPage, RECENT_USERS_PAGE_SIZE);
+        if (!cancelled) {
+          setRecentUsers(recentData.users);
+          setRecentTotal(recentData.totalCount);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : 'Failed to load users.');
+        }
+      } finally {
+        if (!cancelled) setRecentPaging(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ refetch khi đổi trang
+  }, [recentPage]);
 
   const totalUsers = userStats?.totalUsers || 0;
   const newUsers = userStats?.newUsersThisMonth || 0;
@@ -151,7 +183,15 @@ export default function AdminDashboardPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               <div className="lg:col-span-2 space-y-6">
-                <RecentUsersTable users={recentUsers} isLoading={isLoading} />
+                <RecentUsersTable
+                  users={recentUsers}
+                  isLoading={isLoading}
+                  isPaging={recentPaging}
+                  page={recentPage}
+                  pageSize={RECENT_USERS_PAGE_SIZE}
+                  totalCount={recentTotal}
+                  onPageChange={setRecentPage}
+                />
                 <RoleDistributionChart isLoading={false} roleDistribution={roleDistribution} />
               </div>
 
