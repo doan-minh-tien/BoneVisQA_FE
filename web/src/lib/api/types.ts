@@ -93,6 +93,7 @@ export interface LoginResponse {
   email: string;
   token: string;
   roles: string[];
+  requiresMedicalVerification?: boolean;
 }
 
 export interface LecturerDashboardStats {

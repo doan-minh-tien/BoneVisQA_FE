@@ -66,3 +66,24 @@ export async function googleRegister(idToken: string): Promise<RegisterResponse>
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+export interface MedicalVerificationPayload {
+  medicalSchool: string;
+  medicalStudentId: string;
+}
+
+export async function requestMedicalVerification(
+  payload: MedicalVerificationPayload,
+  userId?: string,
+): Promise<RegisterResponse> {
+  try {
+    const { data } = await http.post<RegisterResponse>(
+      '/api/Auths/request-medical-verification',
+      payload,
+      userId ? { headers: { 'X-User-Id': userId } } : undefined,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

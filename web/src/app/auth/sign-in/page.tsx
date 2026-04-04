@@ -129,6 +129,13 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
 
       if (data.success && data.token && data.roles) {
         handleLoginSuccess(data);
+      } else if (data.success && data.requiresMedicalVerification) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("userId", data.userId ?? "");
+        localStorage.setItem("fullName", data.fullName ?? "");
+        localStorage.setItem("email", data.email ?? "");
+        toast.success(data.message || "Vui lòng xác nhận thông tin y khoa để hoàn tất đăng ký.");
+        router.push("/auth/medical-verification");
       } else {
         const message = data.message || "Google login failed.";
         setError(message);
