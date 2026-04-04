@@ -1,0 +1,522 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import {
+  X,
+  ZoomIn,
+  Pencil,
+  Layers,
+  Trash2,
+  Info,
+  PlusCircle,
+  ChevronDown,
+  Loader2,
+} from 'lucide-react';
+import type {
+  QuizQuestionDto,
+  CreateQuizQuestionRequest,
+  UpdateQuizQuestionRequest,
+} from '@/lib/api/types';
+import { addQuizQuestion, updateQuizQuestion } from '@/lib/api/lecturer-quiz';
+
+interface QuestionEditorDialogProps {
+  open: boolean;
+  onClose: () => void;
+  quizId: string;
+  question?: QuizQuestionDto | null;
+  onSuccess?: () => void;
+  draftMode?: boolean;
+  onDraftSave?: (payload: CreateQuizQuestionRequest) => void;
+}
+
+const DEFAULT_SCAN_IMAGE =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCtXMayRwhH5Mecs-rBiEN0xw_Wrn0FnpF2jU3nFeZsSm3c-ub-IhNr38TMBUVSn8QYNOA3WinZEfkBDL9hgfZT69t5vBqeQtUNMPNomyM2GVDiw3GEcT1b31kjT573IAtkurXyVJldsT6E27wnLTMsfOQox3VNQX7p_jCt5uw9ZCwrySPZsHj5dUPWAuYgflI3Hk_BWGavAkpUPw9yUoSaar3ejj2rulYRY-90DTXnDQuTS_e9RLMzd7i-2cdUBNBRRlibG36WLb4';
+
+const TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'MultipleChoice', label: 'Multiple Choice' },
+  { value: 'TrueFalse', label: 'True / False' },
+  { value: 'Annotation', label: 'Identification (Point)' },
+];
+
+type OptionKey = 'A' | 'B' | 'C' | 'D';
+
+export default function QuestionEditorDialog({
+  open,
+  onClose,
+  quizId,
+  question,
+  onSuccess,
+  draftMode = false,
+  onDraftSave,
+}: QuestionEditorDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [difficulty, setDifficulty] = useState<'basic' | 'advanced'>('basic');
+  const [visibleMcCount, setVisibleMcCount] = useState(3);
+
+  const [formData, setFormData] = useState<{
+    questionText: string;
+    type: string;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
+    correctAnswer: string;
+  }>({
+    questionText: '',
+    type: 'MultipleChoice',
+    optionA: '',
+    optionB: '',
+    optionC: '',
+    optionD: '',
+    correctAnswer: '',
+  });
+
+  const [optionPoints, setOptionPoints] = useState<Record<OptionKey, number>>({
+    A: 10,
+    B: 0,
+    C: 0,
+    D: 0,
+  });
+
+  const syncPointsFromCorrect = useCallback((correct: string) => {
+    const c = (correct || 'A').toUpperCase().charAt(0) as OptionKey;
+    const keys: OptionKey[] = ['A', 'B', 'C', 'D'];
+    setOptionPoints((prev) => {
+      const next = { ...prev };
+      keys.forEach((k) => {
+        next[k] = k === c ? 10 : 0;
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    if (question) {
+      setFormData({
+        questionText: question.questionText,
+        type: question.type || 'MultipleChoice',
+        optionA: question.optionA || '',
+        optionB: question.optionB || '',
+        optionC: question.optionC || '',
+        optionD: question.optionD || '',
+        correctAnswer: (question.correctAnswer || 'A').toUpperCase().slice(0, 1),
+      });
+      const filled = [question.optionA, question.optionB, question.optionC, question.optionD].filter(
+        (t) => (t || '').trim().length > 0,
+      ).length;
+      setVisibleMcCount(Math.min(4, Math.max(3, filled || 3)));
+      syncPointsFromCorrect(question.correctAnswer || 'A');
+    } else {
+      setFormData({
+        questionText: '',
+        type: 'MultipleChoice',
+        optionA: '',
+        optionB: '',
+        optionC: '',
+        optionD: '',
+        correctAnswer: 'A',
+      });
+      setVisibleMcCount(3);
+      setOptionPoints({ A: 10, B: 0, C: 0, D: 0 });
+    }
+    setDifficulty('basic');
+    setError(null);
+  }, [question, open, syncPointsFromCorrect]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (draftMode) {
+        const payload: CreateQuizQuestionRequest = {
+          quizId: quizId === 'temp' ? '' : quizId,
+          questionText: formData.questionText,
+          type: formData.type,
+          optionA: formData.optionA,
+          optionB: formData.optionB,
+          optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
+          optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+          correctAnswer: formData.correctAnswer,
+        };
+        onDraftSave?.(payload);
+        onSuccess?.();
+        onClose();
+        return;
+      }
+
+      if (question) {
+        const payload: UpdateQuizQuestionRequest = {
+          questionText: formData.questionText,
+          type: formData.type,
+          correctAnswer: formData.correctAnswer,
+          optionA: formData.optionA,
+          optionB: formData.optionB,
+          optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
+          optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+        };
+        await updateQuizQuestion(question.id, payload);
+      } else {
+        const payload: CreateQuizQuestionRequest = {
+          quizId,
+          questionText: formData.questionText,
+          type: formData.type,
+          optionA: formData.optionA,
+          optionB: formData.optionB,
+          optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
+          optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+          correctAnswer: formData.correctAnswer,
+        };
+        await addQuizQuestion(payload);
+      }
+      onSuccess?.();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isTrueFalse = formData.type === 'TrueFalse';
+  const isMc = formData.type === 'MultipleChoice';
+
+  const mcKeys: OptionKey[] = ['A', 'B', 'C', 'D'].slice(0, visibleMcCount) as OptionKey[];
+
+  const setCorrect = (key: string) => {
+    const k = key.toUpperCase().slice(0, 1) as OptionKey;
+    setFormData((prev) => ({ ...prev, correctAnswer: k }));
+    syncPointsFromCorrect(k);
+  };
+
+  const addMcRow = () => {
+    if (visibleMcCount >= 4) return;
+    setVisibleMcCount((n) => n + 1);
+  };
+
+  if (!open) return null;
+
+  const title = question ? 'Edit Assessment Question' : 'Add Assessment Question';
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-[#f7f9fb]/80 backdrop-blur-md dark:bg-background/80"
+        aria-hidden
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="question-editor-title"
+        className="relative flex max-h-[min(921px,calc(100vh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-card shadow-[0px_12px_32px_rgba(25,28,30,0.06)] ring-1 ring-border/40"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-8 pb-2 pt-8 sm:px-10">
+          <div>
+            <h2
+              id="question-editor-title"
+              className="font-headline text-2xl font-extrabold tracking-tight text-foreground"
+            >
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Configure clinical parameters and diagnostic visual aids.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Close"
+          >
+            <X className="h-8 w-8" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="custom-scrollbar flex-1 overflow-y-auto px-8 pb-6 sm:px-10">
+            {error && (
+              <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-12 gap-8 lg:gap-10">
+              <div className="col-span-12 space-y-4 lg:col-span-5">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  Diagnostic Image
+                </label>
+                <div className="group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border/40 bg-slate-900 transition-colors hover:border-primary/50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={DEFAULT_SCAN_IMAGE}
+                    alt="Diagnostic preview"
+                    className="absolute inset-0 h-full w-full object-cover opacity-80"
+                  />
+                  <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
+                    <div className="flex justify-end">
+                      <span className="rounded-full bg-teal-600 px-3 py-1 text-[10px] font-bold uppercase text-white dark:bg-secondary dark:text-secondary-foreground">
+                        Active Scan
+                      </span>
+                    </div>
+                    <div className="flex w-full justify-center">
+                      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border/20 bg-card/90 px-4 py-2 shadow-sm backdrop-blur-md">
+                        <button type="button" className="text-primary" aria-label="Zoom">
+                          <ZoomIn className="h-4 w-4" />
+                        </button>
+                        <button type="button" className="text-muted-foreground" aria-label="Annotate">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button type="button" className="text-muted-foreground" aria-label="Layers">
+                          <Layers className="h-4 w-4" />
+                        </button>
+                        <div className="h-4 w-px bg-border" />
+                        <button type="button" className="text-destructive" aria-label="Remove image">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border/40 bg-muted/40 p-4">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-bold text-primary">Tip:</span> Use the floating toolbar to
+                    place high-contrast markers on areas of clinical concern.
+                  </p>
+                </div>
+              </div>
+
+              <div className="col-span-12 space-y-6 lg:col-span-7">
+                <div className="space-y-3">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Question Clinical Prompt
+                  </label>
+                  <textarea
+                    value={formData.questionText}
+                    onChange={(e) => setFormData({ ...formData, questionText: e.target.value })}
+                    className="w-full resize-none rounded-2xl border-0 bg-muted/70 p-4 text-sm outline-none ring-0 placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20"
+                    rows={3}
+                    placeholder="e.g., Identify the primary fracture location in the distal phalanx..."
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Question Type
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                        className="w-full cursor-pointer appearance-none rounded-xl border-0 bg-muted/70 px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        {TYPE_OPTIONS.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Difficulty Level
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDifficulty('basic')}
+                        className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
+                          difficulty === 'basic'
+                            ? 'bg-teal-100 text-teal-900 dark:bg-teal-950/60 dark:text-teal-100'
+                            : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        Basic
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDifficulty('advanced')}
+                        className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
+                          difficulty === 'advanced'
+                            ? 'bg-teal-100 text-teal-900 dark:bg-teal-950/60 dark:text-teal-100'
+                            : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        Advanced
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {isMc && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        Answer Options &amp; Weighting
+                      </label>
+                      {visibleMcCount < 4 && (
+                        <button
+                          type="button"
+                          onClick={addMcRow}
+                          className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                          Add Option
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      {mcKeys.map((key) => {
+                        const isCorrect = formData.correctAnswer === key;
+                        const field = `option${key}` as keyof typeof formData;
+                        return (
+                          <div
+                            key={key}
+                            className={`flex items-center gap-3 rounded-2xl p-3 transition-colors ${
+                              isCorrect
+                                ? 'border border-primary/20 bg-card shadow-[0_4px_12px_rgba(0,0,0,0.03)]'
+                                : 'border border-transparent bg-muted/50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="correctMc"
+                              checked={isCorrect}
+                              onChange={() => setCorrect(key)}
+                              className="h-5 w-5 shrink-0 border-border text-primary focus:ring-primary"
+                            />
+                            <input
+                              type="text"
+                              value={formData[field] as string}
+                              onChange={(e) =>
+                                setFormData({ ...formData, [field]: e.target.value })
+                              }
+                              placeholder={`Option ${key}`}
+                              className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium outline-none ring-0 focus:ring-0 ${
+                                isCorrect ? 'text-foreground' : 'text-muted-foreground'
+                              }`}
+                            />
+                            <div
+                              className={`flex shrink-0 items-center rounded-full bg-muted/90 px-3 py-1.5 ${
+                                isCorrect ? '' : 'opacity-50'
+                              }`}
+                            >
+                              <input
+                                type="number"
+                                min={0}
+                                max={99}
+                                value={optionPoints[key]}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  setOptionPoints((p) => ({
+                                    ...p,
+                                    [key]: Number.isNaN(v) ? 0 : v,
+                                  }));
+                                }}
+                                className="w-8 border-0 bg-transparent p-0 text-center text-xs font-bold outline-none"
+                              />
+                              <span className="ml-1 text-[10px] font-bold uppercase text-muted-foreground">
+                                pts
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {isTrueFalse && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Correct answer
+                    </label>
+                    <div className="flex gap-2">
+                      {(['True', 'False'] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() =>
+                            setFormData({ ...formData, correctAnswer: opt })
+                          }
+                          className={`flex-1 rounded-xl py-3 text-sm font-bold transition-colors ${
+                            formData.correctAnswer === opt
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {formData.type === 'Annotation' && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Reference answer
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.correctAnswer}
+                      onChange={(e) =>
+                        setFormData({ ...formData, correctAnswer: e.target.value })
+                      }
+                      className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="Expected identification or label"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 border-t border-border/50 bg-muted/30 px-8 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-10">
+            <div className="flex items-center text-muted-foreground">
+              <Info className="mr-2 h-4 w-4 shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">
+                Changes autosaved to draft
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-3 sm:gap-4">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-full px-6 py-3 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save Question
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

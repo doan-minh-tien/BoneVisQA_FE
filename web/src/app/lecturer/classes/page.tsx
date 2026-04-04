@@ -14,6 +14,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { getLecturerClasses, createClass } from '@/lib/api/lecturer';
+import { getStoredUserId } from '@/lib/getStoredUserId';
+import { getApiErrorMessage } from '@/lib/api/client';
 import type { ClassItem } from '@/lib/api/types';
 
 export default function LecturerClassesPage() {
@@ -38,7 +40,7 @@ export default function LecturerClassesPage() {
     setCreating(true);
     setCreateError('');
     try {
-      const userId = localStorage.getItem('userId') || '';
+      const userId = getStoredUserId();
       const created = await createClass({
         className: newClassName.trim(),
         semester: newSemester.trim(),
@@ -58,11 +60,15 @@ export default function LecturerClassesPage() {
   useEffect(() => {
     async function fetchClasses() {
       try {
-        const userId = localStorage.getItem('userId') || '';
+        const userId = getStoredUserId();
+        if (!userId) {
+          setError('Chưa đăng nhập hoặc thiếu userId. Vui lòng đăng nhập lại.');
+          return;
+        }
         const data = await getLecturerClasses(userId);
         setClasses(data);
-      } catch {
-        setError('Failed to load classes.');
+      } catch (e) {
+        setError(getApiErrorMessage(e) || 'Failed to load classes.');
       } finally {
         setLoading(false);
       }

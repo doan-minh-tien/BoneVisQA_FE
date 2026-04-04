@@ -1,9 +1,19 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
-const baseURL =
+/** BE gốc chỉ là origin + port, ví dụ http://localhost:5046 — không thêm /api/... */
+function normalizeApiBaseUrl(raw: string): string {
+  let u = raw.trim().replace(/\/+$/, '');
+  if (!u) return '';
+  // Tránh lỗi 404: user lỡ để NEXT_PUBLIC_API_URL=.../api/Lecturers rồi FE gọi /api/lecturer/classes → URL tách đôi sai
+  u = u.replace(/\/api\/Lecturers$/i, '').replace(/\/api\/lecturer$/i, '');
+  return u.replace(/\/+$/, '');
+}
+
+const baseURL = normalizeApiBaseUrl(
   typeof window !== 'undefined'
     ? process.env.NEXT_PUBLIC_API_URL || ''
-    : process.env.NEXT_PUBLIC_API_URL || '';
+    : process.env.NEXT_PUBLIC_API_URL || '',
+);
 
 export const http = axios.create({
   baseURL: baseURL || undefined,

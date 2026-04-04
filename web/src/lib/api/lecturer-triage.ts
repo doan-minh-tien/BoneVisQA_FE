@@ -30,7 +30,7 @@ function mapTriageRow(row: unknown): LecturerTriageRow | null {
 
 export async function fetchLecturerTriageList(classId: string): Promise<LecturerTriageRow[]> {
   try {
-    const { data } = await http.get<unknown>('/api/lecturer/qa-triage', {
+    const { data } = await http.get<unknown>('/api/lecturer/triage', {
       params: { classId },
     });
     const list = Array.isArray(data)
@@ -46,7 +46,7 @@ export async function fetchLecturerTriageList(classId: string): Promise<Lecturer
 
 export async function escalateToExpert(requestId: string): Promise<void> {
   try {
-    await http.post(`/api/lecturer/qa-triage/${requestId}/escalate`);
+    await http.post(`/api/lecturer/triage/${requestId}/escalate`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
