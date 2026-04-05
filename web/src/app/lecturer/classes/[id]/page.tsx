@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import StatCard from '@/components/StatCard';
 import ClassManagementWorkbench from '@/components/lecturer/classes/ClassManagementWorkbench';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
@@ -11,9 +12,6 @@ import {
   Award,
   ArrowLeft,
   Settings,
-  Clock,
-  Calendar,
-  MapPin,
   Plus,
   ChevronRight,
   Search,
@@ -25,134 +23,26 @@ import {
   MessageSquare,
   Eye,
   Upload,
-  CheckCircle2,
-  TrendingUp,
-  BarChart3,
+  Pencil,
+  Trash2,
+  AlertTriangle,
   FolderOpen,
-  Image,
+  BarChart3,
+  Clock,
 } from 'lucide-react';
 import {
+  getClassById,
   getClassStudents,
   getAvailableStudents,
   enrollStudent,
   removeStudent,
   getClassStats,
+  updateClass,
+  deleteClass,
 } from '@/lib/api/lecturer';
-import type { StudentEnrollment, ClassStats } from '@/lib/api/types';
-
-// Mock class data
-const classesData: Record<string, {
-  name: string;
-  code: string;
-  cohort: string;
-  status: 'active' | 'upcoming' | 'completed';
-  description: string;
-  schedule: string;
-  room: string;
-  startDate: string;
-  endDate: string;
-  studentCount: number;
-  completionRate: number;
-  avgScore: number;
-  totalCases: number;
-}> = {
-  '1': {
-    name: 'Orthopedics - Advanced Imaging',
-    code: 'ORTH-301',
-    cohort: 'Year 3 - Cohort 2024',
-    status: 'active',
-    description: 'Advanced course covering orthopedic imaging techniques including X-ray interpretation, CT analysis, and MRI evaluation for bone disease diagnosis.',
-    schedule: 'Mon & Wed, 9:00 - 11:00 AM',
-    room: 'Room 301, Medical Building A',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 68,
-    completionRate: 87,
-    avgScore: 82,
-    totalCases: 24,
-  },
-  '2': {
-    name: 'Musculoskeletal Radiology',
-    code: 'RAD-205',
-    cohort: 'Year 2 - Cohort 2025',
-    status: 'active',
-    description: 'Comprehensive study of musculoskeletal system imaging, focusing on bone structure analysis and disease pattern recognition.',
-    schedule: 'Tue & Fri, 10:30 AM - 12:30 PM',
-    room: 'Room 205, Radiology Center',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 72,
-    completionRate: 92,
-    avgScore: 88,
-    totalCases: 24,
-  },
-  '3': {
-    name: 'Clinical Practice - Bone Diseases',
-    code: 'CLIN-401',
-    cohort: 'Year 4 - Cohort 2023',
-    status: 'active',
-    description: 'Hands-on clinical practice for diagnosing and managing various bone diseases using visual question answering techniques.',
-    schedule: 'Mon, 1:00 - 4:00 PM',
-    room: 'Clinical Lab 2, Hospital Wing',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 44,
-    completionRate: 95,
-    avgScore: 91,
-    totalCases: 25,
-  },
-};
-
-
-const classAssignments = [
-  {
-    id: '1',
-    title: 'Case Analysis: Complex Tibial Fractures',
-    className: 'ORTH-301',
-    dueDate: 'Today, 11:59 PM',
-    totalStudents: 68,
-    submitted: 52,
-    graded: 28,
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    title: 'Quiz: Bone Density Assessment',
-    className: 'ORTH-301',
-    dueDate: 'Mar 15, 2026',
-    totalStudents: 68,
-    submitted: 0,
-    graded: 0,
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    title: 'Lab Report: X-ray Interpretation',
-    className: 'ORTH-301',
-    dueDate: 'Feb 28, 2026',
-    totalStudents: 68,
-    submitted: 68,
-    graded: 68,
-    status: 'completed' as const,
-  },
-  {
-    id: '4',
-    title: 'Midterm: Orthopedic Imaging Fundamentals',
-    className: 'ORTH-301',
-    dueDate: 'Feb 14, 2026',
-    totalStudents: 68,
-    submitted: 67,
-    graded: 67,
-    status: 'completed' as const,
-  },
-];
-
-
-const statusConfig = {
-  active: { color: 'bg-success/10 text-success border-success/20', label: 'Active' },
-  upcoming: { color: 'bg-warning/10 text-warning border-warning/20', label: 'Upcoming' },
-  completed: { color: 'bg-muted text-muted-foreground border-border', label: 'Completed' },
-};
+import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
+import { getApiErrorMessage } from '@/lib/api/client';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto } from '@/lib/api/types';
 
 const tabs = ['Students', 'Assignments', 'Settings'] as const;
 
@@ -162,7 +52,13 @@ export default function ClassDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: classId } = use(params);
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>('Students');
+
+  // Class data
+  const [classData, setClassData] = useState<ClassItem | null>(null);
+  const [classLoading, setClassLoading] = useState(true);
+  const [classError, setClassError] = useState('');
 
   // Stats state
   const [classStats, setClassStats] = useState<ClassStats | null>(null);
@@ -183,6 +79,38 @@ export default function ClassDetailPage({
   const [removeTarget, setRemoveTarget] = useState<StudentEnrollment | null>(null);
   const [removing, setRemoving] = useState(false);
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
+
+  const [classQuizzes, setClassQuizzes] = useState<QuizDto[]>([]);
+  const [classQuizzesLoading, setClassQuizzesLoading] = useState(true);
+  const [quizRepoSearch, setQuizRepoSearch] = useState('');
+
+  // Edit class dialog
+  const [showEdit, setShowEdit] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editSemester, setEditSemester] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Delete class dialog
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Load class detail
+  useEffect(() => {
+    setClassLoading(true);
+    (async () => {
+      try {
+        const data = await getClassById(classId);
+        setClassData(data);
+        setEditName(data.className);
+        setEditSemester(data.semester);
+      } catch (e) {
+        setClassError(getApiErrorMessage(e) || 'Failed to load class.');
+      } finally {
+        setClassLoading(false);
+      }
+    })();
+  }, [classId]);
 
   const refreshClassRosterAndStats = useCallback(async () => {
     try {
@@ -215,6 +143,24 @@ export default function ClassDetailPage({
         // silently fail
       }
     })();
+  }, [classId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setClassQuizzesLoading(true);
+    (async () => {
+      try {
+        const list = await getClassQuizzes(classId);
+        if (!cancelled) setClassQuizzes(list);
+      } catch {
+        if (!cancelled) setClassQuizzes([]);
+      } finally {
+        if (!cancelled) setClassQuizzesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [classId]);
 
   const handleOpenEnroll = async () => {
@@ -266,6 +212,38 @@ export default function ClassDetailPage({
     }
   };
 
+  const handleEditClass = async () => {
+    if (!editName.trim() || !editSemester.trim()) {
+      setEditError('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    setEditing(true);
+    setEditError('');
+    try {
+      const updated = await updateClass(classId, {
+        className: editName.trim(),
+        semester: editSemester.trim(),
+      });
+      setClassData(updated);
+      setShowEdit(false);
+    } catch (e) {
+      setEditError(getApiErrorMessage(e) || 'Cập nhật thất bại.');
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    setDeleting(true);
+    try {
+      await deleteClass(classId);
+      router.push('/lecturer/classes');
+    } catch (e) {
+      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
+      setDeleting(false);
+    }
+  };
+
   const filteredStudents = students.filter((s) => {
     const q = studentSearch.toLowerCase();
     return (
@@ -284,8 +262,14 @@ export default function ClassDetailPage({
     );
   });
 
-  const classData = classesData[classId] || classesData['1'];
-  const config = statusConfig[classData.status];
+  const filteredClassQuizzes = classQuizzes.filter((q) => {
+    const s = quizRepoSearch.trim().toLowerCase();
+    if (!s) return true;
+    return (
+      (q.title?.toLowerCase().includes(s) ?? false) ||
+      (q.topic?.toLowerCase().includes(s) ?? false)
+    );
+  });
 
   const stats = [
     {
@@ -368,17 +352,42 @@ export default function ClassDetailPage({
           <div>
             <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
               <Link href="/lecturer/classes" className="hover:text-primary transition-colors">
-                Admin
+                Classes
               </Link>
               <ChevronRight className="h-3 w-3" />
-              <span className="font-semibold text-primary">Class Management</span>
+              <span className="font-semibold text-primary">{classData?.className ?? '...'}</span>
             </nav>
-            <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
-              {classData.name}
-            </h1>
+            {classLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              </div>
+            ) : classError ? (
+              <p className="text-sm text-destructive">{classError}</p>
+            ) : (
+              <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
+                {classData?.className}
+              </h1>
+            )}
             <p className="mt-2 max-w-md text-muted-foreground">
               Manage surgical rotations, import student rosters, and assign diagnostic assessments.
             </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-input transition-colors cursor-pointer"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
           </div>
         </div>
 
@@ -390,7 +399,7 @@ export default function ClassDetailPage({
               classId={classId}
               enrolledCount={students.length}
               caseActivityCount={classStats?.totalCasesViewed ?? 0}
-              enrolledCapacity={classData.studentCount}
+              enrolledCapacity={students.length}
               onRosterChanged={refreshClassRosterAndStats}
             />
 
@@ -398,9 +407,9 @@ export default function ClassDetailPage({
             <div>
               <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {classAssignments.map((assignment) => (
-                  <AssignmentCard key={assignment.id} {...assignment} />
-                ))}
+                {([] as any[]).map((assignment) => (
+                    <AssignmentCard key={assignment.id} {...assignment} />
+                  ))}
               </div>
             </div>
 
@@ -538,7 +547,7 @@ export default function ClassDetailPage({
             {activeTab === 'Assignments' && (
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-muted-foreground">{classAssignments.length} assignments</p>
+                  <p className="text-sm text-muted-foreground">0 assignments</p>
                   <Link
                     href={`/lecturer/assignments/create?classId=${classId}`}
                     className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
@@ -548,7 +557,7 @@ export default function ClassDetailPage({
                   </Link>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {classAssignments.map((assignment) => (
+                  {([] as any[]).map((assignment) => (
                     <AssignmentCard key={assignment.id} {...assignment} />
                   ))}
                 </div>
@@ -561,46 +570,43 @@ export default function ClassDetailPage({
                   <h3 className="text-lg font-semibold text-card-foreground mb-4">Class Information</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm text-muted-foreground">Description</label>
-                      <p className="text-sm text-card-foreground mt-1">{classData.description}</p>
+                      <label className="text-sm text-muted-foreground">Class Name</label>
+                      <p className="text-sm font-medium text-card-foreground mt-1">
+                        {classData?.className ?? '—'}
+                      </p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm text-muted-foreground">Class Code</label>
-                        <p className="text-sm font-medium text-card-foreground mt-1">{classData.code}</p>
+                        <label className="text-sm text-muted-foreground">Semester</label>
+                        <p className="text-sm font-medium text-card-foreground mt-1">
+                          {classData?.semester ?? '—'}
+                        </p>
                       </div>
                       <div>
-                        <label className="text-sm text-muted-foreground">Cohort</label>
-                        <p className="text-sm font-medium text-card-foreground mt-1">{classData.cohort}</p>
+                        <label className="text-sm text-muted-foreground">Created</label>
+                        <p className="text-sm font-medium text-card-foreground mt-1">
+                          {classData?.createdAt
+                            ? new Date(classData.createdAt).toLocaleDateString('vi-VN', {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                              })
+                            : '—'}
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="bg-card rounded-xl border border-border p-6">
-                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Schedule &amp; Location</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <Clock className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Schedule</p>
-                        <p className="text-sm font-medium text-card-foreground">{classData.schedule}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <MapPin className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Location</p>
-                        <p className="text-sm font-medium text-card-foreground">{classData.room}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                      <Calendar className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Duration</p>
-                        <p className="text-sm font-medium text-card-foreground">{classData.startDate} — {classData.endDate}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Danger Zone</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Deleting a class will permanently remove it and all its enrollments. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => setShowDelete(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete this class
+                  </button>
                 </div>
               </div>
             )}
@@ -608,59 +614,83 @@ export default function ClassDetailPage({
 
           {/* Right Sidebar */}
           <aside className="col-span-12 space-y-8 lg:col-span-4">
-            {/* Quiz Repository */}
+            {/* Quizzes for this class — sidebar only (main column stays for workbench + assignments) */}
             <div className="overflow-hidden rounded-2xl bg-slate-900 p-8 text-white shadow-xl">
-              <h4 className="mb-6 flex items-center gap-2 text-xl font-bold">
-                <FolderOpen className="h-5 w-5 text-secondary" />
-                Quiz repository
-              </h4>
-              <div className="relative mb-6">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h4 className="flex items-center gap-2 text-xl font-bold">
+                  <FolderOpen className="h-5 w-5 text-secondary" />
+                  Quizzes in this class
+                </h4>
+                <Link
+                  href="/lecturer/quizzes"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                >
+                  Quiz Library
+                </Link>
+              </div>
+              <p className="mb-4 text-xs text-slate-400">
+                Quiz đã gán cho lớp. Để gán thêm, mở quiz trong thư viện và chọn lớp.
+              </p>
+              <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
-                  placeholder="Search curated quizzes…"
+                  value={quizRepoSearch}
+                  onChange={(e) => setQuizRepoSearch(e.target.value)}
+                  placeholder="Tìm theo tên hoặc topic…"
                   className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-secondary/50 placeholder:text-slate-500"
                 />
               </div>
-              <div className="space-y-4">
-                {[
-                  { tag: 'Trauma', tagClass: 'bg-secondary/20 text-secondary', title: 'Pediatric Growth Plate Injuries', imgs: 15, mins: 20 },
-                  { tag: 'Pathology', tagClass: 'bg-amber-200/20 text-amber-200', title: 'Bone Tumor Differential Dx', imgs: 10, mins: 45 },
-                  { tag: 'Anatomy', tagClass: 'bg-primary/20 text-primary-fixed', title: 'Advanced Carpometacarpal Review', imgs: 24, mins: 30 },
-                ].map((quiz, i) => (
-                  <div
-                    key={i}
-                    className="group cursor-pointer rounded-xl border border-white/5 bg-white/5 p-4 transition-all hover:bg-white/10"
-                  >
-                    <div className="mb-2 flex items-start justify-between">
-                      <span className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${quiz.tagClass}`}>
-                        {quiz.tag}
-                      </span>
-                      <span className="opacity-0 transition-opacity group-hover:opacity-100">
-                        <TrendingUp className="h-4 w-4 text-white/50" />
-                      </span>
-                    </div>
-                    <h6 className="font-bold text-sm">{quiz.title}</h6>
-                    <div className="mt-3 flex items-center gap-4 text-xs text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <Image className="h-3 w-3" />
-                        {quiz.imgs}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {quiz.mins}m
-                      </span>
-                    </div>
+              <div className="max-h-[min(360px,50vh)] space-y-3 overflow-y-auto">
+                {classQuizzesLoading ? (
+                  <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Đang tải…
                   </div>
-                ))}
+                ) : classQuizzes.length === 0 ? (
+                  <p className="py-4 text-sm text-slate-400">
+                    Chưa có quiz nào. Dùng nút trên hoặc thư viện quiz để gán.
+                  </p>
+                ) : filteredClassQuizzes.length === 0 ? (
+                  <p className="py-4 text-sm text-slate-400">Không khớp từ khóa tìm kiếm.</p>
+                ) : (
+                  filteredClassQuizzes.map((q) => {
+                    const meta = [
+                      q.topic,
+                      q.timeLimit != null ? `${q.timeLimit} min` : null,
+                      q.passingScore != null ? `Pass ${q.passingScore}%` : null,
+                    ].filter(Boolean) as string[];
+                    return (
+                      <Link
+                        key={q.id}
+                        href={`/lecturer/quizzes/${q.id}`}
+                        className="block rounded-xl border border-white/5 bg-white/5 p-4 transition-all hover:bg-white/10"
+                      >
+                        <h6 className="font-bold text-sm leading-snug">{q.title || 'Untitled'}</h6>
+                        {meta.length > 0 ? (
+                          <p className="mt-1 text-xs text-slate-400">
+                            {q.timeLimit != null ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                <span>{meta.join(' · ')}</span>
+                              </span>
+                            ) : (
+                              meta.join(' · ')
+                            )}
+                          </p>
+                        ) : null}
+                      </Link>
+                    );
+                  })
+                )}
               </div>
-              <button
-                type="button"
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-secondary py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95"
+              <Link
+                href="/lecturer/quizzes"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-secondary py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95"
               >
                 <BarChart3 className="h-4 w-4" />
-                Assign selected to class
-              </button>
+                Quiz Library
+              </Link>
             </div>
 
             {/* Class Overview */}
@@ -680,8 +710,8 @@ export default function ClassDetailPage({
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Active curricula</span>
-                  <span className="font-bold">{classAssignments.filter((a) => a.status === 'active').length}</span>
+                  <span className="text-sm text-muted-foreground">Quizzes assigned</span>
+                  <span className="font-bold">{classQuizzes.length}</span>
                 </div>
               </div>
             </div>
@@ -820,6 +850,94 @@ export default function ClassDetailPage({
             refreshClassRosterAndStats();
           }}
         />
+      )}
+
+      {/* Edit Class Dialog */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEdit(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-card-foreground">Edit Class</h3>
+              <button
+                onClick={() => setShowEdit(false)}
+                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-muted-foreground">Class Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Semester</label>
+                <input
+                  type="text"
+                  value={editSemester}
+                  onChange={(e) => setEditSemester(e.target.value)}
+                  placeholder="e.g. 2026-Spring"
+                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              {editError && (
+                <p className="text-sm text-destructive">{editError}</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowEdit(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditClass}
+                disabled={editing}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {editing ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Class Dialog */}
+      {showDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowDelete(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Delete Class?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              Are you sure you want to delete <strong>{classData?.className}</strong>? All enrollments will be removed. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDelete(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteClass}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -213,7 +213,7 @@ export default function QuestionEditorDialog({
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-[#f7f9fb]/80 backdrop-blur-md dark:bg-background/80"
+        className="absolute inset-0 bg-[#f7f9fb]/80 backdrop-blur-md dark:bg-[#191c1e]/80"
         aria-hidden
         onClick={onClose}
       />
@@ -221,25 +221,25 @@ export default function QuestionEditorDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="question-editor-title"
-        className="relative flex max-h-[min(921px,calc(100vh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-card shadow-[0px_12px_32px_rgba(25,28,30,0.06)] ring-1 ring-border/40"
+        className="relative flex max-h-[min(921px,calc(100vh-2rem))] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-[#ffffff] shadow-[0px_12px_32px_rgba(25,28,30,0.06)] ring-1 ring-border/40"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between px-8 pb-2 pt-8 sm:px-10">
+        <div className="flex items-start justify-between px-10 py-8">
           <div>
             <h2
               id="question-editor-title"
-              className="font-headline text-2xl font-extrabold tracking-tight text-foreground"
+              className="font-['Manrope',sans-serif] text-2xl font-extrabold tracking-tight text-[#191c1e]"
             >
               {title}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-[#424752]">
               Configure clinical parameters and diagnostic visual aids.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="shrink-0 rounded-lg p-1 text-[#727783] transition-colors hover:bg-[#e6e8ea] hover:text-[#191c1e]"
             aria-label="Close"
           >
             <X className="h-8 w-8" />
@@ -247,19 +247,19 @@ export default function QuestionEditorDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="custom-scrollbar flex-1 overflow-y-auto px-8 pb-6 sm:px-10">
+          <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto px-10 pb-8">
             {error && (
-              <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <div className="rounded-2xl border border-[#ba1a1a]/30 bg-[#ffdad6] px-4 py-3 text-sm text-[#93000a]">
                 {error}
               </div>
             )}
 
-            <div className="grid grid-cols-12 gap-8 lg:gap-10">
-              <div className="col-span-12 space-y-4 lg:col-span-5">
-                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <div className="grid grid-cols-12 gap-10">
+              <div className="col-span-5 space-y-6">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-[#727783]">
                   Diagnostic Image
                 </label>
-                <div className="group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border/40 bg-slate-900 transition-colors hover:border-primary/50">
+                <div className="group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-[#727783]/20 bg-[#2d3133] transition-colors hover:border-[#00478d]/50">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={DEFAULT_SCAN_IMAGE}
@@ -268,62 +268,62 @@ export default function QuestionEditorDialog({
                   />
                   <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
                     <div className="flex justify-end">
-                      <span className="rounded-full bg-teal-600 px-3 py-1 text-[10px] font-bold uppercase text-white dark:bg-secondary dark:text-secondary-foreground">
+                      <span className="rounded-full bg-[#006a68] px-3 py-1 text-[10px] font-bold uppercase text-white">
                         Active Scan
                       </span>
                     </div>
                     <div className="flex w-full justify-center">
-                      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-border/20 bg-card/90 px-4 py-2 shadow-sm backdrop-blur-md">
-                        <button type="button" className="text-primary" aria-label="Zoom">
+                      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#c2c6d4]/20 bg-[#eceef0]/90 px-4 py-2 shadow-sm backdrop-blur-md">
+                        <button type="button" className="text-[#00478d]" aria-label="Zoom">
                           <ZoomIn className="h-4 w-4" />
                         </button>
-                        <button type="button" className="text-muted-foreground" aria-label="Annotate">
+                        <button type="button" className="text-[#424752]" aria-label="Annotate">
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button type="button" className="text-muted-foreground" aria-label="Layers">
+                        <button type="button" className="text-[#424752]" aria-label="Layers">
                           <Layers className="h-4 w-4" />
                         </button>
-                        <div className="h-4 w-px bg-border" />
-                        <button type="button" className="text-destructive" aria-label="Remove image">
+                        <div className="h-4 w-px bg-[#c2c6d4]/30" />
+                        <button type="button" className="text-[#ba1a1a]" aria-label="Remove image">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-border/40 bg-muted/40 p-4">
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    <span className="font-bold text-primary">Tip:</span> Use the floating toolbar to
+                <div className="rounded-2xl border border-[#c2c6d4]/10 bg-[#eceef0] p-4">
+                  <p className="text-xs leading-relaxed text-[#424752]">
+                    <span className="font-bold text-[#00478d]">Tip:</span> Use the floating toolbar to
                     place high-contrast markers on areas of clinical concern.
                   </p>
                 </div>
               </div>
 
-              <div className="col-span-12 space-y-6 lg:col-span-7">
+              <div className="col-span-7 space-y-8">
                 <div className="space-y-3">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
                     Question Clinical Prompt
                   </label>
                   <textarea
                     value={formData.questionText}
                     onChange={(e) => setFormData({ ...formData, questionText: e.target.value })}
-                    className="w-full resize-none rounded-2xl border-0 bg-muted/70 p-4 text-sm outline-none ring-0 placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-primary/20"
+                    className="w-full resize-none rounded-2xl border-0 bg-[#eceef0] p-4 text-sm outline-none ring-0 placeholder:text-[#c2c6d4] focus:ring-2 focus:ring-[#00478d]/20"
                     rows={3}
                     placeholder="e.g., Identify the primary fracture location in the distal phalanx..."
                     required
                   />
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
                       Question Type
                     </label>
                     <div className="relative">
                       <select
                         value={formData.type}
                         onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                        className="w-full cursor-pointer appearance-none rounded-xl border-0 bg-muted/70 px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        className="w-full cursor-pointer appearance-none rounded-xl border-0 bg-[#eceef0] px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#00478d]/20"
                       >
                         {TYPE_OPTIONS.map((t) => (
                           <option key={t.value} value={t.value}>
@@ -331,11 +331,11 @@ export default function QuestionEditorDialog({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#727783]" />
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
                       Difficulty Level
                     </label>
                     <div className="flex gap-2">
@@ -344,8 +344,8 @@ export default function QuestionEditorDialog({
                         onClick={() => setDifficulty('basic')}
                         className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
                           difficulty === 'basic'
-                            ? 'bg-teal-100 text-teal-900 dark:bg-teal-950/60 dark:text-teal-100'
-                            : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                            ? 'bg-[#94efec] text-[#006e6d]'
+                            : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
                         }`}
                       >
                         Basic
@@ -355,8 +355,8 @@ export default function QuestionEditorDialog({
                         onClick={() => setDifficulty('advanced')}
                         className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
                           difficulty === 'advanced'
-                            ? 'bg-teal-100 text-teal-900 dark:bg-teal-950/60 dark:text-teal-100'
-                            : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                            ? 'bg-[#94efec] text-[#006e6d]'
+                            : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
                         }`}
                       >
                         Advanced
@@ -368,14 +368,14 @@ export default function QuestionEditorDialog({
                 {isMc && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      <label className="text-xs font-bold uppercase tracking-widest text-[#727783]">
                         Answer Options &amp; Weighting
                       </label>
                       {visibleMcCount < 4 && (
                         <button
                           type="button"
                           onClick={addMcRow}
-                          className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                          className="flex items-center gap-1 text-xs font-bold text-[#00478d] hover:underline"
                         >
                           <PlusCircle className="h-4 w-4" />
                           Add Option
@@ -391,8 +391,8 @@ export default function QuestionEditorDialog({
                             key={key}
                             className={`flex items-center gap-3 rounded-2xl p-3 transition-colors ${
                               isCorrect
-                                ? 'border border-primary/20 bg-card shadow-[0_4px_12px_rgba(0,0,0,0.03)]'
-                                : 'border border-transparent bg-muted/50'
+                                ? 'border border-[#00478d]/10 bg-white shadow-[0_4px_12px_rgba(0,0,0,0.03)]'
+                                : 'border border-transparent bg-[#eceef0]/50'
                             }`}
                           >
                             <input
@@ -400,7 +400,7 @@ export default function QuestionEditorDialog({
                               name="correctMc"
                               checked={isCorrect}
                               onChange={() => setCorrect(key)}
-                              className="h-5 w-5 shrink-0 border-border text-primary focus:ring-primary"
+                              className="h-5 w-5 shrink-0 border-[#c2c6d4] text-[#00478d] focus:ring-[#00478d]"
                             />
                             <input
                               type="text"
@@ -410,11 +410,11 @@ export default function QuestionEditorDialog({
                               }
                               placeholder={`Option ${key}`}
                               className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium outline-none ring-0 focus:ring-0 ${
-                                isCorrect ? 'text-foreground' : 'text-muted-foreground'
+                                isCorrect ? 'text-[#191c1e]' : 'text-[#424752]'
                               }`}
                             />
                             <div
-                              className={`flex shrink-0 items-center rounded-full bg-muted/90 px-3 py-1.5 ${
+                              className={`flex shrink-0 items-center rounded-full bg-[#eceef0]/90 px-3 py-1.5 ${
                                 isCorrect ? '' : 'opacity-50'
                               }`}
                             >
@@ -432,7 +432,7 @@ export default function QuestionEditorDialog({
                                 }}
                                 className="w-8 border-0 bg-transparent p-0 text-center text-xs font-bold outline-none"
                               />
-                              <span className="ml-1 text-[10px] font-bold uppercase text-muted-foreground">
+                              <span className="ml-1 text-[10px] font-bold uppercase text-[#727783]">
                                 pts
                               </span>
                             </div>
@@ -445,7 +445,7 @@ export default function QuestionEditorDialog({
 
                 {isTrueFalse && (
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
                       Correct answer
                     </label>
                     <div className="flex gap-2">
@@ -458,8 +458,8 @@ export default function QuestionEditorDialog({
                           }
                           className={`flex-1 rounded-xl py-3 text-sm font-bold transition-colors ${
                             formData.correctAnswer === opt
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted/70 text-muted-foreground hover:bg-muted'
+                              ? 'bg-[#00478d] text-white'
+                              : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
                           }`}
                         >
                           {opt}
@@ -471,7 +471,7 @@ export default function QuestionEditorDialog({
 
                 {formData.type === 'Annotation' && (
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
                       Reference answer
                     </label>
                     <input
@@ -480,7 +480,7 @@ export default function QuestionEditorDialog({
                       onChange={(e) =>
                         setFormData({ ...formData, correctAnswer: e.target.value })
                       }
-                      className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full rounded-xl border-0 bg-[#eceef0] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#00478d]/20"
                       placeholder="Expected identification or label"
                     />
                   </div>
@@ -489,26 +489,26 @@ export default function QuestionEditorDialog({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 border-t border-border/50 bg-muted/30 px-8 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-10">
-            <div className="flex items-center text-muted-foreground">
+          <div className="flex items-center justify-between border-t border-[#c2c6d4]/50 bg-[#eceef0] px-10 py-6">
+            <div className="flex items-center text-[#727783]">
               <Info className="mr-2 h-4 w-4 shrink-0" />
               <span className="text-[10px] font-bold uppercase tracking-wider">
                 Changes autosaved to draft
               </span>
             </div>
-            <div className="flex items-center justify-end gap-3 sm:gap-4">
+            <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={loading}
-                className="rounded-full px-6 py-3 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                className="rounded-full px-6 py-3 text-sm font-bold text-[#424752] transition-colors hover:bg-[#e6e8ea] disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] px-8 py-3 text-sm font-bold text-white shadow-lg shadow-[#00478d]/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Save Question

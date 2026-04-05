@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Upload,
   AlertCircle,
+  ChevronDown,
 } from 'lucide-react';
 import { importStudentsFromExcel, enrollManyStudents } from '@/lib/api/lecturer';
 import type { ImportStudentsSummary } from '@/lib/api/types';
@@ -143,7 +144,7 @@ export default function ImportPreviewDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-preview-title"
-        className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-[#f7f9fb] shadow-[0px_12px_32px_rgba(25,28,30,0.06)] ring-1 ring-[#c2c6d4]/15"
+        className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-[#f7f9fb] shadow-[0px_12px_32px_rgba(25,28,30,0.06)] border border-[#c2c6d4]/15"
         onClick={(e) => e.stopPropagation()}
       >
         {step === 'upload' && (
@@ -338,9 +339,7 @@ export default function ImportPreviewDialog({
                       className="flex items-center justify-center mx-auto gap-2 text-sm font-bold text-[#00478d] hover:underline"
                     >
                       Show all {allRows.length} entries
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      <ChevronDown className="h-4 w-4" />
                     </button>
                   </div>
                 )}
@@ -351,7 +350,7 @@ export default function ImportPreviewDialog({
               <div className="flex items-center gap-4 text-[#424752]">
                 <div className="flex -space-x-2">
                   {[
-                    { initials: 'JV', bg: 'bg-[#d6e3ff]' },
+                    { initials: 'JD', bg: 'bg-[#d6e3ff]' },
                     { initials: 'SJ', bg: 'bg-[#94efec]' },
                     { initials: 'MT', bg: 'bg-[#ffdcc3]' },
                     { initials: '+39', bg: 'bg-[#e6e8ea]' },

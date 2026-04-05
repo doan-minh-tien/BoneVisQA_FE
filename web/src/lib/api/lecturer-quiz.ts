@@ -10,10 +10,10 @@ import type {
 
 export interface UpdateQuizRequest {
   title: string;
-  openTime?: string;
-  closeTime?: string;
-  timeLimit?: number;
-  passingScore?: number;
+  openTime?: string | null;
+  closeTime?: string | null;
+  timeLimit?: number | null;
+  passingScore?: number | null;
 }
 
 // ========== Quiz Management ==========
@@ -171,6 +171,65 @@ export async function updateQuizQuestion(
 export async function deleteQuizQuestion(questionId: string): Promise<void> {
   try {
     await http.delete(`/api/lecturer/quizzes/questions/${questionId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== AI Quiz Functions ==========
+
+import type {
+  AIQuizGenerationResult,
+  AIAutoGenerateQuizRequest,
+  AISuggestQuestionsRequest,
+} from './types';
+
+/**
+ * AI Auto-Generate Quiz: Tạo quiz tự động từ topic
+ */
+export async function aiAutoGenerateQuiz(
+  request: AIAutoGenerateQuizRequest
+): Promise<AIQuizGenerationResult> {
+  try {
+    const { data } = await http.post<AIQuizGenerationResult>(
+      '/api/lecturer/ai/generate-quiz',
+      request
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * AI Suggest Questions: Gợi ý câu hỏi từ các cases đã chọn
+ */
+export async function aiSuggestQuestions(
+  request: AISuggestQuestionsRequest
+): Promise<AIQuizGenerationResult> {
+  try {
+    const { data } = await http.post<AIQuizGenerationResult>(
+      '/api/lecturer/ai/suggest-questions',
+      request
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * AI Create Complete Quiz: Tạo quiz hoàn chỉnh từ AI
+ */
+export async function aiCreateQuiz(
+  request: AIAutoGenerateQuizRequest
+): Promise<{ quizId: string; title: string; questionsCreated: number; message: string }> {
+  try {
+    const { data } = await http.post<{ quizId: string; title: string; questionsCreated: number; message: string }>(
+      '/api/lecturer/ai/create-quiz',
+      request
+    );
+    return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

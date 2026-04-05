@@ -37,7 +37,7 @@ function getQuestionTypeStyle(type: string | null): {
   if (t === 'truefalse' || t === 'true/false') {
     return {
       label: 'True / False',
-      badgeClass: 'bg-amber-100 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100',
+      badgeClass: 'bg-[#ffdcc3] text-[#6e3900]',
     };
   }
   if (t === 'annotation' || t === 'draw') {
@@ -48,7 +48,7 @@ function getQuestionTypeStyle(type: string | null): {
   }
   return {
     label: 'Multiple Choice',
-    badgeClass: 'bg-secondary/15 text-secondary border border-secondary/20',
+    badgeClass: 'bg-[#94efec] text-[#006e6d]',
   };
 }
 
@@ -157,7 +157,7 @@ export default function QuestionCard({
 
   if (variant === 'manager') {
     return (
-      <div className="group rounded-[1.75rem] border border-transparent bg-card p-8 shadow-sm transition-all hover:border-primary/15 hover:shadow-xl hover:shadow-primary/5">
+      <div className="group rounded-[1.75rem] border border-transparent bg-card p-8 shadow-sm transition-all hover:border-[#00478d]/15 hover:shadow-xl hover:shadow-[#00478d]/5">
         <div className="mb-6 flex items-start justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <span
@@ -165,11 +165,11 @@ export default function QuestionCard({
             >
               {typeStyle.label}
             </span>
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">
+            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">
               ID: {formatDisplayId(question.id)}
             </span>
           </div>
-          <div className="flex gap-0.5">
+          <div className="flex gap-1">
             {onEdit && (
               <button
                 type="button"
@@ -193,7 +193,7 @@ export default function QuestionCard({
           </div>
         </div>
 
-        <h4 className="mb-6 text-xl font-bold leading-tight text-card-foreground">
+        <h4 className="mb-6 font-['Manrope',sans-serif] text-xl font-bold leading-tight text-card-foreground">
           {question.questionText}
         </h4>
 
@@ -206,19 +206,19 @@ export default function QuestionCard({
                   key={opt}
                   className={`flex flex-1 items-center justify-between rounded-2xl border p-5 ${
                     isCorrect
-                      ? 'border-secondary/30 bg-secondary/15'
+                      ? 'border-[#94efec]/30 bg-[#94efec]/15'
                       : 'border-transparent bg-muted/40'
                   }`}
                 >
                   <span
                     className={
-                      isCorrect ? 'font-bold text-secondary' : 'font-semibold text-card-foreground'
+                      isCorrect ? 'font-bold text-[#006a68]' : 'font-semibold text-card-foreground'
                     }
                   >
                     {opt}
                   </span>
                   {isCorrect ? (
-                    <CheckCircle2 className="h-5 w-5 text-secondary" />
+                    <CheckCircle2 className="h-5 w-5 text-[#006a68]" />
                   ) : (
                     <div className="h-6 w-6 rounded-full border-2 border-border" />
                   )}
@@ -262,7 +262,7 @@ export default function QuestionCard({
                     key={key}
                     className={`relative overflow-hidden rounded-2xl border p-4 transition-colors ${
                       isCorrect
-                        ? 'border-secondary/30 bg-secondary/15 shadow-sm'
+                        ? 'border-[#94efec]/30 bg-[#94efec]/15 shadow-sm'
                         : 'border-transparent bg-muted/40 hover:bg-muted/70'
                     }`}
                   >
@@ -270,19 +270,19 @@ export default function QuestionCard({
                       <span
                         className={
                           isCorrect
-                            ? 'text-sm font-bold text-secondary'
+                            ? 'text-sm font-bold text-[#006a68]'
                             : 'text-sm font-semibold text-card-foreground'
                         }
                       >
                         {text}
                       </span>
                       {isCorrect ? (
-                        <CheckCircle2 className="h-5 w-5 shrink-0 text-secondary" />
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-[#006a68]" />
                       ) : null}
                     </div>
                     {isCorrect ? (
-                      <div className="absolute right-0 top-0 rounded-bl-lg bg-secondary px-3 py-1 text-[8px] font-black uppercase tracking-tighter text-white">
-                        Correct answer
+                      <div className="absolute right-0 top-0 rounded-bl-lg bg-[#006a68] px-3 py-1 text-[8px] font-black uppercase tracking-tighter text-white">
+                        Correct Answer
                       </div>
                     ) : null}
                   </div>

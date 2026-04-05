@@ -7,8 +7,6 @@ import {
   ArrowLeft,
   Loader2,
   Plus,
-  Search,
-  Bell,
   ChevronRight,
   ChevronDown,
   Save,
@@ -16,14 +14,18 @@ import {
   Users,
   Timer,
   PlusCircle,
+  UploadCloud,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
+import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
+import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
 import QuestionCard from '@/components/lecturer/quizzes/QuestionCard';
 import {
   getQuiz,
   getQuizQuestions,
   deleteQuizQuestion,
+  addQuizQuestion,
   updateQuiz,
   assignQuizToClass,
 } from '@/lib/api/lecturer-quiz';
@@ -39,6 +41,22 @@ const CURATED_THUMBS = [
 
 const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
 const POINTS_ROTATION = [10, 15, 5] as const;
+
+function isoToDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToIso(local: string): string | null {
+  const t = local.trim();
+  if (!t) return null;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 
 export default function QuizDetailPage() {
   const router = useRouter();
@@ -56,10 +74,13 @@ export default function QuizDetailPage() {
   const [description, setDescription] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [originalClassId, setOriginalClassId] = useState('');
-  const [startDate, setStartDate] = useState('');
+  const [openTimeLocal, setOpenTimeLocal] = useState('');
+  const [closeTimeLocal, setCloseTimeLocal] = useState('');
   const [timeLimit, setTimeLimit] = useState('');
+  const [passingScore, setPassingScore] = useState('');
 
   const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
 
   const loadData = useCallback(async () => {
@@ -77,12 +98,10 @@ export default function QuizDetailPage() {
       setTitle(quizData.title);
       setSelectedClassId(quizData.classId);
       setOriginalClassId(quizData.classId);
-      if (quizData.openTime) {
-        setStartDate(new Date(quizData.openTime).toISOString().slice(0, 10));
-      } else {
-        setStartDate('');
-      }
+      setOpenTimeLocal(isoToDatetimeLocal(quizData.openTime));
+      setCloseTimeLocal(isoToDatetimeLocal(quizData.closeTime));
       setTimeLimit(quizData.timeLimit?.toString() || '');
+      setPassingScore(quizData.passingScore != null ? String(quizData.passingScore) : '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load quiz');
     } finally {
@@ -98,15 +117,12 @@ export default function QuizDetailPage() {
     setSaving(true);
     setError(null);
     try {
-      const openIso =
-        startDate.length >= 10
-          ? new Date(`${startDate}T00:00:00`).toISOString()
-          : undefined;
       await updateQuiz(quizId, {
         title,
-        openTime: openIso,
-        closeTime: quiz?.closeTime ?? undefined,
-        timeLimit: timeLimit ? parseInt(timeLimit, 10) : undefined,
+        openTime: datetimeLocalToIso(openTimeLocal),
+        closeTime: datetimeLocalToIso(closeTimeLocal),
+        timeLimit: timeLimit ? parseInt(timeLimit, 10) : null,
+        passingScore: passingScore ? parseInt(passingScore, 10) : null,
       });
       if (selectedClassId && selectedClassId !== originalClassId) {
         await assignQuizToClass(selectedClassId, quizId);
@@ -144,6 +160,26 @@ export default function QuizDetailPage() {
     loadData();
   };
 
+  const handleImportQuestions = async (parsed: ParsedQuestion[]) => {
+    for (const p of parsed) {
+      try {
+        await addQuizQuestion({
+          quizId,
+          questionText: p.questionText,
+          type: p.type,
+          optionA: p.optionA,
+          optionB: p.optionB,
+          optionC: p.optionC,
+          optionD: p.optionD,
+          correctAnswer: p.correctAnswer,
+        });
+      } catch {
+        // skip failures silently
+      }
+    }
+    loadData();
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -168,271 +204,264 @@ export default function QuizDetailPage() {
   const completionPlaceholder = questions.length > 0 ? 88 : 0;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Top bar (Quiz Library mock) */}
-      <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-border/40 bg-[#f7f9fb]/95 px-6 backdrop-blur-md dark:bg-background/95 lg:px-8">
-        <div className="flex items-center gap-6 lg:gap-8">
-          <div className="relative hidden w-56 sm:block lg:w-64">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search quiz assets..."
-              className="w-full rounded-full border-0 bg-muted/80 py-2 pl-10 pr-4 text-sm outline-none ring-0 transition-all placeholder:text-muted-foreground focus:bg-background focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <nav className="hidden items-center gap-6 lg:flex">
-            <span className="text-sm font-medium text-muted-foreground">Curriculum</span>
-            <span className="text-sm font-medium text-muted-foreground">Resources</span>
-            <span className="text-sm font-medium text-muted-foreground">Faculty</span>
+    <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
+      {/* Page Header */}
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <nav className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Link href="/lecturer/quizzes" className="transition-colors hover:text-primary">
+              Library
+            </Link>
+            <ChevronRight className="h-3 w-3 shrink-0" />
+            <span className="font-semibold text-foreground">{displayTitle}</span>
           </nav>
-        </div>
-        <div className="flex items-center gap-3 lg:gap-4">
-          <button
-            type="button"
-            className="hidden rounded-full bg-muted px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-muted/80 sm:inline-flex"
-          >
-            Quick Export
-          </button>
-          <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
-            aria-label="Notifications"
-          >
-            <Bell className="h-5 w-5" />
-          </button>
-          <div className="hidden h-8 w-px bg-border/50 xl:block" />
-          <div className="hidden items-center gap-3 xl:flex">
-            <div className="h-9 w-9 overflow-hidden rounded-full border-2 border-muted bg-primary/10" />
-            <div>
-              <p className="text-xs font-bold leading-tight text-foreground">Dr. Julian Vance</p>
-              <p className="text-[10px] uppercase tracking-tight text-muted-foreground">
-                Chief of Radiology
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto w-full max-w-[1600px] flex-1 space-y-10 p-6 lg:p-10">
-        {error && (
-          <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-            {error}
+          <h1 className="font-['Manrope',sans-serif] text-[2.75rem] font-extrabold tracking-tight text-card-foreground">
+            {displayTitle}
+          </h1>
+          <p className="max-w-2xl text-lg text-muted-foreground">
+            Advanced diagnostic assessment focusing on pelvic, femoral, and tibial fractures in emergency care scenarios.
           </p>
-        )}
+        </div>
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            className="rounded-full border border-border bg-card px-6 py-2.5 text-sm font-bold text-card-foreground transition-all hover:bg-muted/60"
+          >
+            Preview Quiz
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Save Changes
+          </button>
+        </div>
+      </section>
 
-        <section className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-start">
-          <div className="space-y-1">
-            <nav className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <Link href="/lecturer/quizzes" className="transition-colors hover:text-primary">
-                Library
-              </Link>
-              <ChevronRight className="h-3 w-3 shrink-0" />
-              <span className="font-semibold text-foreground">{displayTitle}</span>
-            </nav>
-            <h1 className="font-headline text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-              {displayTitle}
-            </h1>
-            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
-              Advanced diagnostic assessment focusing on pelvic, femoral, and tibial fractures in
-              emergency care scenarios.
-            </p>
-          </div>
-          <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
-            <button
-              type="button"
-              className="rounded-full border border-border bg-background px-6 py-2.5 text-sm font-bold text-foreground transition-all hover:bg-muted/60"
-            >
-              Preview Quiz
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save Changes
-            </button>
-          </div>
-        </section>
-
-        <div className="grid grid-cols-12 gap-8">
-          <div className="col-span-12 space-y-6 lg:col-span-4">
-            <div className="space-y-6 rounded-3xl bg-card p-6 shadow-sm ring-1 ring-border/30 sm:p-8">
-              <div className="mb-2 flex items-center gap-2">
-                <Settings2 className="h-5 w-5 text-primary" />
-                <h2 className="font-headline text-lg font-bold text-foreground">Quiz Settings</h2>
+      {/* Bento Layout */}
+      <div className="grid grid-cols-12 gap-8">
+        {/* Left Column: Quiz Settings */}
+        <div className="col-span-12 space-y-6 lg:col-span-4">
+          <div className="rounded-3xl bg-card p-8 shadow-sm ring-1 ring-border/30">
+            <div className="mb-2 flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-primary" />
+              <h2 className="font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">Quiz Settings</h2>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm font-medium outline-none ring-0 focus:ring-2 focus:ring-primary"
+                />
               </div>
-              <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Class Assignment
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => setSelectedClassId(e.target.value)}
+                    className="w-full cursor-pointer appearance-none rounded-xl border-0 bg-muted/70 px-4 py-3 pr-10 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select class…</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.className}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Title
+                    Opens
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={openTimeLocal}
+                    onChange={(e) => setOpenTimeLocal(e.target.value)}
+                    className="w-full rounded-xl border-0 bg-muted/70 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Closes
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={closeTimeLocal}
+                    onChange={(e) => setCloseTimeLocal(e.target.value)}
+                    className="w-full rounded-xl border-0 bg-muted/70 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Time limit
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={timeLimit}
+                      onChange={(e) => setTimeLimit(e.target.value.replace(/\D/g, ''))}
+                      className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="30"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">
+                      MIN
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Passing (%)
                   </label>
                   <input
                     type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm font-medium outline-none ring-0 focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Class Assignment
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={selectedClassId}
-                      onChange={(e) => setSelectedClassId(e.target.value)}
-                      className="w-full cursor-pointer appearance-none rounded-xl border-0 bg-muted/70 px-4 py-3 pr-10 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Select class…</option>
-                      {classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>
-                          {cls.className}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full rounded-xl border-0 bg-muted/70 px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Duration
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={timeLimit}
-                        onChange={(e) => setTimeLimit(e.target.value.replace(/\D/g, ''))}
-                        className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="45"
-                      />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">
-                        MIN
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1.5 pt-2">
-                  <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={4}
-                    placeholder="Advanced radiological review of complex trauma…"
-                    className="w-full resize-none rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                    inputMode="numeric"
+                    value={passingScore}
+                    onChange={(e) => setPassingScore(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    className="w-full rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="80"
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex h-32 flex-col justify-between rounded-3xl bg-teal-100/90 p-5 dark:bg-teal-950/40">
-                <Users className="h-6 w-6 text-teal-900 dark:text-teal-200" />
-                <div>
-                  <p className="font-headline text-2xl font-extrabold text-teal-950 dark:text-teal-50">
-                    {enrolledPlaceholder}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase text-teal-900/70 dark:text-teal-200/70">
-                    Enrolled Students
-                  </p>
-                </div>
-              </div>
-              <div className="flex h-32 flex-col justify-between rounded-3xl bg-orange-100/90 p-5 dark:bg-orange-950/30">
-                <Timer className="h-6 w-6 text-orange-950 dark:text-orange-200" />
-                <div>
-                  <p className="font-headline text-2xl font-extrabold text-orange-950 dark:text-orange-50">
-                    {completionPlaceholder ? `${completionPlaceholder}%` : '—'}
-                  </p>
-                  <p className="text-[10px] font-bold uppercase text-orange-950/70 dark:text-orange-200/70">
-                    Avg. Completion
-                  </p>
-                </div>
+              <div className="space-y-1.5 pt-2">
+                <label className="ml-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Description
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Advanced radiological review of complex trauma…"
+                  className="w-full resize-none rounded-xl border-0 bg-muted/70 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                />
               </div>
             </div>
           </div>
 
-          <div className="col-span-12 space-y-6 lg:col-span-8">
-            <div className="mb-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex h-32 flex-col justify-between rounded-3xl border border-secondary/20 bg-secondary/10 p-5">
+              <Users className="h-6 w-6 text-secondary" />
               <div>
-                <h2 className="font-headline text-xl font-bold text-foreground">Curated Questions</h2>
-                <p className="text-sm text-muted-foreground">
-                  {questions.length} diagnostic item{questions.length === 1 ? '' : 's'} currently in
-                  this quiz.
+                <p className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
+                  {enrolledPlaceholder}
+                </p>
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                  Enrolled Students
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleAddQuestion}
-                className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
-              >
-                <PlusCircle className="h-5 w-5" />
-                Add New Question
-              </button>
             </div>
-
-            {questions.length === 0 ? (
-              <div className="flex min-h-[280px] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/20 p-8">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                  <PlusCircle className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">No questions yet</h3>
-                <p className="mb-4 text-center text-sm text-muted-foreground">
-                  Add questions to build this quiz.
+            <div className="flex h-32 flex-col justify-between rounded-3xl border border-warning/20 bg-warning/10 p-5">
+              <Timer className="h-6 w-6 text-warning" />
+              <div>
+                <p className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
+                  {completionPlaceholder ? `${completionPlaceholder}%` : '—'}
                 </p>
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                  Avg. Completion
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Questions */}
+        <div className="col-span-12 space-y-6 lg:col-span-8">
+          <div className="mb-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">
+                Curated Questions
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {questions.length} diagnostic item{questions.length === 1 ? '' : 's'} currently in this quiz.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddQuestion}
+              className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
+            >
+              <PlusCircle className="h-5 w-5" />
+              Add New Question
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
+            >
+              <UploadCloud className="h-4 w-4" />
+              Import
+            </button>
+          </div>
+
+          {questions.length === 0 ? (
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/20 p-8">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <PlusCircle className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="mb-2 font-['Manrope',sans-serif] text-lg font-semibold text-card-foreground">
+                No questions yet
+              </h3>
+              <p className="mb-4 text-center text-sm text-muted-foreground">
+                Add questions to build this quiz.
+              </p>
+              <div className="flex gap-3">
                 <Button onClick={handleAddQuestion}>
                   <Plus className="h-4 w-4" /> Add First Question
                 </Button>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <UploadCloud className="h-4 w-4" /> Import from File
+                </Button>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {questions.map((q, i) => (
-                  <QuestionCard
-                    key={q.id}
-                    question={q}
-                    variant="curated"
-                    topicCategory={TOPIC_ROTATION[i % TOPIC_ROTATION.length]}
-                    caseThumbnail={CURATED_THUMBS[i % CURATED_THUMBS.length]}
-                    points={POINTS_ROTATION[i % POINTS_ROTATION.length]}
-                    onEdit={handleEditQuestion}
-                    onDelete={handleDeleteQuestion}
-                  />
-                ))}
-                <div className="flex justify-center border-t border-border/30 pt-6">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-sm font-bold text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    Load More Questions
-                    <ChevronDown className="h-5 w-5" />
-                  </button>
-                </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {questions.map((q, i) => (
+                <QuestionCard
+                  key={q.id}
+                  question={q}
+                  variant="curated"
+                  topicCategory={TOPIC_ROTATION[i % TOPIC_ROTATION.length]}
+                  caseThumbnail={CURATED_THUMBS[i % CURATED_THUMBS.length]}
+                  points={POINTS_ROTATION[i % POINTS_ROTATION.length]}
+                  onEdit={handleEditQuestion}
+                  onDelete={handleDeleteQuestion}
+                />
+              ))}
+              <div className="flex justify-center border-t border-border/30 pt-6">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 text-sm font-bold text-muted-foreground transition-colors hover:text-card-foreground"
+                >
+                  Load More Questions
+                  <ChevronDown className="h-5 w-5" />
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* FAB - mobile only */}
       <button
         type="button"
         onClick={handleSave}
         disabled={saving}
-        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] text-white shadow-2xl md:hidden disabled:opacity-50"
+        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-2xl md:hidden disabled:opacity-50"
         aria-label="Save"
       >
         {saving ? <Loader2 className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />}
@@ -447,6 +476,12 @@ export default function QuizDetailPage() {
         quizId={quizId}
         question={editingQuestion}
         onSuccess={handleQuestionSuccess}
+      />
+
+      <QuestionImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImportQuestions}
       />
     </div>
   );

@@ -191,6 +191,8 @@ export interface StudentPracticeQuiz {
   quizId: string;
   title: string;
   topic: string;
+  difficulty?: string;
+  timeLimit?: number;
   questions: StudentQuizQuestion[];
 }
 
@@ -201,8 +203,9 @@ export interface StudentQuizAnswer {
 
 export interface StudentQuizSubmissionResult {
   attemptId: string;
-  score: number;
-  passingScore: number;
+  quizId: string;
+  score: number | null;
+  passingScore: number | null;
   passed: boolean;
   totalQuestions: number;
   correctAnswers: number;
@@ -323,6 +326,10 @@ export interface QuizDto {
   id: string;
   classId: string;
   title: string;
+  topic: string | null;
+  isAiGenerated: boolean;
+  difficulty: string | null;
+  classification: string | null;
   openTime: string | null;
   closeTime: string | null;
   timeLimit: number | null;
@@ -336,10 +343,17 @@ export interface ClassQuizDto {
   quizName: string | null;
   className: string | null;
   assignedAt: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  questionCount?: number;
 }
 
 export interface CreateQuizRequest {
   title: string;
+  topic?: string;
+  isAiGenerated?: boolean;
+  difficulty?: string;
+  classification?: string;
   openTime?: string;
   closeTime?: string;
   timeLimit?: number;
@@ -384,6 +398,57 @@ export interface UpdateQuizQuestionRequest {
   optionD?: string;
 }
 
+// ========== AI Quiz Types ==========
+
+export interface AIQuizQuestion {
+  questionText: string;
+  type: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctAnswer: string;
+  caseId?: string;
+  caseTitle?: string;
+  explanation?: string;
+}
+
+export interface AIQuizGenerationResult {
+  success: boolean;
+  message?: string;
+  questions: AIQuizQuestion[];
+  topic?: string;
+  difficulty?: string;
+}
+
+export interface AIAutoGenerateQuizRequest {
+  title: string;
+  topic: string;
+  difficulty?: string;
+  classification?: string;
+  questionCount?: number;
+  classId?: string;
+  openTime?: string;
+  closeTime?: string;
+  timeLimit?: number;
+  passingScore?: number;
+}
+
+export interface AISuggestQuestionsRequest {
+  cases: Array<{
+    caseId?: string;
+    caseTitle?: string;
+    caseDescription?: string;
+    imageUrl?: string;
+    modality?: string;
+    keyFindings?: string;
+    suggestedDiagnosis?: string;
+    difficulty?: string;
+  }>;
+  questionsPerCase?: number;
+  difficulty?: string;
+}
+
 export interface ImportStudentsSummary {
   totalRows: number;
   successCount: number;
@@ -394,4 +459,61 @@ export interface ImportStudentsSummary {
     studentName: string;
     studentCode: string;
   }>;
+}
+
+// ========== Lecturer Missing Types ==========
+
+export interface UpdateClassRequest {
+  className: string;
+  semester: string;
+  expertId?: string;
+}
+
+export interface ClassStudentProgress {
+  studentId: string;
+  studentName: string;
+  studentEmail: string | null;
+  studentCode: string | null;
+  totalCasesViewed: number;
+  totalQuestionsAsked: number;
+  avgQuizScore: number | null;
+  quizAttempts: number;
+  escalatedAnswers: number;
+  lastActivityAt: string | null;
+}
+
+export interface LectStudentQuestionDetail {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  caseId: string | null;
+  caseTitle: string | null;
+  caseDescription: string | null;
+  caseThumbnailUrl: string | null;
+  caseDifficulty: string | null;
+  questionText: string;
+  language: string | null;
+  createdAt: string | null;
+  answerId: string | null;
+  answerText: string | null;
+  structuredDiagnosis: string | null;
+  differentialDiagnoses: string | null;
+  answerStatus: string | null;
+  aiConfidenceScore: number | null;
+  reviewedById: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  isEscalated: boolean;
+  escalatedByName: string | null;
+  escalatedAt: string | null;
+}
+
+export interface LecturerAnswer {
+  answerId: string;
+  answerText: string;
+  structuredDiagnosis: string | null;
+  differentialDiagnoses: string | null;
+  status: string;
+  updatedAt: string;
 }

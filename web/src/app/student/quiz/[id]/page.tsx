@@ -10,9 +10,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ZoomIn,
-  Contrast,
-  InvertColors,
-  Fullscreen,
   BookOpen,
   PlayCircle,
   TrendingUp,
@@ -21,19 +18,19 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAssignedQuizzes, startQuizSession, submitQuizSession } from '@/lib/api/student';
-import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/student';
 import type { StudentQuizResultDto } from '@/lib/api/types';
+import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
 
 interface QuizModeQuestion {
   questionId: string;
   questionText: string;
-  type: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  caseId?: string;
-  caseTitle?: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  caseId?: string | null;
+  caseTitle?: string | null;
   imageUrl?: string;
   explanation?: string;
   correctAnswer?: string;
@@ -211,7 +208,7 @@ export default function QuizSessionPage({
             Once started, the timer begins. Make sure you are in a quiet environment.
           </p>
           <div className="flex flex-col gap-3">
-            <Button onClick={() => void handleStart()} isLoading={loadingSession} size="lg">
+            <Button onClick={() => void handleStart()} isLoading={loadingSession} className="text-base px-6 py-3">
               {!loadingSession && <PlayCircle className="h-5 w-5" />}
               {loadingSession ? 'Preparing…' : 'Begin assessment'}
             </Button>

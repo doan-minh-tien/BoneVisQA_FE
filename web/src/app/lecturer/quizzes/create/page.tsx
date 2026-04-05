@@ -21,19 +21,39 @@ import {
   GripVertical,
   Trash2,
   Pencil,
+  ArrowLeft,
+  Sparkles,
+  UploadCloud,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
-import { createQuiz, addQuizQuestion, getQuizQuestions } from '@/lib/api/lecturer-quiz';
+import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
+import { createQuiz, addQuizQuestion, getQuizQuestions, aiAutoGenerateQuiz, aiSuggestQuestions, aiCreateQuiz } from '@/lib/api/lecturer-quiz';
 import { getLecturerClasses, getLecturerCases } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { CaseDto, ClassItem, CreateQuizQuestionRequest, QuizQuestionDto } from '@/lib/api/types';
+import type { CaseDto, ClassItem, CreateQuizQuestionRequest, QuizQuestionDto, AIQuizQuestion } from '@/lib/api/types';
+import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
 
 const CLASSIFICATION_OPTIONS = [
   'Resident Year 1',
   'Resident Year 2',
   'Advanced Diagnostics',
   'Continuing Med Ed',
+] as const;
+
+const TOPIC_OPTIONS = [
+  { value: 'Long Bone Fractures', label: 'Long Bone Fractures' },
+  { value: 'Spine Lesions', label: 'Spine Lesions' },
+  { value: 'Joint Diseases', label: 'Joint Diseases' },
+  { value: 'Bone Tumors', label: 'Bone Tumors' },
+  { value: 'Upper Extremity', label: 'Upper Extremity' },
+  { value: 'Lower Extremity', label: 'Lower Extremity' },
+] as const;
+
+const DIFFICULTY_OPTIONS = [
+  { value: 'Easy', label: 'Easy' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'Hard', label: 'Hard' },
 ] as const;
 
 const XRAY_PREVIEW =
@@ -208,6 +228,8 @@ export default function CreateQuizPage() {
     title: '',
     description: '',
     classId: '',
+    topic: '',
+    difficulty: 'Medium',
     openTime: '',
     closeTime: '',
     timeLimit: '30',
@@ -233,6 +255,14 @@ export default function CreateQuizPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<CreateQuizQuestionRequest | null>(null);
   const [editingTempIndex, setEditingTempIndex] = useState<number | null>(null);
+
+  // AI Quiz State
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiQuestions, setAiQuestions] = useState<AIQuizQuestion[]>([]);
+  const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
+  const [questionCount, setQuestionCount] = useState(5);
+  const [importOpen, setImportOpen] = useState(false);
 
   const allQuestions = createdQuizId ? questions : tempQuestions;
 
@@ -295,12 +325,164 @@ export default function CreateQuizPage() {
 
   const buildCreatePayload = () => ({
     title: formData.title,
+    topic: formData.topic || undefined,
+    difficulty: formData.difficulty || undefined,
+    classification: classification,
+    isAiGenerated: false,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
     openTime: formData.openTime || undefined,
     closeTime: formData.closeTime || undefined,
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
   });
+
+  // ========== AI Quiz Handlers ==========
+
+  const handleAIAutoGenerate = async () => {
+    if (!formData.title.trim()) {
+      setError('Vui lòng nhập tiêu đề quiz trước');
+      return;
+    }
+    if (!formData.topic) {
+      setError('Vui lòng chọn topic trước');
+      return;
+    }
+
+    setAiGenerating(true);
+    setAiSuggestionMode('auto');
+    setError(null);
+
+    try {
+      const result = await aiAutoGenerateQuiz({
+        title: formData.title,
+        topic: formData.topic,
+        difficulty: formData.difficulty,
+        questionCount: questionCount,
+      });
+
+      if (result.success && result.questions.length > 0) {
+        setAiQuestions(result.questions);
+        setTempQuestions([]);
+        setActiveStep(2);
+      } else {
+        setError(result.message || 'Không thể tạo câu hỏi từ AI');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi khi tạo quiz');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleAISuggestFromCases = async () => {
+    if (referenceCaseIds.length === 0) {
+      setError('Vui lòng chọn ít nhất 1 case trước');
+      return;
+    }
+
+    setAiSuggesting(true);
+    setAiSuggestionMode('suggest');
+    setError(null);
+
+    try {
+      const selectedCases = caseLibrary.filter((c) => referenceCaseIds.includes(c.id));
+      const caseInputs = selectedCases.map((c) => ({
+        caseId: c.id,
+        caseTitle: c.title,
+        caseDescription: c.description,
+        difficulty: c.difficulty,
+      }));
+
+      const result = await aiSuggestQuestions({
+        cases: caseInputs,
+        questionsPerCase: Math.ceil(questionCount / referenceCaseIds.length),
+        difficulty: formData.difficulty,
+      });
+
+      if (result.success && result.questions.length > 0) {
+        setAiQuestions(result.questions);
+        setTempQuestions([]);
+        setActiveStep(2);
+      } else {
+        setError(result.message || 'Không thể gợi ý câu hỏi từ AI');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi khi gợi ý');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+
+  const handleAddAIQuestionsToQuiz = () => {
+    const newQuestions: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
+      quizId: createdQuizId || '',
+      questionText: q.questionText,
+      type: q.type || 'MultipleChoice',
+      optionA: q.optionA,
+      optionB: q.optionB,
+      optionC: q.optionC,
+      optionD: q.optionD,
+      correctAnswer: q.correctAnswer,
+      caseId: q.caseId,
+    }));
+
+    setTempQuestions([...tempQuestions, ...newQuestions]);
+    setAiQuestions([]);
+    setAiSuggestionMode(null);
+    setActiveStep(2);
+  };
+
+  const handleCreateAndAddAIQuestions = async () => {
+    if (!formData.title.trim()) {
+      setError('Vui lòng nhập tiêu đề quiz');
+      return;
+    }
+    if (!formData.topic) {
+      setError('Vui lòng chọn topic');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Create quiz
+      const quiz = await createQuiz({
+        title: formData.title,
+        topic: formData.topic,
+        difficulty: formData.difficulty,
+        classification: classification,
+        isAiGenerated: true,
+        classId: formData.classId || '00000000-0000-0000-0000-000000000000',
+        openTime: formData.openTime || undefined,
+        closeTime: formData.closeTime || undefined,
+        timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
+        passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
+      });
+
+      // 2. Add AI questions
+      for (const q of aiQuestions) {
+        await addQuizQuestion({
+          quizId: quiz.id,
+          questionText: q.questionText,
+          type: q.type || 'MultipleChoice',
+          optionA: q.optionA,
+          optionB: q.optionB,
+          optionC: q.optionC,
+          optionD: q.optionD,
+          correctAnswer: q.correctAnswer,
+          caseId: q.caseId,
+        });
+      }
+
+      // 3. Redirect to quiz detail
+      router.push(`/lecturer/quizzes/${quiz.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSaveDraft = async () => {
     if (!formData.title.trim()) {
@@ -403,6 +585,20 @@ export default function CreateQuizPage() {
     setEditingTempIndex(null);
   };
 
+  const handleImportQuestions = (parsed: ParsedQuestion[]) => {
+    const newQs: CreateQuizQuestionRequest[] = parsed.map((p) => ({
+      quizId: 'temp',
+      questionText: p.questionText,
+      type: p.type,
+      optionA: p.optionA,
+      optionB: p.optionB,
+      optionC: p.optionC,
+      optionD: p.optionD,
+      correctAnswer: p.correctAnswer,
+    }));
+    setTempQuestions((prev) => [...prev, ...newQs]);
+  };
+
   useEffect(() => {
     if (createdQuizId) {
       getQuizQuestions(createdQuizId).then(setQuestions).catch(console.error);
@@ -419,32 +615,30 @@ export default function CreateQuizPage() {
   }, [allQuestions.length, classification]);
 
   return (
-    <div className="mx-auto max-w-6xl pb-12">
-      <header className="sticky top-0 z-30 -mx-4 mb-8 flex flex-col gap-4 border-b border-border/60 bg-background/90 px-4 py-4 backdrop-blur-md sm:-mx-6 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+    <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
+      {/* Breadcrumb header — no duplicate sticky nav */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <FilePenLine className="h-5 w-5 text-muted-foreground" aria-hidden />
-          <h1 className="text-lg font-bold text-card-foreground">Create New Assessment</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/lecturer/quizzes"
-            className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
           >
-            Back to quizzes
+            <ArrowLeft className="h-4 w-4" />
+            Back to Quizzes
           </Link>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={handleSaveDraft}
-            className="h-10 rounded-full border border-border bg-card px-6 text-sm font-bold text-primary transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Save draft'}
-          </button>
         </div>
-      </header>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleSaveDraft}
+          className="flex items-center gap-2 rounded-full border border-border bg-card px-6 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-muted/60 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save draft'}
+        </button>
+      </div>
 
       {/* Stepper — Basic info / Questions */}
-      <div className="mb-10 flex justify-center">
+      <div className="mb-2 flex justify-center">
         <div className="relative flex w-full max-w-md items-center">
           <button
             type="button"
@@ -489,7 +683,7 @@ export default function CreateQuizPage() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -534,6 +728,39 @@ export default function CreateQuizPage() {
                     {CLASSIFICATION_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Topic
+                  </label>
+                  <select
+                    value={formData.topic}
+                    onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select topic (optional)</option>
+                    {TOPIC_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Difficulty
+                  </label>
+                  <select
+                    value={formData.difficulty}
+                    onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground focus:ring-2 focus:ring-primary"
+                  >
+                    {DIFFICULTY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>
@@ -667,6 +894,92 @@ export default function CreateQuizPage() {
                 </div>
               )}
 
+              {/* ========== AI Quiz Section ========== */}
+              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+                <div className="mb-3 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+                    AI Quiz Assistant
+                  </span>
+                </div>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Sử dụng AI để tạo quiz tự động hoặc gợi ý câu hỏi từ cases đã chọn.
+                </p>
+
+                <div className="space-y-3">
+                  {/* Question Count */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Số câu hỏi:</label>
+                    <select
+                      value={questionCount}
+                      onChange={(e) => setQuestionCount(parseInt(e.target.value))}
+                      className="rounded-md border border-border bg-card px-2 py-1 text-xs"
+                    >
+                      <option value={3}>3 câu</option>
+                      <option value={5}>5 câu</option>
+                      <option value={10}>10 câu</option>
+                      <option value={15}>15 câu</option>
+                    </select>
+                  </div>
+
+                  {/* AI Buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAIAutoGenerate}
+                      disabled={aiGenerating || !formData.topic}
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300"
+                    >
+                      {aiGenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang tạo...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          AI Auto-Generate
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAISuggestFromCases}
+                      disabled={aiSuggesting || referenceCaseIds.length === 0}
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300"
+                    >
+                      {aiSuggesting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang gợi ý...
+                        </>
+                      ) : (
+                        <>
+                          <Lightbulb className="mr-2 h-4 w-4" />
+                          AI Gợi ý từ Cases
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {!formData.topic && (
+                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                      Vui lòng chọn Topic để sử dụng AI Auto-Generate
+                    </p>
+                  )}
+                  {referenceCaseIds.length === 0 && (
+                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                      Chọn Cases để sử dụng AI Gợi ý
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <details className="rounded-lg border border-border/60 bg-muted/10 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-card-foreground">
                   Advanced quiz options
@@ -734,14 +1047,79 @@ export default function CreateQuizPage() {
                 <PlusCircle className="h-4 w-4" />
                 New question
               </button>
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
+              >
+                <UploadCloud className="h-4 w-4" />
+                Import
+              </button>
             </div>
 
-            {allQuestions.length > 0 ? (
+            {allQuestions.length > 0 || aiQuestions.length > 0 ? (
               <div>
+                {/* AI Questions Section */}
+                {aiQuestions.length > 0 && (
+                  <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+                          AI Generated Questions ({aiQuestions.length})
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleAddAIQuestionsToQuiz}
+                          className="h-8 text-xs"
+                        >
+                          Thêm vào Quiz
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={handleCreateAndAddAIQuestions}
+                          className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
+                        >
+                          Tạo Quiz ngay
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {aiQuestions.map((q, index) => (
+                        <div key={index} className="rounded-lg border border-purple-200 bg-white p-3 dark:border-purple-700 dark:bg-slate-800">
+                          <div className="mb-2 flex items-start gap-2">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                              {index + 1}
+                            </span>
+                            <p className="text-sm font-medium">{q.questionText}</p>
+                          </div>
+                          <div className="ml-7 grid grid-cols-2 gap-1 text-xs">
+                            <span className={q.correctAnswer === 'A' ? 'text-green-600 font-bold' : ''}>A: {q.optionA}</span>
+                            <span className={q.correctAnswer === 'B' ? 'text-green-600 font-bold' : ''}>B: {q.optionB}</span>
+                            <span className={q.correctAnswer === 'C' ? 'text-green-600 font-bold' : ''}>C: {q.optionC}</span>
+                            <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
+                          </div>
+                          <div className="ml-7 mt-2">
+                            <span className="text-xs text-green-600">Đáp án đúng: {q.correctAnswer}</span>
+                            {q.caseTitle && (
+                              <span className="ml-2 text-xs text-muted-foreground">Case: {q.caseTitle}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Questions */}
                 {allQuestions.map((question, index) => (
                   <CreateQuizQuestionPreview
                     key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
-                    index={index + 1}
+                    index={aiQuestions.length + index + 1}
                     question={question as QuestionLike}
                     onEdit={() => {
                       if (!createdQuizId) {
@@ -946,6 +1324,12 @@ export default function CreateQuizPage() {
           setEditingQuestion(null);
           setEditingTempIndex(null);
         }}
+      />
+
+      <QuestionImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImportQuestions}
       />
     </div>
   );

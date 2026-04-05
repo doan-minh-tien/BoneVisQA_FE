@@ -1,0 +1,543 @@
+'use client';
+
+import { useState, useCallback, useRef } from 'react';
+import {
+  X,
+  Upload,
+  FileText,
+  ClipboardPaste,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Download,
+  Trash2,
+  Info,
+} from 'lucide-react';
+
+export interface ParsedQuestion {
+  questionText: string;
+  type: 'MultipleChoice' | 'TrueFalse' | 'Annotation';
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer: string;
+  difficulty?: string;
+}
+
+interface QuestionImportDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onImport: (questions: ParsedQuestion[]) => void;
+}
+
+type ImportMode = 'paste' | 'csv' | 'json';
+type ParseResult =
+  | { ok: true; questions: ParsedQuestion[]; rawLineCount: number }
+  | { ok: false; error: string };
+
+const SAMPLE_CSV = `questionText,type,optionA,optionB,optionC,optionD,correctAnswer,difficulty
+"What is the most common fracture site in the femur?","MultipleChoice","Proximal shaft","Distal metaphysis","Femoral neck","Medial epicondyle","A","basic"
+"True or False: The tibial plateau is part of the knee joint.","TrueFalse","True","False","","","True","basic"`;
+
+const SAMPLE_JSON = `[
+  {
+    "questionText": "What is the most common fracture site in the femur?",
+    "type": "MultipleChoice",
+    "optionA": "Proximal shaft",
+    "optionB": "Distal metaphysis",
+    "optionC": "Femoral neck",
+    "optionD": "Medial epicondyle",
+    "correctAnswer": "A"
+  },
+  {
+    "questionText": "True or False: The tibial plateau is part of the knee joint.",
+    "type": "TrueFalse",
+    "correctAnswer": "True"
+  }
+]`;
+
+const SAMPLE_PASTE = `1. What is the most common fracture site in the femur?
+A) Proximal shaft  B) Distal metaphysis  C) Femoral neck  D) Medial epicondyle
+Answer: A
+
+2. True or False: The tibial plateau is part of the knee joint.
+Answer: True
+
+3. Identify the fracture type shown in the image.
+Type: Annotation
+Answer: Transverse fracture`;
+
+function detectType(text: string): ParsedQuestion['type'] {
+  const lower = text.toLowerCase();
+  if (lower.includes('true or false') || lower.includes('t/f')) return 'TrueFalse';
+  if (lower.includes('identify') || lower.includes('label') || lower.includes('point')) return 'Annotation';
+  return 'MultipleChoice';
+}
+
+function parsePaste(raw: string): ParsedQuestion[] {
+  const questions: ParsedQuestion[] = [];
+  const blocks = raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split(/\n(?=\d+\.)|(?=Question\s*\d)|(?=^\#)/im)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const block of blocks) {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) continue;
+
+    const firstLine = lines[0].replace(/^[\d.]+\s*[\.\)]\s*/i, '').trim();
+
+    let questionText = firstLine;
+    let type: ParsedQuestion['type'] = 'MultipleChoice';
+    let optionA = '',
+      optionB = '',
+      optionC = '',
+      optionD = '';
+    let correctAnswer = '';
+
+    const answerLineIdx = lines.findIndex((l) =>
+      /^answer\s*[:\)]/i.test(l) || /^đáp án\s*[:\)]/i.test(l)
+    );
+    if (answerLineIdx !== -1) {
+      const ansRaw = lines[answerLineIdx].replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').trim();
+      correctAnswer = ansRaw.charAt(0).toUpperCase();
+    }
+
+    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|true[\s\/]?false|annotation)/i);
+    if (mcMatch) {
+      const t = mcMatch[1].toLowerCase().replace(/\s/g, '');
+      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
+      else if (t.includes('annotation')) type = 'Annotation';
+      else type = 'MultipleChoice';
+    }
+
+    for (const line of lines) {
+      if (/^answer\s*[:\)]/i.test(line) || /^đáp án\s*[:\)]/i.test(line)) {
+        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').trim();
+        correctAnswer = val.charAt(0).toUpperCase();
+      }
+      if (/^[A-D][\)\.\-\:]\s*/.test(line)) {
+        const match = line.match(/^([A-D])[\)\.\-\:]\s*(.+)/);
+        if (match) {
+          const key = match[1] as 'A' | 'B' | 'C' | 'D';
+          const val = match[2].trim();
+          if (key === 'A') optionA = val;
+          if (key === 'B') optionB = val;
+          if (key === 'C') optionC = val;
+          if (key === 'D') optionD = val;
+        }
+      }
+    }
+
+    if (!questionText || !correctAnswer) continue;
+
+    type = detectType(questionText);
+
+    questions.push({
+      questionText,
+      type,
+      optionA,
+      optionB,
+      optionC,
+      optionD,
+      correctAnswer,
+    });
+  }
+
+  return questions;
+}
+
+function parseCSV(raw: string): ParseResult {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return { ok: false, error: 'CSV must have at least a header row and one data row.' };
+
+  const header = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+  const qIdx = header.indexOf('questiontext');
+  const typeIdx = header.indexOf('type');
+  const aIdx = header.indexOf('optiona');
+  const bIdx = header.indexOf('optionb');
+  const cIdx = header.indexOf('optionc');
+  const dIdx = header.indexOf('optiond');
+  const ansIdx = header.indexOf('correctanswer');
+
+  if (qIdx === -1 || ansIdx === -1) {
+    return { ok: false, error: 'CSV must have "questionText" and "correctAnswer" columns.' };
+  }
+
+  const questions: ParsedQuestion[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+    const qText = cells[qIdx] ?? '';
+    if (!qText) continue;
+    const correct = (cells[ansIdx] ?? 'A').charAt(0).toUpperCase();
+    const typeVal = cells[typeIdx] ?? 'MultipleChoice';
+    let type: ParsedQuestion['type'] = 'MultipleChoice';
+    const t = typeVal.toLowerCase().replace(/\s/g, '');
+    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
+    else if (t.includes('annotation')) type = 'Annotation';
+    else type = 'MultipleChoice';
+
+    questions.push({
+      questionText: qText,
+      type,
+      optionA: cells[aIdx] || undefined,
+      optionB: cells[bIdx] || undefined,
+      optionC: cells[cIdx] || undefined,
+      optionD: cells[dIdx] || undefined,
+      correctAnswer: correct,
+    });
+  }
+
+  return { ok: true, questions, rawLineCount: lines.length - 1 };
+}
+
+function parseJSON(raw: string): ParseResult {
+  try {
+    const data = JSON.parse(raw);
+    const arr = Array.isArray(data) ? data : Array.isArray(data.questions) ? data.questions : [data];
+    const questions: ParsedQuestion[] = [];
+    for (const item of arr) {
+      const qText = item.questionText ?? item.question ?? item.text ?? '';
+      const correct = (item.correctAnswer ?? item.answer ?? item.correct ?? 'A').toString().charAt(0).toUpperCase();
+      if (!qText) continue;
+      const typeVal = item.type ?? 'MultipleChoice';
+      let type: ParsedQuestion['type'] = 'MultipleChoice';
+      const t = String(typeVal).toLowerCase().replace(/\s/g, '');
+      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
+      else if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      else type = 'MultipleChoice';
+      questions.push({
+        questionText: qText,
+        type,
+        optionA: item.optionA ?? item.option_a ?? item.A ?? undefined,
+        optionB: item.optionB ?? item.option_b ?? item.B ?? undefined,
+        optionC: item.optionC ?? item.option_c ?? item.C ?? undefined,
+        optionD: item.optionD ?? item.option_d ?? item.D ?? undefined,
+        correctAnswer: correct,
+      });
+    }
+    return { ok: true, questions, rawLineCount: questions.length };
+  } catch {
+    return { ok: false, error: 'Invalid JSON format.' };
+  }
+}
+
+function downloadSample(type: 'csv' | 'json' | 'paste') {
+  const content = type === 'csv' ? SAMPLE_CSV : type === 'json' ? SAMPLE_JSON : SAMPLE_PASTE;
+  const ext = type === 'csv' ? 'csv' : type === 'json' ? 'json' : 'txt';
+  const mime = type === 'json' ? 'application/json' : type === 'csv' ? 'text/csv' : 'text/plain';
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sample_questions.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function QuestionImportDialog({ open, onClose, onImport }: QuestionImportDialogProps) {
+  const [mode, setMode] = useState<ImportMode>('paste');
+  const [pasteText, setPasteText] = useState('');
+  const [fileContent, setFileContent] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const parse = useCallback(() => {
+    if (mode === 'paste') {
+      if (!pasteText.trim()) return;
+      const questions = parsePaste(pasteText);
+      setParseResult({ ok: true, questions, rawLineCount: questions.length });
+    } else if (mode === 'csv') {
+      if (!fileContent.trim()) return;
+      setParseResult(parseCSV(fileContent));
+    } else {
+      if (!fileContent.trim()) return;
+      setParseResult(parseJSON(fileContent));
+    }
+  }, [mode, pasteText, fileContent]);
+
+  const reset = () => {
+    setPasteText('');
+    setFileContent('');
+    setFileName('');
+    setParseResult(null);
+  };
+
+  const handleFile = useCallback((file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext === 'csv') setMode('csv');
+    else if (ext === 'json') setMode('json');
+    else if (ext === 'txt') setMode('paste');
+    else {
+      alert('Unsupported file type. Please use CSV, JSON, or TXT.');
+      return;
+    }
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
+    reader.readAsText(file);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile],
+  );
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const handleImport = async () => {
+    if (!parseResult?.ok || parseResult.questions.length === 0) return;
+    setImporting(true);
+    await new Promise((r) => setTimeout(r, 300));
+    onImport(parseResult.questions);
+    setImporting(false);
+    reset();
+    onClose();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md" aria-hidden onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-8 py-6">
+          <div>
+            <h2 className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
+              Import Questions
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Import từ file CSV, JSON hoặc paste trực tiếp.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted transition-colors"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 flex-col overflow-y-auto p-8">
+          {/* Mode Tabs */}
+          <div className="mb-6 flex gap-2 rounded-2xl bg-muted p-1">
+            {(
+              [
+                { key: 'paste', label: 'Paste Text', icon: ClipboardPaste },
+                { key: 'csv', label: 'CSV File', icon: FileText },
+                { key: 'json', label: 'JSON File', icon: FileText },
+              ] as const
+            ).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setMode(key);
+                  reset();
+                }}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  mode === key
+                    ? 'bg-card text-card-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-card-foreground'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sample Download */}
+          <div className="mb-4 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Tải file mẫu:</span>
+            <button type="button" onClick={() => downloadSample('csv')} className="text-xs text-primary hover:underline">
+              CSV
+            </button>
+            <span className="text-muted-foreground">·</span>
+            <button type="button" onClick={() => downloadSample('json')} className="text-xs text-primary hover:underline">
+              JSON
+            </button>
+            <span className="text-muted-foreground">·</span>
+            <button type="button" onClick={() => downloadSample('paste')} className="text-xs text-primary hover:underline">
+              TXT
+            </button>
+          </div>
+
+          {/* Input Area */}
+          {mode === 'paste' ? (
+            <div className="space-y-3">
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={SAMPLE_PASTE}
+                className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
+              />
+              <p className="text-xs text-muted-foreground">
+                Hỗ trợ định dạng tự do: câu hỏi có đáp án A/B/C/D, True/False, gõ "Answer: X" để chỉ định đáp án.
+              </p>
+            </div>
+          ) : (
+            <div
+              className={`relative flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors ${
+                dragOver
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/30'
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.json,.txt"
+                className="hidden"
+                onChange={handleFileInput}
+              />
+              {fileName ? (
+                <>
+                  <CheckCircle2 className="mb-2 h-8 w-8 text-success" />
+                  <p className="font-bold text-card-foreground">{fileName}</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      reset();
+                    }}
+                    className="mt-2 flex items-center gap-1 text-xs text-destructive hover:underline"
+                  >
+                    <Trash2 className="h-3 w-3" /> Xóa file
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
+                  <p className="font-semibold text-card-foreground">Kéo thả file vào đây</p>
+                  <p className="mt-1 text-xs text-muted-foreground">hoặc click để chọn file</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Parse Error */}
+          {parseResult && !parseResult.ok && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {parseResult.error}
+            </div>
+          )}
+
+          {/* Preview */}
+          {parseResult?.ok && parseResult.questions.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-card-foreground">
+                  Preview — {parseResult.questions.length} câu hỏi được nhận diện
+                </h3>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="text-xs text-muted-foreground hover:text-destructive"
+                >
+                  Xóa &amp; nhập lại
+                </button>
+              </div>
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-4">
+                {parseResult.questions.slice(0, 10).map((q, i) => (
+                  <div key={i} className="rounded-lg border border-border/60 bg-card p-3">
+                    <p className="text-xs font-semibold text-card-foreground line-clamp-1">
+                      {i + 1}. {q.questionText}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                        {q.type}
+                      </span>
+                      <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-bold text-success">
+                        Answer: {q.correctAnswer}
+                      </span>
+                      {q.optionA && (
+                        <span className="text-[10px] text-muted-foreground">A: {q.optionA}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {parseResult.questions.length > 10 && (
+                  <p className="text-center text-xs text-muted-foreground">
+                    … và {parseResult.questions.length - 10} câu hỏi nữa
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-border px-8 py-6">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Info className="h-4 w-4" />
+            {mode === 'paste'
+              ? 'Parse tự động từ text. Kiểm tra preview trước khi import.'
+              : 'Hỗ trợ định dạng chuẩn CSV/JSON. Kiểm tra preview trước khi import.'}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full px-6 py-2.5 text-sm font-bold text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            {parseResult?.ok ? (
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={importing || parseResult.questions.length === 0}
+                className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+              >
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Import {parseResult.questions.length} câu hỏi
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={parse}
+                disabled={
+                  importing ||
+                  (mode === 'paste' ? !pasteText.trim() : !fileContent.trim())
+                }
+                className="rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+              >
+                Parse &amp; Preview
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

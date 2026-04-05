@@ -9,8 +9,11 @@ import type {
   StudentProfileUpdatePayload,
   StudentProgress,
   StudentQuizAnswer,
+  StudentQuizSubmissionResult,
   StudentQuizResultDto,
+  StudentRecentActivityItem,
   StudentSubmitQuestionDto,
+  StudentTopicStat,
 } from './types';
 
 function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty'] {
@@ -99,6 +102,54 @@ export async function fetchStudentPracticeQuiz(topic: string): Promise<StudentPr
   try {
     const { data } = await http.get<StudentPracticeQuiz>('/api/student/quizzes/practice', {
       params: { topic },
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * AI Generate Practice Quiz: Student tự tạo quiz ôn luyện bằng AI
+ */
+export async function generateAIPracticeQuiz(
+  topic: string,
+  questionCount?: number,
+  difficulty?: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  questions: Array<{
+    questionText: string;
+    type: string;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
+    correctAnswer: string;
+    caseId?: string;
+    caseTitle?: string;
+  }>;
+}> {
+  try {
+    const { data } = await http.post<{
+      success: boolean;
+      message?: string;
+      questions: Array<{
+        questionText: string;
+        type: string;
+        optionA: string;
+        optionB: string;
+        optionC: string;
+        optionD: string;
+        correctAnswer: string;
+        caseId?: string;
+        caseTitle?: string;
+      }>;
+    }>('/api/student/quizzes/practice/generate', {
+      topic,
+      questionCount,
+      difficulty,
     });
     return data;
   } catch (e) {
@@ -280,3 +331,6 @@ export async function fetchStudentRecentActivity(): Promise<StudentRecentActivit
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// Re-export types so other modules can import from '@/lib/api/student'
+export type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto };

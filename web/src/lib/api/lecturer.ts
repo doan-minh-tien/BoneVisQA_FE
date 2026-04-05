@@ -7,6 +7,8 @@ import type {
   StudentEnrollment,
   ImportStudentsSummary,
   LectStudentQuestionDto,
+  UpdateClassRequest,
+  ClassStudentProgress,
 } from './types';
 
 export async function createClass(body: {
@@ -231,6 +233,60 @@ export async function enrollManyStudents(
     const { data } = await http.post<StudentEnrollment[]>(
       `/api/lecturer/classes/${classId}/enrollmany`,
       { studentIds },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get a single class by ID
+ */
+export async function getClassById(classId: string): Promise<ClassItem> {
+  try {
+    const { data } = await http.get<ClassItem>(`/api/lecturer/classes/${classId}`);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Update class information
+ */
+export async function updateClass(
+  classId: string,
+  body: UpdateClassRequest,
+): Promise<ClassItem> {
+  try {
+    const { data } = await http.put<ClassItem>(`/api/lecturer/classes/${classId}`, body);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete a class
+ */
+export async function deleteClass(classId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/classes/${classId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get learning progress for all students in a class
+ */
+export async function getClassStudentProgress(
+  classId: string,
+): Promise<ClassStudentProgress[]> {
+  try {
+    const { data } = await http.get<ClassStudentProgress[]>(
+      `/api/lecturer/classes/${classId}/student-progress`,
     );
     return Array.isArray(data) ? data : [];
   } catch (e) {
