@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchStudentPracticeQuiz, submitStudentQuiz, generateAIPracticeQuiz } from '@/lib/api/student';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentPracticeQuiz, StudentQuizSubmissionResult } from '@/lib/api/types';
 import {
   CheckCircle,
@@ -22,6 +23,7 @@ import {
   BookOpen,
   AlertCircle,
   Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 const topicSuggestions = [
@@ -449,12 +451,34 @@ export default function StudentQuizPage() {
                           {question.questionText}
                         </h2>
                       </div>
-                      {question.type && (
-                        <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-primary">
-                          {question.type}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {question.type && (
+                          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-primary">
+                            {question.type}
+                          </span>
+                        )}
+                        {question.imageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => window.open(resolveApiAssetUrl(question.imageUrl), '_blank')}
+                            className="rounded-full bg-primary/10 p-2 text-primary hover:bg-primary/20"
+                            title="Xem hình ảnh"
+                          >
+                            <ImageIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {question.imageUrl && (
+                      <div className="mb-4 overflow-hidden rounded-xl border border-border">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resolveApiAssetUrl(question.imageUrl)}
+                          alt={`Hình ảnh cho câu ${index + 1}`}
+                          className="max-h-64 w-full object-contain"
+                        />
+                      </div>
+                    )}
                     <div className="grid gap-3 md:grid-cols-2">
                       {options.map((option) => {
                         const isSelected = answers[question.questionId] === option.key;

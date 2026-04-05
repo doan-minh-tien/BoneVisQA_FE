@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   X,
   Upload,
@@ -31,7 +32,7 @@ interface QuestionImportDialogProps {
   onImport: (questions: ParsedQuestion[]) => void;
 }
 
-type ImportMode = 'paste' | 'csv' | 'json';
+type ImportMode = 'paste' | 'csv' | 'json' | 'excel';
 type ParseResult =
   | { ok: true; questions: ParsedQuestion[]; rawLineCount: number }
   | { ok: false; error: string };
@@ -225,6 +226,62 @@ function parseJSON(raw: string): ParseResult {
   }
 }
 
+function normalizeHeader(h: string): string {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function parseExcel(workbook: XLSX.WorkBook): ParseResult {
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return { ok: false, error: 'No sheet found in Excel file.' };
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows: Record<string, string | undefined>[] = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as Record<string, string | undefined>[];
+
+  if (rows.length < 2) return { ok: false, error: 'Excel must have at least a header row and one data row.' };
+
+  const headerRow = rows[0] as unknown as string[];
+  const headers = headerRow.map((h) => (h ?? '').toLowerCase().trim());
+
+  const qIdx = headers.findIndex((h) => normalizeHeader(h).includes('question'));
+  const typeIdx = headers.findIndex((h) => normalizeHeader(h).includes('type'));
+  const aIdx = headers.findIndex((h) => normalizeHeader(h).includes('optiona'));
+  const bIdx = headers.findIndex((h) => normalizeHeader(h).includes('optionb'));
+  const cIdx = headers.findIndex((h) => normalizeHeader(h).includes('optionc'));
+  const dIdx = headers.findIndex((h) => normalizeHeader(h).includes('optiond'));
+  const ansIdx = headers.findIndex((h) => normalizeHeader(h).includes('correct'));
+
+  if (qIdx === -1 || ansIdx === -1) {
+    return { ok: false, error: 'Excel must have "questionText" and "correctAnswer" columns.' };
+  }
+
+  const questions: ParsedQuestion[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i] as unknown as string[];
+    const qText = (cells[qIdx] ?? '').toString().trim();
+    if (!qText) continue;
+
+    const correct = (cells[ansIdx] ?? 'A').toString().charAt(0).toUpperCase();
+    const typeVal = cells[typeIdx] ?? 'MultipleChoice';
+    let type: ParsedQuestion['type'] = 'MultipleChoice';
+    const t = typeVal.toLowerCase().replace(/\s/g, '');
+    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
+    else if (t.includes('annotation')) type = 'Annotation';
+    else type = 'MultipleChoice';
+
+    questions.push({
+      questionText: qText,
+      type,
+      optionA: (cells[aIdx] ?? '').toString().trim() || undefined,
+      optionB: (cells[bIdx] ?? '').toString().trim() || undefined,
+      optionC: (cells[cIdx] ?? '').toString().trim() || undefined,
+      optionD: (cells[dIdx] ?? '').toString().trim() || undefined,
+      correctAnswer: correct,
+    });
+  }
+
+  return { ok: true, questions, rawLineCount: questions.length };
+}
+
 function downloadSample(type: 'csv' | 'json' | 'paste') {
   const content = type === 'csv' ? SAMPLE_CSV : type === 'json' ? SAMPLE_JSON : SAMPLE_PASTE;
   const ext = type === 'csv' ? 'csv' : type === 'json' ? 'json' : 'txt';
@@ -271,17 +328,43 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
 
   const handleFile = useCallback((file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext === 'csv') setMode('csv');
-    else if (ext === 'json') setMode('json');
-    else if (ext === 'txt') setMode('paste');
-    else {
-      alert('Unsupported file type. Please use CSV, JSON, or TXT.');
-      return;
+    if (ext === 'xlsx' || ext === 'xls') {
+      setMode('excel');
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const result = parseExcel(workbook);
+          setParseResult(result);
+          setFileContent('');
+        } catch {
+          setParseResult({ ok: false, error: 'Cannot read Excel file.' });
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (ext === 'csv') {
+      setMode('csv');
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
+      reader.readAsText(file);
+    } else if (ext === 'json') {
+      setMode('json');
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
+      reader.readAsText(file);
+    } else if (ext === 'txt') {
+      setMode('paste');
+      setFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
+      reader.readAsText(file);
+    } else {
+      alert('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
     }
-    setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
-    reader.readAsText(file);
   }, []);
 
   const handleDrop = useCallback(
@@ -327,7 +410,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
               Import Questions
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Import từ file CSV, JSON hoặc paste trực tiếp.
+              Import từ file Excel (.xlsx/.xls), CSV, JSON hoặc paste trực tiếp.
             </p>
           </div>
           <button
@@ -345,7 +428,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
             {(
               [
                 { key: 'paste', label: 'Paste Text', icon: ClipboardPaste },
-                { key: 'csv', label: 'CSV File', icon: FileText },
+                { key: 'csv', label: 'CSV / Excel', icon: FileText },
                 { key: 'json', label: 'JSON File', icon: FileText },
               ] as const
             ).map(({ key, label, icon: Icon }) => (
@@ -382,6 +465,9 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
             <button type="button" onClick={() => downloadSample('paste')} className="text-xs text-primary hover:underline">
               TXT
             </button>
+            <span className="text-muted-foreground ml-2">
+              (Dùng file mẫu CSV/JSON để nhập trong Excel — cột: questionText, type, optionA, optionB, optionC, optionD, correctAnswer)
+            </span>
           </div>
 
           {/* Input Area */}
@@ -415,7 +501,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.json,.txt"
+                accept=".csv,.xlsx,.xls,.json,.txt"
                 className="hidden"
                 onChange={handleFileInput}
               />
@@ -438,7 +524,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 <>
                   <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
                   <p className="font-semibold text-card-foreground">Kéo thả file vào đây</p>
-                  <p className="mt-1 text-xs text-muted-foreground">hoặc click để chọn file</p>
+                  <p className="mt-1 text-xs text-muted-foreground">hoặc click để chọn file (.xlsx, .xls, .csv, .json, .txt)</p>
                 </>
               )}
             </div>

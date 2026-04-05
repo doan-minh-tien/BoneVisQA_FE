@@ -1,23 +1,28 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   ZoomIn,
   Pencil,
   Layers,
   Trash2,
+  Upload,
+  Image as ImageIcon,
+  CheckCircle2,
+  Loader2,
   Info,
   PlusCircle,
   ChevronDown,
-  Loader2,
 } from 'lucide-react';
 import type {
   QuizQuestionDto,
   CreateQuizQuestionRequest,
   UpdateQuizQuestionRequest,
 } from '@/lib/api/types';
+import { uploadImage } from '@/lib/api/upload';
 import { addQuizQuestion, updateQuizQuestion } from '@/lib/api/lecturer-quiz';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 interface QuestionEditorDialogProps {
   open: boolean;
@@ -50,9 +55,12 @@ export default function QuestionEditorDialog({
   onDraftSave,
 }: QuestionEditorDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [difficulty, setDifficulty] = useState<'basic' | 'advanced'>('basic');
   const [visibleMcCount, setVisibleMcCount] = useState(3);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<{
     questionText: string;
@@ -121,6 +129,7 @@ export default function QuestionEditorDialog({
       setVisibleMcCount(3);
       setOptionPoints({ A: 10, B: 0, C: 0, D: 0 });
     }
+    setImageUrl(question?.imageUrl ?? null);
     setDifficulty('basic');
     setError(null);
   }, [question, open, syncPointsFromCorrect]);
@@ -150,6 +159,7 @@ export default function QuestionEditorDialog({
           optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
           optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
           correctAnswer: formData.correctAnswer,
+          imageUrl: imageUrl || undefined,
         };
         onDraftSave?.(payload);
         onSuccess?.();
@@ -166,6 +176,7 @@ export default function QuestionEditorDialog({
           optionB: formData.optionB,
           optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
           optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+          imageUrl: imageUrl || undefined,
         };
         await updateQuizQuestion(question.id, payload);
       } else {
@@ -178,6 +189,7 @@ export default function QuestionEditorDialog({
           optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
           optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
           correctAnswer: formData.correctAnswer,
+          imageUrl: imageUrl || undefined,
         };
         await addQuizQuestion(payload);
       }
@@ -204,6 +216,39 @@ export default function QuestionEditorDialog({
   const addMcRow = () => {
     if (visibleMcCount >= 4) return;
     setVisibleMcCount((n) => n + 1);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      setError('Chỉ hỗ trợ file ảnh: JPG, PNG, GIF, WEBP, SVG.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Kích thước file không được vượt quá 10MB.');
+      return;
+    }
+
+    setUploadingImage(true);
+    setError(null);
+
+    try {
+      const url = await uploadImage(file);
+      setImageUrl(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload ảnh thất bại.');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageUrl(null);
   };
 
   if (!open) return null;
@@ -259,42 +304,74 @@ export default function QuestionEditorDialog({
                 <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-[#727783]">
                   Diagnostic Image
                 </label>
-                <div className="group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-[#727783]/20 bg-[#2d3133] transition-colors hover:border-[#00478d]/50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={DEFAULT_SCAN_IMAGE}
-                    alt="Diagnostic preview"
-                    className="absolute inset-0 h-full w-full object-cover opacity-80"
-                  />
-                  <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
-                    <div className="flex justify-end">
-                      <span className="rounded-full bg-[#006a68] px-3 py-1 text-[10px] font-bold uppercase text-white">
-                        Active Scan
-                      </span>
-                    </div>
-                    <div className="flex w-full justify-center">
-                      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#c2c6d4]/20 bg-[#eceef0]/90 px-4 py-2 shadow-sm backdrop-blur-md">
-                        <button type="button" className="text-[#00478d]" aria-label="Zoom">
-                          <ZoomIn className="h-4 w-4" />
-                        </button>
-                        <button type="button" className="text-[#424752]" aria-label="Annotate">
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button type="button" className="text-[#424752]" aria-label="Layers">
-                          <Layers className="h-4 w-4" />
-                        </button>
-                        <div className="h-4 w-px bg-[#c2c6d4]/30" />
-                        <button type="button" className="text-[#ba1a1a]" aria-label="Remove image">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                {imageUrl ? (
+                  <div className="group relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl border-2 border-[#00478d]/30 bg-[#2d3133]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveApiAssetUrl(imageUrl)}
+                      alt="Uploaded diagnostic image"
+                      className="absolute inset-0 h-full w-full object-contain"
+                    />
+                    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
+                      <div className="flex justify-end">
+                        <span className="rounded-full bg-[#006a68] px-3 py-1 text-[10px] font-bold uppercase text-white">
+                          Uploaded
+                        </span>
+                      </div>
+                      <div className="flex w-full justify-center">
+                        <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[#c2c6d4]/20 bg-[#eceef0]/90 px-4 py-2 shadow-sm backdrop-blur-md">
+                          <button
+                            type="button"
+                            className="text-[#00478d]"
+                            aria-label="Zoom"
+                            onClick={() => window.open(resolveApiAssetUrl(imageUrl), '_blank')}
+                          >
+                            <ZoomIn className="h-4 w-4" />
+                          </button>
+                          <div className="h-4 w-px bg-[#c2c6d4]/30" />
+                          <button
+                            type="button"
+                            className="text-[#ba1a1a]"
+                            aria-label="Remove image"
+                            onClick={handleRemoveImage}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className="group relative flex aspect-square cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-[#727783]/20 bg-[#2d3133] transition-colors hover:border-[#00478d]/50"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="h-10 w-10 animate-spin text-[#94efec]" />
+                        <p className="mt-3 text-sm font-bold text-[#94efec]">Uploading...</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-3 rounded-2xl bg-[#00478d]/20 p-4">
+                          <Upload className="h-10 w-10 text-[#94efec]" />
+                        </div>
+                        <p className="font-semibold text-[#eceef0]">Upload Image</p>
+                        <p className="mt-1 text-xs text-[#727783]">JPG, PNG, GIF, WEBP, SVG · Max 10MB</p>
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="rounded-2xl border border-[#c2c6d4]/10 bg-[#eceef0] p-4">
                   <p className="text-xs leading-relaxed text-[#424752]">
-                    <span className="font-bold text-[#00478d]">Tip:</span> Use the floating toolbar to
-                    place high-contrast markers on areas of clinical concern.
+                    <span className="font-bold text-[#00478d]">Tip:</span> Dùng ảnh X-ray, scan bone để minh họa cho câu hỏi nhận diện.
                   </p>
                 </div>
               </div>

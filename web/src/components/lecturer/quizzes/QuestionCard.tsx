@@ -11,6 +11,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { QuizQuestionDto } from '@/lib/api/types';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 interface QuestionCardProps {
   question: QuizQuestionDto;
@@ -83,11 +84,11 @@ export default function QuestionCard({
     return (
       <div className="group flex gap-6 rounded-3xl bg-muted/50 p-6 transition-colors hover:bg-muted/70">
         <div className="relative h-32 w-48 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-900">
-          {caseThumbnail ? (
+          {(caseThumbnail || question.imageUrl) ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={caseThumbnail}
+                src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
                 alt=""
                 className="h-full w-full object-cover opacity-80"
               />
@@ -229,22 +230,24 @@ export default function QuestionCard({
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
             <div className="relative aspect-video overflow-hidden rounded-2xl bg-black">
-              {caseThumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={caseThumbnail}
-                  alt=""
-                  className="h-full w-full object-cover opacity-85"
-                />
+              {(caseThumbnail || question.imageUrl) ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
+                    alt=""
+                    className="h-full w-full object-cover opacity-85"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
+                    {question.caseTitle ? `Case · ${question.caseTitle.slice(0, 32)}` : 'Radiographic reference'}
+                  </span>
+                </>
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-muted">
                   <FileQuestion className="h-14 w-14 text-muted-foreground/50" />
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-              <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
-                {question.caseTitle ? `Case · ${question.caseTitle.slice(0, 32)}` : 'Radiographic reference'}
-              </span>
             </div>
             <div className="space-y-3">
               {(
@@ -305,11 +308,11 @@ export default function QuestionCard({
     <div className="bg-card rounded-2xl border-2 border-border p-5 transition-colors hover:bg-accent/5 group">
       <div className="flex gap-5">
         <div className="relative h-32 w-44 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
-          {caseThumbnail ? (
+          {(caseThumbnail || question.imageUrl) ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={caseThumbnail}
+                src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
                 alt={question.caseTitle || 'Case thumbnail'}
                 className="h-full w-full object-cover opacity-80"
               />

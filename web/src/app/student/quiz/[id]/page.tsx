@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAssignedQuizzes, startQuizSession, submitQuizSession } from '@/lib/api/student';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentQuizResultDto } from '@/lib/api/types';
 import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
 
@@ -476,7 +477,7 @@ export default function QuizSessionPage({
                   {currentQ.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={currentQ.imageUrl}
+                      src={resolveApiAssetUrl(currentQ.imageUrl)}
                       alt={currentQ.caseTitle ?? 'Case image'}
                       className="h-full w-full object-cover"
                     />

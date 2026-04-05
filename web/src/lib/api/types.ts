@@ -180,6 +180,7 @@ export interface StudentQuizQuestion {
   questionId: string;
   questionText: string;
   type: string;
+  imageUrl?: string;
   optionA: string;
   optionB: string;
   optionC: string;
@@ -374,6 +375,7 @@ export interface QuizQuestionDto {
   optionC: string | null;
   optionD: string | null;
   correctAnswer: string | null;
+  imageUrl?: string | null;
 }
 
 export interface CreateQuizQuestionRequest {
@@ -386,6 +388,7 @@ export interface CreateQuizQuestionRequest {
   optionC?: string;
   optionD?: string;
   correctAnswer: string;
+  imageUrl?: string;
 }
 
 export interface UpdateQuizQuestionRequest {
@@ -396,6 +399,7 @@ export interface UpdateQuizQuestionRequest {
   optionB?: string;
   optionC?: string;
   optionD?: string;
+  imageUrl?: string;
 }
 
 // ========== AI Quiz Types ==========
