@@ -5,6 +5,10 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
+import {
+  LecturerDashboardSkeleton,
+  LecturerLeaderboardSkeleton,
+} from '@/components/shared/DashboardSkeletons';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -18,7 +22,6 @@ import {
   Bell,
   BookOpen,
   ClipboardList,
-  Loader2,
   MessageSquare,
   TrendingUp,
   Users,
@@ -107,33 +110,50 @@ export default function LecturerDashboardPage() {
         ? [
             {
               title: 'Active classes',
-              value: stats.totalClasses,
-              change: `${stats.totalStudents} students under supervision`,
+              value:
+                typeof stats.totalClasses === 'number' && Number.isFinite(stats.totalClasses)
+                  ? stats.totalClasses
+                  : '—',
+              change: `${typeof stats.totalStudents === 'number' && Number.isFinite(stats.totalStudents) ? stats.totalStudents : 0} students under supervision`,
               changeType: 'neutral' as const,
               icon: ClipboardList,
               iconColor: 'bg-primary/10 text-primary',
             },
             {
               title: 'Student questions',
-              value: stats.totalQuestions,
-              change: `${stats.escalatedItems} escalated for clinical validation`,
+              value:
+                typeof stats.totalQuestions === 'number' && Number.isFinite(stats.totalQuestions)
+                  ? stats.totalQuestions
+                  : '—',
+              change: `${typeof stats.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems) ? stats.escalatedItems : 0} escalated for clinical validation`,
               changeType: 'neutral' as const,
               icon: MessageSquare,
               iconColor: 'bg-cyan-accent/10 text-cyan-accent',
             },
             {
               title: 'Pending reviews',
-              value: stats.pendingReviews,
+              value:
+                typeof stats.pendingReviews === 'number' && Number.isFinite(stats.pendingReviews)
+                  ? stats.pendingReviews
+                  : '—',
               change: 'Awaiting expert follow-up',
-              changeType: stats.pendingReviews > 0 ? 'negative' : 'positive',
+              changeType: (stats.pendingReviews ?? 0) > 0 ? 'negative' : 'positive',
               icon: Bell,
               iconColor: 'bg-warning/10 text-warning',
             },
             {
               title: 'Average quiz score',
-              value: `${stats.averageQuizScore}%`,
+              value:
+                typeof stats.averageQuizScore === 'number' && Number.isFinite(stats.averageQuizScore)
+                  ? `${Math.round(stats.averageQuizScore)}%`
+                  : '—',
               change: 'Across submitted student attempts',
-              changeType: stats.averageQuizScore >= 70 ? 'positive' : 'neutral',
+              changeType:
+                typeof stats.averageQuizScore === 'number' &&
+                Number.isFinite(stats.averageQuizScore) &&
+                stats.averageQuizScore >= 70
+                  ? 'positive'
+                  : 'neutral',
               icon: TrendingUp,
               iconColor: 'bg-success/10 text-success',
             },
@@ -169,12 +189,7 @@ export default function LecturerDashboardPage() {
         </div>
 
         {loading ? (
-          <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading dashboard metrics...
-            </div>
-          </div>
+          <LecturerDashboardSkeleton />
         ) : !stats ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
             <Users className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -200,7 +215,11 @@ export default function LecturerDashboardPage() {
                         <Users className="h-5 w-5" />
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Students</p>
-                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.totalStudents}</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">
+                        {typeof stats.totalStudents === 'number' && Number.isFinite(stats.totalStudents)
+                          ? stats.totalStudents
+                          : '—'}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">Across all active lecturer classes</p>
                     </div>
                     <div className="rounded-xl border border-border bg-background/70 p-4">
@@ -208,7 +227,11 @@ export default function LecturerDashboardPage() {
                         <MessageSquare className="h-5 w-5" />
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Escalations</p>
-                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.escalatedItems}</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">
+                        {typeof stats.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems)
+                          ? stats.escalatedItems
+                          : '—'}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">Requests forwarded to experts</p>
                     </div>
                     <div className="rounded-xl border border-border bg-background/70 p-4">
@@ -216,7 +239,11 @@ export default function LecturerDashboardPage() {
                         <BookOpen className="h-5 w-5" />
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Quiz performance</p>
-                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.averageQuizScore}%</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">
+                        {typeof stats.averageQuizScore === 'number' && Number.isFinite(stats.averageQuizScore)
+                          ? `${Math.round(stats.averageQuizScore)}%`
+                          : '—'}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">Average score from submitted quizzes</p>
                     </div>
                   </div>
@@ -257,12 +284,7 @@ export default function LecturerDashboardPage() {
                       Select a class to load leaderboard analytics.
                     </div>
                   ) : loadingLeaderboard ? (
-                    <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-border bg-background/60">
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                        Loading student leaderboard...
-                      </div>
-                    </div>
+                    <LecturerLeaderboardSkeleton />
                   ) : leaderboard.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
                       No leaderboard data available for this class yet.
@@ -279,18 +301,35 @@ export default function LecturerDashboardPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {leaderboard.map((entry, index) => (
-                            <tr key={`${entry.studentId ?? entry.studentName}-${index}`} className="even:bg-slate-50/55 hover:bg-blue-50/70">
-                              <td className="px-4 py-3 font-medium text-card-foreground">{entry.studentName}</td>
-                              <td className="px-4 py-3 text-muted-foreground">{entry.totalCasesViewed}</td>
-                              <td className="px-4 py-3 text-muted-foreground">{entry.totalQuestionsAsked}</td>
+                          {leaderboard.map((entry, index) => {
+                            const name = entry.studentName?.trim() || 'N/A';
+                            const casesViewed =
+                              typeof entry.totalCasesViewed === 'number' && Number.isFinite(entry.totalCasesViewed)
+                                ? entry.totalCasesViewed
+                                : 0;
+                            const questionsAsked =
+                              typeof entry.totalQuestionsAsked === 'number' &&
+                              Number.isFinite(entry.totalQuestionsAsked)
+                                ? entry.totalQuestionsAsked
+                                : 0;
+                            const avgScore =
+                              typeof entry.averageQuizScore === 'number' &&
+                              Number.isFinite(entry.averageQuizScore)
+                                ? `${entry.averageQuizScore.toFixed(1)}%`
+                                : '—';
+                            return (
+                            <tr key={`${entry.studentId ?? name}-${index}`} className="even:bg-slate-50/55 hover:bg-blue-50/70">
+                              <td className="px-4 py-3 font-medium text-card-foreground">{name}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{casesViewed}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{questionsAsked}</td>
                               <td className="px-4 py-3">
                                 <span className="inline-flex rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
-                                  {entry.averageQuizScore.toFixed(1)}%
+                                  {avgScore}
                                 </span>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

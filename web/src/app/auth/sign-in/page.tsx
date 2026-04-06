@@ -144,7 +144,17 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
     <div className="min-h-screen w-full bg-slate-950">
       <div className="grid min-h-screen w-full lg:grid-cols-[1.22fr_1fr]">
         <section className="relative hidden overflow-hidden bg-slate-950 lg:flex">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(0,229,255,0.12),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(0,123,255,0.18),transparent_28%),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:auto,auto,32px_32px,32px_32px]" />
+          {/* Animated mesh — soft drifting blobs + grid (no heavy JS) */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            aria-hidden
+          >
+            <div className="absolute -left-[10%] top-[8%] h-[min(52vw,420px)] w-[min(52vw,420px)] rounded-full bg-blue-500/25 blur-3xl animate-blob" />
+            <div className="absolute right-[-8%] top-[22%] h-[min(48vw,380px)] w-[min(48vw,380px)] rounded-full bg-cyan-400/20 blur-3xl animate-blob-slow" />
+            <div className="absolute bottom-[5%] left-[18%] h-[min(44vw,340px)] w-[min(44vw,340px)] rounded-full bg-indigo-500/20 blur-3xl animate-blob-delayed" />
+            <div className="absolute right-[12%] top-[55%] h-[min(36vw,280px)] w-[min(36vw,280px)] rounded-full bg-sky-400/15 blur-3xl animate-blob" />
+          </div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(0,229,255,0.1),transparent_28%),radial-gradient(circle_at_80%_0%,rgba(0,123,255,0.14),transparent_30%),linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:auto,auto,32px_32px,32px_32px]" />
           <div className="relative z-10 flex w-full flex-col justify-between px-12 py-14 xl:px-16">
             <div className="flex items-center gap-3">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-accent/30 bg-cyan-accent/10">
@@ -265,7 +275,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                     />
                     <button
                       type="button"

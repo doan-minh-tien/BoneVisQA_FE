@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppSidebar } from '@/components/AppSidebar';
+import { SessionGateSkeleton } from '@/components/shared/DashboardSkeletons';
 
 type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
 
@@ -26,11 +27,7 @@ export function AppShell({
   }, [pathname, router, token]);
 
   if (!token) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-text-muted">
-        Checking session...
-      </div>
-    );
+    return <SessionGateSkeleton />;
   }
 
   return (

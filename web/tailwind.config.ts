@@ -52,6 +52,18 @@ const config: Config = {
       borderRadius: {
         xl: "0.875rem",
       },
+      keyframes: {
+        blob: {
+          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+          "33%": { transform: "translate(6%, -8%) scale(1.06)" },
+          "66%": { transform: "translate(-5%, 5%) scale(0.97)" },
+        },
+      },
+      animation: {
+        blob: "blob 22s ease-in-out infinite",
+        "blob-slow": "blob 32s ease-in-out infinite",
+        "blob-delayed": "blob 26s ease-in-out 4s infinite",
+      },
     },
   },
 };

@@ -14,6 +14,7 @@ import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
 import SystemActivityFeed from '@/components/admin/dashboard/SystemActivityFeed';
 import QuickStats from '@/components/admin/dashboard/QuickStats';
+import { AdminDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
 
 interface UserStatResult {
   totalUsers: number;
@@ -93,8 +94,8 @@ export default function AdminDashboardPage() {
     },
     {
       title: 'Active Courses',
-      value: '48', // Hardcoded temporarily until API returns it
-      change: '+3 new this semester',
+      value: '—',
+      change: 'Awaiting API',
       changeType: 'positive' as const,
       icon: BookOpen,
       iconColor: 'bg-success/10 text-success',
@@ -115,48 +116,48 @@ export default function AdminDashboardPage() {
     <div className="min-h-screen">
       <Header title="Admin Dashboard" subtitle="System overview and management" />
 
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {currentStats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
-        </div>
+      <div className="mx-auto max-w-[1600px] p-6">
+        {isLoading ? (
+          <AdminDashboardSkeleton />
+        ) : (
+          <>
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {currentStats.map((stat) => (
+                <StatCard key={stat.title} {...stat} />
+              ))}
+            </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Left Column */}
-          <div className="lg:col-span-2 space-y-6">
-            <RecentUsersTable />
-            <RoleDistributionChart isLoading={isLoading} roleDistribution={roleDistribution} />
-          </div>
+            <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="space-y-6 lg:col-span-2">
+                <RecentUsersTable />
+                <RoleDistributionChart isLoading={false} roleDistribution={roleDistribution} />
+              </div>
+              <div className="space-y-6">
+                <SystemActivityFeed />
+                <QuickStats />
+              </div>
+            </div>
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            <SystemActivityFeed />
-            <QuickStats />
-          </div>
-        </div>
-
-        {/* Bottom Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-3xl font-bold text-primary">99.8%</p>
-            <p className="text-sm text-muted-foreground mt-1">System Uptime</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-3xl font-bold text-success">94.2%</p>
-            <p className="text-sm text-muted-foreground mt-1">Completion Rate</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-3xl font-bold text-warning">4.6</p>
-            <p className="text-sm text-muted-foreground mt-1">Avg. AI Rating</p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border text-center">
-            <p className="text-3xl font-bold text-accent">847</p>
-            <p className="text-sm text-muted-foreground mt-1">Certificates Issued</p>
-          </div>
-        </div>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
+                <p className="text-3xl font-bold text-primary">—</p>
+                <p className="mt-1 text-sm text-muted-foreground">System Uptime</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
+                <p className="text-3xl font-bold text-success">—</p>
+                <p className="mt-1 text-sm text-muted-foreground">Completion Rate</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
+                <p className="text-3xl font-bold text-warning">—</p>
+                <p className="mt-1 text-sm text-muted-foreground">Avg. AI Rating</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
+                <p className="text-3xl font-bold text-accent">—</p>
+                <p className="mt-1 text-sm text-muted-foreground">Certificates Issued</p>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

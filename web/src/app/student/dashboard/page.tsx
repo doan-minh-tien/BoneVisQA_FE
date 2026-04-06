@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Header from '@/components/Header';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { StudentDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
 import QuickActionCard from '@/components/student/QuickActionCard';
 import ProgressRing from '@/components/student/ProgressRing';
-import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import {
   fetchStudentProgress,
   fetchStudentRecentActivity,
@@ -21,16 +22,17 @@ import { useAuth } from '@/lib/useAuth';
 import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
-  BotMessageSquare,
   CheckCircle2,
   Clock,
+  History,
   ImageUp,
-  Loader2,
+  Library,
   MessageSquare,
   PlayCircle,
   ShieldAlert,
   Target,
   Trophy,
+  User,
 } from 'lucide-react';
 
 type StatCardModel = {
@@ -42,34 +44,42 @@ type StatCardModel = {
   iconColor?: string;
 };
 
+/** API-backed destinations only — no legacy topic chat routes. */
 const quickActions = [
   {
-    title: 'AI Q&A by Topic',
-    description: 'Use the knowledge base Q&A workflow for text-first study.',
-    icon: BotMessageSquare,
-    href: '/student/qa/topic',
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'AI Q&A by Image',
-    description: 'Upload an X-ray, CT, or MRI and ask one focused clinical question.',
+    title: 'New visual QA',
+    description: 'Upload an imaging study and ask one focused clinical question.',
     icon: ImageUp,
     href: '/student/qa/image',
-    iconColor: 'bg-warning/10 text-warning',
+    iconColor: 'bg-primary/15 text-primary',
   },
   {
-    title: 'Practice Quiz',
+    title: 'View history',
+    description: 'Review your past visual QA requests and expert review status.',
+    icon: History,
+    href: '/student/history',
+    iconColor: 'bg-slate-500/15 text-slate-700',
+  },
+  {
+    title: 'Case catalog',
+    description: 'Browse curated teaching cases by location, lesion type, and difficulty.',
+    icon: Library,
+    href: '/student/catalog',
+    iconColor: 'bg-sky-500/15 text-sky-800',
+  },
+  {
+    title: 'Practice quiz',
     description: 'Load a live quiz attempt from the backend by topic.',
     icon: Trophy,
     href: '/student/quiz',
-    iconColor: 'bg-cyan-accent/10 text-cyan-accent',
+    iconColor: 'bg-cyan-accent/15 text-primary',
   },
   {
-    title: 'My Profile',
-    description: 'Review cohort information and update your visible profile fields.',
-    icon: BookOpen,
+    title: 'My profile',
+    description: 'Update your cohort and profile fields visible to instructors.',
+    icon: User,
     href: '/student/profile',
-    iconColor: 'bg-success/10 text-success',
+    iconColor: 'bg-emerald-500/15 text-emerald-800',
   },
 ];
 
@@ -125,7 +135,7 @@ export default function StudentDashboardPage() {
             {
               title: 'Cases viewed',
               value: progress.totalCasesViewed,
-              change: 'Pulled from live progress analytics',
+              change: 'From live progress analytics',
               changeType: 'neutral' as const,
               icon: BookOpen,
               iconColor: 'bg-primary/10 text-primary',
@@ -136,7 +146,7 @@ export default function StudentDashboardPage() {
               change: `${progress.escalatedAnswers} escalated to experts`,
               changeType: 'neutral' as const,
               icon: MessageSquare,
-              iconColor: 'bg-cyan-accent/10 text-cyan-accent',
+              iconColor: 'bg-cyan-accent/10 text-primary',
             },
             {
               title: 'Average quiz score',
@@ -147,7 +157,7 @@ export default function StudentDashboardPage() {
                   ? 'positive'
                   : 'neutral',
               icon: Trophy,
-              iconColor: 'bg-warning/10 text-warning',
+              iconColor: 'bg-amber-500/10 text-amber-700',
             },
             {
               title: 'Quiz accuracy',
@@ -160,7 +170,7 @@ export default function StudentDashboardPage() {
                   ? 'positive'
                   : 'neutral',
               icon: Target,
-              iconColor: 'bg-success/10 text-success',
+              iconColor: 'bg-emerald-500/10 text-emerald-700',
             },
           ]
         : [],
@@ -171,22 +181,20 @@ export default function StudentDashboardPage() {
   const goalTopic = topicStats[0]?.topicName ?? 'Musculoskeletal focus';
 
   return (
-    <div className="min-h-screen bg-background text-on-surface">
-      <StudentAppChrome />
+    <div className="min-h-screen bg-background text-slate-900">
+      <Header
+        title="Student dashboard"
+        subtitle="Track progress, browse cases, and continue your radiology learning path."
+      />
 
-      <div className="mx-auto w-full max-w-7xl space-y-10 px-6 py-10 md:px-12">
+      <div className="mx-auto max-w-[1600px] space-y-8 px-6 py-6">
         {loading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-outline-variant/30 bg-surface-container-lowest shadow-sm">
-            <div className="flex items-center gap-3 text-sm text-on-surface-variant">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading student progress...
-            </div>
-          </div>
+          <StudentDashboardSkeleton />
         ) : !progress ? (
-          <div className="rounded-2xl border border-dashed border-outline-variant/50 bg-surface-container-lowest px-6 py-16 text-center shadow-sm">
-            <BookOpen className="mx-auto h-10 w-10 text-on-surface-variant" />
-            <h2 className="mt-4 text-lg font-semibold text-on-surface">No progress data available</h2>
-            <p className="mt-2 text-sm text-on-surface-variant">
+          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm">
+            <BookOpen className="mx-auto h-10 w-10 text-slate-400" />
+            <h2 className="mt-4 text-lg font-semibold text-slate-900">No progress data available</h2>
+            <p className="mt-2 text-sm text-slate-600">
               The student progress endpoint returned no data for this account yet.
             </p>
           </div>
@@ -194,48 +202,50 @@ export default function StudentDashboardPage() {
           <>
             <section className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
               <div>
-                <h1 className="font-headline text-4xl font-black tracking-tight text-on-surface md:text-5xl">
-                  Good morning, {firstName}!
-                </h1>
-                <p className="mt-2 max-w-xl text-lg text-on-surface-variant">
+                <h2 className="font-headline text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+                  Welcome back, {firstName}
+                </h2>
+                <p className="mt-2 max-w-xl text-base text-slate-600">
                   {progress.quizAccuracyRate != null && !Number.isNaN(progress.quizAccuracyRate) ? (
                     <>
                       You&apos;ve completed {Math.min(100, Math.round(progress.quizAccuracyRate))}% of your weekly
                       radiology goals.{' '}
                     </>
                   ) : (
-                    <>No quiz accuracy recorded yet—complete a quiz to see goal progress. </>
+                    <>No quiz accuracy recorded yet. Complete a quiz to see goal progress. </>
                   )}
-                  Keep going with a few more case reviews or a quick quiz.
+                  Continue with case reviews or a practice quiz.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link
                   href="/student/qa/image"
-                  className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-bold text-on-primary shadow-md transition-transform hover:scale-[1.02]"
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                 >
                   <PlayCircle className="h-5 w-5 shrink-0" aria-hidden />
-                  Resume learning
+                  New visual QA
                 </Link>
                 <Link
                   href="/student/quiz"
-                  className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-6 py-3 font-bold text-on-primary-fixed-variant transition-colors hover:bg-surface-container-highest"
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-slate-800 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
                 >
-                  Quick quiz
+                  Practice quiz
                 </Link>
               </div>
             </section>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              <div className="group flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-8 shadow-sm">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="group flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
                   <BookOpen className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-4xl font-black tracking-tighter">{progress.totalCasesViewed}</span>
-                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Cases viewed</p>
+                  <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
+                    {progress.totalCasesViewed}
+                  </span>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cases viewed</p>
                 </div>
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-container">
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
                     style={{ width: `${Math.min(100, progress.totalCasesViewed * 5)}%` }}
@@ -243,32 +253,30 @@ export default function StudentDashboardPage() {
                 </div>
               </div>
 
-              <div className="group flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-8 shadow-sm">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary-container text-secondary transition-colors group-hover:bg-secondary group-hover:text-white">
+              <div className="group flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 transition-colors group-hover:bg-amber-600 group-hover:text-white">
                   <Trophy className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-4xl font-black tracking-tighter">
+                  <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
                     {formatQuizPercent(progress.avgQuizScore)}
                   </span>
-                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">
-                    Avg. quiz score
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Avg. quiz score</p>
                 </div>
-                <p className="text-xs text-on-surface-variant">
+                <p className="text-xs text-slate-600">
                   {progress.completedQuizzes} completed · {progress.totalQuizAttempts} attempts
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-xl bg-gradient-to-br from-white to-blue-50 p-8 shadow-sm dark:from-slate-900 dark:to-slate-800">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-tertiary-fixed text-tertiary">
+              <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-500/15 text-sky-800">
                   <Target className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-xl font-bold text-on-surface">Study focus</span>
-                  <p className="text-sm font-semibold uppercase tracking-wider text-on-surface-variant">Current goal</p>
+                  <span className="font-headline text-lg font-bold text-slate-900">Study focus</span>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current goal</p>
                 </div>
-                <p className="text-sm text-on-surface-variant">Topic spotlight: {goalTopic}</p>
+                <p className="text-sm text-slate-600">Topic spotlight: {goalTopic}</p>
               </div>
             </div>
 
@@ -278,17 +286,15 @@ export default function StudentDashboardPage() {
                 return (
                   <div
                     key={stat.title}
-                    className="flex flex-col gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-5 shadow-sm"
+                    className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm text-on-surface-variant">{stat.title}</p>
-                        <p className="font-headline text-2xl font-bold text-on-surface">{stat.value}</p>
-                        {stat.change ? (
-                          <p className="mt-1 text-xs text-on-surface-variant">{stat.change}</p>
-                        ) : null}
+                        <p className="text-sm text-slate-600">{stat.title}</p>
+                        <p className="font-headline text-2xl font-bold text-slate-900">{stat.value}</p>
+                        {stat.change ? <p className="mt-1 text-xs text-slate-500">{stat.change}</p> : null}
                       </div>
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.iconColor}`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.iconColor}`}>
                         <Icon className="h-5 w-5" />
                       </div>
                     </div>
@@ -300,8 +306,13 @@ export default function StudentDashboardPage() {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="space-y-6">
                 <SectionCard>
-                  <h2 className="mb-4 text-lg font-semibold text-card-foreground">Quick Actions</h2>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="mb-5">
+                    <h2 className="font-headline text-xl font-bold tracking-tight text-slate-900">Quick actions</h2>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Shortcuts to live workflows backed by the BoneVisQA API.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {quickActions.map((action) => (
                       <QuickActionCard key={action.title} {...action} />
                     ))}
@@ -310,29 +321,51 @@ export default function StudentDashboardPage() {
 
                 <SectionCard
                   title="Topic mastery"
-                  description="Track quiz accuracy and attempt volume by study topic."
+                  description="Quiz accuracy and attempts by topic from your progress analytics."
                 >
                   {topicStats.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
                       No topic analytics available yet.
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {topicStats.map((topic) => (
-                        <div key={topic.topicName} className="rounded-xl border border-border bg-background/55 p-4">
+                      {topicStats.map((topic, idx) => (
+                        <div
+                          key={topic.topicName?.trim() || `topic-${idx}`}
+                          className="rounded-xl border border-border bg-card p-4"
+                        >
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-card-foreground">{topic.topicName}</p>
-                              <p className="text-xs text-muted-foreground">{topic.quizAttempts} quiz attempts</p>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {topic.topicName?.trim() || 'Unnamed topic'}
+                              </p>
+                              <p className="text-xs text-slate-600">
+                                {typeof topic.quizAttempts === 'number' && Number.isFinite(topic.quizAttempts)
+                                  ? topic.quizAttempts
+                                  : 0}{' '}
+                                quiz attempts
+                              </p>
                             </div>
-                            <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">
-                              {topic.accuracyRate.toFixed(1)}% accuracy
+                            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-800">
+                              {typeof topic.accuracyRate === 'number' && Number.isFinite(topic.accuracyRate)
+                                ? `${topic.accuracyRate.toFixed(1)}% accuracy`
+                                : '—'}
                             </span>
                           </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
                             <div
                               className="h-full rounded-full bg-primary transition-all"
-                              style={{ width: `${Math.min(100, Math.max(0, topic.accuracyRate))}%` }}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    typeof topic.accuracyRate === 'number' && Number.isFinite(topic.accuracyRate)
+                                      ? topic.accuracyRate
+                                      : 0,
+                                  ),
+                                )}%`,
+                              }}
                             />
                           </div>
                         </div>
@@ -344,17 +377,15 @@ export default function StudentDashboardPage() {
 
               <div className="space-y-6">
                 <SectionCard>
-                  <h2 className="mb-4 text-lg font-semibold text-card-foreground">Overall Progress</h2>
+                  <h2 className="mb-4 text-lg font-semibold text-slate-900">Overall progress</h2>
                   <div className="flex flex-col items-center">
                     <ProgressRing progress={clampPercent(progress.quizAccuracyRate)} size={140} strokeWidth={10} />
                     <div className="mt-4 text-center">
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-slate-600">
                         Latest quiz score:{' '}
-                        <span className="font-medium text-card-foreground">
-                          {formatQuizPercent(progress.latestQuizScore)}
-                        </span>
+                        <span className="font-medium text-slate-900">{formatQuizPercent(progress.latestQuizScore)}</span>
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-1 text-xs text-slate-500">
                         {progress.completedQuizzes} completed quizzes across {progress.totalQuizAttempts} attempts
                       </p>
                     </div>
@@ -366,60 +397,72 @@ export default function StudentDashboardPage() {
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                       <Clock className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-card-foreground">{progress.totalQuizAttempts}</p>
-                    <p className="text-sm text-muted-foreground">Quiz Attempts</p>
+                    <p className="text-2xl font-bold text-slate-900">{progress.totalQuizAttempts}</p>
+                    <p className="text-sm text-slate-600">Quiz attempts</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-accent/10">
-                      <MessageSquare className="h-6 w-6 text-cyan-accent" />
+                      <MessageSquare className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-card-foreground">{progress.escalatedAnswers}</p>
-                    <p className="text-sm text-muted-foreground">Escalated Answers</p>
+                    <p className="text-2xl font-bold text-slate-900">{progress.escalatedAnswers}</p>
+                    <p className="text-sm text-slate-600">Escalated answers</p>
                   </div>
                 </div>
 
-                <SectionCard title="Recent activity" description="Your latest study, quiz, and expert-review events in chronological order.">
+                <SectionCard
+                  title="Recent activity"
+                  description="Latest study, quiz, and expert-review events (chronological)."
+                >
                   {recentActivity.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
                       No recent activity has been recorded yet.
                     </div>
                   ) : (
                     <ol className="space-y-4">
-                      {recentActivity.map((activity) => {
+                      {recentActivity.map((activity, actIdx) => {
                         const normalizedStatus = activity.status?.toLowerCase();
                         const statusBadge =
                           normalizedStatus === 'approved' || normalizedStatus === 'revised'
                             ? {
                                 label: 'Verified by Expert',
-                                className: 'bg-success/10 text-success',
+                                className: 'bg-emerald-500/10 text-emerald-800',
                                 icon: CheckCircle2,
                               }
                             : normalizedStatus === 'pending' || normalizedStatus === 'pendingexpert'
                               ? {
                                   label: 'Under Expert Review',
-                                  className: 'bg-warning/10 text-warning',
+                                  className: 'bg-amber-500/10 text-amber-800',
                                   icon: ShieldAlert,
                                 }
                               : null;
                         const StatusIcon = statusBadge?.icon;
 
                         return (
-                          <li key={activity.id} className="rounded-xl border border-border bg-background/55 p-4">
+                          <li
+                            key={activity.id?.trim() || `activity-${actIdx}`}
+                            className="rounded-xl border border-border bg-card p-4"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="text-sm font-semibold text-card-foreground">{activity.title}</p>
-                                {activity.description ? (
-                                  <p className="mt-1 text-sm text-muted-foreground">{activity.description}</p>
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {activity.title?.trim() || 'Activity'}
+                                </p>
+                                {activity.description?.trim() ? (
+                                  <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
                                 ) : null}
                               </div>
-                              <span className="shrink-0 text-xs text-muted-foreground">{activity.occurredAt}</span>
+                              <span className="shrink-0 text-xs text-slate-500">
+                                {activity.occurredAt?.trim() || '—'}
+                              </span>
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <span className="rounded-full bg-cyan-accent/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-accent">
-                                {activity.type}
+                              <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-900">
+                                {activity.type?.trim() || 'General'}
                               </span>
                               {statusBadge && StatusIcon ? (
-                                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.className}`}>
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.className}`}
+                                >
                                   <StatusIcon className="h-3.5 w-3.5" />
                                   {statusBadge.label}
                                 </span>
@@ -434,9 +477,9 @@ export default function StudentDashboardPage() {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end border-t border-border pt-6">
               <Link href="/student/quiz" className="text-sm font-medium text-primary hover:underline">
-                Open live practice quizzes
+                Open practice quizzes
               </Link>
             </div>
           </>
