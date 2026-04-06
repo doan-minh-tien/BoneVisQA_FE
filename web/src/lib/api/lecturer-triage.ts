@@ -1,9 +1,9 @@
 import { http, getApiErrorMessage } from './client';
-import type { LecturerTriageRow } from './types';
+import type { ClassItem, LecturerTriageRow } from './types';
 
-export async function fetchLecturerClasses(lecturerId: string): Promise<unknown[]> {
+export async function fetchLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get('/api/lecturer/classes', {
+    const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
       params: { lecturerId },
     });
     return Array.isArray(data) ? data : [];

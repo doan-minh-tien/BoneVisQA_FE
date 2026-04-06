@@ -46,10 +46,19 @@ export function AppShell({
     );
   }
 
+  // Sidebar cố định 260px — dùng padding-left inline để luôn lệch phải, tránh chồng chữ lên sidebar (Tailwind ml-[260px] đôi khi không áp dụng).
+  const sidebarPx = 260;
+  const gutterPx = 24;
+
   return (
     <div className="min-h-screen bg-background text-text-main">
       <AppSidebar role={role} />
-      <main className="ml-[260px] min-h-screen bg-background">{children}</main>
+      <div
+        className="min-h-screen min-w-0 bg-background py-6 pr-6"
+        style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
+      >
+        <main className="min-h-screen min-w-0">{children}</main>
+      </div>
     </div>
   );
 }

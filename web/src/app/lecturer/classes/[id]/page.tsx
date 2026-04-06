@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import StatCard from '@/components/StatCard';
 import ClassManagementWorkbench from '@/components/lecturer/classes/ClassManagementWorkbench';
+import { LecturerAnnouncementRow } from '@/components/lecturer/LecturerAnnouncementRow';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
 import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
 import {
@@ -29,6 +30,7 @@ import {
   FolderOpen,
   BarChart3,
   Clock,
+  Megaphone,
 } from 'lucide-react';
 import {
   getClassById,
@@ -39,12 +41,14 @@ import {
   getClassStats,
   updateClass,
   deleteClass,
+  getClassAnnouncements,
 } from '@/lib/api/lecturer';
 import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
 import { getApiErrorMessage } from '@/lib/api/client';
-import type { ClassItem, StudentEnrollment, ClassStats, QuizDto } from '@/lib/api/types';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
 
-const tabs = ['Students', 'Assignments', 'Settings'] as const;
+const tabs = ['Students', 'Assignments', 'Announcements', 'Settings'] as const;
 
 export default function ClassDetailPage({
   params,
@@ -53,6 +57,7 @@ export default function ClassDetailPage({
 }) {
   const { id: classId } = use(params);
   const router = useRouter();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<string>('Students');
 
   // Class data
@@ -83,6 +88,9 @@ export default function ClassDetailPage({
   const [classQuizzes, setClassQuizzes] = useState<QuizDto[]>([]);
   const [classQuizzesLoading, setClassQuizzesLoading] = useState(true);
   const [quizRepoSearch, setQuizRepoSearch] = useState('');
+
+  const [classAnnouncements, setClassAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
   // Edit class dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -156,6 +164,24 @@ export default function ClassDetailPage({
         if (!cancelled) setClassQuizzes([]);
       } finally {
         if (!cancelled) setClassQuizzesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [classId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAnnouncementsLoading(true);
+    (async () => {
+      try {
+        const list = await getClassAnnouncements(classId);
+        if (!cancelled) setClassAnnouncements(list);
+      } catch {
+        if (!cancelled) setClassAnnouncements([]);
+      } finally {
+        if (!cancelled) setAnnouncementsLoading(false);
       }
     })();
     return () => {
@@ -403,6 +429,89 @@ export default function ClassDetailPage({
               onRosterChanged={refreshClassRosterAndStats}
             />
 
+            {/* Class announcements (same data as /lecturer/announcements, scoped to this class) */}
+            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Megaphone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">Class announcements</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Students enrolled in this class see these updates. Manage all announcements from the menu or create a new one for this class.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(`/lecturer/announcements?classId=${encodeURIComponent(classId)}`)
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted cursor-pointer"
+                  >
+                    Open announcements
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/lecturer/announcements?classId=${encodeURIComponent(classId)}&new=1`,
+                      )
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New announcement
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-border pt-6">
+                {announcementsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading announcements…
+                  </div>
+                ) : classAnnouncements.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No announcements yet for this class. Use <strong className="text-foreground">New announcement</strong> above.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {classAnnouncements.map((a) => (
+                      <LecturerAnnouncementRow
+                        key={a.id}
+                        announcement={{
+                          ...a,
+                          className: a.className || classData?.className || '',
+                        }}
+                        onUpdated={(updated) =>
+                          setClassAnnouncements((prev) =>
+                            prev.map((x) =>
+                              x.id === updated.id
+                                ? {
+                                    ...x,
+                                    ...updated,
+                                    className:
+                                      updated.className || classData?.className || x.className,
+                                  }
+                                : x,
+                            ),
+                          )
+                        }
+                        onDeleted={(id) =>
+                          setClassAnnouncements((prev) => prev.filter((x) => x.id !== id))
+                        }
+                        onError={(msg) => toast.error(msg)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
             {/* Active Assignments */}
             <div>
               <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
@@ -561,6 +670,82 @@ export default function ClassDetailPage({
                     <AssignmentCard key={assignment.id} {...assignment} />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'Announcements' && (
+              <div>
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {announcementsLoading
+                      ? 'Loading…'
+                      : `${classAnnouncements.length} announcement${classAnnouncements.length === 1 ? '' : 's'} for this class`}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(`/lecturer/announcements?classId=${encodeURIComponent(classId)}`)
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted cursor-pointer"
+                    >
+                      All announcements
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(
+                          `/lecturer/announcements?classId=${encodeURIComponent(classId)}&new=1`,
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New
+                    </button>
+                  </div>
+                </div>
+                {announcementsLoading ? (
+                  <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Loading announcements…
+                  </div>
+                ) : classAnnouncements.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-muted/20 py-12 text-center">
+                    <Megaphone className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">No announcements yet. Create one for this class.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {classAnnouncements.map((a) => (
+                      <LecturerAnnouncementRow
+                        key={a.id}
+                        announcement={{
+                          ...a,
+                          className: a.className || classData?.className || '',
+                        }}
+                        onUpdated={(updated) =>
+                          setClassAnnouncements((prev) =>
+                            prev.map((x) =>
+                              x.id === updated.id
+                                ? {
+                                    ...x,
+                                    ...updated,
+                                    className:
+                                      updated.className || classData?.className || x.className,
+                                  }
+                                : x,
+                            ),
+                          )
+                        }
+                        onDeleted={(id) =>
+                          setClassAnnouncements((prev) => prev.filter((x) => x.id !== id))
+                        }
+                        onError={(msg) => toast.error(msg)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

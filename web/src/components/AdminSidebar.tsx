@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
+import { getStoredUserInfo } from '@/lib/getStoredUserInfo';
 import {
   LayoutDashboard,
   Users,
@@ -28,6 +29,17 @@ const adminMenuItems = [
 export default function AdminSidebar() {
   const pathname = usePathname();
   const logout = useLogout();
+  const stored = getStoredUserInfo();
+  const initials = stored.fullName
+    ? stored.fullName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase())
+        .join('')
+    : 'AD';
+  const displayName = stored.fullName || 'Admin';
+  const displayEmail = stored.email || '';
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar-bg text-sidebar-text flex flex-col z-50">
@@ -81,11 +93,11 @@ export default function AdminSidebar() {
           className="flex items-center gap-3 px-4 py-3 mb-2 rounded-lg hover:bg-sidebar-hover transition-colors duration-150"
         >
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-sm font-medium">
-            AD
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Admin User</p>
-            <p className="text-xs opacity-70 truncate">admin@bonevisqa.com</p>
+            <p className="text-sm font-medium truncate">{displayName}</p>
+            <p className="text-xs opacity-70 truncate">{displayEmail || 'Admin'}</p>
           </div>
         </Link>
         <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">

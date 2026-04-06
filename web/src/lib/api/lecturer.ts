@@ -11,6 +11,37 @@ import type {
   ClassStudentProgress,
 } from './types';
 
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Chuẩn hóa JSON từ BE (camelCase hoặc PascalCase) + gắn classId khi thiếu. */
+export function normalizeAnnouncement(row: unknown, fallbackClassId: string): Announcement {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  const classId = String(r.classId ?? r.ClassId ?? fallbackClassId).trim();
+  return {
+    id,
+    classId,
+    className: String(r.className ?? r.ClassName ?? ''),
+    title: String(r.title ?? r.Title ?? ''),
+    content: String(r.content ?? r.Content ?? ''),
+    sendEmail: Boolean(r.sendEmail ?? r.SendEmail ?? true),
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+  };
+}
+
+function assertValidGuid(label: string, value: string) {
+  const v = String(value ?? '').trim();
+  if (!v || !GUID_RE.test(v)) {
+    throw new Error(`${label} is missing or not a valid id. Refresh the page and try again.`);
+  }
+  return v;
+}
+
+/** Dùng để lọc bản ghi không đủ id trước khi gọi API update/delete. */
+export function isValidGuidString(value: string | undefined | null): boolean {
+  return GUID_RE.test(String(value ?? '').trim());
+}
+
 export async function createClass(body: {
   className: string;
   semester: string;
@@ -132,8 +163,9 @@ export async function approveCase(caseId: string, isApproved: boolean): Promise<
 
 export async function getClassAnnouncements(classId: string): Promise<Announcement[]> {
   try {
-    const { data } = await http.get<Announcement[]>(`/api/lecturer/classes/${classId}/announcements`);
-    return Array.isArray(data) ? data : [];
+    const { data } = await http.get<unknown[]>(`/api/lecturer/classes/${classId}/announcements`);
+    const list = Array.isArray(data) ? data : [];
+    return list.map((row) => normalizeAnnouncement(row, classId));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -141,7 +173,7 @@ export async function getClassAnnouncements(classId: string): Promise<Announceme
 
 export async function createAnnouncement(
   classId: string,
-  body: { title: string; content: string },
+  body: { title: string; content: string; sendEmail: boolean },
 ): Promise<Announcement> {
   try {
     const { data } = await http.post<Announcement | ''>(
@@ -155,10 +187,41 @@ export async function createAnnouncement(
         className: '',
         title: body.title,
         content: body.content,
+        sendEmail: body.sendEmail,
         createdAt: new Date().toISOString(),
       };
     }
-    return data;
+    return normalizeAnnouncement(data, classId);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function updateAnnouncement(
+  classId: string,
+  announcementId: string,
+  body: { title: string; content: string; sendEmail: boolean },
+): Promise<Announcement> {
+  const cId = assertValidGuid('Class', classId);
+  const aId = assertValidGuid('Announcement', announcementId);
+  try {
+    const { data } = await http.put<unknown>(
+      `/api/lecturer/classes/${encodeURIComponent(cId)}/announcements/${encodeURIComponent(aId)}`,
+      body,
+    );
+    return normalizeAnnouncement(data, cId);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function deleteAnnouncement(classId: string, announcementId: string): Promise<void> {
+  const cId = assertValidGuid('Class', classId);
+  const aId = assertValidGuid('Announcement', announcementId);
+  try {
+    await http.delete(
+      `/api/lecturer/classes/${encodeURIComponent(cId)}/announcements/${encodeURIComponent(aId)}`,
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

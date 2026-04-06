@@ -6,16 +6,26 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchStudentProfile, updateStudentProfile } from '@/lib/api/student';
 import type { StudentProfile, StudentProfileUpdatePayload } from '@/lib/api/types';
-import { Camera, Loader2, Save, ShieldCheck } from 'lucide-react';
+import { Loader2, Save, ShieldCheck } from 'lucide-react';
+import { RoleBadgeList } from '@/components/profile/role-badge-list';
+import {
+  EMPTY_PERSONAL_INFO,
+  PersonalInfoFields,
+  personalValuesToApiPatch,
+  profileToPersonalValues,
+  type PersonalInfoValues,
+} from '@/components/profile/personal-info-fields';
+import { ProfileAvatarPicker } from '@/components/profile/profile-avatar-picker';
 
 export default function StudentProfilePage() {
   const toast = useToast();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [form, setForm] = useState<StudentProfileUpdatePayload>({
+  const [form, setForm] = useState<Pick<StudentProfileUpdatePayload, 'fullName' | 'schoolCohort' | 'avatarUrl'>>({
     fullName: '',
     schoolCohort: '',
     avatarUrl: '',
   });
+  const [personal, setPersonal] = useState<PersonalInfoValues>(EMPTY_PERSONAL_INFO);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -31,6 +41,7 @@ export default function StudentProfilePage() {
           schoolCohort: data.schoolCohort ?? '',
           avatarUrl: data.avatarUrl ?? '',
         });
+        setPersonal(profileToPersonalValues(data));
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Failed to load student profile.');
@@ -58,13 +69,20 @@ export default function StudentProfilePage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const updated = await updateStudentProfile(form);
+      const payload: StudentProfileUpdatePayload = {
+        fullName: form.fullName.trim(),
+        schoolCohort: form.schoolCohort.trim(),
+        avatarUrl: form.avatarUrl.trim(),
+        ...personalValuesToApiPatch(personal),
+      };
+      const updated = await updateStudentProfile(payload);
       setProfile(updated);
       setForm({
         fullName: updated.fullName ?? '',
         schoolCohort: updated.schoolCohort ?? '',
         avatarUrl: updated.avatarUrl ?? '',
       });
+      setPersonal(profileToPersonalValues(updated));
       toast.success('Profile updated successfully.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update profile.');
@@ -112,26 +130,20 @@ export default function StudentProfilePage() {
       <div className="mx-auto max-w-3xl p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex items-center gap-6 rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <div className="relative">
-              {form.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={form.avatarUrl}
-                  alt={form.fullName || 'Student avatar'}
-                  className="h-24 w-24 rounded-full border border-border object-cover"
-                />
-              ) : (
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 text-3xl font-bold text-primary">
-                  {initials || 'BV'}
-                </div>
-              )}
-              <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow-md">
-                <Camera className="h-4 w-4" />
-              </div>
-            </div>
+            <ProfileAvatarPicker
+              avatarUrl={form.avatarUrl ?? ''}
+              initials={initials || 'BV'}
+              alt={form.fullName || 'Student avatar'}
+              size="lg"
+              onUrlChange={(url) => setForm((prev) => ({ ...prev, avatarUrl: url }))}
+              onError={(msg) => toast.error(msg)}
+            />
             <div className="min-w-0">
               <h2 className="text-xl font-semibold text-card-foreground">{form.fullName}</h2>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ảnh đã tải sẽ lưu sau khi bấm <span className="font-medium text-foreground">Save Changes</span>.
+              </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                   {form.schoolCohort || 'No cohort assigned'}
@@ -149,7 +161,7 @@ export default function StudentProfilePage() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Editable profile fields</h3>
+            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Profile</h3>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-card-foreground">
@@ -163,7 +175,7 @@ export default function StudentProfilePage() {
                 />
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label htmlFor="schoolCohort" className="mb-1.5 block text-sm font-medium text-card-foreground">
                   School cohort
                 </label>
@@ -175,45 +187,20 @@ export default function StudentProfilePage() {
                   className="w-full rounded-xl border border-border bg-input px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
-
-              <div>
-                <label htmlFor="avatarUrl" className="mb-1.5 block text-sm font-medium text-card-foreground">
-                  Avatar URL
-                </label>
-                <input
-                  id="avatarUrl"
-                  value={form.avatarUrl}
-                  onChange={(e) => setForm((prev) => ({ ...prev, avatarUrl: e.target.value }))}
-                  placeholder="https://..."
-                  className="w-full rounded-xl border border-border bg-input px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
             </div>
+
+            <h4 className="mb-4 mt-8 text-sm font-semibold text-card-foreground">Personal information</h4>
+            <PersonalInfoFields idPrefix="stu-pi" values={personal} onChange={setPersonal} />
+            <p className="mt-4 text-xs text-muted-foreground">
+              Email is tied to your login and cannot be changed here.
+            </p>
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Read-only account context</h3>
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-card-foreground">Email</p>
-                <div className="rounded-xl border border-border bg-background/60 px-4 py-2.5 text-sm text-muted-foreground">
-                  {profile.email}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-card-foreground">Roles</p>
-                <div className="flex min-h-[46px] flex-wrap gap-2 rounded-xl border border-border bg-background/60 px-4 py-2.5">
-                  {profile.roles.length > 0 ? (
-                    profile.roles.map((role) => (
-                      <span key={role} className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-primary">
-                        {role}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">No roles returned</span>
-                  )}
-                </div>
-              </div>
+            <h3 className="mb-5 text-lg font-semibold text-card-foreground">Account</h3>
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-card-foreground">Roles</p>
+              <RoleBadgeList roles={profile.roles} emptyLabel="Student" />
             </div>
           </div>
 

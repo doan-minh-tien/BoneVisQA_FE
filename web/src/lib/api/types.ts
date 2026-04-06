@@ -92,6 +92,7 @@ export interface Announcement {
   className: string;
   title: string;
   content: string;
+  sendEmail: boolean;
   createdAt: string;
 }
 
@@ -120,7 +121,8 @@ export interface LecturerDashboardStats {
   totalQuestions: number;
   escalatedItems: number;
   pendingReviews: number;
-  averageQuizScore: number;
+  /** Backend may return null when no quiz attempts exist. */
+  averageQuizScore: number | null;
 }
 
 export interface LecturerLeaderboardEntry {
@@ -139,12 +141,29 @@ export interface StudentProfile {
   avatarUrl: string;
   isActive: boolean;
   roles: string[];
+  /** ISO date string `YYYY-MM-DD` from API */
+  dateOfBirth?: string | null;
+  phoneNumber?: string | null;
+  gender?: string | null;
+  studentSchoolId?: string | null;
+  classCode?: string | null;
+  address?: string | null;
+  bio?: string | null;
+  emergencyContact?: string | null;
 }
 
 export interface StudentProfileUpdatePayload {
   fullName: string;
   schoolCohort: string;
   avatarUrl: string;
+  dateOfBirth?: string | null;
+  phoneNumber?: string | null;
+  gender?: string | null;
+  studentSchoolId?: string | null;
+  classCode?: string | null;
+  address?: string | null;
+  bio?: string | null;
+  emergencyContact?: string | null;
 }
 
 export interface StudentProgress {
