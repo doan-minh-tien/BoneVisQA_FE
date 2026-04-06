@@ -343,6 +343,8 @@ export interface ClassQuizDto {
   quizId: string;
   quizName: string | null;
   className: string | null;
+  /** Chủ đề quiz (khác tên lớp). */
+  topic?: string | null;
   assignedAt: string | null;
   openTime?: string | null;
   closeTime?: string | null;

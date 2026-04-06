@@ -163,7 +163,7 @@ export default function QuizDetailPage() {
       } else {
         setOriginalClassId(updated.classId || originalClassId);
       }
-      toast.success('Đã lưu quiz thành công.');
+      toast.success('Quiz saved successfully.');
       setSavedDialogOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save quiz');

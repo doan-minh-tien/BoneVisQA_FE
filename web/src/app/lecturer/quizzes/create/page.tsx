@@ -513,11 +513,11 @@ export default function CreateQuizPage() {
       }));
       await addQuizQuestionsBatched(quiz.id, payloads);
 
-      toast.success('Đã tạo quiz và thêm câu hỏi AI.');
+      toast.success('Quiz created and AI questions added.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
-      toast.error(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setLoading(false);
     }
@@ -535,7 +535,7 @@ export default function CreateQuizPage() {
       if (tempQuestions.length > 0) {
         await addQuizQuestionsBatched(quiz.id, tempQuestions);
       }
-      toast.success('Đã lưu nháp quiz.');
+      toast.success('Draft quiz saved.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save draft');
@@ -562,7 +562,7 @@ export default function CreateQuizPage() {
       const quiz = await createQuiz(buildCreatePayload());
       setCreatedQuizId(quiz.id);
       await addQuizQuestionsBatched(quiz.id, tempQuestions);
-      toast.success('Quiz đã được tạo và xuất bản.');
+      toast.success('Quiz created and published successfully.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quiz');

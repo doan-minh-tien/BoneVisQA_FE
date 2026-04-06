@@ -33,6 +33,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     QuizId?: string;
     QuizName?: string | null;
     ClassName?: string | null;
+    Topic?: string | null;
     AssignedAt?: string | null;
     OpenTime?: string | null;
     CloseTime?: string | null;
@@ -43,6 +44,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     quizId: raw.quizId ?? r.QuizId ?? '',
     quizName: raw.quizName ?? r.QuizName ?? null,
     className: raw.className ?? r.ClassName ?? null,
+    topic: raw.topic ?? r.Topic ?? null,
     assignedAt: raw.assignedAt ?? r.AssignedAt ?? null,
     openTime: raw.openTime ?? r.OpenTime ?? null,
     closeTime: raw.closeTime ?? r.CloseTime ?? null,

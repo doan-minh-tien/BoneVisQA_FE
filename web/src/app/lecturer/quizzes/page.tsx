@@ -120,10 +120,12 @@ export default function QuizListPage() {
         else if (open && now < open) status = 'Draft';
         else if (!open && !close) status = 'Draft';
         else status = 'Active';
+        const topicFromQuiz = (q.topic ?? '').trim();
         return {
           ...q,
           status,
-          topicLabel: q.className || 'General',
+          /** Cột Topic: dùng Quiz.Topic từ BE; không dùng tên lớp. */
+          topicLabel: topicFromQuiz || '—',
           formattedAssignedAt: q.assignedAt
             ? new Date(q.assignedAt).toLocaleDateString('en-GB', {
                 day: '2-digit',
@@ -149,9 +151,12 @@ export default function QuizListPage() {
   const uniqueClasses = Array.from(new Set(quizzes.map((q) => q.className).filter(Boolean))) as string[];
 
   const filtered = quizzes.filter((quiz) => {
+    const q = searchTerm.toLowerCase();
     const matchesSearch =
-      (quiz.quizName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-      (quiz.className?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+      (quiz.quizName?.toLowerCase().includes(q) ?? false) ||
+      (quiz.className?.toLowerCase().includes(q) ?? false) ||
+      (quiz.topic?.toLowerCase().includes(q) ?? false) ||
+      (quiz.topicLabel?.toLowerCase().includes(q) ?? false);
     const matchesClass = selectedClass === 'all' || quiz.className === selectedClass;
     return matchesSearch && matchesClass;
   });
@@ -309,11 +314,11 @@ export default function QuizListPage() {
             <colgroup>
               <col style={{ width: '24%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '7%' }} />
+              <col style={{ width: '6%' }} />
               <col style={{ width: '10%' }} />
-              <col style={{ width: '27%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '8%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '14%' }} />
             </colgroup>
             <thead>
               <tr className="bg-muted/40">
@@ -332,7 +337,7 @@ export default function QuizListPage() {
                 <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Opens / Closes
                 </th>
-                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
+                <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Assigned
                 </th>
                 <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
@@ -429,16 +434,16 @@ export default function QuizListPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="min-w-0 px-2 py-4 align-top sm:px-3 sm:py-5">
+                    <td className="px-2 py-4 align-top text-right sm:px-3 sm:py-5">
                       <span
-                        className="block break-words text-[11px] font-semibold text-card-foreground sm:text-xs"
+                        className="inline-block whitespace-nowrap text-[11px] font-semibold text-card-foreground sm:text-xs"
                         title={quiz.formattedAssignedAt}
                       >
                         {quiz.compactAssigned}
                       </span>
                     </td>
-                    <td className="px-2 py-4 text-right align-top sm:px-3 sm:py-5">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                      <div className="flex justify-end gap-1.5 sm:gap-2">
                         <button
                           type="button"
                           onClick={(e) => {
