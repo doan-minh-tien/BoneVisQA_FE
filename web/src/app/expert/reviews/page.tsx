@@ -251,7 +251,7 @@ export default function ExpertReviewsPage() {
 
                     {isExp && (
                       <div className="border-t border-border-color px-5 py-5">
-                        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                           <section className="space-y-4">
                             <div className="rounded-xl border border-border-color bg-black p-3">
                               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -283,26 +283,23 @@ export default function ExpertReviewsPage() {
                             </div>
                             <div className="rounded-xl border border-border-color bg-surface p-4">
                               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-accent">
-                                Student question
+                                Left pane · Expert edit mode
                               </p>
-                              <p className="text-sm leading-relaxed text-text-main">{item.question}</p>
+                              <p className="mb-4 text-sm leading-relaxed text-text-main">{item.question}</p>
+                              <ReportWorkbench
+                                report={item.report}
+                                isEditing={isEditing}
+                                diag={diag}
+                                keyText={keyText}
+                                onDiagChange={setDiag}
+                                onKeyTextChange={setKeyText}
+                                onBeginEdit={() => openEdit(item)}
+                              />
                             </div>
                           </section>
 
-                          <section className="space-y-4">
-                            <ReportWorkbench
-                              report={item.report}
-                              isEditing={isEditing}
-                              diag={diag}
-                              keyText={keyText}
-                              onDiagChange={setDiag}
-                              onKeyTextChange={setKeyText}
-                              onBeginEdit={() => openEdit(item)}
-                            />
-                            <EvidencePanel
-                              citations={item.citations ?? []}
-                              onFlag={openFlagModal}
-                            />
+                          <section className="xl:sticky xl:top-5">
+                            <EvidencePanel citations={item.citations ?? []} onFlag={openFlagModal} />
                           </section>
                         </div>
 
@@ -391,7 +388,7 @@ function EvidencePanel({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            RAG Evidence & Citations
+            Right pane · RAG Evidence & Citations
           </h4>
           <p className="mt-1 text-sm text-text-muted">
             Review the exact evidence chunks the AI used before approving this answer.
@@ -404,7 +401,7 @@ function EvidencePanel({
           No evidence chunks were returned for this case.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="max-h-[640px] space-y-3 overflow-y-auto pr-1">
           {citations.map((citation, index) => (
             <article
               key={citation.chunkId}
@@ -430,12 +427,15 @@ function EvidencePanel({
                 </div>
                 <Button
                   type="button"
+                  size="sm"
                   variant={citation.flagged ? 'outline' : 'destructive'}
                   disabled={citation.flagged}
                   onClick={() => onFlag(citation.chunkId)}
+                  title={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
+                  aria-label={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
+                  className="!px-2.5"
                 >
                   <Flag className="h-4 w-4" />
-                  {citation.flagged ? 'Issue Flagged' : 'Flag Issue'}
                 </Button>
               </div>
 
