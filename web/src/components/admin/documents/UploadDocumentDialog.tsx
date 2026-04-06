@@ -80,6 +80,7 @@ export default function UploadDocumentDialog({
       setIsUploading(true);
       await uploadAdminDocument({
         file,
+        title: title.trim(),
         categoryId: '',
         tagIds: [],
       });
@@ -127,10 +128,25 @@ export default function UploadDocumentDialog({
           )}
 
           <div className="space-y-4">
+            <div>
+              <label htmlFor="doc-title" className="block text-sm font-semibold text-gray-700 mb-2">
+                Document title <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="doc-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={isUploading}
+                placeholder="e.g. Pediatric fracture guidelines"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all shadow-sm"
+              />
+            </div>
+
             {/* File Upload Zone */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Document File <span className="text-red-500">*</span>
+                Document file <span className="text-red-500">*</span>
               </label>
               
               <div 
@@ -179,21 +195,6 @@ export default function UploadDocumentDialog({
                   </div>
                 )}
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="title" className="block text-sm font-semibold text-gray-700 mb-2">
-                Document Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={isUploading}
-                placeholder="Enter document title"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all shadow-sm"
-              />
             </div>
           </div>
 

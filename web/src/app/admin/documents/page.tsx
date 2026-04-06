@@ -7,11 +7,14 @@ import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
+  type DocumentDto,
+  fetchDocumentStatus,
   fetchDocumentCategories,
+  getAdminDocuments,
   fetchDocumentTags,
   uploadAdminDocument,
 } from '@/lib/api/admin-documents';
-import type { CategoryOption, TagOption } from '@/lib/api/types';
+import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react';
 
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -23,9 +26,25 @@ export default function AdminDocumentsPage() {
   const [categoryId, setCategoryId] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
+  const [documentTitle, setDocumentTitle] = useState('');
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [documents, setDocuments] = useState<DocumentDto[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
+  const [statusByDocId, setStatusByDocId] = useState<Record<string, DocumentStatusResponse>>({});
+
+  const loadDocuments = useCallback(async () => {
+    setLoadingDocuments(true);
+    try {
+      const docs = await getAdminDocuments();
+      setDocuments(docs);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load uploaded document list.');
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +69,10 @@ export default function AdminDocumentsPage() {
     };
   }, [toast]);
 
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
+
   const onDrop = useCallback(
     (accepted: File[]) => {
       const f = accepted[0];
@@ -60,6 +83,11 @@ export default function AdminDocumentsPage() {
       }
       setFile(f);
       setProgress(0);
+      setDocumentTitle((prev) => {
+        if (prev.trim()) return prev;
+        const base = f.name.replace(/\.[^.]+$/, '');
+        return base || f.name;
+      });
     },
     [toast],
   );
@@ -96,10 +124,51 @@ export default function AdminDocumentsPage() {
     });
   };
 
+  useEffect(() => {
+    const processingIds = documents
+      .filter((doc) => (doc.indexingStatus ?? '').toLowerCase() === 'processing')
+      .map((doc) => doc.id)
+      .filter(Boolean);
+
+    if (processingIds.length === 0) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      await Promise.all(
+        processingIds.map(async (id) => {
+          try {
+            const status = await fetchDocumentStatus(id);
+            if (!cancelled) {
+              setStatusByDocId((prev) => ({ ...prev, [id]: status }));
+            }
+          } catch {
+            // Ignore intermittent polling errors; next interval can recover.
+          }
+        }),
+      );
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [documents]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !categoryId) {
       toast.error('Please select a PDF and a category.');
+      return;
+    }
+    const title = documentTitle.trim();
+    if (!title) {
+      toast.error('Please enter a document title.');
       return;
     }
     setSubmitting(true);
@@ -107,6 +176,7 @@ export default function AdminDocumentsPage() {
     try {
       const res = await uploadAdminDocument({
         file,
+        title,
         categoryId,
         tagIds: Array.from(selectedTagIds),
         onUploadProgress: setProgress,
@@ -119,7 +189,9 @@ export default function AdminDocumentsPage() {
       } else {
         toast.success('Document uploaded successfully.');
       }
+      await loadDocuments();
       setFile(null);
+      setDocumentTitle('');
       setCategoryId('');
       setSelectedTagIds(new Set());
     } catch (err) {
@@ -131,6 +203,22 @@ export default function AdminDocumentsPage() {
     }
   };
 
+  const getEffectiveStatus = (doc: DocumentDto): DocumentStatusResponse => {
+    const polled = statusByDocId[doc.id];
+    if (polled) return polled;
+    return {
+      status: doc.indexingStatus ?? 'Unknown',
+      progressPercentage: (doc.indexingStatus ?? '').toLowerCase() === 'processing' ? 5 : 100,
+      currentOperation: (doc.indexingStatus ?? '').toLowerCase() === 'processing' ? 'Starting pipeline...' : '',
+    };
+  };
+
+  const formatTime = (value: string): string => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
+  };
+
   return (
     <div className="min-h-screen">
       <Header
@@ -139,6 +227,23 @@ export default function AdminDocumentsPage() {
       />
       <div className="mx-auto max-w-4xl p-6">
         <form onSubmit={handleSubmit} className="space-y-8">
+          <SectionCard
+            title="Document title"
+            description="Shown in the knowledge base and used for indexing metadata."
+          >
+            <label htmlFor="kb-title" className="block text-sm font-medium text-card-foreground">
+              Title <span className="text-destructive">*</span>
+            </label>
+            <input
+              id="kb-title"
+              type="text"
+              value={documentTitle}
+              onChange={(e) => setDocumentTitle(e.target.value)}
+              placeholder="e.g. MSK radiology reference — fractures"
+              className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </SectionCard>
+
           <SectionCard
             title="Document file"
             description="PDF only. Single-file upload is enforced for backend chunking stability, with a hard limit of 50MB."
@@ -270,6 +375,7 @@ export default function AdminDocumentsPage() {
               variant="outline"
               onClick={() => {
                 setFile(null);
+                setDocumentTitle('');
                 setCategoryId('');
                 setSelectedTagIds(new Set());
               }}
@@ -277,12 +383,87 @@ export default function AdminDocumentsPage() {
             >
               Clear
             </Button>
-            <Button type="submit" isLoading={submitting} disabled={loadingMeta || !file || !categoryId}>
+            <Button
+              type="submit"
+              isLoading={submitting}
+              disabled={loadingMeta || !file || !categoryId || !documentTitle.trim()}
+            >
               <Upload className="h-4 w-4" />
               Upload to knowledge base
             </Button>
           </div>
         </form>
+
+        <div className="mt-8">
+          <SectionCard
+            title="Recent uploads"
+            description="Live indexing status from backend polling (every 2 seconds while processing)."
+          >
+            {loadingDocuments ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Loading uploaded documents...
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+                No uploaded documents found yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {documents.map((doc) => {
+                  const status = getEffectiveStatus(doc);
+                  const normalized = status.status.toLowerCase();
+                  const isProcessing = normalized === 'processing';
+                  const isFailed = normalized === 'failed';
+                  const isCompleted = normalized === 'completed';
+
+                  return (
+                    <article
+                      key={doc.id}
+                      className="rounded-xl border border-border bg-background/55 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-card-foreground">{doc.title}</p>
+                          <p className="text-xs text-muted-foreground">Uploaded: {formatTime(doc.createdAt)}</p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            isFailed
+                              ? 'bg-destructive/10 text-destructive'
+                              : isCompleted
+                                ? 'bg-success/10 text-success'
+                                : 'bg-primary/10 text-primary'
+                          }`}
+                        >
+                          {status.status}
+                        </span>
+                      </div>
+
+                      {isProcessing ? (
+                        <div className="mt-3">
+                          <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                            <span>Indexing progress</span>
+                            <span>{Math.round(status.progressPercentage)}%</span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/80">
+                            <div
+                              className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+                              style={{ width: `${Math.max(0, Math.min(100, status.progressPercentage))}%` }}
+                            />
+                          </div>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            {status.currentOperation || 'Processing...'}
+                          </p>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+        </div>
       </div>
     </div>
   );
