@@ -32,6 +32,9 @@ interface EnrichedQuiz extends ClassQuizDto {
   formattedAssignedAt: string;
   formattedOpen: string;
   formattedClose: string;
+  compactOpen: string;
+  compactClose: string;
+  compactAssigned: string;
 }
 
 const PAGE_SIZE = 10;
@@ -41,6 +44,26 @@ function formatQuizInstant(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Định dạng ngắn để bảng không tràn ngang (dd/MM/yy HH:mm). */
+function formatQuizCompact(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yy} ${hh}:${min}`;
+}
+
+function formatAssignedCompact(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 /** Page numbers and ellipsis for pagination (no hardcoded 1,2,3). */
@@ -110,6 +133,9 @@ export default function QuizListPage() {
             : '—',
           formattedOpen: formatQuizInstant(q.openTime),
           formattedClose: formatQuizInstant(q.closeTime),
+          compactOpen: formatQuizCompact(q.openTime),
+          compactClose: formatQuizCompact(q.closeTime),
+          compactAssigned: formatAssignedCompact(q.assignedAt ?? null),
         };
       });
       setQuizzes(enriched);
@@ -277,33 +303,39 @@ export default function QuizListPage() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        {/* Table — table-fixed + cột gộp để không cần scroll ngang */}
+        <div className="min-w-0">
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col style={{ width: '24%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '27%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '8%' }} />
+            </colgroup>
             <thead>
               <tr className="bg-muted/40">
-                <th className="px-8 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs sm:tracking-widest">
                   Quiz Title
                 </th>
-                <th className="px-6 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Topic
                 </th>
-                <th className="px-6 py-5 text-center text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Questions
+                <th className="px-1 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-2 sm:py-4 sm:text-xs sm:tracking-widest">
+                  Q#
                 </th>
-                <th className="px-6 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Status
                 </th>
-                <th className="px-6 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Opens
+                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
+                  Opens / Closes
                 </th>
-                <th className="px-6 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  Closes
-                </th>
-                <th className="px-6 py-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Assigned
                 </th>
-                <th className="px-8 py-5 text-right text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Actions
                 </th>
               </tr>
@@ -311,7 +343,7 @@ export default function QuizListPage() {
             <tbody className="divide-y divide-border">
               {paged.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-8 py-20 text-center">
+                  <td colSpan={7} className="px-4 py-20 text-center sm:px-8">
                     <p className="text-muted-foreground">No quizzes match your search.</p>
                   </td>
                 </tr>
@@ -321,34 +353,43 @@ export default function QuizListPage() {
                     key={`${quiz.quizId}-${quiz.classId}`}
                     className="group cursor-pointer hover:bg-muted/40 transition-colors"
                   >
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                          <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                    <td className="px-3 py-4 sm:px-4 sm:py-5">
+                      <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted sm:h-9 sm:w-9">
+                          <BarChart3 className="h-4 w-4 text-muted-foreground sm:h-[18px] sm:w-[18px]" />
                         </div>
-                        <div>
-                          <p className="font-bold text-card-foreground">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="line-clamp-2 break-words text-sm font-bold leading-snug text-card-foreground"
+                            title={quiz.quizName || 'Untitled quiz'}
+                          >
                             {quiz.quizName || 'Untitled quiz'}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p
+                            className="mt-0.5 line-clamp-1 break-words text-[10px] text-muted-foreground sm:text-xs"
+                            title={quiz.className || 'Unassigned'}
+                          >
                             {quiz.className || 'Unassigned'}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-6">
-                      <span className="inline-block rounded-full bg-muted px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                      <span
+                        className="inline-block max-w-full break-words rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[10px] sm:tracking-wider"
+                        title={quiz.topicLabel}
+                      >
                         {quiz.topicLabel}
                       </span>
                     </td>
-                    <td className="px-6 py-6 text-center">
-                      <span className="font-bold text-card-foreground">
+                    <td className="px-1 py-4 text-center align-top sm:py-5">
+                      <span className="text-sm font-bold text-card-foreground">
                         {typeof quiz.questionCount === 'number' ? quiz.questionCount : '—'}
                       </span>
                     </td>
-                    <td className="px-6 py-6">
+                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                        className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-xs ${
                           quiz.status === 'Active'
                             ? 'bg-secondary/15 text-secondary'
                             : quiz.status === 'Completed'
@@ -357,7 +398,7 @@ export default function QuizListPage() {
                         }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
+                          className={`h-1 w-1 shrink-0 rounded-full sm:h-1.5 sm:w-1.5 ${
                             quiz.status === 'Active'
                               ? 'bg-secondary'
                               : quiz.status === 'Completed'
@@ -365,19 +406,38 @@ export default function QuizListPage() {
                                 : 'bg-warning'
                           }`}
                         />
-                        {quiz.status}
+                        <span className="truncate">{quiz.status}</span>
                       </span>
                     </td>
-                    <td className="px-6 py-6 text-xs text-muted-foreground whitespace-nowrap">
-                      {quiz.formattedOpen}
+                    <td className="min-w-0 px-2 py-4 align-top sm:px-3 sm:py-5">
+                      <div className="min-w-0 space-y-2 text-[11px] leading-snug">
+                        <div title={quiz.formattedOpen}>
+                          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            Open
+                          </span>
+                          <span className="block break-words font-semibold text-card-foreground">
+                            {quiz.compactOpen}
+                          </span>
+                        </div>
+                        <div title={quiz.formattedClose}>
+                          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            Close
+                          </span>
+                          <span className="block break-words font-semibold text-card-foreground">
+                            {quiz.compactClose}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 py-6 text-xs text-muted-foreground whitespace-nowrap">
-                      {quiz.formattedClose}
+                    <td className="min-w-0 px-2 py-4 align-top sm:px-3 sm:py-5">
+                      <span
+                        className="block break-words text-[11px] font-semibold text-card-foreground sm:text-xs"
+                        title={quiz.formattedAssignedAt}
+                      >
+                        {quiz.compactAssigned}
+                      </span>
                     </td>
-                    <td className="px-6 py-6 text-sm text-muted-foreground">
-                      {quiz.formattedAssignedAt}
-                    </td>
-                    <td className="px-8 py-6 text-right">
+                    <td className="px-2 py-4 text-right align-top sm:px-3 sm:py-5">
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"

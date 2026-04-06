@@ -26,6 +26,30 @@ export interface UpdateQuizRequest {
 
 // ========== Quiz Management ==========
 
+/** BE có thể trả camelCase hoặc PascalCase. */
+function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): ClassQuizDto {
+  const r = raw as ClassQuizDto & {
+    ClassId?: string;
+    QuizId?: string;
+    QuizName?: string | null;
+    ClassName?: string | null;
+    AssignedAt?: string | null;
+    OpenTime?: string | null;
+    CloseTime?: string | null;
+    QuestionCount?: number;
+  };
+  return {
+    classId: raw.classId ?? r.ClassId ?? '',
+    quizId: raw.quizId ?? r.QuizId ?? '',
+    quizName: raw.quizName ?? r.QuizName ?? null,
+    className: raw.className ?? r.ClassName ?? null,
+    assignedAt: raw.assignedAt ?? r.AssignedAt ?? null,
+    openTime: raw.openTime ?? r.OpenTime ?? null,
+    closeTime: raw.closeTime ?? r.CloseTime ?? null,
+    questionCount: raw.questionCount ?? r.QuestionCount,
+  };
+}
+
 /**
  * Get all quizzes for a lecturer across all classes
  */
@@ -34,7 +58,8 @@ export async function getLecturerQuizzes(lecturerId: string): Promise<ClassQuizD
     const { data } = await http.get<ClassQuizDto[]>('/api/lecturer/quizzes', {
       params: { lecturerId },
     });
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map((row) => normalizeClassQuizDto(row as ClassQuizDto & Record<string, unknown>));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
