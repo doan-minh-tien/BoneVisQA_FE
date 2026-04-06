@@ -76,17 +76,26 @@ function detectType(text: string): ParsedQuestion['type'] {
   return 'MultipleChoice';
 }
 
-function parsePaste(raw: string): ParsedQuestion[] {
-  const questions: ParsedQuestion[] = [];
-  const blocks = raw
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split(/\n(?=\d+\.)|(?=Question\s*\d)|(?=^\#)/im)
+/** Split pasted text into one block per question (numbered "1.", "Câu 1", "Question 1", etc.). */
+function splitPasteBlocks(raw: string): string[] {
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return normalized
+    .split(/\n(?=\s*(?:Câu\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function parsePaste(raw: string): ParsedQuestion[] {
+  const questions: ParsedQuestion[] = [];
+  const blocks = splitPasteBlocks(raw);
 
   for (const block of blocks) {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) continue;
+
+    while (lines.length && /^Câu\s*\d+\s*$/i.test(lines[0])) {
+      lines.shift();
+    }
     if (lines.length < 2) continue;
 
     const firstLine = lines[0].replace(/^[\d.]+\s*[\.\)]\s*/i, '').trim();
@@ -480,7 +489,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Hỗ trợ định dạng tự do: câu hỏi có đáp án A/B/C/D, True/False, gõ "Answer: X" để chỉ định đáp án.
+                Hỗ trợ định dạng tự do: tách câu bằng &quot;Câu 1&quot;, &quot;1.&quot; hoặc &quot;Question 1&quot;; đáp án gõ &quot;Answer: X&quot; hoặc &quot;Đáp án: X&quot; (A–D hoặc True/False).
               </p>
             </div>
           ) : (
