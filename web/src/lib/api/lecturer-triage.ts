@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type { ClassItem, LecturerTriageRow } from './types';
 
@@ -56,10 +57,15 @@ export async function respondToQuestion(
   }
 }
 
+export const TRIAGE_ALREADY_ESCALATED = 'TRIAGE_ALREADY_ESCALATED';
+
 export async function escalateToExpert(answerId: string): Promise<void> {
   try {
-    await http.post(`/api/lecturer/qa-triage/${answerId}/escalate`);
+    await http.post(`/api/lecturer/triage/${answerId}/escalate`);
   } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 409) {
+      throw new Error(TRIAGE_ALREADY_ESCALATED);
+    }
     throw new Error(getApiErrorMessage(e));
   }
 }

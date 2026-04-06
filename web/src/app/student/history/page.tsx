@@ -143,6 +143,8 @@ export default function StudentHistoryPage() {
                 progress={item.progress}
                 status={item.status}
                 askedAt={item.askedAt}
+                keyImagingFindings={item.keyImagingFindings}
+                reflectiveQuestions={item.reflectiveQuestions}
               />
             ))}
           </div>

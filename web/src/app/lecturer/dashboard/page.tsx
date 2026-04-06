@@ -57,7 +57,7 @@ export default function LecturerDashboardPage() {
     isLoading: classesLoading,
   } = useSWR<ClassItem[]>(
     userId ? ['lecturer-classes', userId] : null,
-    ([, uid]) => fetchLecturerClasses(uid),
+    ([, uid]: [string, string]) => fetchLecturerClasses(uid),
     swrConfig,
   );
   const classes = classesData ?? [];
@@ -68,7 +68,7 @@ export default function LecturerDashboardPage() {
     isLoading: loadingLeaderboard,
   } = useSWR<LecturerLeaderboardEntry[]>(
     selectedClassIdEffective ? ['lecturer-class-leaderboard', selectedClassIdEffective] : null,
-    ([, classId]) => fetchLecturerClassLeaderboard(classId),
+    ([, classId]: [string, string]) => fetchLecturerClassLeaderboard(classId),
     swrConfig,
   );
   const leaderboard = leaderboardData ?? [];

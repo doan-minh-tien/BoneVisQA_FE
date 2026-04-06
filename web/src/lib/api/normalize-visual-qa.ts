@@ -87,11 +87,28 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
     if (Number.isFinite(n)) aiConfidenceScore = n;
   }
 
+  const keyImagingRaw = pick(o, ['keyImagingFindings', 'KeyImagingFindings']);
+  const reflectiveRaw = pick(o, ['reflectiveQuestions', 'ReflectiveQuestions']);
+  const keyImagingFindings =
+    keyImagingRaw === null || keyImagingRaw === undefined
+      ? null
+      : typeof keyImagingRaw === 'string'
+        ? keyImagingRaw.trim() || null
+        : String(keyImagingRaw).trim() || null;
+  const reflectiveQuestions =
+    reflectiveRaw === null || reflectiveRaw === undefined
+      ? null
+      : typeof reflectiveRaw === 'string'
+        ? reflectiveRaw.trim() || null
+        : String(reflectiveRaw).trim() || null;
+
   return {
     ...(questionText ? { questionText } : {}),
     answerText: answer,
     suggestedDiagnosis: suggested,
     keyFindings,
+    ...(keyImagingFindings !== null ? { keyImagingFindings } : {}),
+    ...(reflectiveQuestions !== null ? { reflectiveQuestions } : {}),
     differentialDiagnoses: diff,
     recommendedReadings: readings,
     citations,

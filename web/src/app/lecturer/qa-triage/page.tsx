@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Header from '@/components/Header';
 import { AlertCircle, Clock3, Loader2, Send, Sparkles, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { getStudentQuestions } from '@/lib/api/lecturer';
-import { escalateToExpert } from '@/lib/api/lecturer-triage';
+import { escalateToExpert, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
 import { getLecturerClasses } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
@@ -66,29 +67,39 @@ export default function QATriagePage() {
     void loadQuestions(selectedClassId);
   }, [selectedClassId, loadQuestions]);
 
-  const handleEscalate = async (questionId: string) => {
+  const handleEscalate = async (answerId: string, questionId: string) => {
     setEscalatingId(questionId);
     try {
-      await escalateToExpert(questionId);
+      await escalateToExpert(answerId);
       setQuestions((prev) =>
         prev.map((item) => (item.id === questionId ? { ...item, escalatedById: 'lecturer' } : item)),
       );
       toast.success('Escalated to clinical expert workbench.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Escalation failed.');
+      if (error instanceof Error && error.message === TRIAGE_ALREADY_ESCALATED) {
+        toast.info('This case has already been escalated.');
+        setQuestions((prev) =>
+          prev.map((item) => (item.id === questionId ? { ...item, escalatedById: 'prior' } : item)),
+        );
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Escalation failed.');
+      }
     } finally {
       setEscalatingId(null);
     }
   };
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="min-h-screen pb-10">
+      <Header
+        title="Diagnostic triage"
+        subtitle="Review class requests and escalate only what needs expert clinical auditing."
+      />
+      <div className="mx-auto max-w-[1600px] space-y-6 px-4 pt-2 sm:px-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Lecturer workbench</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Diagnostic Triage Inbox</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Review requests quickly and escalate only clinically risky answers.
+        <div className="max-w-xl">
+          <p className="text-sm text-slate-600">
+            Select a class, review the AI answer, then escalate when the case should reach the expert workbench.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -223,7 +234,12 @@ export default function QATriagePage() {
                     disabled={Boolean(selectedQuestion.escalatedById) || escalatingId === selectedQuestion.id}
                     isLoading={escalatingId === selectedQuestion.id}
                     className="bg-red-50 text-red-600 hover:bg-red-100"
-                    onClick={() => void handleEscalate(selectedQuestion.id)}
+                    onClick={() =>
+                      void handleEscalate(
+                        selectedQuestion.answerId ?? selectedQuestion.id,
+                        selectedQuestion.id,
+                      )
+                    }
                   >
                     <Send className="h-4 w-4" />
                     {selectedQuestion.escalatedById ? 'Escalated' : 'Escalate to Expert'}
@@ -234,6 +250,7 @@ export default function QATriagePage() {
           </section>
         </div>
       )}
+      </div>
     </div>
   );
 }

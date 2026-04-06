@@ -12,6 +12,7 @@ import {
   putExpertReview,
 } from '@/lib/api/expert-reviews';
 import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
+import { splitLearningBullets } from '@/lib/utils/learning-text';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -37,6 +38,8 @@ export default function ExpertReviewsPage() {
   const [active, setActive] = useState<ExpertReviewItem | null>(null);
   const [diag, setDiag] = useState('');
   const [keyText, setKeyText] = useState('');
+  const [keyImagingEdit, setKeyImagingEdit] = useState('');
+  const [reflectiveEdit, setReflectiveEdit] = useState('');
   const [saving, setSaving] = useState(false);
   const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
@@ -62,6 +65,8 @@ export default function ExpertReviewsPage() {
     setActive(item);
     setDiag(item.report.suggestedDiagnosis || '');
     setKeyText(item.report.keyFindings.join('\n'));
+    setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
+    setReflectiveEdit(item.report.reflectiveQuestions?.trim() ?? item.reflectiveQuestions?.trim() ?? '');
     setExpanded(item.id);
   };
 
@@ -124,6 +129,8 @@ export default function ExpertReviewsPage() {
           status === 'Approved'
             ? 'Approved by expert reviewer.'
             : 'Rejected by expert reviewer.',
+        keyImagingFindings: keyImagingEdit.trim() || null,
+        reflectiveQuestions: reflectiveEdit.trim() || null,
       });
       toast.success(
         status === 'Approved'
@@ -147,6 +154,8 @@ export default function ExpertReviewsPage() {
         structuredDiagnosis: item.report.suggestedDiagnosis || '',
         differentialDiagnoses: item.report.differentialDiagnoses,
         reviewNote: 'Approved by expert reviewer.',
+        keyImagingFindings: item.report.keyImagingFindings ?? null,
+        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
       });
       toast.success('Approved for the public reference library.');
       await load();
@@ -165,6 +174,8 @@ export default function ExpertReviewsPage() {
         structuredDiagnosis: item.report.suggestedDiagnosis || '',
         differentialDiagnoses: item.report.differentialDiagnoses,
         reviewNote: 'Rejected by expert reviewer.',
+        keyImagingFindings: item.report.keyImagingFindings ?? null,
+        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
       });
       toast.info('Answer flagged as invalid.');
       await load();
@@ -180,7 +191,7 @@ export default function ExpertReviewsPage() {
   return (
     <div className="dark min-h-screen bg-background text-text-main">
       <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
         {loading ? (
           <div className="flex justify-center py-20 text-text-muted">
             <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
@@ -291,8 +302,12 @@ export default function ExpertReviewsPage() {
                                 isEditing={isEditing}
                                 diag={diag}
                                 keyText={keyText}
+                                keyImagingText={keyImagingEdit}
+                                reflectiveText={reflectiveEdit}
                                 onDiagChange={setDiag}
                                 onKeyTextChange={setKeyText}
+                                onKeyImagingChange={setKeyImagingEdit}
+                                onReflectiveChange={setReflectiveEdit}
                                 onBeginEdit={() => openEdit(item)}
                               />
                             </div>
@@ -510,16 +525,14 @@ function FlagChunkModal({
 }
 
 function getConfidenceScore(item: ExpertReviewItem): number | null {
-  const raw = (item as ExpertReviewItem & { aiConfidenceScore?: number; confidenceScore?: number })
-    .aiConfidenceScore ??
-    (item as ExpertReviewItem & { confidenceScore?: number }).confidenceScore;
+  const raw =
+    (item as ExpertReviewItem & { aiConfidenceScore?: number }).aiConfidenceScore ??
+    item.report.aiConfidenceScore;
 
   if (typeof raw === 'number' && !Number.isNaN(raw)) {
     return raw <= 1 ? raw * 100 : raw;
   }
-
-  const derived = 84 + item.report.keyFindings.length * 1.8 + item.report.citations.length * 0.7;
-  return Math.min(98.7, Math.max(72.4, derived));
+  return null;
 }
 
 function isTerminal(status: string) {
@@ -551,6 +564,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ReportSections({ report }: { report: VisualQaReport }) {
+  const imagingLines = splitLearningBullets(report.keyImagingFindings ?? undefined);
   return (
     <div className="space-y-4">
       <section>
@@ -588,6 +602,31 @@ function ReportSections({ report }: { report: VisualQaReport }) {
           </ul>
         </section>
       ) : null}
+      {imagingLines.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            Key imaging findings
+          </h4>
+          <ul className="space-y-2 rounded-xl border border-cyan-accent/25 bg-surface px-4 py-4 text-sm text-text-main">
+            {imagingLines.map((k, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
+                <span>{k}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {report.reflectiveQuestions?.trim() ? (
+        <section className="rounded-xl border border-amber-400/35 bg-amber-500/5 px-4 py-4">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+            Reflective questions
+          </h4>
+          <div className="text-sm leading-relaxed text-text-main">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.reflectiveQuestions.trim()}</ReactMarkdown>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -597,16 +636,24 @@ function ReportWorkbench({
   isEditing,
   diag,
   keyText,
+  keyImagingText,
+  reflectiveText,
   onDiagChange,
   onKeyTextChange,
+  onKeyImagingChange,
+  onReflectiveChange,
   onBeginEdit,
 }: {
   report: VisualQaReport;
   isEditing: boolean;
   diag: string;
   keyText: string;
+  keyImagingText: string;
+  reflectiveText: string;
   onDiagChange: (value: string) => void;
   onKeyTextChange: (value: string) => void;
+  onKeyImagingChange: (value: string) => void;
+  onReflectiveChange: (value: string) => void;
   onBeginEdit: () => void;
 }) {
   if (!isEditing) {
@@ -655,6 +702,38 @@ function ReportWorkbench({
           rows={8}
           className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
           placeholder="One key finding per line"
+        />
+      </section>
+
+      <section className="rounded-xl border border-cyan-accent/25 bg-surface p-4">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Key imaging findings (SEPS)
+        </h4>
+        <p className="mb-2 text-xs text-text-muted">
+          Radiology-focused teaching points. Use line breaks or semicolons for separate bullets.
+        </p>
+        <textarea
+          value={keyImagingText}
+          onChange={(e) => onKeyImagingChange(e.target.value)}
+          rows={6}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          placeholder="e.g. Cortical thickening along the diaphysis..."
+        />
+      </section>
+
+      <section className="rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+          Reflective questions (SEPS)
+        </h4>
+        <p className="mb-2 text-xs text-text-muted">
+          Prompts for learner self-assessment before you resolve this case.
+        </p>
+        <textarea
+          value={reflectiveText}
+          onChange={(e) => onReflectiveChange(e.target.value)}
+          rows={5}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          placeholder="What features would you look for on the next view?"
         />
       </section>
     </div>

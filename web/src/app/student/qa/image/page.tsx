@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
 import type { PercentageBoundingBox, VisualQaReport } from '@/lib/api/types';
+import { splitLearningBullets } from '@/lib/utils/learning-text';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 
 type VisualQaDraft = {
@@ -444,6 +445,39 @@ export default function StudentVisualQaImagePage() {
                     )}
                   </div>
                 </section>
+
+                {report.keyImagingFindings?.trim() ? (
+                  <section>
+                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+                      Key imaging findings
+                    </h3>
+                    <div className="rounded-xl border border-cyan-accent/25 bg-surface p-5">
+                      <ul className="space-y-2.5 text-sm text-text-main">
+                        {splitLearningBullets(report.keyImagingFindings).map((line, i) => (
+                          <li key={i} className="flex items-start gap-3">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
+                            <span className="leading-relaxed">{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </section>
+                ) : null}
+
+                {report.reflectiveQuestions?.trim() ? (
+                  <section
+                    className="rounded-xl border border-amber-400/35 bg-gradient-to-br from-amber-500/10 to-background p-5 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)]"
+                    role="note"
+                    aria-label="Reflective questions"
+                  >
+                    <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+                      Reflective questions
+                    </h3>
+                    <div className="text-sm leading-relaxed text-text-main">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.reflectiveQuestions.trim()}</ReactMarkdown>
+                    </div>
+                  </section>
+                ) : null}
 
                 <section>
                   <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">

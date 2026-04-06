@@ -46,6 +46,14 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
     progress: typeof item.progress === 'number' ? item.progress : undefined,
     status: item.status != null ? String(item.status) : undefined,
     askedAt: item.askedAt != null ? String(item.askedAt) : item.createdAt != null ? String(item.createdAt) : undefined,
+    keyImagingFindings:
+      item.keyImagingFindings != null && item.keyImagingFindings !== ''
+        ? String(item.keyImagingFindings)
+        : null,
+    reflectiveQuestions:
+      item.reflectiveQuestions != null && item.reflectiveQuestions !== ''
+        ? String(item.reflectiveQuestions)
+        : null,
   };
 }
 

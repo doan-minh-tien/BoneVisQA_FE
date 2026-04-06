@@ -69,7 +69,7 @@ export default function AdminDashboardPage() {
     isValidating: recentPaging,
   } = useSWR<{ users: AdminRecentUser[]; totalCount: number }>(
     ['admin-recent-users', recentPage],
-    ([, page]) => fetchAdminRecentUsersPage(page, RECENT_USERS_PAGE_SIZE),
+    ([, page]: [string, number]) => fetchAdminRecentUsersPage(page, RECENT_USERS_PAGE_SIZE),
     swrConfig,
   );
   const recentUsers = recentData?.users ?? [];

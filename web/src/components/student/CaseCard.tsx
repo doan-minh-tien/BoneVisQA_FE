@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Clock, ShieldAlert, TrendingUp } from 'lucide-react';
+import { BookOpen, CheckCircle2, Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
 
 interface CaseCardProps {
   id: string;
@@ -11,6 +11,9 @@ interface CaseCardProps {
   progress?: number;
   status?: string;
   askedAt?: string;
+  /** SEPS learning fields when returned by history API */
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
 }
 
 const difficultyConfig = {
@@ -38,6 +41,8 @@ export default function CaseCard({
   progress = 0,
   status,
   askedAt,
+  keyImagingFindings,
+  reflectiveQuestions,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
   const normalizedStatus = status?.toLowerCase();
@@ -112,6 +117,19 @@ export default function CaseCard({
             {lesionType}
           </span>
         </div>
+
+        {keyImagingFindings?.trim() ? (
+          <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-card-foreground">Imaging: </span>
+            {keyImagingFindings.trim()}
+          </p>
+        ) : null}
+        {reflectiveQuestions?.trim() ? (
+          <div className="mb-3 flex gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-2">
+            <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">{reflectiveQuestions.trim()}</p>
+          </div>
+        ) : null}
 
         {/* Meta */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">

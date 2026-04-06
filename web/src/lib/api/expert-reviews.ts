@@ -37,7 +37,15 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const answerId = String(r.answerId ?? r.id ?? r.requestId ?? '');
   if (!answerId) return null;
   const reportRaw = r.report ?? r.structuredReport ?? r.aiReport;
-  const report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+  let report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+  if (r.keyImagingFindings !== undefined && r.keyImagingFindings !== null) {
+    const v = String(r.keyImagingFindings).trim();
+    report = { ...report, keyImagingFindings: v || null };
+  }
+  if (r.reflectiveQuestions !== undefined && r.reflectiveQuestions !== null) {
+    const v = String(r.reflectiveQuestions).trim();
+    report = { ...report, reflectiveQuestions: v || null };
+  }
   const customCoordinates = parsePercentageBoundingBox(
     r.customCoordinates ??
       r.annotationCoordinates ??
@@ -69,6 +77,8 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     status: String(r.status ?? 'PendingExpert'),
     report,
     citations,
+    keyImagingFindings: report.keyImagingFindings ?? null,
+    reflectiveQuestions: report.reflectiveQuestions ?? null,
   };
 }
 
@@ -91,6 +101,8 @@ export interface ExpertReviewUpdatePayload {
   structuredDiagnosis: string;
   differentialDiagnoses: string[];
   reviewNote: string;
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
 }
 
 export async function putExpertReview(
@@ -98,13 +110,13 @@ export async function putExpertReview(
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
   try {
-    await http.post(`/api/expert/reviews/${answerId}/resolve`, JSON.stringify({
-      AnswerText: payload.answerText,
-      StructuredDiagnosis: payload.structuredDiagnosis,
-      DifferentialDiagnoses: payload.differentialDiagnoses,
-      ReviewNote: payload.reviewNote,
-    }), {
-      headers: { 'Content-Type': 'application/json' },
+    await http.post(`/api/expert/reviews/${answerId}/resolve`, {
+      answerText: payload.answerText,
+      structuredDiagnosis: payload.structuredDiagnosis,
+      differentialDiagnoses: payload.differentialDiagnoses,
+      reviewNote: payload.reviewNote,
+      keyImagingFindings: payload.keyImagingFindings ?? null,
+      reflectiveQuestions: payload.reflectiveQuestions ?? null,
     });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

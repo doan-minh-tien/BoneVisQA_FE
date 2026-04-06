@@ -11,6 +11,10 @@ export interface VisualQaReport {
   answerText: string;
   suggestedDiagnosis: string;
   keyFindings: string[];
+  /** SEPS: radiology-focused learning narrative (may be prose or newline-separated). */
+  keyImagingFindings?: string | null;
+  /** SEPS: educator prompts for self-reflection. */
+  reflectiveQuestions?: string | null;
   differentialDiagnoses: string[];
   recommendedReadings: Array<{ title?: string; url?: string } | string>;
   citations: VisualQaCitation[];
@@ -81,6 +85,8 @@ export interface CaseDto {
 /** GET /api/lecturer/classes/{classId}/questions */
 export interface LectStudentQuestionDto {
   id: string;
+  /** Use for POST /api/lecturer/triage/{answerId}/escalate when distinct from question id. */
+  answerId?: string | null;
   studentId: string;
   studentName: string;
   studentEmail: string;
@@ -282,6 +288,8 @@ export interface StudentCaseHistoryItem {
   progress?: number;
   status?: 'Pending' | 'PendingExpert' | 'Approved' | 'Revised' | string;
   askedAt?: string;
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
 }
 
 export interface StudentCaseCatalogItem {
@@ -340,6 +348,8 @@ export interface ExpertReviewItem {
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;
   citations?: Citation[];
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
 }
 
 export interface Citation {
