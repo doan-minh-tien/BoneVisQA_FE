@@ -1,18 +1,37 @@
 import type { VisualQaCitation } from '@/lib/api/types';
 
-export function CitationList({ citations }: { citations: VisualQaCitation[] }) {
+const FALLBACK =
+  'No specific literature cited for this deductive reasoning.';
+
+type CitationListProps = {
+  citations: VisualQaCitation[];
+  /** When true, render nothing if there are no citations (legacy behavior). */
+  hideWhenEmpty?: boolean;
+};
+
+export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
   const visibleCitations = citations.filter((citation) => {
     return Boolean(citation.documentUrl && citation.documentUrl.trim());
   });
 
   if (visibleCitations.length === 0) {
-    return null;
+    if (hideWhenEmpty) return null;
+    return (
+      <section>
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Citations / Knowledge base
+        </h3>
+        <div className="rounded-xl border border-border-color bg-surface/80 px-5 py-4 text-sm italic text-text-muted">
+          {FALLBACK}
+        </div>
+      </section>
+    );
   }
 
   return (
     <section>
       <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-        Citations
+        Citations / Knowledge base
       </h3>
       <ul className="space-y-3 rounded-xl border border-border-color bg-surface p-5 text-sm">
         {visibleCitations.map((citation, index) => {

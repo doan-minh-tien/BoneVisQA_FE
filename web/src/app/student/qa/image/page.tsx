@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
@@ -30,8 +30,13 @@ export default function StudentVisualQaImagePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
+  /** `upload` = multipart upload in progress; `analyzing` = bytes sent, waiting on model + server. */
+  const [loadingPhase, setLoadingPhase] = useState<'upload' | 'analyzing'>('upload');
   const [uploadPct, setUploadPct] = useState(0);
+  /** Simulated progress during AI phase (0–100); snaps to 100 when the API returns. */
+  const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
+  const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [annotationBox, setAnnotationBox] = useState<PercentageBoundingBox | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
 
@@ -86,28 +91,48 @@ export default function StudentVisualQaImagePage() {
       const f = e.target.files?.[0];
       if (!f) return;
       setReport(null);
+      setLastSubmittedQuestion(null);
       setFile(f);
       setAnnotationBox(null);
     },
     [],
   );
 
+  const handleUploadProgress = useCallback((pct: number) => {
+    setUploadPct(pct);
+    if (pct >= 100) setLoadingPhase('analyzing');
+  }, []);
+
+  useEffect(() => {
+    if (!loading || loadingPhase !== 'analyzing') {
+      setAnalyzeProgress(0);
+      return;
+    }
+    const start = Date.now();
+    const durationMs = 18000;
+    const id = window.setInterval(() => {
+      const elapsed = Date.now() - start;
+      setAnalyzeProgress(Math.min(95, (elapsed / durationMs) * 95));
+    }, 200);
+    return () => clearInterval(id);
+  }, [loading, loadingPhase]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !question.trim()) {
-      toast.error('Please attach an image and enter a clinical question.');
+      toast.error('Please attach an image and enter your question or observations.');
       return;
     }
+    const q = question.trim();
     setLoading(true);
+    setLoadingPhase('upload');
     setUploadPct(0);
+    setAnalyzeProgress(0);
     setReport(null);
     try {
-      const res = await postStudentVisualQa(
-        file,
-        question.trim(),
-        annotationBox,
-        setUploadPct,
-      );
+      const res = await postStudentVisualQa(file, q, annotationBox, handleUploadProgress);
+      setAnalyzeProgress(100);
+      setLastSubmittedQuestion(q);
       setReport(res);
       toast.success('Diagnostic report generated.');
     } catch (err) {
@@ -115,15 +140,17 @@ export default function StudentVisualQaImagePage() {
     } finally {
       setLoading(false);
       setUploadPct(0);
+      setAnalyzeProgress(0);
+      setLoadingPhase('upload');
     }
   };
 
-  const confidenceScore = report
-    ? Math.min(
-        99.4,
-        Math.max(76.2, 88 + report.keyFindings.length * 1.2 + report.citations.length * 0.5),
-      )
-    : null;
+  const displayedQuestion = useMemo(() => {
+    if (!report) return '';
+    const fromApi = report.questionText?.trim();
+    if (fromApi) return fromApi;
+    return lastSubmittedQuestion?.trim() ?? '';
+  }, [report, lastSubmittedQuestion]);
 
   return (
     <div className="dark flex min-h-screen flex-col bg-background text-text-main">
@@ -195,7 +222,7 @@ export default function StudentVisualQaImagePage() {
             </div>
             <div>
               <label htmlFor="q" className="block text-sm font-medium text-text-main">
-                Clinical question
+                Your question / observations
               </label>
               <textarea
                 id="q"
@@ -210,29 +237,51 @@ export default function StudentVisualQaImagePage() {
             {question.trim() ? (
               <div className="rounded-xl border border-border-color bg-background/55 p-4">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Submitted question
+                  Question preview
                 </p>
                 <p className="text-sm leading-relaxed text-text-main">{question.trim()}</p>
               </div>
             ) : null}
-            {loading && (
+            {loading && loadingPhase === 'upload' ? (
               <div className="rounded-xl border border-border-color bg-background/55 p-4">
                 <div className="mb-2 flex justify-between text-xs uppercase tracking-[0.16em] text-text-muted">
-                  <span>Sending request…</span>
+                  <span>Uploading image…</span>
                   <span>{uploadPct}%</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-surface">
                   <div
-                    className="h-full bg-cyan-accent transition-all"
+                    className="h-full bg-cyan-accent transition-all duration-300"
                     style={{ width: `${uploadPct}%` }}
                   />
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-sm text-text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
-                  Running multimodal retrieval and report synthesis...
+              </div>
+            ) : null}
+            {loading && loadingPhase === 'analyzing' ? (
+              <div className="rounded-xl border border-cyan-accent/25 bg-cyan-accent/5 p-6">
+                <div className="flex flex-col items-center justify-center gap-4 text-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
+                  <p className="text-sm font-medium text-text-main">
+                    Analyzing medical image… Deducing clinical logic…
+                  </p>
+                  <p className="max-w-md text-xs text-text-muted">
+                    Upload finished. The model is retrieving evidence and composing your structured
+                    report—this can take longer than the upload.
+                  </p>
+                  <div className="w-full max-w-md space-y-2">
+                    <div className="flex justify-between text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                      <span>AI reasoning</span>
+                      <span>{Math.round(analyzeProgress)}%</span>
+                    </div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-surface">
+                      <div
+                        className="h-full rounded-full bg-cyan-accent transition-[width] duration-300 ease-out"
+                        style={{ width: `${Math.min(100, analyzeProgress)}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
+            ) : null}
               <Button type="submit" className="w-full sm:w-auto" isLoading={loading} disabled={loading}>
                 {!loading && <Send className="h-4 w-4" />}
                 Generate diagnostic report
@@ -253,10 +302,21 @@ export default function StudentVisualQaImagePage() {
                 <header className="rounded-xl border border-border-color bg-surface p-5">
                   <h2 className="text-lg font-semibold text-text-main">Medical AI report</h2>
                   <p className="mt-1 text-xs text-text-muted">
-                    Educational simulation — always correlate with clinical context and formal imaging
+                    Educational use — always correlate with clinical context and formal imaging
                     interpretation.
                   </p>
                 </header>
+
+                <section className="rounded-xl border border-cyan-accent/30 bg-gradient-to-br from-cyan-accent/10 to-background p-5">
+                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+                    Your original question
+                  </h3>
+                  <p className="text-sm leading-relaxed text-text-main">
+                    {displayedQuestion || (
+                      <span className="italic text-text-muted">No question text was returned.</span>
+                    )}
+                  </p>
+                </section>
 
                 <section>
                   <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
@@ -281,80 +341,79 @@ export default function StudentVisualQaImagePage() {
                         ),
                       }}
                     >
-                      {report.answerText || '_No narrative returned._'}
+                      {report.answerText?.trim() || '_No narrative returned._'}
                     </ReactMarkdown>
                   </div>
                 </section>
 
-                {report.suggestedDiagnosis?.trim() ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Suggested diagnosis
-                    </h3>
-                    <div className="rounded-xl border border-border-color bg-surface p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <p className="max-w-2xl text-lg font-semibold leading-relaxed text-text-main">
-                          {report.suggestedDiagnosis}
-                        </p>
-                        {confidenceScore ? (
-                          <span className="rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 text-sm font-semibold text-cyan-accent">
-                            {confidenceScore.toFixed(1)}% confidence
+                <section>
+                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+                    Suggested diagnosis
+                  </h3>
+                  <div className="rounded-xl border-2 border-cyan-accent/40 bg-surface p-5 shadow-[0_0_0_1px_rgba(0,229,255,0.12)]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <p className="max-w-2xl text-lg font-semibold leading-relaxed text-text-main">
+                        {report.suggestedDiagnosis?.trim() ? (
+                          report.suggestedDiagnosis
+                        ) : (
+                          <span className="text-base font-normal italic text-text-muted">
+                            No suggested diagnosis was provided in this response.
                           </span>
-                        ) : null}
-                      </div>
+                        )}
+                      </p>
+                      {typeof report.aiConfidenceScore === 'number' &&
+                      Number.isFinite(report.aiConfidenceScore) ? (
+                        <span className="rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 text-sm font-semibold text-cyan-accent">
+                          {report.aiConfidenceScore.toFixed(1)}% confidence
+                        </span>
+                      ) : null}
                     </div>
-                  </section>
-                ) : null}
+                  </div>
+                </section>
 
-                {report.keyFindings.length > 0 ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Key findings
-                    </h3>
-                    <div className="rounded-xl border border-border-color bg-surface p-5">
+                <section>
+                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+                    Key findings
+                  </h3>
+                  <div className="rounded-xl border border-border-color bg-surface p-5">
+                    {report.keyFindings.length > 0 ? (
                       <ul className="space-y-3 text-sm text-text-main">
-                      {report.keyFindings.map((k, i) => (
+                        {report.keyFindings.map((k, i) => (
                           <li key={i} className="flex items-start gap-3">
                             <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-accent" />
                             <span className="leading-relaxed">{k}</span>
                           </li>
-                      ))}
+                        ))}
                       </ul>
-                    </div>
-                  </section>
-                ) : null}
+                    ) : (
+                      <p className="text-sm italic text-text-muted">No key findings listed.</p>
+                    )}
+                  </div>
+                </section>
 
-                {report.differentialDiagnoses.length > 0 ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Differential diagnoses
-                    </h3>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {report.differentialDiagnoses.map((k, i) => {
-                        const probability = Math.max(38, 82 - i * 14);
-                        return (
-                          <div
+                <section>
+                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+                    Differential diagnoses
+                  </h3>
+                  <div className="space-y-3">
+                    {report.differentialDiagnoses.length > 0 ? (
+                      <ol className="list-decimal space-y-3 pl-5 text-sm text-text-main marker:font-semibold marker:text-cyan-accent">
+                        {report.differentialDiagnoses.map((d, i) => (
+                          <li
                             key={i}
-                            className="rounded-xl border border-border-color bg-surface p-4"
+                            className="rounded-lg border border-border-color bg-surface/90 py-3 pl-2 pr-4 leading-relaxed"
                           >
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-text-main">{k}</p>
-                              <span className="text-xs font-semibold text-text-muted">
-                                {probability}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 overflow-hidden rounded-full bg-background">
-                              <div
-                                className="h-full rounded-full bg-cyan-accent"
-                                style={{ width: `${probability}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ) : null}
+                            {d}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <div className="rounded-xl border border-border-color bg-surface p-5 text-sm italic text-text-muted">
+                        No differential diagnoses were listed.
+                      </div>
+                    )}
+                  </div>
+                </section>
 
                 {report.recommendedReadings.length > 0 ? (
                   <section>
