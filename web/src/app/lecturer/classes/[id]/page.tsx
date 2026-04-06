@@ -1,17 +1,17 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import StatCard from '@/components/StatCard';
+import ClassManagementWorkbench from '@/components/lecturer/classes/ClassManagementWorkbench';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
+import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
 import {
   Users,
   Award,
   ArrowLeft,
   Settings,
-  Clock,
-  Calendar,
-  MapPin,
   Plus,
   ChevronRight,
   Search,
@@ -22,129 +22,27 @@ import {
   X,
   MessageSquare,
   Eye,
+  Upload,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  FolderOpen,
+  BarChart3,
+  Clock,
 } from 'lucide-react';
 import {
+  getClassById,
   getClassStudents,
   getAvailableStudents,
   enrollStudent,
   removeStudent,
   getClassStats,
+  updateClass,
+  deleteClass,
 } from '@/lib/api/lecturer';
-import type { StudentEnrollment, ClassStats } from '@/lib/api/types';
-
-// Mock class data
-const classesData: Record<string, {
-  name: string;
-  code: string;
-  cohort: string;
-  status: 'active' | 'upcoming' | 'completed';
-  description: string;
-  schedule: string;
-  room: string;
-  startDate: string;
-  endDate: string;
-  studentCount: number;
-  completionRate: number;
-  avgScore: number;
-  totalCases: number;
-}> = {
-  '1': {
-    name: 'Orthopedics - Advanced Imaging',
-    code: 'ORTH-301',
-    cohort: 'Year 3 - Cohort 2024',
-    status: 'active',
-    description: 'Advanced course covering orthopedic imaging techniques including X-ray interpretation, CT analysis, and MRI evaluation for bone disease diagnosis.',
-    schedule: 'Mon & Wed, 9:00 - 11:00 AM',
-    room: 'Room 301, Medical Building A',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 68,
-    completionRate: 87,
-    avgScore: 82,
-    totalCases: 24,
-  },
-  '2': {
-    name: 'Musculoskeletal Radiology',
-    code: 'RAD-205',
-    cohort: 'Year 2 - Cohort 2025',
-    status: 'active',
-    description: 'Comprehensive study of musculoskeletal system imaging, focusing on bone structure analysis and disease pattern recognition.',
-    schedule: 'Tue & Fri, 10:30 AM - 12:30 PM',
-    room: 'Room 205, Radiology Center',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 72,
-    completionRate: 92,
-    avgScore: 88,
-    totalCases: 24,
-  },
-  '3': {
-    name: 'Clinical Practice - Bone Diseases',
-    code: 'CLIN-401',
-    cohort: 'Year 4 - Cohort 2023',
-    status: 'active',
-    description: 'Hands-on clinical practice for diagnosing and managing various bone diseases using visual question answering techniques.',
-    schedule: 'Mon, 1:00 - 4:00 PM',
-    room: 'Clinical Lab 2, Hospital Wing',
-    startDate: 'Jan 6, 2026',
-    endDate: 'May 22, 2026',
-    studentCount: 44,
-    completionRate: 95,
-    avgScore: 91,
-    totalCases: 25,
-  },
-};
-
-
-const classAssignments = [
-  {
-    id: '1',
-    title: 'Case Analysis: Complex Tibial Fractures',
-    className: 'ORTH-301',
-    dueDate: 'Today, 11:59 PM',
-    totalStudents: 68,
-    submitted: 52,
-    graded: 28,
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    title: 'Quiz: Bone Density Assessment',
-    className: 'ORTH-301',
-    dueDate: 'Mar 15, 2026',
-    totalStudents: 68,
-    submitted: 0,
-    graded: 0,
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    title: 'Lab Report: X-ray Interpretation',
-    className: 'ORTH-301',
-    dueDate: 'Feb 28, 2026',
-    totalStudents: 68,
-    submitted: 68,
-    graded: 68,
-    status: 'completed' as const,
-  },
-  {
-    id: '4',
-    title: 'Midterm: Orthopedic Imaging Fundamentals',
-    className: 'ORTH-301',
-    dueDate: 'Feb 14, 2026',
-    totalStudents: 68,
-    submitted: 67,
-    graded: 67,
-    status: 'completed' as const,
-  },
-];
-
-
-const statusConfig = {
-  active: { color: 'bg-success/10 text-success border-success/20', label: 'Active' },
-  upcoming: { color: 'bg-warning/10 text-warning border-warning/20', label: 'Upcoming' },
-  completed: { color: 'bg-muted text-muted-foreground border-border', label: 'Completed' },
-};
+import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
+import { getApiErrorMessage } from '@/lib/api/client';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto } from '@/lib/api/types';
 
 const tabs = ['Students', 'Assignments', 'Settings'] as const;
 
@@ -154,7 +52,13 @@ export default function ClassDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: classId } = use(params);
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>('Students');
+
+  // Class data
+  const [classData, setClassData] = useState<ClassItem | null>(null);
+  const [classLoading, setClassLoading] = useState(true);
+  const [classError, setClassError] = useState('');
 
   // Stats state
   const [classStats, setClassStats] = useState<ClassStats | null>(null);
@@ -174,10 +78,53 @@ export default function ClassDetailPage({
   // Remove dialog
   const [removeTarget, setRemoveTarget] = useState<StudentEnrollment | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
 
+  const [classQuizzes, setClassQuizzes] = useState<QuizDto[]>([]);
+  const [classQuizzesLoading, setClassQuizzesLoading] = useState(true);
+  const [quizRepoSearch, setQuizRepoSearch] = useState('');
+
+  // Edit class dialog
+  const [showEdit, setShowEdit] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editSemester, setEditSemester] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Delete class dialog
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Load class detail
+  useEffect(() => {
+    setClassLoading(true);
+    (async () => {
+      try {
+        const data = await getClassById(classId);
+        setClassData(data);
+        setEditName(data.className);
+        setEditSemester(data.semester);
+      } catch (e) {
+        setClassError(getApiErrorMessage(e) || 'Failed to load class.');
+      } finally {
+        setClassLoading(false);
+      }
+    })();
+  }, [classId]);
+
+  const refreshClassRosterAndStats = useCallback(async () => {
+    try {
+      const [s, st] = await Promise.all([getClassStudents(classId), getClassStats(classId)]);
+      setStudents(s);
+      setClassStats(st);
+    } catch {
+      // silently fail
+    }
+  }, [classId]);
 
   useEffect(() => {
-    async function fetchStudents() {
+    setStudentsLoading(true);
+    (async () => {
       try {
         const data = await getClassStudents(classId);
         setStudents(data);
@@ -186,19 +133,34 @@ export default function ClassDetailPage({
       } finally {
         setStudentsLoading(false);
       }
-    }
+    })();
 
-    async function fetchStats() {
+    (async () => {
       try {
         const data = await getClassStats(classId);
         setClassStats(data);
       } catch {
         // silently fail
       }
-    }
+    })();
+  }, [classId]);
 
-    fetchStudents();
-    fetchStats();
+  useEffect(() => {
+    let cancelled = false;
+    setClassQuizzesLoading(true);
+    (async () => {
+      try {
+        const list = await getClassQuizzes(classId);
+        if (!cancelled) setClassQuizzes(list);
+      } catch {
+        if (!cancelled) setClassQuizzes([]);
+      } finally {
+        if (!cancelled) setClassQuizzesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [classId]);
 
   const handleOpenEnroll = async () => {
@@ -250,6 +212,38 @@ export default function ClassDetailPage({
     }
   };
 
+  const handleEditClass = async () => {
+    if (!editName.trim() || !editSemester.trim()) {
+      setEditError('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    setEditing(true);
+    setEditError('');
+    try {
+      const updated = await updateClass(classId, {
+        className: editName.trim(),
+        semester: editSemester.trim(),
+      });
+      setClassData(updated);
+      setShowEdit(false);
+    } catch (e) {
+      setEditError(getApiErrorMessage(e) || 'Cập nhật thất bại.');
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    setDeleting(true);
+    try {
+      await deleteClass(classId);
+      router.push('/lecturer/classes');
+    } catch (e) {
+      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
+      setDeleting(false);
+    }
+  };
+
   const filteredStudents = students.filter((s) => {
     const q = studentSearch.toLowerCase();
     return (
@@ -268,8 +262,14 @@ export default function ClassDetailPage({
     );
   });
 
-  const classData = classesData[classId] || classesData['1'];
-  const config = statusConfig[classData.status];
+  const filteredClassQuizzes = classQuizzes.filter((q) => {
+    const s = quizRepoSearch.trim().toLowerCase();
+    if (!s) return true;
+    return (
+      (q.title?.toLowerCase().includes(s) ?? false) ||
+      (q.topic?.toLowerCase().includes(s) ?? false)
+    );
+  });
 
   const stats = [
     {
@@ -309,372 +309,636 @@ export default function ClassDetailPage({
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="h-auto bg-card border-b border-border px-6 py-4">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-          <Link href="/lecturer/classes" className="hover:text-primary transition-colors">
-            My Classes
-          </Link>
-          <ChevronRight className="w-4 h-4" />
-          <span className="text-card-foreground font-medium">{classData.name}</span>
-        </div>
-
-        {/* Class Info */}
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-xl font-semibold text-card-foreground">{classData.name}</h1>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium border ${config.color}`}>
-                {config.label}
-              </span>
-            </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>{classData.code}</span>
-              <span>•</span>
-              <span>{classData.cohort}</span>
-            </div>
+      <header className="sticky top-0 z-30 bg-background/90 border-b border-border/60 backdrop-blur-md px-8 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <nav className="flex items-center gap-6">
+              <Link href="/lecturer" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/lecturer/classes" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
+                Classes
+              </Link>
+              <Link href="/lecturer/reports" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                Reports
+              </Link>
+              <Link href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+                Settings
+              </Link>
+            </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/lecturer/classes"
-              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors duration-150 text-sm"
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setImportPreviewOpen(true)}
+              className="flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </Link>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer">
-              <Settings className="w-4 h-4" />
-              Edit Class
+              <Upload className="h-4 w-4" />
+              Excel Import
             </button>
+            <Link
+              href="/lecturer/quizzes/create"
+              className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary/90 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              Assign Quiz
+            </Link>
           </div>
         </div>
       </header>
 
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {stats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-border mb-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-150 cursor-pointer ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-card-foreground'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'Students' && (
+      <div className="p-8 lg:p-12 max-w-7xl mx-auto">
+        {/* Page Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-12">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-muted-foreground">{students.length} students enrolled</p>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Search students..."
-                    value={studentSearch}
-                    onChange={(e) => setStudentSearch(e.target.value)}
-                    className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
-                  />
-                </div>
+            <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <Link href="/lecturer/classes" className="hover:text-primary transition-colors">
+                Classes
+              </Link>
+              <ChevronRight className="h-3 w-3" />
+              <span className="font-semibold text-primary">{classData?.className ?? '...'}</span>
+            </nav>
+            {classLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Loading...</p>
               </div>
-              <button
-                onClick={handleOpenEnroll}
-                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Add Student
-              </button>
+            ) : classError ? (
+              <p className="text-sm text-destructive">{classError}</p>
+            ) : (
+              <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
+                {classData?.className}
+              </h1>
+            )}
+            <p className="mt-2 max-w-md text-muted-foreground">
+              Manage surgical rotations, import student rosters, and assign diagnostic assessments.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-input transition-colors cursor-pointer"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-12 gap-8 items-start">
+          {/* Main Left Column */}
+          <div className="col-span-12 space-y-8 lg:col-span-8">
+
+            <ClassManagementWorkbench
+              classId={classId}
+              enrolledCount={students.length}
+              caseActivityCount={classStats?.totalCasesViewed ?? 0}
+              enrolledCapacity={students.length}
+              onRosterChanged={refreshClassRosterAndStats}
+            />
+
+            {/* Active Assignments */}
+            <div>
+              <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {([] as any[]).map((assignment) => (
+                    <AssignmentCard key={assignment.id} {...assignment} />
+                  ))}
+              </div>
             </div>
 
-            {studentsLoading ? (
-              <div className="text-center py-16 bg-card rounded-xl border border-border">
-                <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
-                <p className="text-sm text-muted-foreground">Loading students...</p>
-              </div>
-            ) : filteredStudents.length === 0 ? (
-              <div className="text-center py-16 bg-card rounded-xl border border-border">
-                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                <h3 className="text-lg font-semibold text-card-foreground mb-1">
-                  {students.length === 0 ? 'No students enrolled' : 'No students match your search'}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {students.length === 0 ? 'Click "Add Student" to enroll students into this class.' : 'Try a different search term.'}
-                </p>
-              </div>
-            ) : (
-              <div className="bg-card rounded-xl border border-border overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Student</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Code</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Email</th>
-                      <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Enrolled At</th>
-                      <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredStudents.map((student) => (
-                      <tr key={student.enrollmentId} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                              {(student.studentName || '?')
-                                .split(' ')
-                                .map((n) => n[0])
-                                .join('')
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </div>
-                            <span className="font-medium text-sm text-card-foreground">
-                              {student.studentName || 'Unknown'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">
-                          {student.studentCode || '—'}
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Mail className="w-3.5 h-3.5" />
-                            {student.studentEmail || '—'}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">
-                          {student.enrolledAt
-                            ? new Date(student.enrolledAt).toLocaleDateString('vi-VN', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                              })
-                            : '—'}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => setRemoveTarget(student)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 cursor-pointer transition-colors"
-                          >
-                            <UserMinus className="w-3.5 h-3.5" />
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+            {/* Stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {stats.map((stat) => (
+                <StatCard key={stat.title} {...stat} />
+              ))}
+            </div>
 
-        {/* Enroll Dialog */}
-        {showEnroll && (
-          <div className="fixed inset-0 z-100 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setShowEnroll(false)} />
-            <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-card-foreground">Add Students</h3>
-                  <p className="text-sm text-muted-foreground">Select students to enroll into this class</p>
-                </div>
+            {/* Tabs */}
+            <div className="flex items-center gap-1 border-b border-border">
+              {tabs.map((tab) => (
                 <button
-                  onClick={() => setShowEnroll(false)}
-                  className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-150 cursor-pointer ${
+                    activeTab === tab
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  <X className="w-4 h-4 text-muted-foreground" />
+                  {tab}
                 </button>
-              </div>
+              ))}
+            </div>
 
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search by name, email, or code..."
-                  value={availableSearch}
-                  onChange={(e) => setAvailableSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-input border border-border rounded-lg text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
-                {availableLoading ? (
-                  <div className="text-center py-12">
-                    <Loader2 className="w-6 h-6 text-primary mx-auto mb-2 animate-spin" />
-                    <p className="text-sm text-muted-foreground">Loading available students...</p>
+            {/* Tab Content */}
+            {activeTab === 'Students' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-muted-foreground">{students.length} students enrolled</p>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Search students..."
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
+                      />
+                    </div>
                   </div>
-                ) : filteredAvailable.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Users className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                  <button
+                    onClick={handleOpenEnroll}
+                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Student
+                  </button>
+                </div>
+
+                {studentsLoading ? (
+                  <div className="text-center py-16 bg-card rounded-xl border border-border">
+                    <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
+                    <p className="text-sm text-muted-foreground">Loading students...</p>
+                  </div>
+                ) : filteredStudents.length === 0 ? (
+                  <div className="text-center py-16 bg-card rounded-xl border border-border">
+                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <h3 className="text-lg font-semibold text-card-foreground mb-1">
+                      {students.length === 0 ? 'No students enrolled' : 'No students match your search'}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      {availableStudents.length === 0 ? 'No available students to enroll.' : 'No students match your search.'}
+                      {students.length === 0 ? 'Click "Add Student" to enroll students into this class.' : 'Try a different search term.'}
                     </p>
                   </div>
                 ) : (
-                  filteredAvailable.map((student) => {
-                    const isEnrolling = enrollingIds.has(student.studentId);
-                    return (
-                      <div
-                        key={student.studentId}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-input/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                            {(student.studentName || '?')
-                              .split(' ')
-                              .map((n) => n[0])
-                              .join('')
-                              .slice(0, 2)
-                              .toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-card-foreground">
-                              {student.studentName || 'Unknown'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {student.studentCode || ''}{student.studentCode && student.studentEmail ? ' · ' : ''}{student.studentEmail || ''}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleEnroll(student.studentId)}
-                          disabled={isEnrolling}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {isEnrolling ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <UserPlus className="w-3.5 h-3.5" />
-                          )}
-                          {isEnrolling ? 'Adding...' : 'Add'}
-                        </button>
+                  <div className="bg-card rounded-xl border border-border overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Student</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Code</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Email</th>
+                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Enrolled At</th>
+                          <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {filteredStudents.map((student) => (
+                          <tr key={student.enrollmentId} className="hover:bg-muted/20 transition-colors">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+                                  {(student.studentName || '?')
+                                    .split(' ')
+                                    .map((n) => n[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </div>
+                                <span className="font-medium text-sm text-card-foreground">
+                                  {student.studentName || 'Unknown'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-sm text-muted-foreground">
+                              {student.studentCode || '—'}
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <Mail className="w-3.5 h-3.5" />
+                                {student.studentEmail || '—'}
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-sm text-muted-foreground">
+                              {student.enrolledAt
+                                ? new Date(student.enrolledAt).toLocaleDateString('vi-VN', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                  })
+                                : '—'}
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <button
+                                onClick={() => setRemoveTarget(student)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 cursor-pointer transition-colors"
+                              >
+                                <UserMinus className="w-3.5 h-3.5" />
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'Assignments' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm text-muted-foreground">0 assignments</p>
+                  <Link
+                    href={`/lecturer/assignments/create?classId=${classId}`}
+                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Assignment
+                  </Link>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {([] as any[]).map((assignment) => (
+                    <AssignmentCard key={assignment.id} {...assignment} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'Settings' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-card rounded-xl border border-border p-6">
+                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Class Information</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm text-muted-foreground">Class Name</label>
+                      <p className="text-sm font-medium text-card-foreground mt-1">
+                        {classData?.className ?? '—'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm text-muted-foreground">Semester</label>
+                        <p className="text-sm font-medium text-card-foreground mt-1">
+                          {classData?.semester ?? '—'}
+                        </p>
                       </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">Created</label>
+                        <p className="text-sm font-medium text-card-foreground mt-1">
+                          {classData?.createdAt
+                            ? new Date(classData.createdAt).toLocaleDateString('vi-VN', {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                              })
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-card rounded-xl border border-border p-6">
+                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Danger Zone</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Deleting a class will permanently remove it and all its enrollments. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => setShowDelete(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete this class
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Sidebar */}
+          <aside className="col-span-12 space-y-8 lg:col-span-4">
+            {/* Quizzes for this class — sidebar only (main column stays for workbench + assignments) */}
+            <div className="overflow-hidden rounded-2xl bg-slate-900 p-8 text-white shadow-xl">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h4 className="flex items-center gap-2 text-xl font-bold">
+                  <FolderOpen className="h-5 w-5 text-secondary" />
+                  Quizzes in this class
+                </h4>
+                <Link
+                  href="/lecturer/quizzes"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                >
+                  Quiz Library
+                </Link>
+              </div>
+              <p className="mb-4 text-xs text-slate-400">
+                Quiz đã gán cho lớp. Để gán thêm, mở quiz trong thư viện và chọn lớp.
+              </p>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={quizRepoSearch}
+                  onChange={(e) => setQuizRepoSearch(e.target.value)}
+                  placeholder="Tìm theo tên hoặc topic…"
+                  className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-secondary/50 placeholder:text-slate-500"
+                />
+              </div>
+              <div className="max-h-[min(360px,50vh)] space-y-3 overflow-y-auto">
+                {classQuizzesLoading ? (
+                  <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Đang tải…
+                  </div>
+                ) : classQuizzes.length === 0 ? (
+                  <p className="py-4 text-sm text-slate-400">
+                    Chưa có quiz nào. Dùng nút trên hoặc thư viện quiz để gán.
+                  </p>
+                ) : filteredClassQuizzes.length === 0 ? (
+                  <p className="py-4 text-sm text-slate-400">Không khớp từ khóa tìm kiếm.</p>
+                ) : (
+                  filteredClassQuizzes.map((q) => {
+                    const meta = [
+                      q.topic,
+                      q.timeLimit != null ? `${q.timeLimit} min` : null,
+                      q.passingScore != null ? `Pass ${q.passingScore}%` : null,
+                    ].filter(Boolean) as string[];
+                    return (
+                      <Link
+                        key={q.id}
+                        href={`/lecturer/quizzes/${q.id}`}
+                        className="block rounded-xl border border-white/5 bg-white/5 p-4 transition-all hover:bg-white/10"
+                      >
+                        <h6 className="font-bold text-sm leading-snug">{q.title || 'Untitled'}</h6>
+                        {meta.length > 0 ? (
+                          <p className="mt-1 text-xs text-slate-400">
+                            {q.timeLimit != null ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                <span>{meta.join(' · ')}</span>
+                              </span>
+                            ) : (
+                              meta.join(' · ')
+                            )}
+                          </p>
+                        ) : null}
+                      </Link>
                     );
                   })
                 )}
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Remove Confirm Dialog */}
-        {removeTarget && (
-          <div className="fixed inset-0 z-100 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setRemoveTarget(null)} />
-            <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
-              <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-                <UserMinus className="w-6 h-6 text-destructive" />
-              </div>
-              <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Remove Student</h3>
-              <p className="text-sm text-muted-foreground text-center mb-6">
-                Remove <strong className="text-card-foreground">{removeTarget.studentName}</strong> from this class?
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setRemoveTarget(null)}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleRemove}
-                  disabled={removing}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                >
-                  {removing ? 'Removing...' : 'Remove'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'Assignments' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">{classAssignments.length} assignments</p>
               <Link
-                href={`/lecturer/assignments/create?classId=${classId}`}
-                className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
+                href="/lecturer/quizzes"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-secondary py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95"
               >
-                <Plus className="w-4 h-4" />
-                New Assignment
+                <BarChart3 className="h-4 w-4" />
+                Quiz Library
               </Link>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {classAssignments.map((assignment) => (
-                <AssignmentCard key={assignment.id} {...assignment} />
-              ))}
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'Settings' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Class Information */}
-            <div className="bg-card rounded-xl border border-border p-6">
-              <h3 className="text-lg font-semibold text-card-foreground mb-4">Class Information</h3>
+            {/* Class Overview */}
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <h5 className="mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                Class overview
+              </h5>
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-muted-foreground">Description</label>
-                  <p className="text-sm text-card-foreground mt-1">{classData.description}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total enrolled</span>
+                  <span className="font-bold">{students.length}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Class Code</label>
-                    <p className="text-sm font-medium text-card-foreground mt-1">{classData.code}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Cohort</label>
-                    <p className="text-sm font-medium text-card-foreground mt-1">{classData.cohort}</p>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Avg. score</span>
+                  <span className="font-bold text-secondary">
+                    {classStats?.avgQuizScore != null ? `${Math.round(classStats.avgQuizScore)}%` : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Quizzes assigned</span>
+                  <span className="font-bold">{classQuizzes.length}</span>
                 </div>
               </div>
             </div>
-
-            {/* Schedule */}
-            <div className="bg-card rounded-xl border border-border p-6">
-              <h3 className="text-lg font-semibold text-card-foreground mb-4">Schedule & Location</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                  <Clock className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Schedule</p>
-                    <p className="text-sm font-medium text-card-foreground">{classData.schedule}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                  <MapPin className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Location</p>
-                    <p className="text-sm font-medium text-card-foreground">{classData.room}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                  <Calendar className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Duration</p>
-                    <p className="text-sm font-medium text-card-foreground">{classData.startDate} — {classData.endDate}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          </aside>
+        </div>
       </div>
+
+      {/* Enroll Dialog */}
+      {showEnroll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEnroll(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-card-foreground">Add Students</h3>
+                <p className="text-sm text-muted-foreground">Select students to enroll into this class</p>
+              </div>
+              <button
+                onClick={() => setShowEnroll(false)}
+                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by name, email, or code..."
+                value={availableSearch}
+                onChange={(e) => setAvailableSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-input border border-border rounded-lg text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
+              {availableLoading ? (
+                <div className="text-center py-12">
+                  <Loader2 className="w-6 h-6 text-primary mx-auto mb-2 animate-spin" />
+                  <p className="text-sm text-muted-foreground">Loading available students...</p>
+                </div>
+              ) : filteredAvailable.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {availableStudents.length === 0 ? 'No available students to enroll.' : 'No students match your search.'}
+                  </p>
+                </div>
+              ) : (
+                filteredAvailable.map((student) => {
+                  const isEnrolling = enrollingIds.has(student.studentId);
+                  return (
+                    <div
+                      key={student.studentId}
+                      className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-input/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+                          {(student.studentName || '?')
+                            .split(' ')
+                            .map((n) => n[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-card-foreground">
+                            {student.studentName || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {student.studentCode || ''}{student.studentCode && student.studentEmail ? ' · ' : ''}{student.studentEmail || ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleEnroll(student.studentId)}
+                        disabled={isEnrolling}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {isEnrolling ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <UserPlus className="w-3.5 h-3.5" />
+                        )}
+                        {isEnrolling ? 'Adding...' : 'Add'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Confirm Dialog */}
+      {removeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setRemoveTarget(null)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <UserMinus className="w-6 h-6 text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Remove Student</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              Remove <strong className="text-card-foreground">{removeTarget.studentName}</strong> from this class?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRemoveTarget(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemove}
+                disabled={removing}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {removing ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Preview Dialog */}
+      {importPreviewOpen && (
+        <ImportPreviewDialog
+          open={true}
+          classId={classId}
+          onClose={() => setImportPreviewOpen(false)}
+          onSuccess={() => {
+            setImportPreviewOpen(false);
+            refreshClassRosterAndStats();
+          }}
+        />
+      )}
+
+      {/* Edit Class Dialog */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEdit(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-card-foreground">Edit Class</h3>
+              <button
+                onClick={() => setShowEdit(false)}
+                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-muted-foreground">Class Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Semester</label>
+                <input
+                  type="text"
+                  value={editSemester}
+                  onChange={(e) => setEditSemester(e.target.value)}
+                  placeholder="e.g. 2026-Spring"
+                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              {editError && (
+                <p className="text-sm text-destructive">{editError}</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowEdit(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditClass}
+                disabled={editing}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {editing ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Class Dialog */}
+      {showDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowDelete(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Delete Class?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              Are you sure you want to delete <strong>{classData?.className}</strong>? All enrollments will be removed. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDelete(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteClass}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

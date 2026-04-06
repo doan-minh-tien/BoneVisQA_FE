@@ -1,71 +1,126 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import {
   Users,
   GraduationCap,
   UserCog,
-  BookOpen,
+  TrendingUp,
+  FileText,
+  Award,
+  Clock,
 } from 'lucide-react';
 
 import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
 import SystemActivityFeed from '@/components/admin/dashboard/SystemActivityFeed';
-import QuickStats from '@/components/admin/dashboard/QuickStats';
 import { AdminDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
+import {
+  fetchAdminUserStats,
+  fetchAdminActivityStats,
+  fetchAdminRagStats,
+  fetchAdminExpertReviewStats,
+  fetchAdminRecentUsersPage,
+  type AdminUserStat,
+  type AdminActivityStat,
+  type AdminRagStat,
+  type AdminExpertReviewStat,
+  type AdminRecentUser,
+} from '@/lib/api/admin-dashboard';
+import { useToast } from '@/components/ui/toast';
 
-interface UserStatResult {
-  totalUsers: number;
-  activeUsers: number;
-  inactiveUsers: number;
-  pendingUsers: number;
-  newUsersThisMonth: number;
-  usersByRole: {
-    Student?: number;
-    Lecturer?: number;
-    Admin?: number;
-    Expert?: number;
-  };
-}
+const RECENT_USERS_PAGE_SIZE = 8;
 
 export default function AdminDashboardPage() {
-  const [statsData, setStatsData] = useState<UserStatResult | null>(null);
+  const toast = useToast();
+  const recentListReady = useRef(false);
+  const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
+  const [activityStats, setActivityStats] = useState<AdminActivityStat | null>(null);
+  const [ragStats, setRagStats] = useState<AdminRagStat | null>(null);
+  const [expertStats, setExpertStats] = useState<AdminExpertReviewStat | null>(null);
+  const [recentUsers, setRecentUsers] = useState<AdminRecentUser[]>([]);
+  const [recentPage, setRecentPage] = useState(1);
+  const [recentTotal, setRecentTotal] = useState(0);
+  const [recentPaging, setRecentPaging] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchStats() {
+    let cancelled = false;
+    (async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-        const response = await fetch(`${apiUrl}/api/Admin/users`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setStatsData(data.result);
+        const [user, rag, expert, recentData, activity] = await Promise.all([
+          fetchAdminUserStats(),
+          fetchAdminRagStats(),
+          fetchAdminExpertReviewStats(),
+          fetchAdminRecentUsersPage(1, RECENT_USERS_PAGE_SIZE),
+          fetchAdminActivityStats(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
+        ]);
+        if (!cancelled) {
+          setUserStats(user);
+          setRagStats(rag);
+          setExpertStats(expert);
+          setRecentUsers(recentData.users);
+          setRecentTotal(recentData.totalCount);
+          setRecentPage(1);
+          setActivityStats(activity);
+          recentListReady.current = true;
         }
-      } catch (error) {
-        console.error("Failed to fetch user stats:", error);
+      } catch (err) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'Failed to load dashboard data.';
+          console.error('Failed to fetch admin stats:', msg);
+          setStatsError(msg);
+          toast.error(msg);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    }
-    
-    fetchStats();
-  }, []);
+    })();
+    return () => { cancelled = true; };
+  }, [toast]);
 
-  // Map data from API for Stats
-  const totalUsers = statsData?.totalUsers || 0;
-  const newUsers = statsData?.newUsersThisMonth || 0;
-  const students = statsData?.usersByRole?.Student || 0;
-  const lecturers = statsData?.usersByRole?.Lecturer || 0;
-  const experts = statsData?.usersByRole?.Expert || 0;
-  const admins = statsData?.usersByRole?.Admin || 0;
+  useEffect(() => {
+    if (!recentListReady.current) return;
+    let cancelled = false;
+    (async () => {
+      setRecentPaging(true);
+      try {
+        const recentData = await fetchAdminRecentUsersPage(recentPage, RECENT_USERS_PAGE_SIZE);
+        if (!cancelled) {
+          setRecentUsers(recentData.users);
+          setRecentTotal(recentData.totalCount);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : 'Failed to load users.');
+        }
+      } finally {
+        if (!cancelled) setRecentPaging(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ refetch khi đổi trang
+  }, [recentPage]);
+
+  const totalUsers = userStats?.totalUsers || 0;
+  const newUsers = userStats?.newUsersThisMonth || 0;
+  const students = userStats?.usersByRole?.['Student'] || 0;
+  const lecturers = userStats?.usersByRole?.['Lecturer'] || 0;
+  const experts = userStats?.usersByRole?.['Expert'] || 0;
+  const admins = userStats?.usersByRole?.['Admin'] || 0;
+
+  const roleDistribution = [
+    { role: 'Students', count: students, color: 'bg-primary' },
+    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
+    { role: 'Experts', count: experts, color: 'bg-warning' },
+    { role: 'Admins', count: admins, color: 'bg-destructive' },
+  ].map(item => ({
+    ...item,
+    percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
+  })).sort((a,b) => b.count - a.count);
 
   const currentStats = [
     {
@@ -93,24 +148,14 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-warning/10 text-warning',
     },
     {
-      title: 'Active Courses',
-      value: '—',
-      change: 'Awaiting API',
+      title: 'Experts',
+      value: experts.toString(),
+      change: 'reviewing cases',
       changeType: 'positive' as const,
-      icon: BookOpen,
+      icon: Award,
       iconColor: 'bg-success/10 text-success',
     },
   ];
-
-  const roleDistribution = [
-    { role: 'Students', count: students, color: 'bg-primary' },
-    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
-    { role: 'Experts', count: experts, color: 'bg-warning' },
-    { role: 'Admins', count: admins, color: 'bg-destructive' },
-  ].map(item => ({
-    ...item,
-    percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
-  })).sort((a,b) => b.count - a.count);
 
   return (
     <div className="min-h-screen">
@@ -119,6 +164,10 @@ export default function AdminDashboardPage() {
       <div className="mx-auto max-w-[1600px] p-6">
         {isLoading ? (
           <AdminDashboardSkeleton />
+        ) : statsError ? (
+          <div className="rounded-2xl border border-destructive bg-destructive/10 px-6 py-8 text-center">
+            <p className="font-medium text-destructive">{statsError}</p>
+          </div>
         ) : (
           <>
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -128,32 +177,92 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <div className="space-y-6 lg:col-span-2">
-                <RecentUsersTable />
+              <div className="lg:col-span-2 space-y-6">
+                <RecentUsersTable
+                  users={recentUsers}
+                  isLoading={isLoading}
+                  isPaging={recentPaging}
+                  page={recentPage}
+                  pageSize={RECENT_USERS_PAGE_SIZE}
+                  totalCount={recentTotal}
+                  onPageChange={setRecentPage}
+                />
                 <RoleDistributionChart isLoading={false} roleDistribution={roleDistribution} />
               </div>
+
               <div className="space-y-6">
-                <SystemActivityFeed />
-                <QuickStats />
+                <SystemActivityFeed activityStats={activityStats} />
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    <h2 className="font-semibold text-card-foreground">Platform Stats</h2>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-card-foreground">Total Cases</span>
+                      </div>
+                      <span className="text-sm font-semibold text-card-foreground">
+                        {ragStats?.totalDocuments?.toLocaleString() ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Award className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-card-foreground">Total Reviews</span>
+                      </div>
+                      <span className="text-sm font-semibold text-card-foreground">
+                        {expertStats?.totalReviews?.toLocaleString() ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-card-foreground">Pending Reviews</span>
+                      </div>
+                      <span className="text-sm font-semibold text-warning">
+                        {expertStats?.pendingAnswers?.toLocaleString() ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm text-card-foreground">Document Chunks</span>
+                      </div>
+                      <span className="text-sm font-semibold text-card-foreground">
+                        {ragStats?.totalChunks?.toLocaleString() ?? '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-3xl font-bold text-primary">—</p>
-                <p className="mt-1 text-sm text-muted-foreground">System Uptime</p>
+              <div className="bg-card rounded-xl p-4 border border-border text-center">
+                <p className="text-3xl font-bold text-primary">
+                  {expertStats?.approvedReviews?.toLocaleString() ?? '—'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">Approved Reviews</p>
               </div>
-              <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-3xl font-bold text-success">—</p>
-                <p className="mt-1 text-sm text-muted-foreground">Completion Rate</p>
+              <div className="bg-card rounded-xl p-4 border border-border text-center">
+                <p className="text-3xl font-bold text-success">
+                  {ragStats?.totalCitations?.toLocaleString() ?? '—'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">Total Citations</p>
               </div>
-              <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-3xl font-bold text-warning">—</p>
-                <p className="mt-1 text-sm text-muted-foreground">Avg. AI Rating</p>
+              <div className="bg-card rounded-xl p-4 border border-border text-center">
+                <p className="text-3xl font-bold text-warning">
+                  {ragStats?.outdatedDocuments?.toLocaleString() ?? '—'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">Outdated Documents</p>
               </div>
-              <div className="rounded-xl border border-border bg-card p-4 text-center">
-                <p className="text-3xl font-bold text-accent">—</p>
-                <p className="mt-1 text-sm text-muted-foreground">Certificates Issued</p>
+              <div className="bg-card rounded-xl p-4 border border-border text-center">
+                <p className="text-3xl font-bold text-accent">
+                  {userStats?.pendingUsers?.toLocaleString() ?? '—'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">Pending Users</p>
               </div>
             </div>
           </>

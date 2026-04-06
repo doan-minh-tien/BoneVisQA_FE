@@ -1,15 +1,19 @@
 import { http, getApiErrorMessage } from './client';
 import type {
+  AssignedQuizItem,
+  QuizSessionDto,
   StudentCaseCatalogItem,
   StudentCaseHistoryItem,
   StudentPracticeQuiz,
   StudentProfile,
   StudentProfileUpdatePayload,
   StudentProgress,
-  StudentRecentActivityItem,
-  StudentTopicStat,
   StudentQuizAnswer,
   StudentQuizSubmissionResult,
+  StudentQuizResultDto,
+  StudentRecentActivityItem,
+  StudentSubmitQuestionDto,
+  StudentTopicStat,
 } from './types';
 
 function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty'] {
@@ -105,6 +109,54 @@ export async function fetchStudentPracticeQuiz(topic: string): Promise<StudentPr
   }
 }
 
+/**
+ * AI Generate Practice Quiz: Student tự tạo quiz ôn luyện bằng AI
+ */
+export async function generateAIPracticeQuiz(
+  topic: string,
+  questionCount?: number,
+  difficulty?: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  questions: Array<{
+    questionText: string;
+    type: string;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
+    correctAnswer: string;
+    caseId?: string;
+    caseTitle?: string;
+  }>;
+}> {
+  try {
+    const { data } = await http.post<{
+      success: boolean;
+      message?: string;
+      questions: Array<{
+        questionText: string;
+        type: string;
+        optionA: string;
+        optionB: string;
+        optionC: string;
+        optionD: string;
+        correctAnswer: string;
+        caseId?: string;
+        caseTitle?: string;
+      }>;
+    }>('/api/student/quizzes/practice/generate', {
+      topic,
+      questionCount,
+      difficulty,
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function submitStudentQuiz(
   attemptId: string,
   answers: StudentQuizAnswer[],
@@ -113,6 +165,70 @@ export async function submitStudentQuiz(
     const { data } = await http.post<StudentQuizSubmissionResult>('/api/student/quizzes/submit', {
       attemptId,
       answers,
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get all quizzes assigned to the current student (from enrolled classes).
+ */
+export async function getAssignedQuizzes(): Promise<AssignedQuizItem[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/student/quizzes');
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown[] }).items ?? []
+        : [];
+    return (list as Record<string, unknown>[]).map(mapQuizListItem);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
+  return {
+    quizId: String(item.quizId ?? item.QuizId ?? ''),
+    quizName: String(item.title ?? item.Title ?? item.quizName ?? 'Untitled quiz'),
+    classId: String(item.classId ?? item.ClassId ?? ''),
+    className: String(item.className ?? item.ClassName ?? ''),
+    totalQuestions: typeof item.totalQuestions === 'number' ? item.totalQuestions : 0,
+    timeLimit: typeof item.timeLimit === 'number' ? item.timeLimit : null,
+    passingScore: typeof item.passingScore === 'number' ? item.passingScore : null,
+    openTime: item.openTime != null ? String(item.openTime) : null,
+    closeTime: item.closeTime != null ? String(item.closeTime) : null,
+    isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
+    score: typeof item.score === 'number' ? item.score : null,
+  };
+}
+
+/**
+ * Start a quiz session: GET /api/student/quizzes/{quizId}/start
+ * Returns questions so the student can begin answering.
+ */
+export async function startQuizSession(quizId: string): Promise<QuizSessionDto> {
+  try {
+    const { data } = await http.get<QuizSessionDto>(`/api/student/quizzes/${quizId}/start`);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Submit all quiz answers.
+ */
+export async function submitQuizSession(
+  attemptId: string,
+  answers: StudentSubmitQuestionDto[],
+): Promise<StudentQuizResultDto> {
+  try {
+    const { data } = await http.post<StudentQuizResultDto>('/api/student/quizzes/submit', {
+      attemptId,
+      answers: answers.map((a) => ({ questionId: a.questionId, studentAnswer: a.studentAnswer })),
     });
     return data;
   } catch (e) {
@@ -215,3 +331,6 @@ export async function fetchStudentRecentActivity(): Promise<StudentRecentActivit
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// Re-export types so other modules can import from '@/lib/api/student'
+export type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto };

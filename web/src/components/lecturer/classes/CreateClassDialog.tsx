@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createClass } from '@/lib/api/lecturer';
+import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem } from '@/lib/api/types';
 
 interface CreateClassDialogProps {
@@ -21,7 +22,11 @@ export default function CreateClassDialog({ onClose, onSuccess }: CreateClassDia
     setCreating(true);
     setCreateError('');
     try {
-      const userId = localStorage.getItem('userId') || '';
+      const userId = getStoredUserId();
+      if (!userId) {
+        setCreateError('Chưa đăng nhập hoặc thiếu userId. Vui lòng đăng nhập lại.');
+        return;
+      }
       const created = await createClass({
         className: newClassName.trim(),
         semester: newSemester.trim(),

@@ -12,42 +12,75 @@ export async function fetchLecturerClasses(lecturerId: string): Promise<ClassIte
   }
 }
 
-function mapTriageRow(row: unknown): LecturerTriageRow | null {
+export async function fetchLecturerTriageList(classId: string): Promise<LecturerTriageRow[]> {
+  try {
+    const { data } = await http.get<unknown[]>('/api/lecturer/triage', {
+      params: { classId },
+    });
+    return (data ?? []).map(normalizeTriageRow).filter((x): x is LecturerTriageRow => x !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function getQuestionDetail(
+  classId: string,
+  questionId: string,
+): Promise<unknown> {
+  try {
+    const { data } = await http.get(`/api/lecturer/classes/${classId}/questions/${questionId}`);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function respondToQuestion(
+  classId: string,
+  questionId: string,
+  body: {
+    answerText: string;
+    structuredDiagnosis?: string;
+    differentialDiagnoses?: string;
+    approve: boolean;
+  },
+): Promise<unknown> {
+  try {
+    const { data } = await http.put(
+      `/api/lecturer/classes/${classId}/questions/${questionId}/respond`,
+      body,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function escalateToExpert(answerId: string): Promise<void> {
+  try {
+    await http.post(`/api/lecturer/qa-triage/${answerId}/escalate`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+function normalizeTriageRow(row: unknown): LecturerTriageRow | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const id = String(r.id ?? r.requestId ?? r.RequestId ?? '');
+  const id = String(r.answerId ?? r.AnswerId ?? r.questionId ?? r.QuestionId ?? '');
   if (!id) return null;
+
   return {
     id,
     studentName: String(r.studentName ?? r.StudentName ?? ''),
-    questionSnippet: String(r.questionSnippet ?? r.QuestionSnippet ?? r.question ?? ''),
-    thumbnailUrl: String(r.thumbnailUrl ?? r.ThumbnailUrl ?? r.imageUrl ?? ''),
-    askedAt: String(r.askedAt ?? r.AskedAt ?? r.createdAt ?? ''),
-    similarityScore: Number(r.similarityScore ?? r.SimilarityScore ?? 0),
-    escalated: Boolean(r.escalated ?? r.Escalated ?? false),
+    questionSnippet: String(
+      r.questionText ?? r.QuestionText ?? r.questionSnippet ?? r.question ?? '',
+    ),
+    thumbnailUrl: String(
+      r.thumbnailUrl ?? r.ThumbnailUrl ?? r.caseThumbnailUrl ?? r.imageUrl ?? '',
+    ),
+    askedAt: String(r.askedAt ?? r.AskedAt ?? r.createdAt ?? r.questionCreatedAt ?? ''),
+    similarityScore: Number(r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? 0),
+    escalated: !!(r.isEscalated ?? r.IsEscalated ?? (r.status === 'Escalated' ? true : false)),
   };
-}
-
-export async function fetchLecturerTriageList(classId: string): Promise<LecturerTriageRow[]> {
-  try {
-    const { data } = await http.get<unknown>('/api/lecturer/qa-triage', {
-      params: { classId },
-    });
-    const list = Array.isArray(data)
-      ? data
-      : data && typeof data === 'object' && 'items' in data
-        ? (data as { items: unknown[] }).items
-        : [];
-    return list.map(mapTriageRow).filter((x): x is LecturerTriageRow => x !== null);
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
-
-export async function escalateToExpert(requestId: string): Promise<void> {
-  try {
-    await http.post(`/api/lecturer/qa-triage/${requestId}/escalate`);
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
 }

@@ -78,6 +78,24 @@ export interface CaseDto {
   createdAt: string | null;
 }
 
+/** GET /api/lecturer/classes/{classId}/questions */
+export interface LectStudentQuestionDto {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  caseId: string;
+  caseTitle: string;
+  questionText: string;
+  language?: string | null;
+  createdAt: string | null;
+  answerText?: string | null;
+  answerStatus?: string | null;
+  escalatedById?: string | null;
+  escalatedAt?: string | null;
+  aiConfidenceScore?: number | null;
+}
+
 export interface Announcement {
   id: string;
   classId: string;
@@ -103,6 +121,7 @@ export interface LoginResponse {
   email: string;
   token: string;
   roles: string[];
+  requiresMedicalVerification?: boolean;
 }
 
 export interface LecturerDashboardStats {
@@ -171,6 +190,7 @@ export interface StudentQuizQuestion {
   questionId: string;
   questionText: string;
   type: string;
+  imageUrl?: string;
   optionA: string;
   optionB: string;
   optionC: string;
@@ -182,6 +202,8 @@ export interface StudentPracticeQuiz {
   quizId: string;
   title: string;
   topic: string;
+  difficulty?: string;
+  timeLimit?: number;
   questions: StudentQuizQuestion[];
 }
 
@@ -192,8 +214,58 @@ export interface StudentQuizAnswer {
 
 export interface StudentQuizSubmissionResult {
   attemptId: string;
-  score: number;
-  passingScore: number;
+  quizId: string;
+  score: number | null;
+  passingScore: number | null;
+  passed: boolean;
+  totalQuestions: number;
+  correctAnswers: number;
+}
+
+export interface AssignedQuizItem {
+  quizId: string;
+  quizName: string;
+  classId: string;
+  className: string;
+  totalQuestions: number;
+  timeLimit: number | null;
+  passingScore: number | null;
+  openTime: string | null;
+  closeTime: string | null;
+  isCompleted: boolean;
+  score: number | null;
+}
+
+export interface QuizSessionDto {
+  attemptId: string;
+  quizId: string;
+  title: string;
+  topic: string | null;
+  questions: StudentSessionQuestion[];
+}
+
+export interface StudentSessionQuestion {
+  questionId: string;
+  questionText: string;
+  type: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+}
+
+export interface StudentSubmitQuestionDto {
+  questionId: string;
+  studentAnswer: string;
+}
+
+export interface StudentQuizResultDto {
+  attemptId: string;
+  quizId: string;
+  score: number | null;
+  passingScore: number | null;
   passed: boolean;
   totalQuestions: number;
   correctAnswers: number;
@@ -262,3 +334,205 @@ export interface Citation {
 }
 
 export type ExpertReviewCitation = Citation;
+// ========== Lecturer Quiz Types ==========
+
+export interface QuizDto {
+  id: string;
+  classId: string;
+  title: string;
+  topic: string | null;
+  isAiGenerated: boolean;
+  difficulty: string | null;
+  classification: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  timeLimit: number | null;
+  passingScore: number | null;
+  createdAt: string | null;
+}
+
+export interface ClassQuizDto {
+  classId: string;
+  quizId: string;
+  quizName: string | null;
+  className: string | null;
+  /** Chủ đề quiz (khác tên lớp). */
+  topic?: string | null;
+  assignedAt: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  questionCount?: number;
+}
+
+export interface CreateQuizRequest {
+  title: string;
+  topic?: string;
+  isAiGenerated?: boolean;
+  difficulty?: string;
+  classification?: string;
+  openTime?: string;
+  closeTime?: string;
+  timeLimit?: number;
+  passingScore?: number;
+  classId: string;
+}
+
+export interface QuizQuestionDto {
+  id: string;
+  quizId: string;
+  quizTitle: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  questionText: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  imageUrl?: string | null;
+}
+
+export interface CreateQuizQuestionRequest {
+  quizId: string;
+  caseId?: string;
+  questionText: string;
+  type?: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer: string;
+  imageUrl?: string;
+}
+
+export interface UpdateQuizQuestionRequest {
+  questionText: string;
+  type?: string;
+  correctAnswer?: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  imageUrl?: string;
+}
+
+// ========== AI Quiz Types ==========
+
+export interface AIQuizQuestion {
+  questionText: string;
+  type: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctAnswer: string;
+  caseId?: string;
+  caseTitle?: string;
+  explanation?: string;
+}
+
+export interface AIQuizGenerationResult {
+  success: boolean;
+  message?: string;
+  questions: AIQuizQuestion[];
+  topic?: string;
+  difficulty?: string;
+}
+
+export interface AIAutoGenerateQuizRequest {
+  title: string;
+  topic: string;
+  difficulty?: string;
+  classification?: string;
+  questionCount?: number;
+  classId?: string;
+  openTime?: string;
+  closeTime?: string;
+  timeLimit?: number;
+  passingScore?: number;
+}
+
+export interface AISuggestQuestionsRequest {
+  cases: Array<{
+    caseId?: string;
+    caseTitle?: string | null;
+    caseDescription?: string | null;
+    imageUrl?: string | null;
+    modality?: string | null;
+    keyFindings?: string | null;
+    suggestedDiagnosis?: string | null;
+    difficulty?: string | null;
+  }>;
+  questionsPerCase?: number;
+  difficulty?: string;
+}
+
+export interface ImportStudentsSummary {
+  totalRows: number;
+  successCount: number;
+  failedCount: number;
+  errors: Array<{ row: number; message: string }>;
+  importedStudents: Array<{
+    studentId: string;
+    studentName: string;
+    studentCode: string;
+  }>;
+}
+
+// ========== Lecturer Missing Types ==========
+
+export interface UpdateClassRequest {
+  className: string;
+  semester: string;
+  expertId?: string;
+}
+
+export interface ClassStudentProgress {
+  studentId: string;
+  studentName: string;
+  studentEmail: string | null;
+  studentCode: string | null;
+  totalCasesViewed: number;
+  totalQuestionsAsked: number;
+  avgQuizScore: number | null;
+  quizAttempts: number;
+  escalatedAnswers: number;
+  lastActivityAt: string | null;
+}
+
+export interface LectStudentQuestionDetail {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  caseId: string | null;
+  caseTitle: string | null;
+  caseDescription: string | null;
+  caseThumbnailUrl: string | null;
+  caseDifficulty: string | null;
+  questionText: string;
+  language: string | null;
+  createdAt: string | null;
+  answerId: string | null;
+  answerText: string | null;
+  structuredDiagnosis: string | null;
+  differentialDiagnoses: string | null;
+  answerStatus: string | null;
+  aiConfidenceScore: number | null;
+  reviewedById: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  isEscalated: boolean;
+  escalatedByName: string | null;
+  escalatedAt: string | null;
+}
+
+export interface LecturerAnswer {
+  answerId: string;
+  answerText: string;
+  structuredDiagnosis: string | null;
+  differentialDiagnoses: string | null;
+  status: string;
+  updatedAt: string;
+}

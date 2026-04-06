@@ -18,6 +18,9 @@ export interface RegisterPayload {
   email: string;
   password: string;
   schoolCohort: string;
+  isMedicalStudent: boolean;
+  medicalSchool?: string;
+  medicalStudentId?: string;
 }
 
 export interface RegisterResponse {
@@ -58,6 +61,27 @@ export async function resetPassword(token: string, newPassword: string): Promise
 export async function googleRegister(idToken: string): Promise<RegisterResponse> {
   try {
     const { data } = await http.post<RegisterResponse>('/api/Auths/google-register', { idToken });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface MedicalVerificationPayload {
+  medicalSchool: string;
+  medicalStudentId: string;
+}
+
+export async function requestMedicalVerification(
+  payload: MedicalVerificationPayload,
+  userId?: string,
+): Promise<RegisterResponse> {
+  try {
+    const { data } = await http.post<RegisterResponse>(
+      '/api/Auths/request-medical-verification',
+      payload,
+      userId ? { headers: { 'X-User-Id': userId } } : undefined,
+    );
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

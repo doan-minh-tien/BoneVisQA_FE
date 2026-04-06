@@ -1,14 +1,48 @@
 import { Activity, AlertCircle, Users, BookOpen, ShieldCheck } from 'lucide-react';
+import type { AdminActivityStat } from '@/lib/api/admin-dashboard';
 
-export const systemActivity = [
-  { type: 'user', message: '12 new student registrations approved', time: '30 min ago' },
-  { type: 'alert', message: 'RAG indexing pipeline completed successfully', time: '1 hour ago' },
-  { type: 'course', message: 'New course "Advanced Radiology" created by Dr. Tran', time: '2 hours ago' },
-  { type: 'system', message: 'System backup completed', time: '4 hours ago' },
-  { type: 'alert', message: 'AI model updated to latest version', time: '6 hours ago' },
-];
+interface SystemActivityFeedProps {
+  activityStats?: AdminActivityStat | null;
+}
 
-export default function SystemActivityFeed() {
+export default function SystemActivityFeed({ activityStats }: SystemActivityFeedProps) {
+  const today = new Date().toDateString();
+  const todayData = activityStats?.dailyActivity?.find(
+    (d) => new Date(d.date).toDateString() === today,
+  );
+
+  const caseViewsToday = todayData?.caseViews ?? 0;
+  const questionsToday = todayData?.questions ?? 0;
+  const quizAttemptsToday = todayData?.quizAttempts ?? 0;
+
+  const feedItems = [
+    {
+      type: 'user' as const,
+      message: `${activityStats ? '+' + (activityStats.totalCaseViews - caseViewsToday) : '—'} case views this month`,
+      time: 'all time',
+    },
+    {
+      type: 'course' as const,
+      message: `${caseViewsToday} case views today`,
+      time: 'today',
+    },
+    {
+      type: 'system' as const,
+      message: `${questionsToday} questions asked today`,
+      time: 'today',
+    },
+    {
+      type: 'alert' as const,
+      message: `${quizAttemptsToday} quiz attempts today`,
+      time: 'today',
+    },
+    {
+      type: 'user' as const,
+      message: `Avg quiz score: ${(activityStats?.avgQuizScore ?? 0).toFixed(1)}%`,
+      time: 'overall',
+    },
+  ];
+
   return (
     <div className="bg-card rounded-xl border border-border p-5">
       <div className="flex items-center gap-2 mb-4">
@@ -16,7 +50,7 @@ export default function SystemActivityFeed() {
         <h2 className="font-semibold text-card-foreground">System Activity</h2>
       </div>
       <div className="space-y-3">
-        {systemActivity.map((activity, idx) => (
+        {feedItems.map((activity, idx) => (
           <div key={idx} className="flex items-start gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
               activity.type === 'alert'

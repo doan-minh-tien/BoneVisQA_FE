@@ -1,9 +1,12 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive';
+type Variant = 'primary' | 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive';
+type Size = 'sm' | 'md' | 'lg';
 
 const variantClass: Record<Variant, string> = {
   primary:
+    'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-cyan-accent shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
+  default:
     'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-cyan-accent shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
   secondary:
     'border border-cyan-accent/25 bg-cyan-accent/10 text-cyan-accent hover:bg-cyan-accent/15 focus-visible:ring-cyan-accent',
@@ -16,11 +19,27 @@ const variantClass: Record<Variant, string> = {
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  size?: Size;
   isLoading?: boolean;
 }
 
+const sizeClass: Record<Size, string> = {
+  sm: 'h-9 px-3 text-xs',
+  md: 'h-10 px-3.5 text-sm',
+  lg: 'h-11 px-4 text-sm',
+};
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className = '', variant = 'primary', isLoading, disabled, children, type = 'button', ...rest },
+  {
+    className = '',
+    variant = 'primary',
+    size = 'md',
+    isLoading,
+    disabled,
+    children,
+    type = 'button',
+    ...rest
+  },
   ref,
 ) {
   return (
@@ -29,10 +48,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || isLoading}
       className={`
-        inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium tracking-[0.01em]
+        inline-flex items-center justify-center gap-2 rounded-xl font-medium tracking-[0.01em]
         transition-colors duration-150 cursor-pointer
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background
         disabled:opacity-50 disabled:cursor-not-allowed
+        ${sizeClass[size]}
         ${variantClass[variant]}
         ${className}
       `}

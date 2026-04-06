@@ -1,9 +1,37 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
-const baseURL =
+/** BE gốc chỉ là origin + port, ví dụ http://localhost:5046 — không thêm /api/... */
+export function normalizeApiBaseUrl(raw: string): string {
+  let u = raw.trim().replace(/\/+$/, '');
+  if (!u) return '';
+  // Tránh lỗi 404: user lỡ để NEXT_PUBLIC_API_URL=.../api/Lecturers rồi FE gọi /api/lecturer/classes → URL tách đôi sai
+  u = u.replace(/\/api\/Lecturers$/i, '').replace(/\/api\/lecturer$/i, '');
+  return u.replace(/\/+$/, '');
+}
+
+/**
+ * Ảnh/static từ BE trả về path kiểu `/uploads/images/...` — trình duyệt không được dùng origin Next (3000).
+ * Ghép với NEXT_PUBLIC_API_URL để img src trỏ đúng server API.
+ */
+export function resolveApiAssetUrl(path: string | null | undefined): string {
+  if (path == null || !String(path).trim()) return '';
+  const p = String(path).trim();
+  if (/^(https?:|data:)/i.test(p)) return p;
+  const base = normalizeApiBaseUrl(
+    typeof window !== 'undefined'
+      ? process.env.NEXT_PUBLIC_API_URL || ''
+      : process.env.NEXT_PUBLIC_API_URL || '',
+  );
+  if (!base) return p;
+  const suffix = p.startsWith('/') ? p : `/${p}`;
+  return `${base}${suffix}`;
+}
+
+const baseURL = normalizeApiBaseUrl(
   typeof window !== 'undefined'
     ? process.env.NEXT_PUBLIC_API_URL || ''
-    : process.env.NEXT_PUBLIC_API_URL || '';
+    : process.env.NEXT_PUBLIC_API_URL || '',
+);
 
 export const http = axios.create({
   baseURL: baseURL || undefined,

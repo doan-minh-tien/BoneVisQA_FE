@@ -5,6 +5,10 @@ import type {
   ClassItem,
   ClassStats,
   StudentEnrollment,
+  ImportStudentsSummary,
+  LectStudentQuestionDto,
+  UpdateClassRequest,
+  ClassStudentProgress,
 } from './types';
 
 export async function createClass(body: {
@@ -164,6 +168,127 @@ export async function getClassStats(classId: string): Promise<ClassStats> {
   try {
     const { data } = await http.get<ClassStats>(`/api/lecturer/classes/${classId}/stats`);
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get student questions for a class
+ */
+export async function getStudentQuestions(
+  classId: string,
+  options?: { caseId?: string; studentId?: string },
+): Promise<LectStudentQuestionDto[]> {
+  try {
+    const { data } = await http.get<LectStudentQuestionDto[]>(
+      `/api/lecturer/classes/${classId}/questions`,
+      {
+        params: {
+          caseId: options?.caseId,
+          studentId: options?.studentId,
+        },
+      },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Import students from Excel file
+ */
+export async function importStudentsFromExcel(
+  classId: string,
+  file: File,
+): Promise<ImportStudentsSummary> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const { data } = await http.post<ImportStudentsSummary>(
+      `/api/lecturer/classes/${classId}/import-students`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      },
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Bulk enroll students from list
+ */
+export async function enrollManyStudents(
+  classId: string,
+  studentIds: string[],
+): Promise<StudentEnrollment[]> {
+  try {
+    const { data } = await http.post<StudentEnrollment[]>(
+      `/api/lecturer/classes/${classId}/enrollmany`,
+      { studentIds },
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get a single class by ID
+ */
+export async function getClassById(classId: string): Promise<ClassItem> {
+  try {
+    const { data } = await http.get<ClassItem>(`/api/lecturer/classes/${classId}`);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Update class information
+ */
+export async function updateClass(
+  classId: string,
+  body: UpdateClassRequest,
+): Promise<ClassItem> {
+  try {
+    const { data } = await http.put<ClassItem>(`/api/lecturer/classes/${classId}`, body);
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete a class
+ */
+export async function deleteClass(classId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/classes/${classId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get learning progress for all students in a class
+ */
+export async function getClassStudentProgress(
+  classId: string,
+): Promise<ClassStudentProgress[]> {
+  try {
+    const { data } = await http.get<ClassStudentProgress[]>(
+      `/api/lecturer/classes/${classId}/student-progress`,
+    );
+    return Array.isArray(data) ? data : [];
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

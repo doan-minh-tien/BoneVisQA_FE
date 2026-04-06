@@ -17,6 +17,11 @@ import {
   UserCog,
   ClipboardList,
   Users,
+  ShieldCheck,
+  FileQuestion,
+  BarChart3,
+  Megaphone,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -33,6 +38,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
+    { label: 'Medical Verifications', href: '/admin/verifications', icon: ShieldCheck },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'System Logs', href: '/admin/cases', icon: ClipboardList },
   ],
@@ -40,6 +46,12 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Dashboard', href: '/lecturer/dashboard', icon: LayoutDashboard },
     { label: 'Triage Workbench', href: '/lecturer/qa-triage', icon: Stethoscope },
     { label: 'Classes', href: '/lecturer/classes', icon: Users },
+    { label: 'Quiz Library', href: '/lecturer/quizzes', icon: FileQuestion },
+    { label: 'Assignments', href: '/lecturer/assignments', icon: ClipboardList },
+    { label: 'Cases', href: '/lecturer/cases', icon: BookOpen },
+    { label: 'Analytics', href: '/lecturer/analytics', icon: BarChart3 },
+    { label: 'Announcements', href: '/lecturer/announcements', icon: Megaphone },
+    { label: 'Settings', href: '/lecturer/settings', icon: Settings },
   ],
   expert: [
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
