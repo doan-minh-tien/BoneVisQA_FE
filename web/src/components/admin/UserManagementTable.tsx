@@ -1,4 +1,5 @@
 import { Calendar, Mail, Pencil, Trash2, UserCheck, BookOpen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 /** Roles that can be assigned in the admin UI */
 export type UserRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
@@ -48,7 +49,7 @@ export function UserManagementTable({
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-slate-200/60 bg-slate-50/50">
+          <tr className="border-b border-slate-200/60 bg-slate-50/60">
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
               User Profile
             </th>
@@ -81,7 +82,7 @@ export function UserManagementTable({
               >
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-indigo-200/50 bg-gradient-to-br from-indigo-100 to-purple-100 text-sm font-bold text-indigo-700 shadow-sm transition-transform duration-300 group-hover:scale-105">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-blue-200/50 bg-gradient-to-br from-blue-100 to-slate-100 text-sm font-bold text-blue-700 shadow-sm transition-transform duration-300 group-hover:scale-105">
                       {user.name
                         .split(' ')
                         .map((w) => w[0])
@@ -122,25 +123,29 @@ export function UserManagementTable({
                             +{user.classList.length - 2} more
                           </span>
                         )}
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => onManageClasses(user)}
-                          className="mt-1 w-fit text-xs font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-800"
+                          className="mt-1 !h-auto !px-0 !py-0 text-xs !text-blue-600 underline underline-offset-2 hover:!text-blue-800"
                         >
                           Manage
-                        </button>
+                        </Button>
                       </>
                     ) : (
                       <>
                         <span className="text-xs text-slate-400">No class assigned</span>
                         {(user.role === 'Lecturer' || user.role === 'Student') && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => onManageClasses(user)}
-                            className="mt-1 w-fit text-xs font-semibold text-blue-600 hover:text-blue-800"
+                            className="mt-1 !h-auto !px-0 !py-0 text-xs !text-blue-600 hover:!text-blue-800"
                           >
                             + Assign class
-                          </button>
+                          </Button>
                         )}
                       </>
                     )}
@@ -178,10 +183,12 @@ export function UserManagementTable({
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex flex-col items-end justify-end gap-2 sm:flex-row sm:items-center">
                     {/* Role button */}
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+                      className="text-xs"
                     >
                       {pendingQueue ? (
                         <UserCheck className="h-4 w-4" />
@@ -189,29 +196,33 @@ export function UserManagementTable({
                         <Pencil className="h-4 w-4" />
                       )}
                       {pendingQueue ? 'Assign role' : 'Change role'}
-                    </button>
+                    </Button>
 
                     {/* Edit button */}
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => onEdit(user)}
                       title="Edit user details"
-                      className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 active:scale-95"
+                      className="text-xs"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       Edit
-                    </button>
+                    </Button>
 
                     {/* Delete button */}
-                    <button
+                    <Button
                       type="button"
+                      variant="destructive"
+                      size="sm"
                       onClick={() => onDelete(user)}
                       title="Delete user"
-                      className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-600 shadow-sm transition-all hover:border-red-300 hover:bg-red-50 active:scale-95"
+                      className="text-xs"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Delete
-                    </button>
+                    </Button>
 
                     {/* Status toggle */}
                     <button

@@ -95,48 +95,45 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
 
   if (!resolvedRole || !meta) {
     return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text">
-        <div className="border-b border-white/10 px-5 py-5">
+      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50 text-slate-900">
+        <div className="border-b border-slate-200 px-5 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
-              <Stethoscope className="h-5 w-5 text-cyan-accent" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 shadow-sm">
+              <Stethoscope className="h-5 w-5 text-blue-700" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-wide text-white">
+              <h1 className="truncate text-base font-semibold tracking-wide text-slate-900">
                 BoneVisQA
               </h1>
-              <p className="truncate text-xs text-slate-300">Radiology Education</p>
+              <p className="truncate text-xs text-slate-500">Radiology Education</p>
             </div>
           </div>
         </div>
-        <div className="flex-1 px-4 py-6 text-sm text-slate-300">
+        <div className="flex-1 px-4 py-6 text-sm text-slate-500">
           No role-based navigation available.
         </div>
-        <div className="border-t border-white/10 px-4 py-4">
-          <button
-            onClick={logout}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
-          >
+        <div className="border-t border-slate-200 px-4 py-4">
+          <Button onClick={logout} variant="outline" className="w-full justify-center">
             <LogOut className="h-4 w-4" />
             Logout
-          </button>
+          </Button>
         </div>
       </aside>
     );
   }
 
   return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text shadow-[8px_0_40px_rgba(15,23,42,0.18)]">
-      <div className="border-b border-white/10 px-5 py-5">
+      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
+      <div className="border-b border-slate-200 px-5 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
-            <Stethoscope className="h-5 w-5 text-cyan-accent" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 shadow-sm">
+            <Stethoscope className="h-5 w-5 text-blue-700" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold tracking-wide text-white">
+            <h1 className="truncate text-base font-semibold tracking-wide text-slate-900">
               BoneVisQA
             </h1>
-            <p className="truncate text-xs text-slate-300">{meta.label}</p>
+            <p className="truncate text-xs text-slate-500">{meta.label}</p>
           </div>
         </div>
       </div>
@@ -153,13 +150,13 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${
+                  className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150 ${
                     isActive
-                      ? 'bg-white/14 text-white shadow-[0_12px_24px_rgba(0,0,0,0.16)]'
-                      : 'text-slate-300 hover:bg-white/8 hover:text-white'
+                      ? 'bg-slate-100 text-blue-700'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
-                  <Icon className="h-4.5 w-4.5" />
+                  <Icon className="h-5 w-5" />
                   <span>{item.label}</span>
                 </Link>
               </li>
@@ -168,17 +165,17 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 px-4 py-4">
+      <div className="border-t border-slate-200 px-4 py-4">
         <Link href={meta.actionHref} className="block">
           <Button
-            className="w-full justify-center border-0 bg-gradient-to-br from-[#007BFF] to-[#005eb8] text-white shadow-lg hover:from-[#0068e6] hover:to-[#004a9e]"
+            className="w-full justify-center"
           >
             <Plus className="h-4 w-4" />
             New Analysis
           </Button>
         </Link>
-        <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/6 px-3 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#007BFF] text-sm font-semibold text-white">
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
             {profileName
               .split(' ')
               .filter(Boolean)
@@ -187,18 +184,15 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
               .join('') || 'BV'}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white">{profileName}</p>
-            <p className="truncate text-xs text-slate-300">{profileRole}</p>
+            <p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
+            <p className="truncate text-xs text-slate-500">{profileRole}</p>
           </div>
-          <UserCog className="h-4 w-4 text-slate-300" />
+          <UserCog className="h-4 w-4 text-slate-500" />
         </div>
-        <button
-          onClick={logout}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
-        >
+        <Button onClick={logout} variant="outline" className="mt-3 w-full justify-center">
           <LogOut className="h-4 w-4" />
           Logout
-        </button>
+        </Button>
       </div>
     </aside>
   );

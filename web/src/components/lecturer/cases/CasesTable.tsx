@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, ShieldOff, Loader2 } from 'lucide-react';
 import type { CaseDto } from '@/lib/api/types';
+import { Button } from '@/components/ui/button';
 
 const difficultyColors: Record<string, string> = {
   easy: 'bg-success/10 text-success',
@@ -32,7 +33,7 @@ export default function CasesTable({
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-border bg-muted/30">
+          <tr className="border-b border-border bg-slate-50/60">
             <th className="w-10 px-4 py-3">
               <input
                 type="checkbox"
@@ -47,25 +48,25 @@ export default function CasesTable({
                 className="w-4 h-4 accent-primary cursor-pointer"
               />
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Title
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Category
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Difficulty
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Status
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Approved
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Created
             </th>
-            <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
               Actions
             </th>
           </tr>
@@ -74,7 +75,7 @@ export default function CasesTable({
           {cases.map((c) => {
             const isToggling = togglingIds.has(c.id);
             return (
-              <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+              <tr key={c.id} className="transition-colors even:bg-slate-50/40 hover:bg-slate-50/80">
                 <td className="px-4 py-3">
                   <input
                     type="checkbox"
@@ -152,14 +153,12 @@ export default function CasesTable({
                     : '—'}
                 </td>
                 <td className="px-5 py-3 text-right">
-                  <button
+                  <Button
                     onClick={() => onToggleApprove(c)}
                     disabled={isToggling}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                      c.isApproved
-                        ? 'text-warning hover:bg-warning/10'
-                        : 'text-success hover:bg-success/10'
-                    }`}
+                    variant="outline"
+                    size="sm"
+                    className={c.isApproved ? '!text-warning' : '!text-success'}
                   >
                     {isToggling ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -169,7 +168,7 @@ export default function CasesTable({
                       <ShieldCheck className="w-3.5 h-3.5" />
                     )}
                     {isToggling ? '...' : c.isApproved ? 'Unapprove' : 'Approve'}
-                  </button>
+                  </Button>
                 </td>
               </tr>
             );

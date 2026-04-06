@@ -5,16 +5,16 @@ type Size = 'sm' | 'md' | 'lg';
 
 const variantClass: Record<Variant, string> = {
   primary:
-    'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-cyan-accent shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
+    'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-blue-500 shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
   default:
-    'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-cyan-accent shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
+    'border border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:ring-blue-500 shadow-[0_8px_24px_rgba(0,123,255,0.22)]',
   secondary:
-    'border border-cyan-accent/25 bg-cyan-accent/10 text-cyan-accent hover:bg-cyan-accent/15 focus-visible:ring-cyan-accent',
+    'border border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 focus-visible:ring-blue-500',
   outline:
-    'border border-border-color bg-surface text-text-main hover:bg-surface/80 focus-visible:ring-cyan-accent',
-  ghost: 'text-text-main hover:bg-surface/70 focus-visible:ring-cyan-accent',
+    'border border-border bg-card text-foreground hover:bg-slate-50 focus-visible:ring-blue-500',
+  ghost: 'text-foreground hover:bg-slate-50 focus-visible:ring-blue-500',
   destructive:
-    'border border-danger bg-danger text-white hover:bg-danger/90 focus-visible:ring-cyan-accent shadow-[0_8px_24px_rgba(239,68,68,0.16)]',
+    'border border-danger bg-danger text-white hover:bg-danger/90 focus-visible:ring-blue-500 shadow-[0_8px_24px_rgba(239,68,68,0.16)]',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -48,7 +48,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || isLoading}
       className={`
-        inline-flex items-center justify-center gap-2 rounded-xl font-medium tracking-[0.01em]
+        inline-flex items-center justify-center gap-2 rounded-lg font-medium tracking-[0.01em]
         transition-colors duration-150 cursor-pointer
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background
         disabled:opacity-50 disabled:cursor-not-allowed

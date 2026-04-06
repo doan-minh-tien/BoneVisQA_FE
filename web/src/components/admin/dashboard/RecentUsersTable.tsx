@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import type { AdminRecentUser } from '@/lib/api/admin-dashboard';
 
 interface RecentUsersTableProps {
@@ -43,7 +44,7 @@ function roleBadgeClass(role: string): string {
     case 'Admin':
       return 'bg-destructive/10 text-destructive';
     case 'Pending':
-      return 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300';
+      return 'bg-rose-100 text-rose-700';
     default:
       return 'bg-muted text-muted-foreground';
   }
@@ -103,16 +104,16 @@ export default function RecentUsersTable({
             ) : null}
             <table className="w-full">
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Name</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Role</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Joined</th>
+                <tr className="border-b border-border bg-slate-50/60">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Name</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Role</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Joined</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-input/50 transition-colors duration-150">
+                  <tr key={user.id} className="transition-colors duration-150 even:bg-slate-50/40 hover:bg-slate-50/80">
                     <td className="px-5 py-3">
                       <div>
                         <p className="text-sm font-medium text-card-foreground">{user.fullName}</p>
@@ -154,27 +155,29 @@ export default function RecentUsersTable({
                 {from}–{to} / {totalCount} users
               </p>
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   disabled={page <= 1 || isPaging}
                   onClick={() => onPageChange(page - 1)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Previous
-                </button>
+                </Button>
                 <span className="text-xs text-muted-foreground tabular-nums">
                   Page {page} / {totalPages}
                 </span>
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   disabled={page >= totalPages || isPaging}
                   onClick={() => onPageChange(page + 1)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
