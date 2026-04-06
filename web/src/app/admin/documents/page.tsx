@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import Header from '@/components/Header';
+import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -291,18 +292,13 @@ export default function AdminDocumentsPage() {
               </div>
             )}
             {submitting && (
-              <div className="mt-4">
-                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                  <span>Uploading…</span>
-                  <span>{progress}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-input">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
+              <DynamicProgressTracker
+                mode="determinate"
+                label="Uploading"
+                progressPercentage={progress}
+                message="Uploading file to server..."
+                className="mt-4"
+              />
             )}
           </SectionCard>
 
@@ -441,21 +437,13 @@ export default function AdminDocumentsPage() {
                       </div>
 
                       {isProcessing ? (
-                        <div className="mt-3">
-                          <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                            <span>Indexing progress</span>
-                            <span>{Math.round(status.progressPercentage)}%</span>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/80">
-                            <div
-                              className="h-2 rounded-full bg-blue-600 transition-all duration-300"
-                              style={{ width: `${Math.max(0, Math.min(100, status.progressPercentage))}%` }}
-                            />
-                          </div>
-                          <p className="mt-1.5 text-xs text-muted-foreground">
-                            {status.currentOperation || 'Processing...'}
-                          </p>
-                        </div>
+                        <DynamicProgressTracker
+                          mode="determinate"
+                          label="Indexing progress"
+                          progressPercentage={status.progressPercentage}
+                          message={status.currentOperation || 'Processing...'}
+                          className="mt-3"
+                        />
                       ) : null}
                     </article>
                   );
