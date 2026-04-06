@@ -34,9 +34,6 @@ interface QuestionEditorDialogProps {
   onDraftSave?: (payload: CreateQuizQuestionRequest) => void;
 }
 
-const DEFAULT_SCAN_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCtXMayRwhH5Mecs-rBiEN0xw_Wrn0FnpF2jU3nFeZsSm3c-ub-IhNr38TMBUVSn8QYNOA3WinZEfkBDL9hgfZT69t5vBqeQtUNMPNomyM2GVDiw3GEcT1b31kjT573IAtkurXyVJldsT6E27wnLTMsfOQox3VNQX7p_jCt5uw9ZCwrySPZsHj5dUPWAuYgflI3Hk_BWGavAkpUPw9yUoSaar3ejj2rulYRY-90DTXnDQuTS_e9RLMzd7i-2cdUBNBRRlibG36WLb4';
-
 const TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'MultipleChoice', label: 'Multiple Choice' },
   { value: 'TrueFalse', label: 'True / False' },
@@ -129,7 +126,11 @@ export default function QuestionEditorDialog({
       setVisibleMcCount(3);
       setOptionPoints({ A: 10, B: 0, C: 0, D: 0 });
     }
-    setImageUrl(question?.imageUrl ?? null);
+    const qImg =
+      question?.imageUrl ??
+      (question as QuizQuestionDto & { ImageUrl?: string | null })?.ImageUrl ??
+      null;
+    setImageUrl(qImg);
     setDifficulty('basic');
     setError(null);
   }, [question, open, syncPointsFromCorrect]);

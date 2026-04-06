@@ -28,10 +28,24 @@ import {
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
 import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
-import { createQuiz, addQuizQuestion, getQuizQuestions, aiAutoGenerateQuiz, aiSuggestQuestions, aiCreateQuiz } from '@/lib/api/lecturer-quiz';
-import { getLecturerClasses, getLecturerCases } from '@/lib/api/lecturer';
+import {
+  createQuiz,
+  addQuizQuestionsBatched,
+  getQuizQuestions,
+  aiAutoGenerateQuiz,
+  aiSuggestQuestions,
+} from '@/lib/api/lecturer-quiz';
+import { getLecturerClasses, getLecturerCases, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { CaseDto, ClassItem, CreateQuizQuestionRequest, QuizQuestionDto, AIQuizQuestion } from '@/lib/api/types';
+import type {
+  CaseDto,
+  ClassItem,
+  ClassStats,
+  CreateQuizQuestionRequest,
+  QuizQuestionDto,
+  AIQuizQuestion,
+} from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
 import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
 
 const CLASSIFICATION_OPTIONS = [
@@ -214,6 +228,7 @@ function ToggleRow({
 
 export default function CreateQuizPage() {
   const router = useRouter();
+  const toast = useToast();
   const curriculaRef = useRef<HTMLElement>(null);
   const diagnosticRef = useRef<HTMLElement>(null);
   const [activeStep, setActiveStep] = useState<1 | 2>(1);
@@ -263,12 +278,37 @@ export default function CreateQuizPage() {
   const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
   const [questionCount, setQuestionCount] = useState(5);
   const [importOpen, setImportOpen] = useState(false);
+  const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
+  const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
   const allQuestions = createdQuizId ? questions : tempQuestions;
 
   useEffect(() => {
     loadClasses();
   }, []);
+
+  useEffect(() => {
+    const id = formData.classId?.trim();
+    if (!id || id === '00000000-0000-0000-0000-000000000000') {
+      setCreateClassStats(null);
+      return;
+    }
+    let cancelled = false;
+    setCreateStatsLoading(true);
+    getClassStats(id)
+      .then((s) => {
+        if (!cancelled) setCreateClassStats(s);
+      })
+      .catch(() => {
+        if (!cancelled) setCreateClassStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCreateStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.classId]);
 
   const loadClasses = async () => {
     try {
@@ -460,25 +500,24 @@ export default function CreateQuizPage() {
         passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
       });
 
-      // 2. Add AI questions
-      for (const q of aiQuestions) {
-        await addQuizQuestion({
-          quizId: quiz.id,
-          questionText: q.questionText,
-          type: q.type || 'MultipleChoice',
-          optionA: q.optionA,
-          optionB: q.optionB,
-          optionC: q.optionC,
-          optionD: q.optionD,
-          correctAnswer: q.correctAnswer,
-          caseId: q.caseId,
-        });
-      }
+      const payloads: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
+        quizId: quiz.id,
+        questionText: q.questionText,
+        type: q.type || 'MultipleChoice',
+        optionA: q.optionA,
+        optionB: q.optionB,
+        optionC: q.optionC,
+        optionD: q.optionD,
+        correctAnswer: q.correctAnswer,
+        caseId: q.caseId,
+      }));
+      await addQuizQuestionsBatched(quiz.id, payloads);
 
-      // 3. Redirect to quiz detail
+      toast.success('Đã tạo quiz và thêm câu hỏi AI.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
+      toast.error(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
     } finally {
       setLoading(false);
     }
@@ -493,12 +532,14 @@ export default function CreateQuizPage() {
     setError(null);
     try {
       const quiz = await createQuiz(buildCreatePayload());
-      for (const q of tempQuestions) {
-        await addQuizQuestion({ ...q, quizId: quiz.id });
+      if (tempQuestions.length > 0) {
+        await addQuizQuestionsBatched(quiz.id, tempQuestions);
       }
+      toast.success('Đã lưu nháp quiz.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save draft');
+      toast.error(err instanceof Error ? err.message : 'Failed to save draft');
     } finally {
       setLoading(false);
     }
@@ -520,12 +561,12 @@ export default function CreateQuizPage() {
     try {
       const quiz = await createQuiz(buildCreatePayload());
       setCreatedQuizId(quiz.id);
-      for (const q of tempQuestions) {
-        await addQuizQuestion({ ...q, quizId: quiz.id });
-      }
+      await addQuizQuestionsBatched(quiz.id, tempQuestions);
+      toast.success('Quiz đã được tạo và xuất bản.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quiz');
+      toast.error(err instanceof Error ? err.message : 'Failed to create quiz');
     } finally {
       setLoading(false);
     }
@@ -601,7 +642,9 @@ export default function CreateQuizPage() {
 
   useEffect(() => {
     if (createdQuizId) {
-      getQuizQuestions(createdQuizId).then(setQuestions).catch(console.error);
+      getQuizQuestions(createdQuizId)
+        .then(setQuestions)
+        .catch(() => setQuestions([]));
     }
   }, [createdQuizId]);
 
@@ -1201,6 +1244,30 @@ export default function CreateQuizPage() {
                 <span className="text-sm text-muted-foreground">Tagged cases</span>
                 <span className="text-sm font-bold text-primary">
                   {String(referenceCaseIds.length).padStart(2, '0')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Students (class)</span>
+                <span className="text-sm font-bold text-primary">
+                  {!formData.classId?.trim() ||
+                  formData.classId === '00000000-0000-0000-0000-000000000000'
+                    ? '—'
+                    : createStatsLoading
+                      ? '…'
+                      : String(createClassStats?.totalStudents ?? 0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Class avg. quiz</span>
+                <span className="text-sm font-bold text-primary">
+                  {!formData.classId?.trim() ||
+                  formData.classId === '00000000-0000-0000-0000-000000000000'
+                    ? '—'
+                    : createStatsLoading
+                      ? '…'
+                      : createClassStats?.avgQuizScore != null
+                        ? `${Math.round(createClassStats.avgQuizScore)}%`
+                        : '—'}
                 </span>
               </div>
             </div>

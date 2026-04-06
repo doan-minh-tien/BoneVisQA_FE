@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type {
   QuizDto,
@@ -7,6 +8,13 @@ import type {
   CreateQuizQuestionRequest,
   UpdateQuizQuestionRequest,
 } from './types';
+
+/** BE có thể trả camelCase hoặc PascalCase tùy cấu hình JSON. */
+function normalizeQuizQuestionDto(q: QuizQuestionDto): QuizQuestionDto {
+  const raw = q as QuizQuestionDto & { ImageUrl?: string | null };
+  const imageUrl = q.imageUrl ?? raw.ImageUrl ?? null;
+  return { ...q, imageUrl };
+}
 
 export interface UpdateQuizRequest {
   title: string;
@@ -116,9 +124,29 @@ export async function assignQuizToClass(classId: string, quizId: string): Promis
 export async function getQuizQuestions(quizId: string): Promise<QuizQuestionDto[]> {
   try {
     const { data } = await http.get<QuizQuestionDto[]>(`/api/lecturer/quizzes/${quizId}/questions`);
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeQuizQuestionDto);
   } catch (e) {
+    // BE trả 404 khi quiz chưa có câu hỏi — coi như danh sách rỗng
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      return [];
+    }
     throw new Error(getApiErrorMessage(e));
+  }
+}
+
+const DEFAULT_QUESTION_BATCH = 6;
+
+/** Gửi nhiều câu hỏi song song theo lô để publish nhanh hơn (tránh nối tuần tự). */
+export async function addQuizQuestionsBatched(
+  quizId: string,
+  items: CreateQuizQuestionRequest[],
+  batchSize = DEFAULT_QUESTION_BATCH,
+): Promise<void> {
+  const list = items.map((q) => ({ ...q, quizId }));
+  for (let i = 0; i < list.length; i += batchSize) {
+    const slice = list.slice(i, i + batchSize);
+    await Promise.all(slice.map((q) => addQuizQuestion(q)));
   }
 }
 
@@ -130,7 +158,7 @@ export async function getQuizQuestion(questionId: string): Promise<QuizQuestionD
     const { data } = await http.get<QuizQuestionDto>(
       `/api/lecturer/quizzes/questions/${questionId}`,
     );
-    return data;
+    return normalizeQuizQuestionDto(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -145,7 +173,7 @@ export async function addQuizQuestion(body: CreateQuizQuestionRequest): Promise<
       `/api/lecturer/quizzes/${body.quizId}/questions`,
       body,
     );
-    return data;
+    return normalizeQuizQuestionDto(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

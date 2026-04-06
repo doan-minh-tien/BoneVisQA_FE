@@ -11,7 +11,10 @@ import {
   Award,
 } from 'lucide-react';
 import type { QuizQuestionDto } from '@/lib/api/types';
-import { resolveApiAssetUrl } from '@/lib/api/client';
+import {
+  getLecturerQuestionImageSrc,
+  hasQuizQuestionCustomImage,
+} from '@/lib/quizDefaultImage';
 
 interface QuestionCardProps {
   question: QuizQuestionDto;
@@ -81,26 +84,23 @@ export default function QuestionCard({
       [question.optionA, question.optionB].filter(Boolean).join(' · ') ||
       'Clinical imaging assessment item.';
 
+    const thumbSrc = getLecturerQuestionImageSrc(question, caseThumbnail);
+    const hasRealImage = hasQuizQuestionCustomImage(question, caseThumbnail);
+
     return (
       <div className="group flex gap-6 rounded-3xl bg-muted/50 p-6 transition-colors hover:bg-muted/70">
         <div className="relative h-32 w-48 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-900">
-          {(caseThumbnail || question.imageUrl) ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
-                alt=""
-                className="h-full w-full object-cover opacity-80"
-              />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                <ZoomIn className="h-8 w-8 text-white" />
-              </div>
-            </>
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-muted">
-              <FileQuestion className="h-10 w-10 text-muted-foreground/50" />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={thumbSrc}
+              alt={hasRealImage ? '' : 'Placeholder — lecturer can add diagnostic image'}
+              className={`h-full w-full object-cover ${hasRealImage ? 'opacity-80' : 'opacity-95'}`}
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+              <ZoomIn className="h-8 w-8 text-white" />
             </div>
-          )}
+          </>
         </div>
 
         <div className="flex flex-1 flex-col justify-between">
@@ -230,24 +230,28 @@ export default function QuestionCard({
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
             <div className="relative aspect-video overflow-hidden rounded-2xl bg-black">
-              {(caseThumbnail || question.imageUrl) ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
-                    alt=""
-                    className="h-full w-full object-cover opacity-85"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
-                    {question.caseTitle ? `Case · ${question.caseTitle.slice(0, 32)}` : 'Radiographic reference'}
-                  </span>
-                </>
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-muted">
-                  <FileQuestion className="h-14 w-14 text-muted-foreground/50" />
-                </div>
-              )}
+              {(() => {
+                const src = getLecturerQuestionImageSrc(question, caseThumbnail);
+                const custom = hasQuizQuestionCustomImage(question, caseThumbnail);
+                return (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={custom ? '' : 'Placeholder diagnostic image'}
+                      className={`h-full w-full object-cover ${custom ? 'opacity-85' : 'opacity-95'}`}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
+                      {question.caseTitle
+                        ? `Case · ${question.caseTitle.slice(0, 32)}`
+                        : custom
+                          ? 'Radiographic reference'
+                          : 'No image yet · edit to upload'}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
             <div className="space-y-3">
               {(
@@ -304,27 +308,24 @@ export default function QuestionCard({
   }
 
   /* —— default (compact) layout —— */
+  const defaultThumb = getLecturerQuestionImageSrc(question, caseThumbnail);
+  const defaultHasCustom = hasQuizQuestionCustomImage(question, caseThumbnail);
+
   return (
     <div className="bg-card rounded-2xl border-2 border-border p-5 transition-colors hover:bg-accent/5 group">
       <div className="flex gap-5">
         <div className="relative h-32 w-44 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
-          {(caseThumbnail || question.imageUrl) ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resolveApiAssetUrl(caseThumbnail || question.imageUrl || '')}
-                alt={question.caseTitle || 'Case thumbnail'}
-                className="h-full w-full object-cover opacity-80"
-              />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                <FileQuestion className="h-8 w-8 text-white" />
-              </div>
-            </>
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-primary/10">
-              <FileQuestion className="h-8 w-8 text-primary/50" />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={defaultThumb}
+              alt={question.caseTitle || (defaultHasCustom ? 'Case thumbnail' : 'Default placeholder image')}
+              className={`h-full w-full object-cover ${defaultHasCustom ? 'opacity-80' : 'opacity-95'}`}
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+              <FileQuestion className="h-8 w-8 text-white" />
             </div>
-          )}
+          </>
         </div>
 
         <div className="flex flex-1 flex-col justify-between">

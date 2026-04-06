@@ -5,7 +5,7 @@ export async function uploadImage(file: File): Promise<string> {
   form.append('file', file);
 
   try {
-    const { data } = await http.post<{ url?: string }>(
+    const { data } = await http.post<{ url?: string; Url?: string }>(
       '/api/upload/image',
       form,
       {
@@ -13,8 +13,9 @@ export async function uploadImage(file: File): Promise<string> {
       },
     );
 
-    if (!data?.url) throw new Error('Upload failed: no URL returned');
-    return data.url;
+    const url = data?.url ?? data?.Url;
+    if (!url) throw new Error('Upload failed: no URL returned');
+    return url;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

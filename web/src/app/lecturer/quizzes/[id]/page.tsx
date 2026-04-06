@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  CheckCircle2,
   Loader2,
   Plus,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
 import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
 import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
@@ -29,16 +31,11 @@ import {
   updateQuiz,
   assignQuizToClass,
 } from '@/lib/api/lecturer-quiz';
-import { getLecturerClasses } from '@/lib/api/lecturer';
+import { getLecturerClasses, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { QuizDto, QuizQuestionDto, ClassItem } from '@/lib/api/types';
+import type { QuizDto, QuizQuestionDto, ClassItem, ClassStats } from '@/lib/api/types';
 
-const CURATED_THUMBS = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuANP6uJMQCvFKa_-VHIY_TjUS02Vle4npm5uITt-8ufr9qLYn7tH2G-oLamGKtJdB4Q0xqrgfW8MKgPXDiemIC7hacqfvsmpr68ztx1GDCaTcQRdIdvPS5BodRcr7c_uxgcyjCuVTdRGs7Nm0CXshFYsxaavXU9G-joskNGqq1hUX_3kzyGdKkc7rp4j622BqgGc_onmn8DqSakjSFCBWqlL6SZ9P7t5uDMlSx8EdzokWTUlHI-n8WGe00EliInj0TMKxioMxX2Nhs',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB-97cvDY8ai1wwOly5WC3hdnif9MZON0uLPC0tafb2ELgRPFKoSQ0PzgBbZe402wE8RjrcaUQn9dkYdZ1R7vhwuirt4Kr0owWLO8QAFHdWKlDv-v2EAJl9CIr91QlE4oP0YFvNdXIC2yKAxaQ2vdKfND6FI47N3p1M3DQbwrSunpUqy43tPFW_5HF2lZuWwtbiMeb6_JqCu-m0P4tztRgrOP34spgpFz5Dg6G1gmHGD9LUmwx6nQnBwKJH6m8VObiLIM5rMJGNmWY',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuC89OvUDXtwa0CGhEbQeDUrlXHwn5mqulsCyLaP7DgY6FAYY1hEoZbZvEPBRZ65P45pTkbA6UlwuoPJCI5o4SkiKUuORKobOk9mJRrYQD7cH68Sr6ktFH6Lxh9_z-B17guU_b_nr9bq9cLmM7eurURtNri8ZE6Cm6Q03ivNYFMJNRTvMf9VccnyUt_PvncTwGZzhStlw-QRVdapGpWOa6KbIzC6rO06-oatTL9Qj_A9Fb-qvutRkSi5ugkh4ig6XciQP63aq6DUIl4',
-] as const;
-
+const QUESTIONS_PAGE_SIZE = 10;
 const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
 const POINTS_ROTATION = [10, 15, 5] as const;
 
@@ -62,6 +59,7 @@ export default function QuizDetailPage() {
   const router = useRouter();
   const params = useParams();
   const quizId = params.id as string;
+  const toast = useToast();
 
   const [quiz, setQuiz] = useState<QuizDto | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionDto[]>([]);
@@ -82,6 +80,10 @@ export default function QuizDetailPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
+  const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
+  const [classStats, setClassStats] = useState<ClassStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [savedDialogOpen, setSavedDialogOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -113,27 +115,67 @@ export default function QuizDetailPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setQuestionPagesLoaded(1);
+  }, [quizId, questions.length]);
+
+  useEffect(() => {
+    const id = selectedClassId?.trim();
+    if (!id || id === '00000000-0000-0000-0000-000000000000') {
+      setClassStats(null);
+      return;
+    }
+    let cancelled = false;
+    setStatsLoading(true);
+    getClassStats(id)
+      .then((s) => {
+        if (!cancelled) setClassStats(s);
+      })
+      .catch(() => {
+        if (!cancelled) setClassStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId]);
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
-      await updateQuiz(quizId, {
+      const updated = await updateQuiz(quizId, {
         title,
         openTime: datetimeLocalToIso(openTimeLocal),
         closeTime: datetimeLocalToIso(closeTimeLocal),
         timeLimit: timeLimit ? parseInt(timeLimit, 10) : null,
         passingScore: passingScore ? parseInt(passingScore, 10) : null,
       });
+      setQuiz(updated);
       if (selectedClassId && selectedClassId !== originalClassId) {
         await assignQuizToClass(selectedClassId, quizId);
+        const refreshed = await getQuiz(quizId);
+        setQuiz(refreshed);
+        setOriginalClassId(refreshed.classId || selectedClassId);
+        setSelectedClassId(refreshed.classId || selectedClassId);
+      } else {
+        setOriginalClassId(updated.classId || originalClassId);
       }
-      alert('Quiz saved successfully!');
-      router.push('/lecturer/quizzes');
+      toast.success('Đã lưu quiz thành công.');
+      setSavedDialogOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save quiz');
+      toast.error(err instanceof Error ? err.message : 'Failed to save quiz');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSavedGoBack = () => {
+    setSavedDialogOpen(false);
+    router.push('/lecturer/quizzes');
   };
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
@@ -200,8 +242,25 @@ export default function QuizDetailPage() {
   }
 
   const displayTitle = title || quiz.title;
-  const enrolledPlaceholder = questions.length > 0 ? 124 : 0;
-  const completionPlaceholder = questions.length > 0 ? 88 : 0;
+
+  const enrolledDisplay =
+    !selectedClassId?.trim() || selectedClassId === '00000000-0000-0000-0000-000000000000'
+    ? '—'
+    : statsLoading
+      ? '…'
+      : String(classStats?.totalStudents ?? 0);
+  const avgScoreDisplay =
+    !selectedClassId?.trim() || selectedClassId === '00000000-0000-0000-0000-000000000000'
+    ? '—'
+    : statsLoading
+      ? '…'
+      : classStats?.avgQuizScore != null
+        ? `${Math.round(classStats.avgQuizScore)}%`
+        : '—';
+
+  const visibleQuestionLimit = questionPagesLoaded * QUESTIONS_PAGE_SIZE;
+  const displayedQuestions = questions.slice(0, visibleQuestionLimit);
+  const canLoadMoreQuestions = displayedQuestions.length < questions.length;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
@@ -241,10 +300,10 @@ export default function QuizDetailPage() {
         </div>
       </section>
 
-      {/* Bento Layout */}
+      {/* Bento Layout — câu hỏi trái (rộng), cài đặt + stats phải */}
       <div className="grid grid-cols-12 gap-8">
-        {/* Left Column: Quiz Settings */}
-        <div className="col-span-12 space-y-6 lg:col-span-4">
+        {/* Quiz Settings + stats (desktop: cột phải) */}
+        <div className="order-2 col-span-12 space-y-6 lg:col-span-4">
           <div className="rounded-3xl bg-card p-8 shadow-sm ring-1 ring-border/30">
             <div className="mb-2 flex items-center gap-2">
               <Settings2 className="h-5 w-5 text-primary" />
@@ -358,7 +417,7 @@ export default function QuizDetailPage() {
               <Users className="h-6 w-6 text-secondary" />
               <div>
                 <p className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
-                  {enrolledPlaceholder}
+                  {enrolledDisplay}
                 </p>
                 <p className="text-[10px] font-bold uppercase text-muted-foreground">
                   Enrolled Students
@@ -368,19 +427,22 @@ export default function QuizDetailPage() {
             <div className="flex h-32 flex-col justify-between rounded-3xl border border-warning/20 bg-warning/10 p-5">
               <Timer className="h-6 w-6 text-warning" />
               <div>
-                <p className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
-                  {completionPlaceholder ? `${completionPlaceholder}%` : '—'}
+                <p
+                  className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground"
+                  title="Điểm quiz trung bình của lớp (theo dữ liệu hệ thống)"
+                >
+                  {avgScoreDisplay}
                 </p>
                 <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                  Avg. Completion
+                  Avg. quiz score
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Questions */}
-        <div className="col-span-12 space-y-6 lg:col-span-8">
+        {/* Curated Questions (desktop: cột trái) */}
+        <div className="order-1 col-span-12 space-y-6 lg:order-1 lg:col-span-8">
           <div className="mb-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">
@@ -430,27 +492,33 @@ export default function QuizDetailPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {questions.map((q, i) => (
-                <QuestionCard
-                  key={q.id}
-                  question={q}
-                  variant="curated"
-                  topicCategory={TOPIC_ROTATION[i % TOPIC_ROTATION.length]}
-                  caseThumbnail={CURATED_THUMBS[i % CURATED_THUMBS.length]}
-                  points={POINTS_ROTATION[i % POINTS_ROTATION.length]}
-                  onEdit={handleEditQuestion}
-                  onDelete={handleDeleteQuestion}
-                />
-              ))}
-              <div className="flex justify-center border-t border-border/30 pt-6">
-                <button
-                  type="button"
-                  className="flex items-center gap-2 text-sm font-bold text-muted-foreground transition-colors hover:text-card-foreground"
-                >
-                  Load More Questions
-                  <ChevronDown className="h-5 w-5" />
-                </button>
-              </div>
+              {displayedQuestions.map((q) => {
+                const i = questions.findIndex((x) => x.id === q.id);
+                const idx = i >= 0 ? i : 0;
+                return (
+                  <QuestionCard
+                    key={q.id}
+                    question={q}
+                    variant="curated"
+                    topicCategory={TOPIC_ROTATION[idx % TOPIC_ROTATION.length]}
+                    points={POINTS_ROTATION[idx % POINTS_ROTATION.length]}
+                    onEdit={handleEditQuestion}
+                    onDelete={handleDeleteQuestion}
+                  />
+                );
+              })}
+              {canLoadMoreQuestions ? (
+                <div className="flex justify-center border-t border-border/30 pt-6">
+                  <button
+                    type="button"
+                    onClick={() => setQuestionPagesLoaded((p) => p + 1)}
+                    className="flex items-center gap-2 text-sm font-bold text-muted-foreground transition-colors hover:text-card-foreground"
+                  >
+                    Load More Questions
+                    <ChevronDown className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -483,6 +551,48 @@ export default function QuizDetailPage() {
         onClose={() => setImportOpen(false)}
         onImport={handleImportQuestions}
       />
+
+      {/* Save success dialog */}
+      {savedDialogOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            aria-label="Dismiss"
+            onClick={() => setSavedDialogOpen(false)}
+          />
+          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-border/60 bg-card p-8 text-center shadow-2xl">
+            <div className="mb-5 flex justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/15">
+                <CheckCircle2 className="h-8 w-8 text-success" />
+              </div>
+            </div>
+            <h3 className="mb-2 font-['Manrope',sans-serif] text-xl font-extrabold text-card-foreground">
+              Saved successfully
+            </h3>
+            <p className="mb-7 text-sm text-muted-foreground">
+              Your quiz changes have been saved.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setSavedDialogOpen(false)}
+                className="w-full rounded-full border border-border bg-muted/60 px-6 py-3 text-sm font-bold text-card-foreground transition-colors hover:bg-muted"
+              >
+                Stay on this page
+              </button>
+              <button
+                type="button"
+                onClick={handleSavedGoBack}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Quiz Library
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

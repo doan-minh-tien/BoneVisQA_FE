@@ -14,7 +14,6 @@ import {
   BarChart3,
   Timer,
   CheckCircle2,
-  Skeleton,
   ChevronRight,
 } from 'lucide-react';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -24,8 +23,9 @@ import {
   getQuizQuestions,
   deleteQuizQuestion,
 } from '@/lib/api/lecturer-quiz';
-import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { QuizDto, QuizQuestionDto } from '@/lib/api/types';
+
+const QUESTIONS_PAGE_SIZE = 10;
 
 export default function QuestionManagerPage() {
   const router = useRouter();
@@ -39,6 +39,7 @@ export default function QuestionManagerPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
+  const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -60,6 +61,10 @@ export default function QuestionManagerPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setQuestionPagesLoaded(1);
+  }, [quizId, searchTerm, questions.length]);
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
     setEditingQuestion(question);
@@ -90,6 +95,10 @@ export default function QuestionManagerPage() {
       q.questionText?.toLowerCase().includes(searchTerm.toLowerCase()) ??
       false
   );
+
+  const visibleLimit = questionPagesLoaded * QUESTIONS_PAGE_SIZE;
+  const displayedFiltered = filtered.slice(0, visibleLimit);
+  const canLoadMoreQuestions = displayedFiltered.length < filtered.length;
 
   // Stats
   const totalQuestions = questions.length;
@@ -198,7 +207,10 @@ export default function QuestionManagerPage() {
               aria-hidden
               className="pointer-events-none absolute -right-10 -bottom-10 opacity-20 transition-transform duration-500 group-hover:scale-110"
             >
-              <Skeleton className="h-[160px] w-[160px] rounded-none text-white" />
+              <div
+                className="h-[160px] w-[160px] animate-pulse rounded-2xl bg-white/10"
+                aria-hidden
+              />
             </div>
           </div>
         </div>
@@ -238,7 +250,7 @@ export default function QuestionManagerPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {filtered.map((q) => (
+              {displayedFiltered.map((q) => (
                 <QuestionCard
                   key={q.id}
                   question={q}
@@ -249,16 +261,18 @@ export default function QuestionManagerPage() {
                 />
               ))}
 
-              {/* Load More */}
-              <div className="flex justify-center pt-6">
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-full p-3 px-6 text-sm font-bold text-primary transition-colors hover:bg-primary-fixed"
-                >
-                  Load More Questions
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
+              {canLoadMoreQuestions ? (
+                <div className="flex justify-center pt-6">
+                  <button
+                    type="button"
+                    onClick={() => setQuestionPagesLoaded((p: number) => p + 1)}
+                    className="flex items-center gap-2 rounded-full p-3 px-6 text-sm font-bold text-primary transition-colors hover:bg-primary-fixed"
+                  >
+                    Load More Questions
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

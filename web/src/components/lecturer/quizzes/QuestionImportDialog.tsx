@@ -404,16 +404,20 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-md" aria-hidden onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-card shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-md"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div className="flex min-h-[100dvh] items-center justify-center p-4 pb-8 sm:p-6 sm:pb-10">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="relative flex w-full max-h-[min(90dvh,calc(100dvh-4rem))] min-h-0 max-w-2xl flex-col overflow-hidden rounded-3xl bg-card shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-8 py-6">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-8 py-6">
           <div>
             <h2 className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
               Import Questions
@@ -431,7 +435,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col overflow-y-auto p-8">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-8">
           {/* Mode Tabs */}
           <div className="mb-6 flex gap-2 rounded-2xl bg-muted p-1">
             {(
@@ -562,7 +566,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                   Xóa &amp; nhập lại
                 </button>
               </div>
-              <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-4">
+              <div className="max-h-[min(16rem,35svh)] space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-4">
                 {parseResult.questions.slice(0, 10).map((q, i) => (
                   <div key={i} className="rounded-lg border border-border/60 bg-card p-3">
                     <p className="text-xs font-semibold text-card-foreground line-clamp-1">
@@ -591,15 +595,17 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border px-8 py-6">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="h-4 w-4" />
-            {mode === 'paste'
-              ? 'Parse tự động từ text. Kiểm tra preview trước khi import.'
-              : 'Hỗ trợ định dạng chuẩn CSV/JSON. Kiểm tra preview trước khi import.'}
+        {/* Footer — căn phải để dễ thao tác */}
+        <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-border px-8 py-6 sm:flex-row sm:items-center sm:justify-end sm:gap-6">
+          <div className="flex items-start justify-end gap-2 text-right text-xs text-muted-foreground sm:max-w-[55%]">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {mode === 'paste'
+                ? 'Parse tự động từ text. Kiểm tra preview trước khi import.'
+                : 'Hỗ trợ định dạng chuẩn CSV/JSON. Kiểm tra preview trước khi import.'}
+            </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
@@ -631,6 +637,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
               </button>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>
