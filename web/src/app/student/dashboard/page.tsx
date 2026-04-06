@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
 import Header from '@/components/Header';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { StudentDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
-import QuickActionCard from '@/components/student/QuickActionCard';
 import ProgressRing from '@/components/student/ProgressRing';
+import QuickActionCard from '@/components/student/QuickActionCard';
 import {
   fetchStudentProgress,
   fetchStudentRecentActivity,
@@ -96,37 +97,49 @@ function clampPercent(value: number | null | undefined): number {
 export default function StudentDashboardPage() {
   const { user } = useAuth();
   const toast = useToast();
-  const [progress, setProgress] = useState<StudentProgress | null>(null);
-  const [topicStats, setTopicStats] = useState<StudentTopicStat[]>([]);
-  const [recentActivity, setRecentActivity] = useState<StudentRecentActivityItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const swrConfig = {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  };
+  const {
+    data: progressData,
+    error: progressError,
+    isLoading: progressLoading,
+  } = useSWR<StudentProgress>('student-progress', fetchStudentProgress, swrConfig);
+  const {
+    data: topicData,
+    error: topicError,
+    isLoading: topicLoading,
+  } = useSWR<StudentTopicStat[]>('student-topic-stats', fetchStudentTopicStats, swrConfig);
+  const {
+    data: activityData,
+    error: activityError,
+    isLoading: activityLoading,
+  } = useSWR<StudentRecentActivityItem[]>(
+    'student-recent-activity',
+    fetchStudentRecentActivity,
+    swrConfig,
+  );
+  const progress = progressData ?? null;
+  const topicStats = topicData ?? [];
+  const recentActivity = activityData ?? [];
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [progressData, topicData, activityData] = await Promise.all([
-          fetchStudentProgress(),
-          fetchStudentTopicStats(),
-          fetchStudentRecentActivity(),
-        ]);
-        if (!cancelled) {
-          setProgress(progressData);
-          setTopicStats(topicData);
-          setRecentActivity(activityData);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load student progress.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+    if (progressError) {
+      toast.error(progressError instanceof Error ? progressError.message : 'Failed to load student progress.');
+    }
+  }, [progressError, toast]);
+  useEffect(() => {
+    if (topicError) {
+      toast.error(topicError instanceof Error ? topicError.message : 'Failed to load topic analytics.');
+    }
+  }, [topicError, toast]);
+  useEffect(() => {
+    if (activityError) {
+      toast.error(activityError instanceof Error ? activityError.message : 'Failed to load recent activity.');
+    }
+  }, [activityError, toast]);
 
   const statCards = useMemo<StatCardModel[]>(
     () =>
@@ -179,6 +192,8 @@ export default function StudentDashboardPage() {
 
   const firstName = user?.fullName?.trim().split(/\s+/)[0] || 'there';
   const goalTopic = topicStats[0]?.topicName ?? 'Musculoskeletal focus';
+  const showInitialSkeleton =
+    progressLoading && topicLoading && activityLoading && !progress && topicStats.length === 0 && recentActivity.length === 0;
 
   return (
     <div className="min-h-screen bg-background text-slate-900">
@@ -188,16 +203,8 @@ export default function StudentDashboardPage() {
       />
 
       <div className="mx-auto max-w-[1600px] space-y-8 px-6 py-6">
-        {loading ? (
+        {showInitialSkeleton ? (
           <StudentDashboardSkeleton />
-        ) : !progress ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm">
-            <BookOpen className="mx-auto h-10 w-10 text-slate-400" />
-            <h2 className="mt-4 text-lg font-semibold text-slate-900">No progress data available</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              The student progress endpoint returned no data for this account yet.
-            </p>
-          </div>
         ) : (
           <>
             <section className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
@@ -206,7 +213,7 @@ export default function StudentDashboardPage() {
                   Welcome back, {firstName}
                 </h2>
                 <p className="mt-2 max-w-xl text-base text-slate-600">
-                  {progress.quizAccuracyRate != null && !Number.isNaN(progress.quizAccuracyRate) ? (
+                  {progress?.quizAccuracyRate != null && !Number.isNaN(progress.quizAccuracyRate) ? (
                     <>
                       You&apos;ve completed {Math.min(100, Math.round(progress.quizAccuracyRate))}% of your weekly
                       radiology goals.{' '}
@@ -234,6 +241,17 @@ export default function StudentDashboardPage() {
               </div>
             </section>
 
+            {!progress && !progressLoading ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-8 text-center shadow-sm">
+                <BookOpen className="mx-auto h-8 w-8 text-slate-400" />
+                <h3 className="mt-3 text-base font-semibold text-slate-900">Progress widget unavailable</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {(progressError instanceof Error ? progressError.message : progressError) ??
+                    'Progress analytics are temporarily unavailable, but other widgets still load.'}
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="group flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
@@ -241,14 +259,14 @@ export default function StudentDashboardPage() {
                 </div>
                 <div>
                   <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
-                    {progress.totalCasesViewed}
+                    {progress?.totalCasesViewed ?? 0}
                   </span>
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cases viewed</p>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${Math.min(100, progress.totalCasesViewed * 5)}%` }}
+                    style={{ width: `${Math.min(100, (progress?.totalCasesViewed ?? 0) * 5)}%` }}
                   />
                 </div>
               </div>
@@ -259,12 +277,12 @@ export default function StudentDashboardPage() {
                 </div>
                 <div>
                   <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
-                    {formatQuizPercent(progress.avgQuizScore)}
+                    {formatQuizPercent(progress?.avgQuizScore)}
                   </span>
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Avg. quiz score</p>
                 </div>
                 <p className="text-xs text-slate-600">
-                  {progress.completedQuizzes} completed · {progress.totalQuizAttempts} attempts
+                  {progress?.completedQuizzes ?? 0} completed · {progress?.totalQuizAttempts ?? 0} attempts
                 </p>
               </div>
 
@@ -323,7 +341,16 @@ export default function StudentDashboardPage() {
                   title="Topic mastery"
                   description="Quiz accuracy and attempts by topic from your progress analytics."
                 >
-                  {topicStats.length === 0 ? (
+                  {topicLoading ? (
+                    <div className="space-y-3">
+                      <div className="h-20 animate-pulse rounded-xl bg-muted/60" />
+                      <div className="h-20 animate-pulse rounded-xl bg-muted/60" />
+                    </div>
+                  ) : topicError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                      {topicError instanceof Error ? topicError.message : topicError}
+                    </div>
+                  ) : topicStats.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
                       No topic analytics available yet.
                     </div>
@@ -379,14 +406,14 @@ export default function StudentDashboardPage() {
                 <SectionCard>
                   <h2 className="mb-4 text-lg font-semibold text-slate-900">Overall progress</h2>
                   <div className="flex flex-col items-center">
-                    <ProgressRing progress={clampPercent(progress.quizAccuracyRate)} size={140} strokeWidth={10} />
+                    <ProgressRing progress={clampPercent(progress?.quizAccuracyRate)} size={140} strokeWidth={10} />
                     <div className="mt-4 text-center">
                       <p className="text-sm text-slate-600">
                         Latest quiz score:{' '}
-                        <span className="font-medium text-slate-900">{formatQuizPercent(progress.latestQuizScore)}</span>
+                        <span className="font-medium text-slate-900">{formatQuizPercent(progress?.latestQuizScore)}</span>
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {progress.completedQuizzes} completed quizzes across {progress.totalQuizAttempts} attempts
+                        {progress?.completedQuizzes ?? 0} completed quizzes across {progress?.totalQuizAttempts ?? 0} attempts
                       </p>
                     </div>
                   </div>
@@ -397,14 +424,14 @@ export default function StudentDashboardPage() {
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                       <Clock className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">{progress.totalQuizAttempts}</p>
+                    <p className="text-2xl font-bold text-slate-900">{progress?.totalQuizAttempts ?? 0}</p>
                     <p className="text-sm text-slate-600">Quiz attempts</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-accent/10">
                       <MessageSquare className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">{progress.escalatedAnswers}</p>
+                    <p className="text-2xl font-bold text-slate-900">{progress?.escalatedAnswers ?? 0}</p>
                     <p className="text-sm text-slate-600">Escalated answers</p>
                   </div>
                 </div>
@@ -413,7 +440,16 @@ export default function StudentDashboardPage() {
                   title="Recent activity"
                   description="Latest study, quiz, and expert-review events (chronological)."
                 >
-                  {recentActivity.length === 0 ? (
+                  {activityLoading ? (
+                    <div className="space-y-3">
+                      <div className="h-24 animate-pulse rounded-xl bg-muted/60" />
+                      <div className="h-24 animate-pulse rounded-xl bg-muted/60" />
+                    </div>
+                  ) : activityError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                      {activityError instanceof Error ? activityError.message : activityError}
+                    </div>
+                  ) : recentActivity.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
                       No recent activity has been recorded yet.
                     </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
@@ -38,71 +39,57 @@ type StatCardModel = {
 
 export default function LecturerDashboardPage() {
   const toast = useToast();
-  const [stats, setStats] = useState<LecturerDashboardStats | null>(null);
-  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
-  const [leaderboard, setLeaderboard] = useState<LecturerLeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+  const swrConfig = {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  };
+  const {
+    data: stats,
+    error: statsError,
+    isLoading: statsLoading,
+  } = useSWR<LecturerDashboardStats>('lecturer-dashboard-stats', fetchLecturerDashboardStats, swrConfig);
+  const {
+    data: classesData,
+    error: classesError,
+    isLoading: classesLoading,
+  } = useSWR<ClassItem[]>(
+    userId ? ['lecturer-classes', userId] : null,
+    ([, uid]) => fetchLecturerClasses(uid),
+    swrConfig,
+  );
+  const classes = classesData ?? [];
+  const selectedClassIdEffective = selectedClassId || classes[0]?.id || '';
+  const {
+    data: leaderboardData,
+    error: leaderboardError,
+    isLoading: loadingLeaderboard,
+  } = useSWR<LecturerLeaderboardEntry[]>(
+    selectedClassIdEffective ? ['lecturer-class-leaderboard', selectedClassIdEffective] : null,
+    ([, classId]) => fetchLecturerClassLeaderboard(classId),
+    swrConfig,
+  );
+  const leaderboard = leaderboardData ?? [];
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
-        const [dashboardStats, classList] = await Promise.all([
-          fetchLecturerDashboardStats(),
-          userId ? fetchLecturerClasses(userId) : Promise.resolve([]),
-        ]);
-        if (!cancelled) {
-          setStats(dashboardStats);
-          setClasses(classList);
-          if (classList.length > 0) {
-            setSelectedClassId(classList[0].id);
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load lecturer dashboard.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
-
-  useEffect(() => {
-    if (!selectedClassId) {
-      setLeaderboard([]);
-      return;
+    if (statsError) {
+      toast.error(statsError instanceof Error ? statsError.message : 'Failed to load lecturer dashboard.');
     }
-
-    let cancelled = false;
-    (async () => {
-      setLoadingLeaderboard(true);
-      try {
-        const data = await fetchLecturerClassLeaderboard(selectedClassId);
-        if (!cancelled) {
-          setLeaderboard(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load class leaderboard.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingLeaderboard(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedClassId, toast]);
+  }, [statsError, toast]);
+  useEffect(() => {
+    if (classesError) {
+      toast.error(classesError instanceof Error ? classesError.message : 'Failed to load lecturer classes.');
+    }
+  }, [classesError, toast]);
+  useEffect(() => {
+    if (leaderboardError) {
+      toast.error(
+        leaderboardError instanceof Error ? leaderboardError.message : 'Failed to load class leaderboard.',
+      );
+    }
+  }, [leaderboardError, toast]);
 
   const statCards = useMemo<StatCardModel[]>(
     () =>
@@ -188,27 +175,41 @@ export default function LecturerDashboardPage() {
           </Link>
         </div>
 
-        {loading ? (
+        {statsLoading && classesLoading ? (
           <LecturerDashboardSkeleton />
-        ) : !stats ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <Users className="mx-auto h-10 w-10 text-muted-foreground" />
-            <h2 className="mt-4 text-lg font-semibold text-card-foreground">No dashboard data available</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              The lecturer stats endpoint returned no data. Verify the backend seed data or account scope.
-            </p>
-          </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((stat) => (
-                <StatCard key={stat.title} {...stat} />
-              ))}
-            </div>
+            {!stats && !statsLoading ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-8 text-center">
+                <Users className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h2 className="mt-3 text-base font-semibold text-card-foreground">Stats widget unavailable</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {(statsError instanceof Error ? statsError.message : statsError) ??
+                    'The lecturer stats endpoint returned no data.'}
+                </p>
+              </div>
+            ) : null}
+
+            {statsLoading ? (
+              <LecturerDashboardSkeleton />
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {statCards.map((stat) => (
+                  <StatCard key={stat.title} {...stat} />
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
               <div className="space-y-6">
                 <SectionCard title="Operational snapshot">
+                  {statsLoading ? (
+                    <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                    </div>
+                  ) : (
                   <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="rounded-xl border border-border bg-background/70 p-4">
                       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -216,7 +217,7 @@ export default function LecturerDashboardPage() {
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Students</p>
                       <p className="mt-2 text-3xl font-semibold text-card-foreground">
-                        {typeof stats.totalStudents === 'number' && Number.isFinite(stats.totalStudents)
+                        {typeof stats?.totalStudents === 'number' && Number.isFinite(stats.totalStudents)
                           ? stats.totalStudents
                           : '—'}
                       </p>
@@ -228,7 +229,7 @@ export default function LecturerDashboardPage() {
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Escalations</p>
                       <p className="mt-2 text-3xl font-semibold text-card-foreground">
-                        {typeof stats.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems)
+                        {typeof stats?.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems)
                           ? stats.escalatedItems
                           : '—'}
                       </p>
@@ -240,13 +241,14 @@ export default function LecturerDashboardPage() {
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Quiz performance</p>
                       <p className="mt-2 text-3xl font-semibold text-card-foreground">
-                        {typeof stats.averageQuizScore === 'number' && Number.isFinite(stats.averageQuizScore)
+                        {typeof stats?.averageQuizScore === 'number' && Number.isFinite(stats.averageQuizScore)
                           ? `${Math.round(stats.averageQuizScore)}%`
                           : '—'}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">Average score from submitted quizzes</p>
                     </div>
                   </div>
+                  )}
                 </SectionCard>
               </div>
 
@@ -262,7 +264,7 @@ export default function LecturerDashboardPage() {
                       </label>
                       <select
                         id="leaderboard-class"
-                        value={selectedClassId}
+                        value={selectedClassIdEffective}
                         onChange={(e) => setSelectedClassId(e.target.value)}
                         className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       >
@@ -279,12 +281,24 @@ export default function LecturerDashboardPage() {
                     </Link>
                   </div>
 
-                  {!selectedClassId ? (
+                  {classesLoading ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      Loading classes...
+                    </div>
+                  ) : classesError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      {classesError instanceof Error ? classesError.message : classesError}
+                    </div>
+                  ) : !selectedClassIdEffective ? (
                     <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
                       Select a class to load leaderboard analytics.
                     </div>
                   ) : loadingLeaderboard ? (
                     <LecturerLeaderboardSkeleton />
+                  ) : leaderboardError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      {leaderboardError instanceof Error ? leaderboardError.message : leaderboardError}
+                    </div>
                   ) : leaderboard.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
                       No leaderboard data available for this class yet.

@@ -3,9 +3,7 @@ import { BookOpen } from 'lucide-react';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
 
 export function CaseCatalogCard({ item }: { item: StudentCaseCatalogItem }) {
-  const href = item.imageUrl
-    ? `/student/qa/image?catalogImageUrl=${encodeURIComponent(item.imageUrl)}&catalogTitle=${encodeURIComponent(item.title)}`
-    : '/student/qa/image';
+  const href = `/student/cases/${encodeURIComponent(item.id)}`;
 
   return (
     <Link

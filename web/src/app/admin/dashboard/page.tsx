@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import {
@@ -35,75 +36,66 @@ const RECENT_USERS_PAGE_SIZE = 8;
 
 export default function AdminDashboardPage() {
   const toast = useToast();
-  const recentListReady = useRef(false);
-  const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
-  const [activityStats, setActivityStats] = useState<AdminActivityStat | null>(null);
-  const [ragStats, setRagStats] = useState<AdminRagStat | null>(null);
-  const [expertStats, setExpertStats] = useState<AdminExpertReviewStat | null>(null);
-  const [recentUsers, setRecentUsers] = useState<AdminRecentUser[]>([]);
   const [recentPage, setRecentPage] = useState(1);
-  const [recentTotal, setRecentTotal] = useState(0);
-  const [recentPaging, setRecentPaging] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const swrConfig = {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  };
+  const { data: userStats, error: userError, isLoading: userLoading } = useSWR<AdminUserStat>(
+    'admin-user-stats',
+    fetchAdminUserStats,
+    swrConfig,
+  );
+  const { data: ragStats, error: ragError, isLoading: ragLoading } = useSWR<AdminRagStat>(
+    'admin-rag-stats',
+    fetchAdminRagStats,
+    swrConfig,
+  );
+  const { data: expertStats, error: expertError, isLoading: expertLoading } = useSWR<AdminExpertReviewStat>(
+    'admin-expert-review-stats',
+    fetchAdminExpertReviewStats,
+    swrConfig,
+  );
+  const { data: activityStats, error: activityError, isLoading: activityLoading } = useSWR<AdminActivityStat>(
+    'admin-activity-stats',
+    () => fetchAdminActivityStats(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
+    swrConfig,
+  );
+  const {
+    data: recentData,
+    error: recentError,
+    isLoading: recentLoading,
+    isValidating: recentPaging,
+  } = useSWR<{ users: AdminRecentUser[]; totalCount: number }>(
+    ['admin-recent-users', recentPage],
+    ([, page]) => fetchAdminRecentUsersPage(page, RECENT_USERS_PAGE_SIZE),
+    swrConfig,
+  );
+  const recentUsers = recentData?.users ?? [];
+  const recentTotal = recentData?.totalCount ?? 0;
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [user, rag, expert, recentData, activity] = await Promise.all([
-          fetchAdminUserStats(),
-          fetchAdminRagStats(),
-          fetchAdminExpertReviewStats(),
-          fetchAdminRecentUsersPage(1, RECENT_USERS_PAGE_SIZE),
-          fetchAdminActivityStats(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
-        ]);
-        if (!cancelled) {
-          setUserStats(user);
-          setRagStats(rag);
-          setExpertStats(expert);
-          setRecentUsers(recentData.users);
-          setRecentTotal(recentData.totalCount);
-          setRecentPage(1);
-          setActivityStats(activity);
-          recentListReady.current = true;
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Failed to load dashboard data.';
-          console.error('Failed to fetch admin stats:', msg);
-          setStatsError(msg);
-          toast.error(msg);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [toast]);
-
+    if (userError) toast.error(userError instanceof Error ? userError.message : 'Failed to load admin user stats.');
+  }, [userError, toast]);
   useEffect(() => {
-    if (!recentListReady.current) return;
-    let cancelled = false;
-    (async () => {
-      setRecentPaging(true);
-      try {
-        const recentData = await fetchAdminRecentUsersPage(recentPage, RECENT_USERS_PAGE_SIZE);
-        if (!cancelled) {
-          setRecentUsers(recentData.users);
-          setRecentTotal(recentData.totalCount);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : 'Failed to load users.');
-        }
-      } finally {
-        if (!cancelled) setRecentPaging(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ refetch khi đổi trang
-  }, [recentPage]);
+    if (ragError) toast.error(ragError instanceof Error ? ragError.message : 'Failed to load RAG stats.');
+  }, [ragError, toast]);
+  useEffect(() => {
+    if (expertError) {
+      toast.error(
+        expertError instanceof Error ? expertError.message : 'Failed to load expert review stats.',
+      );
+    }
+  }, [expertError, toast]);
+  useEffect(() => {
+    if (activityError) {
+      toast.error(activityError instanceof Error ? activityError.message : 'Failed to load system activity.');
+    }
+  }, [activityError, toast]);
+  useEffect(() => {
+    if (recentError) toast.error(recentError instanceof Error ? recentError.message : 'Failed to load recent users.');
+  }, [recentError, toast]);
 
   const totalUsers = userStats?.totalUsers || 0;
   const newUsers = userStats?.newUsersThisMonth || 0;
@@ -112,15 +104,21 @@ export default function AdminDashboardPage() {
   const experts = userStats?.usersByRole?.['Expert'] || 0;
   const admins = userStats?.usersByRole?.['Admin'] || 0;
 
-  const roleDistribution = [
-    { role: 'Students', count: students, color: 'bg-primary' },
-    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
-    { role: 'Experts', count: experts, color: 'bg-warning' },
-    { role: 'Admins', count: admins, color: 'bg-destructive' },
-  ].map(item => ({
-    ...item,
-    percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
-  })).sort((a,b) => b.count - a.count);
+  const roleDistribution = useMemo(
+    () =>
+      [
+        { role: 'Students', count: students, color: 'bg-primary' },
+        { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
+        { role: 'Experts', count: experts, color: 'bg-warning' },
+        { role: 'Admins', count: admins, color: 'bg-destructive' },
+      ]
+        .map((item) => ({
+          ...item,
+          percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0,
+        }))
+        .sort((a, b) => b.count - a.count),
+    [admins, experts, lecturers, students, totalUsers],
+  );
 
   const currentStats = [
     {
@@ -156,20 +154,22 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-success/10 text-success',
     },
   ];
+  const showInitialSkeleton = userLoading && ragLoading && expertLoading && activityLoading && recentLoading;
 
   return (
     <div className="min-h-screen">
       <Header title="Admin Dashboard" subtitle="System overview and management" />
 
       <div className="mx-auto max-w-[1600px] p-6">
-        {isLoading ? (
+        {showInitialSkeleton ? (
           <AdminDashboardSkeleton />
-        ) : statsError ? (
-          <div className="rounded-2xl border border-destructive bg-destructive/10 px-6 py-8 text-center">
-            <p className="font-medium text-destructive">{statsError}</p>
-          </div>
         ) : (
           <>
+            {(userError || ragError || expertError || activityError || recentError) ? (
+              <div className="mb-6 rounded-2xl border border-dashed border-warning bg-warning/10 px-6 py-4 text-sm text-card-foreground">
+                Some dashboard widgets could not load. Available data is still shown.
+              </div>
+            ) : null}
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {currentStats.map((stat) => (
                 <StatCard key={stat.title} {...stat} />
@@ -180,18 +180,18 @@ export default function AdminDashboardPage() {
               <div className="lg:col-span-2 space-y-6">
                 <RecentUsersTable
                   users={recentUsers}
-                  isLoading={isLoading}
+                  isLoading={recentLoading}
                   isPaging={recentPaging}
                   page={recentPage}
                   pageSize={RECENT_USERS_PAGE_SIZE}
                   totalCount={recentTotal}
                   onPageChange={setRecentPage}
                 />
-                <RoleDistributionChart isLoading={false} roleDistribution={roleDistribution} />
+                <RoleDistributionChart isLoading={userLoading} roleDistribution={roleDistribution} />
               </div>
 
               <div className="space-y-6">
-                <SystemActivityFeed activityStats={activityStats} />
+                <SystemActivityFeed activityStats={activityLoading ? null : activityStats} />
                 <div className="bg-card rounded-xl border border-border p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <TrendingUp className="w-5 h-5 text-primary" />
@@ -204,7 +204,7 @@ export default function AdminDashboardPage() {
                         <span className="text-sm text-card-foreground">Total Cases</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
-                        {ragStats?.totalDocuments?.toLocaleString() ?? '—'}
+                        {ragLoading ? '...' : ragStats?.totalDocuments?.toLocaleString() ?? '—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -213,7 +213,7 @@ export default function AdminDashboardPage() {
                         <span className="text-sm text-card-foreground">Total Reviews</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
-                        {expertStats?.totalReviews?.toLocaleString() ?? '—'}
+                        {expertLoading ? '...' : expertStats?.totalReviews?.toLocaleString() ?? '—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -222,7 +222,7 @@ export default function AdminDashboardPage() {
                         <span className="text-sm text-card-foreground">Pending Reviews</span>
                       </div>
                       <span className="text-sm font-semibold text-warning">
-                        {expertStats?.pendingAnswers?.toLocaleString() ?? '—'}
+                        {expertLoading ? '...' : expertStats?.pendingAnswers?.toLocaleString() ?? '—'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -231,7 +231,7 @@ export default function AdminDashboardPage() {
                         <span className="text-sm text-card-foreground">Document Chunks</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
-                        {ragStats?.totalChunks?.toLocaleString() ?? '—'}
+                        {ragLoading ? '...' : ragStats?.totalChunks?.toLocaleString() ?? '—'}
                       </span>
                     </div>
                   </div>
@@ -242,25 +242,25 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="bg-card rounded-xl p-4 border border-border text-center">
                 <p className="text-3xl font-bold text-primary">
-                  {expertStats?.approvedReviews?.toLocaleString() ?? '—'}
+                  {expertLoading ? '...' : expertStats?.approvedReviews?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">Approved Reviews</p>
               </div>
               <div className="bg-card rounded-xl p-4 border border-border text-center">
                 <p className="text-3xl font-bold text-success">
-                  {ragStats?.totalCitations?.toLocaleString() ?? '—'}
+                  {ragLoading ? '...' : ragStats?.totalCitations?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">Total Citations</p>
               </div>
               <div className="bg-card rounded-xl p-4 border border-border text-center">
                 <p className="text-3xl font-bold text-warning">
-                  {ragStats?.outdatedDocuments?.toLocaleString() ?? '—'}
+                  {ragLoading ? '...' : ragStats?.outdatedDocuments?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">Outdated Documents</p>
               </div>
               <div className="bg-card rounded-xl p-4 border border-border text-center">
                 <p className="text-3xl font-bold text-accent">
-                  {userStats?.pendingUsers?.toLocaleString() ?? '—'}
+                  {userLoading ? '...' : userStats?.pendingUsers?.toLocaleString() ?? '—'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">Pending Users</p>
               </div>

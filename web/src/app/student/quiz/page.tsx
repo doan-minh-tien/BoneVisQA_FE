@@ -1,12 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { fetchStudentPracticeQuiz, submitStudentQuiz, generateAIPracticeQuiz } from '@/lib/api/student';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentPracticeQuiz, StudentQuizSubmissionResult } from '@/lib/api/types';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import {
   CheckCircle,
   Loader2,
@@ -15,13 +18,11 @@ import {
   Trophy,
   Zap,
   BarChart3,
-  TrendingUp,
   Plus,
   Search,
   ChevronLeft,
   ChevronRight,
   BookOpen,
-  AlertCircle,
   Sparkles,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -42,18 +43,40 @@ const difficultyOptions = [
   { value: 'Hard', label: 'Hard' },
 ];
 
+type StudentQuizDraft = {
+  topic: string;
+  difficulty: string;
+  answers: Record<string, string>;
+  searchTerm: string;
+  page: number;
+  questionCount: number;
+};
+
+const EMPTY_QUIZ_DRAFT: StudentQuizDraft = {
+  topic: topicSuggestions[0],
+  difficulty: '',
+  answers: {},
+  searchTerm: '',
+  page: 1,
+  questionCount: 5,
+};
+
 export default function StudentQuizPage() {
   const router = useRouter();
   const toast = useToast();
-  const [topic, setTopic] = useState(topicSuggestions[0]);
-  const [difficulty, setDifficulty] = useState('');
+  const [quizDraft, setQuizDraft, clearQuizDraft] = useLocalStorageState<StudentQuizDraft>(
+    'student-quiz-draft',
+    EMPTY_QUIZ_DRAFT,
+  );
+  const [topic, setTopic] = useState(quizDraft.topic || topicSuggestions[0]);
+  const [difficulty, setDifficulty] = useState(quizDraft.difficulty || '');
   const [quiz, setQuiz] = useState<StudentPracticeQuiz | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(quizDraft.answers || {});
   const [result, setResult] = useState<StudentQuizSubmissionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
+  const [page, setPage] = useState(quizDraft.page || 1);
 
   // AI Quiz State
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -68,7 +91,7 @@ export default function StudentQuizPage() {
     caseId?: string;
     caseTitle?: string;
   }>>([]);
-  const [questionCount, setQuestionCount] = useState(5);
+  const [questionCount, setQuestionCount] = useState(quizDraft.questionCount || 5);
 
   const completion = useMemo(() => {
     if (!quiz) return 0;
@@ -119,11 +142,6 @@ export default function StudentQuizPage() {
   const handleSubmitAIQuiz = async () => {
     if (aiQuestions.length === 0) return;
 
-    const payload = aiQuestions.map((question, index) => ({
-      questionId: `ai-${index}`,
-      studentAnswer: answers[`ai-${index}`] || '',
-    }));
-
     setSubmitting(true);
     try {
       const correctCount = aiQuestions.filter((q, index) =>
@@ -142,6 +160,7 @@ export default function StudentQuizPage() {
       });
 
       toast.success('Quiz submitted successfully!');
+      clearQuizDraft();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to submit quiz.');
     } finally {
@@ -162,17 +181,11 @@ export default function StudentQuizPage() {
       const result = await submitStudentQuiz(quiz.attemptId, payload);
       setResult(result);
       toast.success('Quiz submitted successfully!');
+      clearQuizDraft();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to submit quiz.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleStartAIQuiz = () => {
-    if (aiQuestions.length > 0) {
-      setQuiz(null);
-      setPage(1);
     }
   };
 
@@ -182,38 +195,44 @@ export default function StudentQuizPage() {
     setAnswers({});
     setResult(null);
     setPage(1);
+    clearQuizDraft();
   };
 
+  useEffect(() => {
+    setQuizDraft({
+      topic,
+      difficulty,
+      answers,
+      searchTerm,
+      page,
+      questionCount,
+    });
+  }, [answers, difficulty, page, questionCount, searchTerm, setQuizDraft, topic]);
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Practice hub
-          </p>
-          <h1 className="font-['Manrope',sans-serif] text-[2.75rem] font-extrabold leading-tight tracking-tight text-card-foreground">
-            Quiz arena
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+    <div className="min-h-screen">
+      <Header
+        title="Quiz Arena"
+        subtitle="Practice with live backend quizzes or generate AI-assisted question sets by topic."
+      />
+      <div className="mx-auto max-w-7xl space-y-8 px-4 pb-16 pt-6 sm:px-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+          <div className="relative w-full md:w-72">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <Input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search topics…"
-              className="h-11 w-64 rounded-full border border-border bg-muted pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Search topics..."
+              className="rounded-full pl-10 pr-4"
             />
           </div>
-          <select className="h-11 appearance-none rounded-xl border border-border bg-muted px-4 pr-10 text-sm font-semibold focus:ring-2 focus:ring-primary">
+          <select className="h-10 appearance-none rounded-lg border border-border bg-background px-4 pr-10 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
             <option>Sort by: Recent</option>
             <option>Sort by: Name</option>
             <option>Sort by: Difficulty</option>
           </select>
         </div>
-      </div>
 
       {/* Bento Grid */}
       <div className="grid grid-cols-12 gap-6">
@@ -423,7 +442,7 @@ export default function StudentQuizPage() {
                 Ready to practice?
               </h2>
               <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Select a topic from the card on the left and click "Start practice" to load a quiz,
+                Select a topic from the card on the left and click &quot;Start practice&quot; to load a quiz,
                 or use AI Quiz Generator for instant questions.
               </p>
             </div>
@@ -732,6 +751,7 @@ export default function StudentQuizPage() {
           <Plus className="h-6 w-6" />
         )}
       </button>
+      </div>
     </div>
   );
 }

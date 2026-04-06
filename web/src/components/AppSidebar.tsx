@@ -67,11 +67,11 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   ],
 };
 
-const roleMeta: Record<RoleKey, { label: string; actionHref: string }> = {
-  admin: { label: 'Radiology Education', actionHref: '/admin/documents' },
-  lecturer: { label: 'Radiology Education', actionHref: '/lecturer/qa-triage' },
-  expert: { label: 'Radiology Education', actionHref: '/expert/reviews' },
-  student: { label: 'Radiology Education', actionHref: '/student/qa/image' },
+const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel: string }> = {
+  admin: { label: 'Radiology Education', actionHref: '/admin/documents', actionLabel: 'Upload Document' },
+  lecturer: { label: 'Radiology Education', actionHref: '/lecturer/qa-triage', actionLabel: 'Open Triage' },
+  expert: { label: 'Radiology Education', actionHref: '/expert/reviews', actionLabel: 'Open Workbench' },
+  student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
 
 function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey | null {
@@ -90,8 +90,8 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
   const items = resolvedRole ? navByRole[resolvedRole] ?? [] : [];
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;
 
-  const profileName = user?.fullName || 'Radiology User';
-  const profileRole = user?.activeRole || 'Guest';
+  const profileName = user?.fullName?.trim() || user?.email?.trim() || 'Authenticated User';
+  const profileRole = user?.activeRole || 'Member';
 
   if (!resolvedRole || !meta) {
     return (
@@ -171,7 +171,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             className="w-full justify-center"
           >
             <Plus className="h-4 w-4" />
-            New Analysis
+            {meta.actionLabel}
           </Button>
         </Link>
         <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">

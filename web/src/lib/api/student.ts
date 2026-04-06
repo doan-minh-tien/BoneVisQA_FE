@@ -3,6 +3,7 @@ import type {
   AssignedQuizItem,
   QuizSessionDto,
   StudentCaseCatalogItem,
+  StudentCaseCatalogDetail,
   StudentCaseHistoryItem,
   StudentPracticeQuiz,
   StudentProfile,
@@ -66,6 +67,37 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
     location: String(item.location ?? item.boneLocation ?? item.regionName ?? 'Unknown location'),
     lesionType: String(item.lesionType ?? item.categoryName ?? 'Unknown lesion'),
     difficulty: normalizeDifficulty(item.difficulty),
+  };
+}
+
+function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | null {
+  if (!row || typeof row !== 'object') return null;
+  const base = mapStudentCaseCatalog(row);
+  if (!base) return null;
+  const item = row as Record<string, unknown>;
+  const rawFindings = Array.isArray(item.keyFindings)
+    ? item.keyFindings
+    : Array.isArray(item.findings)
+      ? item.findings
+      : [];
+  return {
+    ...base,
+    description: item.description != null ? String(item.description) : undefined,
+    expertSummary:
+      item.expertSummary != null
+        ? String(item.expertSummary)
+        : item.summary != null
+          ? String(item.summary)
+          : undefined,
+    keyFindings: rawFindings
+      .map((entry) => String(entry ?? '').trim())
+      .filter((entry) => entry.length > 0),
+    approvedAt:
+      item.approvedAt != null
+        ? String(item.approvedAt)
+        : item.updatedAt != null
+          ? String(item.updatedAt)
+          : undefined,
   };
 }
 
@@ -268,6 +300,19 @@ export async function fetchCaseCatalog(filters: {
     return list
       .map(mapStudentCaseCatalog)
       .filter((item): item is StudentCaseCatalogItem => item !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchCaseCatalogDetail(caseId: string): Promise<StudentCaseCatalogDetail> {
+  try {
+    const { data } = await http.get<unknown>(`/api/student/cases/catalog/${caseId}`);
+    const mapped = mapStudentCaseCatalogDetail(data);
+    if (!mapped) {
+      throw new Error('Case detail is unavailable.');
+    }
+    return mapped;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

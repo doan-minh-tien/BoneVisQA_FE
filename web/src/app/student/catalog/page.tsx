@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { StudentAppChrome } from '@/components/student/StudentAppChrome';
+import { useSearchParams } from 'next/navigation';
+import Header from '@/components/Header';
 import { CaseCatalogCard } from '@/components/student/CaseCatalogCard';
 import { fetchCaseCatalog } from '@/lib/api/student';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
@@ -17,12 +18,14 @@ const difficultyOptions = [
 
 export default function StudentCaseCatalogPage() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<StudentCaseCatalogItem[]>([]);
   const [allItems, setAllItems] = useState<StudentCaseCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [location, setLocation] = useState('');
   const [lesionType, setLesionType] = useState('');
   const [difficulty, setDifficulty] = useState('');
+  const query = searchParams.get('q')?.trim().toLowerCase() ?? '';
 
   useEffect(() => {
     let cancelled = false;
@@ -58,14 +61,22 @@ export default function StudentCaseCatalogPage() {
     return Array.from(new Set(allItems.map((item) => item.lesionType).filter(Boolean))).sort();
   }, [allItems]);
 
+  const visibleItems = useMemo(() => {
+    if (!query) return items;
+    return items.filter((item) => {
+      const haystack = `${item.title} ${item.location} ${item.lesionType} ${item.difficulty}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [items, query]);
+
   return (
     <div className="min-h-screen">
-      <StudentAppChrome
+      <Header
         title="Public Case Catalog"
         subtitle="Browse sample bone cases by location, lesion type, and difficulty before opening them in Visual QA"
       />
 
-      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+      <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Filter className="h-4 w-4 text-primary" />
@@ -137,9 +148,9 @@ export default function StudentCaseCatalogPage() {
               Loading case catalog...
             </div>
           </div>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <h2 className="text-lg font-semibold text-card-foreground">No cases match your filters</h2>
+            <h2 className="text-lg font-semibold text-card-foreground">No cases match your filters/search</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Try broadening the location, lesion type, or difficulty filters.
             </p>
@@ -147,11 +158,11 @@ export default function StudentCaseCatalogPage() {
         ) : (
           <>
             <div className="text-sm text-muted-foreground">
-              Showing <span className="font-medium text-card-foreground">{items.length}</span> public case
-              {items.length === 1 ? '' : 's'} from the catalog.
+              Showing <span className="font-medium text-card-foreground">{visibleItems.length}</span> public case
+              {visibleItems.length === 1 ? '' : 's'} from the catalog.
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {items.map((item) => (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {visibleItems.map((item) => (
                 <CaseCatalogCard key={item.id} item={item} />
               ))}
             </div>

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
+import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import {
   ArrowLeft,
   CheckCircle,
@@ -22,6 +23,23 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
 import type { PercentageBoundingBox, VisualQaReport } from '@/lib/api/types';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
+
+type VisualQaDraft = {
+  question: string;
+  annotationBox: PercentageBoundingBox | null;
+  imageDataUrl: string | null;
+  imageName: string | null;
+  imageType: string | null;
+};
+
+const EMPTY_DRAFT: VisualQaDraft = {
+  question: '',
+  annotationBox: null,
+  imageDataUrl: null,
+  imageName: null,
+  imageType: null,
+};
 
 export default function StudentVisualQaImagePage() {
   const toast = useToast();
@@ -33,15 +51,45 @@ export default function StudentVisualQaImagePage() {
   /** `upload` = multipart upload in progress; `analyzing` = bytes sent, waiting on model + server. */
   const [loadingPhase, setLoadingPhase] = useState<'upload' | 'analyzing'>('upload');
   const [uploadPct, setUploadPct] = useState(0);
-  /** Simulated progress during AI phase (0–100); snaps to 100 when the API returns. */
-  const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [annotationBox, setAnnotationBox] = useState<PercentageBoundingBox | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
+  const [hydratingDraft, setHydratingDraft] = useState(true);
+  const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
+    'student-visual-qa-draft',
+    EMPTY_DRAFT,
+  );
 
   const catalogImageUrl = searchParams.get('catalogImageUrl');
   const catalogTitle = searchParams.get('catalogTitle');
+  const catalogContext = searchParams.get('catalogContext');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (draft.question) setQuestion(draft.question);
+      if (draft.annotationBox) setAnnotationBox(draft.annotationBox);
+      if (draft.imageDataUrl && draft.imageName) {
+        try {
+          const response = await fetch(draft.imageDataUrl);
+          const blob = await response.blob();
+          if (!cancelled) {
+            setFile(new File([blob], draft.imageName, { type: draft.imageType || blob.type || 'image/jpeg' }));
+          }
+        } catch {
+          if (!cancelled) {
+            setDraft((prev) => ({ ...prev, imageDataUrl: null, imageName: null, imageType: null }));
+          }
+        }
+      }
+      if (!cancelled) setHydratingDraft(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!file) {
@@ -86,6 +134,12 @@ export default function StudentVisualQaImagePage() {
     };
   }, [catalogImageUrl, catalogTitle, file, toast]);
 
+  useEffect(() => {
+    if (!catalogContext) return;
+    if (question.trim()) return;
+    setQuestion(`Please analyze this teaching case: ${catalogContext}.`);
+  }, [catalogContext, question]);
+
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const f = e.target.files?.[0];
@@ -103,20 +157,6 @@ export default function StudentVisualQaImagePage() {
     if (pct >= 100) setLoadingPhase('analyzing');
   }, []);
 
-  useEffect(() => {
-    if (!loading || loadingPhase !== 'analyzing') {
-      setAnalyzeProgress(0);
-      return;
-    }
-    const start = Date.now();
-    const durationMs = 18000;
-    const id = window.setInterval(() => {
-      const elapsed = Date.now() - start;
-      setAnalyzeProgress(Math.min(95, (elapsed / durationMs) * 95));
-    }, 200);
-    return () => clearInterval(id);
-  }, [loading, loadingPhase]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !question.trim()) {
@@ -127,20 +167,18 @@ export default function StudentVisualQaImagePage() {
     setLoading(true);
     setLoadingPhase('upload');
     setUploadPct(0);
-    setAnalyzeProgress(0);
     setReport(null);
     try {
       const res = await postStudentVisualQa(file, q, annotationBox, handleUploadProgress);
-      setAnalyzeProgress(100);
       setLastSubmittedQuestion(q);
       setReport(res);
       toast.success('Diagnostic report generated.');
+      clearDraft();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Request failed');
     } finally {
       setLoading(false);
       setUploadPct(0);
-      setAnalyzeProgress(0);
       setLoadingPhase('upload');
     }
   };
@@ -151,6 +189,32 @@ export default function StudentVisualQaImagePage() {
     if (fromApi) return fromApi;
     return lastSubmittedQuestion?.trim() ?? '';
   }, [report, lastSubmittedQuestion]);
+
+  useEffect(() => {
+    if (hydratingDraft) return;
+    setDraft((prev) => ({ ...prev, question }));
+  }, [hydratingDraft, question, setDraft]);
+
+  useEffect(() => {
+    if (hydratingDraft) return;
+    setDraft((prev) => ({ ...prev, annotationBox }));
+  }, [annotationBox, hydratingDraft, setDraft]);
+
+  useEffect(() => {
+    if (hydratingDraft || !file) return;
+    if (draft.imageName === file.name && draft.imageDataUrl) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageDataUrl = typeof reader.result === 'string' ? reader.result : null;
+      setDraft((prev) => ({
+        ...prev,
+        imageDataUrl,
+        imageName: file.name,
+        imageType: file.type || 'image/jpeg',
+      }));
+    };
+    reader.readAsDataURL(file);
+  }, [draft.imageDataUrl, draft.imageName, file, hydratingDraft, setDraft]);
 
   return (
     <div className="dark flex min-h-screen flex-col bg-background text-text-main">
@@ -207,6 +271,9 @@ export default function StudentVisualQaImagePage() {
                   <span className="truncate">{file.name}</span>
                 </div>
               ) : null}
+              {hydratingDraft ? (
+                <div className="mt-2 text-xs text-text-muted">Restoring your unsent draft...</div>
+              ) : null}
               {!file && prefillLoading ? (
                 <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
                   <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
@@ -243,43 +310,30 @@ export default function StudentVisualQaImagePage() {
               </div>
             ) : null}
             {loading && loadingPhase === 'upload' ? (
-              <div className="rounded-xl border border-border-color bg-background/55 p-4">
-                <div className="mb-2 flex justify-between text-xs uppercase tracking-[0.16em] text-text-muted">
-                  <span>Uploading image…</span>
-                  <span>{uploadPct}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-surface">
-                  <div
-                    className="h-full bg-cyan-accent transition-all duration-300"
-                    style={{ width: `${uploadPct}%` }}
-                  />
-                </div>
-              </div>
+              <DynamicProgressTracker
+                mode="determinate"
+                label="Uploading image"
+                progressPercentage={uploadPct}
+                message="Uploading imaging file..."
+              />
             ) : null}
             {loading && loadingPhase === 'analyzing' ? (
               <div className="rounded-xl border border-cyan-accent/25 bg-cyan-accent/5 p-6">
-                <div className="flex flex-col items-center justify-center gap-4 text-center">
-                  <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
+                <div className="mb-4 flex items-center gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-cyan-accent" />
                   <p className="text-sm font-medium text-text-main">
-                    Analyzing medical image… Deducing clinical logic…
+                    Analyzing image and reasoning with AI... Please wait.
                   </p>
-                  <p className="max-w-md text-xs text-text-muted">
-                    Upload finished. The model is retrieving evidence and composing your structured
-                    report—this can take longer than the upload.
-                  </p>
-                  <div className="w-full max-w-md space-y-2">
-                    <div className="flex justify-between text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-                      <span>AI reasoning</span>
-                      <span>{Math.round(analyzeProgress)}%</span>
-                    </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-surface">
-                      <div
-                        className="h-full rounded-full bg-cyan-accent transition-[width] duration-300 ease-out"
-                        style={{ width: `${Math.min(100, analyzeProgress)}%` }}
-                      />
-                    </div>
-                  </div>
                 </div>
+                <DynamicProgressTracker
+                  mode="indeterminate"
+                  label="AI reasoning"
+                  messages={[
+                    'Analyzing medical image...',
+                    'Searching vector database...',
+                    'Generating diagnosis and key findings...',
+                  ]}
+                />
               </div>
             ) : null}
               <Button type="submit" className="w-full sm:w-auto" isLoading={loading} disabled={loading}>

@@ -293,6 +293,23 @@ export interface StudentCaseCatalogItem {
   difficulty: 'basic' | 'intermediate' | 'advanced';
 }
 
+export interface StudentCaseCatalogDetail extends StudentCaseCatalogItem {
+  description?: string;
+  expertSummary?: string;
+  keyFindings?: string[];
+  approvedAt?: string;
+}
+
+export interface AppNotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  message?: string;
+  route?: string;
+  createdAt?: string;
+  isRead?: boolean;
+}
+
 export interface AdminUser {
   id: string;
   fullName: string;

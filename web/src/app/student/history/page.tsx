@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { StudentAppChrome } from '@/components/student/StudentAppChrome';
+import Header from '@/components/Header';
 import CaseCard from '@/components/student/CaseCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { fetchStudentCases } from '@/lib/api/student';
 import type { StudentCaseHistoryItem } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
@@ -58,22 +60,22 @@ export default function StudentHistoryPage() {
 
   return (
     <div className="min-h-screen">
-      <StudentAppChrome
+      <Header
         title="Visual QA History"
         subtitle="Review your submitted cases and see whether a clinical expert has verified the result"
       />
 
-      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+      <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 md:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="w-full md:max-w-md">
               <div className="flex items-center gap-2 rounded-xl border border-border bg-input px-3 py-3 focus-within:ring-2 focus-within:ring-ring">
                 <Search className="h-4 w-4 text-muted-foreground" />
-                <input
+                <Input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="grow bg-transparent text-sm text-foreground outline-none"
+                  className="h-auto grow border-0 bg-transparent p-0 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   placeholder="Search by question title, region, or lesion type..."
                 />
               </div>
@@ -87,18 +89,16 @@ export default function StudentHistoryPage() {
             </span>
             <div className="flex flex-wrap gap-2">
               {difficultyFilters.map((filter) => (
-                <button
+                <Button
                   key={filter.id}
                   type="button"
+                  size="sm"
+                  variant={filter.id === difficulty ? 'primary' : 'outline'}
                   onClick={() => setDifficulty(filter.id)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    filter.id === difficulty
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted/70'
-                  }`}
+                  className="rounded-full"
                 >
                   {filter.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
