@@ -23,6 +23,10 @@ function asStringArray(v: unknown): string[] {
 export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 
+  const questionText = asString(
+    pick(o, ['questionText', 'QuestionText', 'studentQuestion', 'originalQuestion']),
+  ).trim();
+
   const answer = asString(pick(o, ['answerText', 'answer', 'explanation', 'content'])) || '';
 
   const suggested = asString(pick(o, ['suggestedDiagnosis', 'diagnosis']));
@@ -67,19 +71,30 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
       if (!c || typeof c !== 'object') return {};
       const cc = c as Record<string, unknown>;
       return {
-        documentUrl: asString(cc.documentUrl),
+        documentUrl: asString(cc.documentUrl ?? cc.referenceUrl ?? cc.documentURL),
         chunkOrder: typeof cc.chunkOrder === 'number' ? Number(cc.chunkOrder) : undefined,
         title: asString(cc.title),
       };
     });
   }
 
+  const confRaw = pick(o, ['aiConfidenceScore', 'confidenceScore', 'confidence']);
+  let aiConfidenceScore: number | undefined;
+  if (typeof confRaw === 'number' && Number.isFinite(confRaw)) {
+    aiConfidenceScore = confRaw;
+  } else if (typeof confRaw === 'string' && confRaw.trim()) {
+    const n = parseFloat(confRaw);
+    if (Number.isFinite(n)) aiConfidenceScore = n;
+  }
+
   return {
+    ...(questionText ? { questionText } : {}),
     answerText: answer,
     suggestedDiagnosis: suggested,
     keyFindings,
     differentialDiagnoses: diff,
     recommendedReadings: readings,
     citations,
+    ...(aiConfidenceScore !== undefined ? { aiConfidenceScore } : {}),
   };
 }

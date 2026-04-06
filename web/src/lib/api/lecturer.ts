@@ -13,7 +13,7 @@ export async function createClass(body: {
   lecturerId: string;
 }): Promise<ClassItem> {
   try {
-    const { data } = await http.post<ClassItem>('/api/Lecturers/classes', body);
+    const { data } = await http.post<ClassItem>('/api/lecturer/classes', body);
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -22,7 +22,7 @@ export async function createClass(body: {
 
 export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<ClassItem[]>('/api/Lecturers/classes', {
+    const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
       params: { lecturerId },
     });
     return Array.isArray(data) ? data : [];
@@ -33,7 +33,7 @@ export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[
 
 export async function getClassStudents(classId: string): Promise<StudentEnrollment[]> {
   try {
-    const { data } = await http.get<StudentEnrollment[]>(`/api/Lecturers/classes/${classId}/students`);
+    const { data } = await http.get<StudentEnrollment[]>(`/api/lecturer/classes/${classId}/students`);
     return Array.isArray(data) ? data : [];
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -43,7 +43,7 @@ export async function getClassStudents(classId: string): Promise<StudentEnrollme
 export async function getAvailableStudents(classId: string): Promise<StudentEnrollment[]> {
   try {
     const { data } = await http.get<StudentEnrollment[]>(
-      `/api/Lecturers/classes/${classId}/students/available`,
+      `/api/lecturer/classes/${classId}/students/available`,
     );
     return Array.isArray(data) ? data : [];
   } catch (e) {
@@ -53,7 +53,7 @@ export async function getAvailableStudents(classId: string): Promise<StudentEnro
 
 export async function enrollStudent(classId: string, studentId: string): Promise<void> {
   try {
-    await http.post(`/api/Lecturers/classes/${classId}/enroll`, { studentId });
+    await http.post(`/api/lecturer/classes/${classId}/enroll`, { studentId });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -61,7 +61,7 @@ export async function enrollStudent(classId: string, studentId: string): Promise
 
 export async function removeStudent(classId: string, studentId: string): Promise<void> {
   try {
-    await http.delete(`/api/Lecturers/classes/${classId}/students/${studentId}`);
+    await http.delete(`/api/lecturer/classes/${classId}/students/${studentId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -69,7 +69,7 @@ export async function removeStudent(classId: string, studentId: string): Promise
 
 export async function getLecturerCases(): Promise<CaseDto[]> {
   try {
-    const { data } = await http.get<CaseDto[]>('/api/Lecturers/cases');
+    const { data } = await http.get<CaseDto[]>('/api/lecturer/cases');
     return Array.isArray(data) ? data : [];
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -120,7 +120,7 @@ export async function assignQuizToClass(
 
 export async function approveCase(caseId: string, isApproved: boolean): Promise<void> {
   try {
-    await http.put(`/api/Lecturers/cases/${caseId}/approve`, { isApproved });
+    await http.put(`/api/lecturer/cases/${caseId}/approve`, { isApproved });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -128,7 +128,7 @@ export async function approveCase(caseId: string, isApproved: boolean): Promise<
 
 export async function getClassAnnouncements(classId: string): Promise<Announcement[]> {
   try {
-    const { data } = await http.get<Announcement[]>(`/api/Lecturers/classes/${classId}/announcements`);
+    const { data } = await http.get<Announcement[]>(`/api/lecturer/classes/${classId}/announcements`);
     return Array.isArray(data) ? data : [];
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -141,7 +141,7 @@ export async function createAnnouncement(
 ): Promise<Announcement> {
   try {
     const { data } = await http.post<Announcement | ''>(
-      `/api/Lecturers/classes/${classId}/announcements`,
+      `/api/lecturer/classes/${classId}/announcements`,
       body,
     );
     if (!data || typeof data === 'string') {
@@ -162,7 +162,7 @@ export async function createAnnouncement(
 
 export async function getClassStats(classId: string): Promise<ClassStats> {
   try {
-    const { data } = await http.get<ClassStats>(`/api/Lecturers/classes/${classId}/stats`);
+    const { data } = await http.get<ClassStats>(`/api/lecturer/classes/${classId}/stats`);
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

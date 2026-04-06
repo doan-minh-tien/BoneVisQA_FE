@@ -109,15 +109,21 @@ export default function ExpertReviewsPage() {
     if (!active) return;
     setSaving(true);
     try {
-      const keyFindings = keyText
+      const normalizedFindings = keyText
         .split('\n')
         .map((s) => s.trim())
-        .filter(Boolean)
-        .join('\n');
+        .filter(Boolean);
       await putExpertReview(active.id, {
-        status,
-        suggestedDiagnosis: diag.trim() || undefined,
-        keyFindings: keyFindings || undefined,
+        answerText: active.report.answerText || '',
+        structuredDiagnosis: diag.trim() || active.report.suggestedDiagnosis || '',
+        differentialDiagnoses:
+          normalizedFindings.length > 0
+            ? normalizedFindings
+            : active.report.differentialDiagnoses,
+        reviewNote:
+          status === 'Approved'
+            ? 'Approved by expert reviewer.'
+            : 'Rejected by expert reviewer.',
       });
       toast.success(
         status === 'Approved'
@@ -137,9 +143,10 @@ export default function ExpertReviewsPage() {
     setSaving(true);
     try {
       await putExpertReview(item.id, {
-        status: 'Approved',
-        suggestedDiagnosis: item.report.suggestedDiagnosis,
-        keyFindings: item.report.keyFindings.join('\n'),
+        answerText: item.report.answerText || '',
+        structuredDiagnosis: item.report.suggestedDiagnosis || '',
+        differentialDiagnoses: item.report.differentialDiagnoses,
+        reviewNote: 'Approved by expert reviewer.',
       });
       toast.success('Approved for the public reference library.');
       await load();
@@ -153,7 +160,12 @@ export default function ExpertReviewsPage() {
   const quickReject = async (item: ExpertReviewItem) => {
     setSaving(true);
     try {
-      await putExpertReview(item.id, { status: 'Rejected' });
+      await putExpertReview(item.id, {
+        answerText: item.report.answerText || '',
+        structuredDiagnosis: item.report.suggestedDiagnosis || '',
+        differentialDiagnoses: item.report.differentialDiagnoses,
+        reviewNote: 'Rejected by expert reviewer.',
+      });
       toast.info('Answer flagged as invalid.');
       await load();
     } catch (e) {

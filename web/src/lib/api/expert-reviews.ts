@@ -1,9 +1,9 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from './types';
+import type { Citation, ExpertReviewItem, VisualQaReport } from './types';
 import { parsePercentageBoundingBox } from '@/lib/utils/annotations';
 
-function mapExpertCitation(row: unknown): ExpertReviewCitation | null {
+function mapExpertCitation(row: unknown): Citation | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
   const chunkId = String(r.chunkId ?? r.id ?? r.chunkID ?? '');
@@ -34,8 +34,8 @@ function mapExpertCitation(row: unknown): ExpertReviewCitation | null {
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const id = String(r.id ?? r.requestId ?? '');
-  if (!id) return null;
+  const answerId = String(r.answerId ?? r.id ?? r.requestId ?? '');
+  if (!answerId) return null;
   const reportRaw = r.report ?? r.structuredReport ?? r.aiReport;
   const report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
   const customCoordinates = parsePercentageBoundingBox(
@@ -53,13 +53,16 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
         : [];
   const citations = citationSource
     .map(mapExpertCitation)
-    .filter((item): item is ExpertReviewCitation => item !== null);
+    .filter((item): item is Citation => item !== null);
+  const questionText = String(r.questionText ?? r.question ?? '');
 
   return {
-    id,
+    answerId,
+    id: answerId,
     studentName: String(r.studentName ?? ''),
     className: r.className !== undefined ? String(r.className) : undefined,
-    question: String(r.question ?? ''),
+    questionText,
+    question: questionText,
     imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
     customCoordinates,
     askedAt: String(r.askedAt ?? ''),
@@ -71,7 +74,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
 
 export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/Expert/reviews');
+    const { data } = await http.get<unknown>('/api/expert/reviews/escalated');
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -84,17 +87,23 @@ export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
 }
 
 export interface ExpertReviewUpdatePayload {
-  status: 'Approved' | 'Rejected';
-  suggestedDiagnosis?: string;
-  keyFindings?: string;
+  answerText: string;
+  structuredDiagnosis: string;
+  differentialDiagnoses: string[];
+  reviewNote: string;
 }
 
 export async function putExpertReview(
-  requestId: string,
+  answerId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
   try {
-    await http.put(`/api/Expert/reviews/${requestId}`, JSON.stringify(payload), {
+    await http.post(`/api/expert/reviews/${answerId}/resolve`, JSON.stringify({
+      AnswerText: payload.answerText,
+      StructuredDiagnosis: payload.structuredDiagnosis,
+      DifferentialDiagnoses: payload.differentialDiagnoses,
+      ReviewNote: payload.reviewNote,
+    }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {

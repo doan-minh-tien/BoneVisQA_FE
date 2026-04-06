@@ -1,5 +1,10 @@
 import { http, getApiErrorMessage } from './client';
-import type { CategoryOption, DocumentUploadResponse, TagOption } from './types';
+import type {
+  CategoryOption,
+  DocumentStatusResponse,
+  DocumentUploadResponse,
+  TagOption,
+} from './types';
 
 const ADMIN_DOCUMENTS = '/api/admin/documents';
 
@@ -39,6 +44,7 @@ function mapTag(row: unknown): TagOption {
 
 export interface UploadDocumentParams {
   file: File;
+  title?: string;
   categoryId: string;
   tagIds: string[];
   onUploadProgress?: (percent: number) => void;
@@ -49,12 +55,13 @@ export async function uploadAdminDocument(
 ): Promise<DocumentUploadResponse> {
   const form = new FormData();
   form.append('file', params.file);
+  form.append('Title', (params.title ?? '').trim() || params.file.name);
   form.append('CategoryId', params.categoryId);
   params.tagIds.forEach((id) => form.append('TagIds', id));
 
   try {
     const { data } = await http.post<DocumentUploadResponse>(
-      `${ADMIN_DOCUMENTS}/document-upload`,
+      `${ADMIN_DOCUMENTS}/upload`,
       form,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -135,6 +142,35 @@ export async function reindexAdminDocument(
       `${ADMIN_DOCUMENTS}/${id}/reindex`,
     );
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+function mapDocumentStatus(row: unknown): DocumentStatusResponse {
+  const r = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>;
+  const progressRaw = r.progressPercentage ?? r.progress ?? 0;
+  const progressParsed =
+    typeof progressRaw === 'number'
+      ? progressRaw
+      : typeof progressRaw === 'string'
+        ? parseFloat(progressRaw)
+        : 0;
+  const progressPercentage = Number.isFinite(progressParsed)
+    ? Math.min(100, Math.max(0, progressParsed))
+    : 0;
+
+  return {
+    status: String(r.status ?? r.indexingStatus ?? 'Unknown'),
+    progressPercentage,
+    currentOperation: String(r.currentOperation ?? r.operation ?? ''),
+  };
+}
+
+export async function fetchDocumentStatus(id: string): Promise<DocumentStatusResponse> {
+  try {
+    const { data } = await http.get<unknown>(`${ADMIN_DOCUMENTS}/${id}/status`);
+    return mapDocumentStatus(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

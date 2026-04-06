@@ -14,16 +14,16 @@ export async function postStudentVisualQa(
   form.append('QuestionText', questionText);
   const serializedBox = serializePercentageBoundingBox(annotationBox);
   if (serializedBox) {
-    form.append('CustomCoordinates', serializedBox);
+    form.append('coordinates', serializedBox);
   }
 
   try {
-    const { data } = await http.post<unknown>('/api/Students/VisualQA/ask', form, {
+    const { data } = await http.post<unknown>('/api/student/visual-qa/ask', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (ev) => {
-        if (ev.total && onUploadProgress) {
-          onUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-        }
+        if (!onUploadProgress || !ev.total) return;
+        const pct = Math.round((ev.loaded / ev.total) * 100);
+        onUploadProgress(Math.min(100, pct));
       },
     });
     const payload =

@@ -6,12 +6,16 @@ export interface VisualQaCitation {
 }
 
 export interface VisualQaReport {
+  /** Echoed from the request when the API returns it. */
+  questionText?: string;
   answerText: string;
   suggestedDiagnosis: string;
   keyFindings: string[];
   differentialDiagnoses: string[];
   recommendedReadings: Array<{ title?: string; url?: string } | string>;
   citations: VisualQaCitation[];
+  /** Model confidence when provided by the backend (0–100). */
+  aiConfidenceScore?: number;
 }
 
 export interface CategoryOption {
@@ -27,6 +31,12 @@ export interface TagOption {
 export interface DocumentUploadResponse {
   indexingStatus?: string;
   message?: string;
+}
+
+export interface DocumentStatusResponse {
+  status: string;
+  progressPercentage: number;
+  currentOperation: string;
 }
 
 export interface LecturerTriageRow {
@@ -229,22 +239,26 @@ export interface PercentageBoundingBox {
 }
 
 export interface ExpertReviewItem {
+  answerId: string;
   id: string;
   studentName: string;
   className?: string;
+  questionText: string;
   question: string;
   imageUrl?: string;
   customCoordinates?: PercentageBoundingBox | null;
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;
-  citations?: ExpertReviewCitation[];
+  citations?: Citation[];
 }
 
-export interface ExpertReviewCitation {
+export interface Citation {
   chunkId: string;
   sourceText: string;
   referenceUrl?: string;
   pageNumber?: number;
   flagged?: boolean;
 }
+
+export type ExpertReviewCitation = Citation;
