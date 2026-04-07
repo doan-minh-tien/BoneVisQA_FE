@@ -14,9 +14,6 @@ import {
   Eye,
   Save,
   Send,
-  Plus,
-  Trash2,
-  HelpCircle,
   Clock,
   CalendarDays,
   BookOpen,
@@ -32,7 +29,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
-import { assignCasesToClass, assignQuizToClass } from '@/lib/api/lecturer';
+import { assignCasesToClass, assignQuizToClass, isValidGuidString } from '@/lib/api/lecturer';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
 import type { ClassItem } from '@/lib/api/types';
 
@@ -71,26 +68,10 @@ const assignmentTypes = [
   },
 ];
 
-interface Question {
-  id: string;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-  points: number;
-}
-
-const createEmptyQuestion = (): Question => ({
-  id: Date.now().toString(),
-  question: '',
-  options: ['', '', '', ''],
-  correctAnswer: 0,
-  points: 10,
-});
-
+/** Wizard gán bài: quiz/case đã có sẵn trên server — không soạn câu hỏi tại đây. */
 const steps = [
   { label: 'Basic Info', icon: FileText, description: 'Title, type & classes' },
   { label: 'Configuration', icon: Settings2, description: 'Due date & settings' },
-  { label: 'Questions', icon: HelpCircle, description: 'Quiz questions' },
   { label: 'Review', icon: Eye, description: 'Review & publish' },
 ];
 
@@ -123,7 +104,6 @@ function CreateAssignmentPageContent({
     allowLate: false,
     isMandatory: true,
     instructions: '',
-    questions: [createEmptyQuestion()] as Question[],
     timeLimitMinutes: 60,
     passingScore: 70,
     shuffleQuestions: false,
@@ -166,12 +146,13 @@ function CreateAssignmentPageContent({
     };
   }, [toast]);
 
-  const visibleSteps = isQuiz
-    ? steps
-    : steps.filter((s) => s.label !== 'Questions');
+  const lastStep = steps.length - 1;
+  const currentStepLabel = steps[currentStep]?.label;
 
-  const lastStep = visibleSteps.length - 1;
-  const currentStepLabel = visibleSteps[currentStep]?.label;
+  /** Sau khi bỏ bước Questions, tránh currentStep cũ vượt quá số bước (HMR / phiên bản cũ). */
+  useEffect(() => {
+    setCurrentStep((s) => Math.min(Math.max(0, s), lastStep));
+  }, [lastStep]);
 
   const toggleClass = (classId: string) => {
     setFormData((prev) => ({
@@ -182,50 +163,11 @@ function CreateAssignmentPageContent({
     }));
   };
 
-  const addQuestion = () => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: [...prev.questions, createEmptyQuestion()],
-    }));
-  };
-
-  const removeQuestion = (id: string) => {
-    if (formData.questions.length <= 1) return;
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.filter((q) => q.id !== id),
-    }));
-  };
-
-  const updateQuestion = (id: string, field: keyof Question, value: string | number | string[]) => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)),
-    }));
-  };
-
-  const updateOption = (questionId: string, optionIndex: number, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.map((q) => {
-        if (q.id !== questionId) return q;
-        const newOptions = [...q.options];
-        newOptions[optionIndex] = value;
-        return { ...q, options: newOptions };
-      }),
-    }));
-  };
-
   const canProceed = () => {
     if (currentStep === 0) return formData.title && formData.type && formData.selectedClasses.length > 0;
     if (currentStep === 1) return !!formData.dueDate;
-    if (isQuiz && currentStepLabel === 'Questions') {
-      return formData.questions.every((q) => q.question && q.options.every((o) => o) && q.points > 0);
-    }
     return true;
   };
-
-  const totalQuizPoints = formData.questions.reduce((sum, q) => sum + q.points, 0);
   const selectedClassData = useMemo(
     () =>
       formData.selectedClasses
@@ -244,17 +186,43 @@ function CreateAssignmentPageContent({
     [formData.caseIdsInput],
   );
 
+  /** BE chỉ chấp nhận UUID (Guid) — số như "89898" sẽ gây lỗi 400 khi gọi API. */
+  const validCaseGuids = useMemo(
+    () => parsedCaseIds.filter((id) => isValidGuidString(id)),
+    [parsedCaseIds],
+  );
+  const invalidCaseTokens = useMemo(
+    () => parsedCaseIds.filter((id) => !isValidGuidString(id)),
+    [parsedCaseIds],
+  );
+
   const validateSubmission = () => {
     if (formData.selectedClasses.length === 0) {
       throw new Error('Select at least one class before publishing.');
     }
 
-    if (isQuiz && !formData.quizId.trim()) {
-      throw new Error('Enter the backend quiz ID before publishing.');
-    }
-
-    if (!isQuiz && parsedCaseIds.length === 0) {
-      throw new Error('Enter at least one backend case ID before publishing.');
+    if (isQuiz) {
+      const q = formData.quizId.trim();
+      if (!q) {
+        throw new Error('Enter the backend quiz ID before publishing.');
+      }
+      if (!isValidGuidString(q)) {
+        throw new Error(
+          'Quiz ID phải là UUID (Guid) từ hệ thống, ví dụ: a1b2c3d4-e5f6-7890-abcd-ef1234567890. Mở trang Quizzes để copy ID thật.',
+        );
+      }
+    } else {
+      if (parsedCaseIds.length === 0) {
+        throw new Error('Enter at least one backend case ID before publishing.');
+      }
+      if (invalidCaseTokens.length > 0) {
+        throw new Error(
+          `Mỗi Case ID phải là UUID (Guid), không phải mã số ngắn. Các dòng không hợp lệ: ${invalidCaseTokens.join(', ')}. Vào Cases / quản lý case để copy ID dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.`,
+        );
+      }
+      if (validCaseGuids.length === 0) {
+        throw new Error('Cần ít nhất một Case ID đúng định dạng UUID.');
+      }
     }
   };
 
@@ -278,7 +246,7 @@ function CreateAssignmentPageContent({
                 passingScore: formData.passingScore || undefined,
               })
             : assignCasesToClass(classId, {
-                caseIds: parsedCaseIds,
+                caseIds: validCaseGuids,
                 dueDate: formData.dueDate || undefined,
                 isMandatory: formData.isMandatory,
               }),
@@ -318,7 +286,7 @@ function CreateAssignmentPageContent({
 
           {/* Step progress in header */}
           <div className="hidden md:flex items-center gap-1">
-            {visibleSteps.map((step, idx) => {
+            {steps.map((step, idx) => {
               const StepIcon = step.icon;
               const isActive = idx === currentStep;
               const isCompleted = idx < currentStep;
@@ -340,7 +308,7 @@ function CreateAssignmentPageContent({
                     )}
                     {step.label}
                   </div>
-                  {idx < visibleSteps.length - 1 && (
+                  {idx < steps.length - 1 && (
                     <ChevronRight className={`w-3 h-3 ${isCompleted ? 'text-success' : 'text-border'}`} />
                   )}
                 </div>
@@ -513,7 +481,9 @@ function CreateAssignmentPageContent({
                     <span className="text-destructive">*</span>
                   </h2>
                   <p className="text-xs text-muted-foreground mb-3 ml-8">
-                    Point this assignment to the existing backend resource students should receive.
+                    Gán bài cho <strong className="text-foreground">case/quiz đã có trong hệ thống</strong>. ID phải là{' '}
+                    <strong className="text-foreground">UUID</strong> (dạng xxxxxxxx-xxxx-...), copy từ trang Cases hoặc
+                    Quizzes — không dùng mã số tự đặt như &quot;89898&quot;.
                   </p>
 
                   {isQuiz ? (
@@ -523,7 +493,7 @@ function CreateAssignmentPageContent({
                         type="text"
                         value={formData.quizId}
                         onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
-                        placeholder="Enter the persisted quiz ID from the backend"
+                        placeholder="UUID quiz — ví dụ: a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                         className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                       />
                     </div>
@@ -533,14 +503,16 @@ function CreateAssignmentPageContent({
                       <textarea
                         value={formData.caseIdsInput}
                         onChange={(e) => setFormData({ ...formData, caseIdsInput: e.target.value })}
-                        placeholder="Paste one or more backend case IDs separated by commas or new lines"
+                        placeholder="Mỗi dòng hoặc dấu phẩy: một UUID case từ trang Cases"
                         rows={4}
                         className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none transition-all"
                       />
                       <p className="text-xs text-muted-foreground">
-                        {parsedCaseIds.length > 0
-                          ? `${parsedCaseIds.length} case ID${parsedCaseIds.length === 1 ? '' : 's'} ready for assignment.`
-                          : 'Add at least one case ID to enable publishing.'}
+                        {parsedCaseIds.length === 0
+                          ? 'Thêm ít nhất một UUID case để có thể publish.'
+                          : invalidCaseTokens.length > 0
+                            ? `${invalidCaseTokens.length} dòng không phải UUID — sửa lại hoặc xóa. ${validCaseGuids.length} UUID hợp lệ.`
+                            : `${validCaseGuids.length} case UUID sẵn sàng gán.`}
                       </p>
                     </div>
                   )}
@@ -704,151 +676,7 @@ function CreateAssignmentPageContent({
               </div>
             )}
 
-            {/* Step 3: Questions */}
-            {currentStepLabel === 'Questions' && (
-              <div className="space-y-4">
-                {/* Stats bar */}
-                <div className="bg-card rounded-xl border border-border p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <HelpCircle className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{formData.questions.length}</p>
-                        <p className="text-xs text-muted-foreground">Questions</p>
-                      </div>
-                    </div>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
-                        <Star className="w-4 h-4 text-success" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{totalQuizPoints}</p>
-                        <p className="text-xs text-muted-foreground">Total pts</p>
-                      </div>
-                    </div>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                        <Clock className="w-4 h-4 text-accent" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{formData.timeLimitMinutes}</p>
-                        <p className="text-xs text-muted-foreground">Min limit</p>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={addQuestion}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Question
-                  </button>
-                </div>
-
-                {/* Questions list */}
-                {formData.questions.map((q, qIdx) => (
-                  <div key={q.id} className="bg-card rounded-xl border border-border overflow-hidden">
-                    {/* Question header */}
-                    <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <span className="text-xs font-bold text-primary">{qIdx + 1}</span>
-                        </div>
-                        <span className="text-sm font-medium text-card-foreground">Question {qIdx + 1}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <Star className="w-3.5 h-3.5 text-muted-foreground" />
-                          <input
-                            type="number"
-                            value={q.points}
-                            onChange={(e) => updateQuestion(q.id, 'points', Number(e.target.value))}
-                            min={1}
-                            className="w-14 px-2 py-1 bg-background border border-border rounded text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary/50"
-                          />
-                          <span className="text-xs text-muted-foreground">pts</span>
-                        </div>
-                        {formData.questions.length > 1 && (
-                          <button
-                            onClick={() => removeQuestion(q.id)}
-                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-5 space-y-4">
-                      {/* Question text */}
-                      <input
-                        type="text"
-                        value={q.question}
-                        onChange={(e) => updateQuestion(q.id, 'question', e.target.value)}
-                        placeholder="Enter your question here..."
-                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                      />
-
-                      {/* Options */}
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Answer Options — click a letter to mark as correct</p>
-                        {q.options.map((option, optIdx) => {
-                          const isCorrect = q.correctAnswer === optIdx;
-                          const letter = String.fromCharCode(65 + optIdx);
-                          return (
-                            <div key={optIdx} className="flex items-center gap-2.5">
-                              <button
-                                onClick={() => updateQuestion(q.id, 'correctAnswer', optIdx)}
-                                title={isCorrect ? 'Correct answer' : 'Mark as correct'}
-                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
-                                  isCorrect
-                                    ? 'bg-success border-success text-white shadow-sm shadow-success/30'
-                                    : 'border-border text-muted-foreground hover:border-success/50 hover:text-success'
-                                }`}
-                              >
-                                {letter}
-                              </button>
-                              <input
-                                type="text"
-                                value={option}
-                                onChange={(e) => updateOption(q.id, optIdx, e.target.value)}
-                                placeholder={`Option ${letter}...`}
-                                className={`flex-1 px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 transition-all ${
-                                  isCorrect
-                                    ? 'bg-success/5 border-success/40 focus:ring-success/30'
-                                    : 'bg-background border-border focus:ring-primary/40'
-                                }`}
-                              />
-                              {isCorrect && (
-                                <span className="text-xs text-success font-medium flex items-center gap-1 flex-shrink-0">
-                                  <Check className="w-3.5 h-3.5" />
-                                  Correct
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Add question button */}
-                <button
-                  onClick={addQuestion}
-                  className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-all cursor-pointer"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="text-sm font-medium">Add Another Question</span>
-                </button>
-              </div>
-            )}
-
-            {/* Step 4: Review */}
+            {/* Step 3: Review */}
             {currentStepLabel === 'Review' && (
               <div className="space-y-4">
                 <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -892,9 +720,11 @@ function CreateAssignmentPageContent({
                         value={
                           isQuiz
                             ? formData.quizId || '—'
-                            : parsedCaseIds.length > 0
-                              ? parsedCaseIds.join(', ')
-                              : '—'
+                            : validCaseGuids.length > 0
+                              ? validCaseGuids.join(', ')
+                              : parsedCaseIds.length > 0
+                                ? `${parsedCaseIds.join(', ')} (chưa có UUID hợp lệ)`
+                                : '—'
                         }
                         multiline={!isQuiz}
                       />
@@ -919,8 +749,12 @@ function CreateAssignmentPageContent({
                         icon={<CalendarDays className="w-3.5 h-3.5" />}
                       />
                       <ReviewItem
-                        label={isQuiz ? 'Total Points' : 'Max Score'}
-                        value={String(isQuiz ? totalQuizPoints : formData.maxScore)}
+                        label={isQuiz ? 'Điểm / câu hỏi' : 'Max Score'}
+                        value={
+                          isQuiz
+                            ? 'Lấy từ quiz đã lưu (Quizzes) — không nhập lại ở đây'
+                            : String(formData.maxScore)
+                        }
                         icon={<Star className="w-3.5 h-3.5" />}
                       />
                       <ReviewItem
@@ -945,28 +779,13 @@ function CreateAssignmentPageContent({
                     </div>
 
                     {isQuiz && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Quiz Questions ({formData.questions.length})
+                      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-card-foreground">Nội dung câu hỏi</p>
+                        <p className="mt-1 text-xs leading-relaxed">
+                          Bạn đã chọn <strong className="text-foreground">Quiz ID</strong> — toàn bộ câu hỏi nằm trong quiz đó trên
+                          server. Chỉnh sửa câu hỏi tại <strong className="text-foreground">Lecturer → Quizzes</strong> trước khi gán
+                          lớp. Trang này chỉ gắn quiz có sẵn với lớp và hạn nộp.
                         </p>
-                        <div className="space-y-2">
-                          {formData.questions.map((q, idx) => (
-                            <div key={q.id} className="flex items-start gap-3 p-3 bg-background rounded-lg border border-border">
-                              <span className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0 mt-0.5">
-                                {idx + 1}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-card-foreground">{q.question || 'Untitled question'}</p>
-                                <div className="flex items-center gap-3 mt-1">
-                                  <span className="text-xs text-muted-foreground">{q.points} pts</span>
-                                  <span className="text-xs text-success font-medium">
-                                    Answer: {String.fromCharCode(65 + q.correctAnswer)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
 
@@ -1107,7 +926,7 @@ function CreateAssignmentPageContent({
                     {isQuiz ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Star className="w-3.5 h-3.5" />
-                        {totalQuizPoints} points · {formData.questions.length} questions
+                        Câu hỏi theo quiz đã chọn
                       </div>
                     ) : (
                       formData.maxScore > 0 && (
@@ -1135,16 +954,14 @@ function CreateAssignmentPageContent({
                   <ChecklistItem done={!!formData.type} label="Assignment type" />
                   <ChecklistItem done={formData.selectedClasses.length > 0} label="At least one class" />
                   <ChecklistItem
-                    done={isQuiz ? !!formData.quizId.trim() : parsedCaseIds.length > 0}
-                    label={isQuiz ? 'Quiz target selected' : 'Case targets selected'}
+                    done={
+                      isQuiz
+                        ? isValidGuidString(formData.quizId.trim())
+                        : validCaseGuids.length > 0 && invalidCaseTokens.length === 0
+                    }
+                    label={isQuiz ? 'Quiz ID (UUID) hợp lệ' : 'Case ID (UUID) hợp lệ'}
                   />
                   <ChecklistItem done={!!formData.dueDate} label="Due date set" />
-                  {isQuiz && (
-                    <ChecklistItem
-                      done={formData.questions.length > 0 && formData.questions.every((q) => q.question)}
-                      label="Questions complete"
-                    />
-                  )}
                 </div>
               </div>
             </div>

@@ -96,6 +96,21 @@ export interface Announcement {
   createdAt: string;
 }
 
+export interface ClassAssignment {
+  id: string;
+  classId: string;
+  className: string;
+  /** "case" hoặc "quiz" */
+  type: string;
+  title: string;
+  dueDate: string | null;
+  isMandatory: boolean;
+  assignedAt: string | null;
+  totalStudents: number;
+  submittedCount: number;
+  gradedCount: number;
+}
+
 export interface ClassStats {
   classId: string;
   totalStudents: number;
@@ -236,6 +251,8 @@ export interface AssignedQuizItem {
   quizName: string;
   classId: string;
   className: string;
+  /** Topic/chủ đề của quiz */
+  topic?: string | null;
   totalQuestions: number;
   timeLimit: number | null;
   passingScore: number | null;
@@ -461,17 +478,17 @@ export interface AIAutoGenerateQuizRequest {
 
 export interface AISuggestQuestionsRequest {
   cases: Array<{
-    caseId?: string;
-    caseTitle?: string;
-    caseDescription?: string;
-    imageUrl?: string;
-    modality?: string;
-    keyFindings?: string;
-    suggestedDiagnosis?: string;
-    difficulty?: string;
+    caseId?: string | null;
+    caseTitle?: string | null;
+    caseDescription?: string | null;
+    imageUrl?: string | null;
+    modality?: string | null;
+    keyFindings?: string | null;
+    suggestedDiagnosis?: string | null;
+    difficulty?: string | null;
   }>;
   questionsPerCase?: number;
-  difficulty?: string;
+  difficulty?: string | null;
 }
 
 export interface ImportStudentsSummary {
@@ -484,6 +501,17 @@ export interface ImportStudentsSummary {
     studentName: string;
     studentCode: string;
   }>;
+}
+
+// ========== Student Types ==========
+
+export interface StudentAnnouncement {
+  id: string;
+  classId: string;
+  className: string | null;
+  title: string;
+  content: string;
+  createdAt: string | null;
 }
 
 // ========== Lecturer Missing Types ==========

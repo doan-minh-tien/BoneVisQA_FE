@@ -1123,7 +1123,7 @@ export default function CreateQuizPage() {
                         </Button>
                         <Button
                           size="sm"
-                          variant="default"
+                          variant="primary"
                           onClick={handleCreateAndAddAIQuestions}
                           className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
                         >

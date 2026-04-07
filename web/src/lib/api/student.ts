@@ -2,6 +2,7 @@ import { http, getApiErrorMessage } from './client';
 import type {
   AssignedQuizItem,
   QuizSessionDto,
+  StudentAnnouncement,
   StudentCaseCatalogItem,
   StudentCaseHistoryItem,
   StudentPracticeQuiz,
@@ -73,6 +74,31 @@ export async function fetchStudentProfile(): Promise<StudentProfile> {
   try {
     const { data } = await http.get<StudentProfile>('/api/student/profile');
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+function normalizeStudentAnnouncement(raw: unknown): StudentAnnouncement | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = String(r.id ?? r.Id ?? '');
+  if (!id) return null;
+  return {
+    id,
+    classId: String(r.classId ?? r.ClassId ?? ''),
+    className: r.className != null ? String(r.className) : null,
+    title: String(r.title ?? r.Title ?? ''),
+    content: String(r.content ?? r.Content ?? ''),
+    createdAt: r.createdAt != null ? String(r.createdAt) : null,
+  };
+}
+
+export async function fetchStudentAnnouncements(): Promise<StudentAnnouncement[]> {
+  try {
+    const { data } = await http.get<unknown[]>('/api/student/announcements');
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeStudentAnnouncement).filter((item): item is StudentAnnouncement => item !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -238,7 +264,7 @@ export async function submitQuizSession(
 
 export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/student/cases');
+    const { data } = await http.get<unknown>('/api/student/cases/history');
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -333,4 +359,233 @@ export async function fetchStudentRecentActivity(): Promise<StudentRecentActivit
 }
 
 // Re-export types so other modules can import from '@/lib/api/student'
-export type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto };
+export type {
+  AssignedQuizItem,
+  QuizSessionDto,
+  StudentSubmitQuestionDto,
+};
+
+/** ====== Student Classes ====== */
+
+export interface StudentClassItem {
+  classId: string;
+  className: string;
+  semester: string;
+  lecturerId?: string | null;
+  lecturerName?: string | null;
+  totalAnnouncements: number;
+  totalQuizzes: number;
+  totalCases: number;
+  enrolledAt?: string | null;
+}
+
+/** ====== AI Quiz Session (after save to DB) ====== */
+
+export interface StudentGeneratedQuizSession {
+  attemptId: string;
+  quizId: string;
+  title: string;
+  topic?: string | null;
+  questions: Array<{
+    questionId: string;
+    questionText: string;
+    type?: string | null;
+    caseId?: string | null;
+    optionA?: string | null;
+    optionB?: string | null;
+    optionC?: string | null;
+    optionD?: string | null;
+    imageUrl?: string | null;
+  }>;
+  savedToHistory: boolean;
+}
+
+/** ====== Quiz Attempt History ====== */
+
+export interface QuizAttemptReview {
+  attemptId: string;
+  quizTitle: string;
+  score: number | null;
+  totalQuestions: number;
+  correctAnswers: number;
+  passed: boolean;
+  questions: Array<{
+    questionId: string;
+    questionText: string;
+    optionA?: string | null;
+    optionB?: string | null;
+    optionC?: string | null;
+    optionD?: string | null;
+    studentAnswer?: string | null;
+    correctAnswer?: string | null;
+    isCorrect: boolean;
+    imageUrl?: string | null;
+    caseId?: string | null;
+  }>;
+}
+
+export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAttemptReview> {
+  try {
+    const { data } = await http.get<unknown>(`/api/student/quizzes/${attemptId}/review`);
+    const item = data as Record<string, unknown>;
+    const questions = Array.isArray(item.questions) ? (item.questions as Record<string, unknown>[]) : [];
+    return {
+      attemptId: String(item.attemptId ?? item.AttemptId ?? ''),
+      quizTitle: String(item.quizTitle ?? item.QuizTitle ?? ''),
+      score: item.score != null ? Number(item.score) : item.Score != null ? Number(item.Score) : null,
+      totalQuestions: Number(item.totalQuestions ?? item.TotalQuestions ?? 0),
+      correctAnswers: Number(item.correctAnswers ?? item.CorrectAnswers ?? 0),
+      passed: Boolean(item.passed ?? item.Passed ?? false),
+      questions: questions.map((q) => ({
+        questionId: String(q.questionId ?? q.QuestionId ?? ''),
+        questionText: String(q.questionText ?? q.QuestionText ?? ''),
+        optionA: q.optionA ?? q.OptionA ?? null,
+        optionB: q.optionB ?? q.OptionB ?? null,
+        optionC: q.optionC ?? q.OptionC ?? null,
+        optionD: q.optionD ?? q.OptionD ?? null,
+        studentAnswer: q.studentAnswer ?? q.StudentAnswer ?? null,
+        correctAnswer: q.correctAnswer ?? q.CorrectAnswer ?? null,
+        isCorrect: Boolean(q.isCorrect ?? q.IsCorrect ?? false),
+        imageUrl: q.imageUrl ?? q.ImageUrl ?? null,
+        caseId: q.caseId ?? q.CaseId ?? null,
+      })),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface StudentQuizAttemptSummary {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  topic?: string | null;
+  difficulty?: string | null;
+  className?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  score?: number | null;
+  passingScore?: number | null;
+  passed: boolean;
+  totalQuestions: number;
+  correctAnswers: number;
+  isAiGenerated: boolean;
+}
+
+export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/students/classes');
+    const list = Array.isArray(data) ? data : [];
+    return (list as Record<string, unknown>[]).map((item) => ({
+      classId: String(item.classId ?? item.ClassId ?? item.classId ?? ''),
+      className: String(item.className ?? item.ClassName ?? ''),
+      semester: String(item.semester ?? item.Semester ?? ''),
+      lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
+      lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      totalAnnouncements: Number(item.totalAnnouncements ?? item.TotalAnnouncements ?? 0),
+      totalQuizzes: Number(item.totalQuizzes ?? item.TotalQuizzes ?? 0),
+      totalCases: Number(item.totalCases ?? item.TotalCases ?? 0),
+      enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * AI Generate + Save to DB → returns quiz session.
+ * POST /api/student/quizzes/practice/generate
+ */
+export async function generateAndSaveAIPracticeQuiz(
+  topic: string,
+  questionCount = 5,
+  difficulty?: string,
+): Promise<StudentGeneratedQuizSession> {
+  try {
+    const { data } = await http.post<unknown>('/api/student/quizzes/practice/generate', {
+      topic,
+      questionCount,
+      difficulty,
+    });
+    const item = data as Record<string, unknown>;
+    const questions = Array.isArray(item.questions) ? (item.questions as Record<string, unknown>[]) : [];
+    return {
+      attemptId: String(item.attemptId ?? item.AttemptId ?? ''),
+      quizId: String(item.quizId ?? item.QuizId ?? ''),
+      title: String(item.title ?? item.Title ?? ''),
+      topic: item.topic != null ? String(item.topic) : item.Topic != null ? String(item.Topic) : null,
+      questions: questions.map((q) => ({
+        questionId: String(q.questionId ?? q.QuestionId ?? q.id ?? ''),
+        questionText: String(q.questionText ?? q.QuestionText ?? ''),
+        type: q.type != null ? String(q.type) : q.Type != null ? String(q.Type) : null,
+        caseId: q.caseId != null ? String(q.caseId) : q.CaseId != null ? String(q.CaseId) : null,
+        optionA: q.optionA != null ? String(q.optionA) : q.OptionA != null ? String(q.OptionA) : null,
+        optionB: q.optionB != null ? String(q.optionB) : q.OptionB != null ? String(q.OptionB) : null,
+        optionC: q.optionC != null ? String(q.optionC) : q.OptionC != null ? String(q.OptionC) : null,
+        optionD: q.optionD != null ? String(q.optionD) : q.OptionD != null ? String(q.OptionD) : null,
+        imageUrl: q.imageUrl != null ? String(q.imageUrl) : q.ImageUrl != null ? String(q.ImageUrl) : null,
+      })),
+      savedToHistory: Boolean(item.savedToHistory ?? item.SavedToHistory ?? true),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Submit answers for an AI-generated quiz attempt.
+ */
+export async function submitAIPracticeQuiz(
+  attemptId: string,
+  answers: Array<{ questionId: string; studentAnswer: string }>,
+): Promise<{
+  score: number;
+  passed: boolean;
+  totalQuestions: number;
+  correctAnswers: number;
+}> {
+  try {
+    const { data } = await http.post<unknown>('/api/student/quizzes/submit', {
+      attemptId,
+      answers,
+    });
+    const item = data as Record<string, unknown>;
+    return {
+      score: Number(item.score ?? item.Score ?? 0),
+      passed: Boolean(item.passed ?? item.Passed ?? false),
+      totalQuestions: Number(item.totalQuestions ?? item.TotalQuestions ?? 0),
+      correctAnswers: Number(item.correctAnswers ?? item.CorrectAnswers ?? 0),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get quiz attempt history (all attempts including AI-generated).
+ * GET /api/student/quizzes/history
+ */
+export async function fetchStudentQuizHistory(): Promise<StudentQuizAttemptSummary[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/student/quizzes/history');
+    const list = Array.isArray(data) ? data : [];
+    return (list as Record<string, unknown>[]).map((item) => ({
+      attemptId: String(item.attemptId ?? item.AttemptId ?? ''),
+      quizId: String(item.quizId ?? item.QuizId ?? ''),
+      quizTitle: String(item.quizTitle ?? item.QuizTitle ?? item.title ?? item.Title ?? ''),
+      topic: item.topic != null ? String(item.topic) : item.Topic != null ? String(item.Topic) : null,
+      difficulty: item.difficulty != null ? String(item.difficulty) : item.Difficulty != null ? String(item.Difficulty) : null,
+      className: item.className != null ? String(item.className) : item.ClassName != null ? String(item.ClassName) : null,
+      startedAt: item.startedAt != null ? String(item.startedAt) : item.StartedAt != null ? String(item.StartedAt) : null,
+      completedAt: item.completedAt != null ? String(item.completedAt) : item.CompletedAt != null ? String(item.CompletedAt) : null,
+      score: item.score != null ? Number(item.score) : item.Score != null ? Number(item.Score) : null,
+      passingScore: item.passingScore != null ? Number(item.passingScore) : item.PassingScore != null ? Number(item.PassingScore) : null,
+      passed: Boolean(item.passed ?? item.Passed ?? false),
+      totalQuestions: Number(item.totalQuestions ?? item.TotalQuestions ?? 0),
+      correctAnswers: Number(item.correctAnswers ?? item.CorrectAnswers ?? 0),
+      isAiGenerated: Boolean(item.isAiGenerated ?? item.IsAiGenerated ?? false),
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

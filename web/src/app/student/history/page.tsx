@@ -59,6 +59,7 @@ export default function StudentHistoryPage() {
   return (
     <div className="min-h-screen">
       <StudentAppChrome
+        breadcrumb="History"
         title="Visual QA History"
         subtitle="Review your submitted cases and see whether a clinical expert has verified the result"
       />

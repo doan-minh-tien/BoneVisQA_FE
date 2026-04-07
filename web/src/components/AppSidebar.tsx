@@ -6,6 +6,7 @@ import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
 import {
   BookOpen,
+  BotMessageSquare,
   CheckSquare,
   Database,
   LayoutDashboard,
@@ -15,6 +16,7 @@ import {
   ScanSearch,
   Stethoscope,
   UserCog,
+  UserCircle,
   ClipboardList,
   Users,
   ShieldCheck,
@@ -61,10 +63,13 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
-    { label: 'Case Catalog', href: '/student/catalog', icon: BookOpen },
+    { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
     { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
+    { label: 'AI Q&A', href: '/student/qa', icon: BotMessageSquare },
+    { label: 'Classes', href: '/student/classes', icon: Users },
+    { label: 'Profile', href: '/student/profile', icon: UserCircle },
   ],
 };
 

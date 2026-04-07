@@ -61,6 +61,7 @@ export default function StudentCaseCatalogPage() {
   return (
     <div className="min-h-screen">
       <StudentAppChrome
+        breadcrumb="Case Library"
         title="Public Case Catalog"
         subtitle="Browse sample bone cases by location, lesion type, and difficulty before opening them in Visual QA"
       />

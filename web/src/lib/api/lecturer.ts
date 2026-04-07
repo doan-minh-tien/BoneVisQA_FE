@@ -1,6 +1,7 @@
 import { http, getApiErrorMessage } from './client';
 import type {
   Announcement,
+  ClassAssignment,
   CaseDto,
   ClassItem,
   ClassStats,
@@ -17,13 +18,13 @@ const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function normalizeAnnouncement(row: unknown, fallbackClassId: string): Announcement {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
   const id = String(r.id ?? r.Id ?? '').trim();
-  const classId = String(r.classId ?? r.ClassId ?? fallbackClassId).trim();
+  const classId = String(r.classId ?? r.ClassId ?? fallbackClassId).trim() || fallbackClassId;
   return {
     id,
     classId,
-    className: String(r.className ?? r.ClassName ?? ''),
-    title: String(r.title ?? r.Title ?? ''),
-    content: String(r.content ?? r.Content ?? ''),
+    className: String(r.className ?? r.ClassName ?? '') || '',
+    title: String(r.title ?? r.Title ?? '') || '',
+    content: String(r.content ?? r.Content ?? '') || '',
     sendEmail: Boolean(r.sendEmail ?? r.SendEmail ?? true),
     createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
   };
@@ -40,6 +41,26 @@ function assertValidGuid(label: string, value: string) {
 /** Dùng để lọc bản ghi không đủ id trước khi gọi API update/delete. */
 export function isValidGuidString(value: string | undefined | null): boolean {
   return GUID_RE.test(String(value ?? '').trim());
+}
+
+/** Normalize a single assignment row from BE (camelCase or PascalCase). */
+function normalizeAssignment(row: unknown): ClassAssignment | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id || !GUID_RE.test(id)) return null;
+  return {
+    id,
+    classId: String(r.classId ?? r.ClassId ?? '') || '',
+    className: String(r.className ?? r.ClassName ?? '') || '',
+    type: String(r.type ?? r.Type ?? '') || '',
+    title: String(r.title ?? r.Title ?? '') || '',
+    dueDate: (r.dueDate ?? r.DueDate ?? null) as string | null,
+    isMandatory: Boolean(r.isMandatory ?? r.IsMandatory ?? false),
+    assignedAt: (r.assignedAt ?? r.AssignedAt ?? null) as string | null,
+    totalStudents: Number(r.totalStudents ?? r.TotalStudents ?? 0) || 0,
+    submittedCount: Number(r.submittedCount ?? r.SubmittedCount ?? 0) || 0,
+    gradedCount: Number(r.gradedCount ?? r.GradedCount ?? 0) || 0,
+  };
 }
 
 export async function createClass(body: {
@@ -222,6 +243,35 @@ export async function deleteAnnouncement(classId: string, announcementId: string
     await http.delete(
       `/api/lecturer/classes/${encodeURIComponent(cId)}/announcements/${encodeURIComponent(aId)}`,
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function getClassAssignments(classId: string): Promise<ClassAssignment[]> {
+  try {
+    const { data } = await http.get<unknown[]>(
+      `/api/lecturer/classes/${encodeURIComponent(classId)}/assignments`,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list
+      .map(normalizeAssignment)
+      .filter((a): a is ClassAssignment => a !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function getAllLecturerAssignments(lecturerId: string): Promise<ClassAssignment[]> {
+  const lid = assertValidGuid('Lecturer', lecturerId);
+  try {
+    const { data } = await http.get<unknown[]>(
+      `/api/lecturer/assignments?lecturerId=${encodeURIComponent(lid)}`,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list
+      .map(normalizeAssignment)
+      .filter((a): a is ClassAssignment => a !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

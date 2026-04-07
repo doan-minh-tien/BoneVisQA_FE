@@ -19,6 +19,8 @@ import {
   FilePen,
   ClipboardPen,
   TrendingUp,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
@@ -95,6 +97,14 @@ export default function QuizListPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [page, setPage] = useState(1);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyId = (id: string) => {
+    navigator.clipboard.writeText(id).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
 
   useEffect(() => {
     loadQuizzes();
@@ -359,7 +369,22 @@ export default function QuizListPage() {
                     className="group cursor-pointer hover:bg-muted/40 transition-colors"
                   >
                     <td className="px-3 py-4 sm:px-4 sm:py-5">
-                      <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+                        <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyId(quiz.quizId);
+                          }}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-9 sm:w-9"
+                          title="Copy Quiz ID"
+                        >
+                          {copiedId === quiz.quizId ? (
+                            <Check className="h-4 w-4 text-success sm:h-[18px] sm:w-[18px]" />
+                          ) : (
+                            <Copy className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                          )}
+                        </button>
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted sm:h-9 sm:w-9">
                           <BarChart3 className="h-4 w-4 text-muted-foreground sm:h-[18px] sm:w-[18px]" />
                         </div>

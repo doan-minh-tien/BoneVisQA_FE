@@ -31,6 +31,7 @@ import {
   BarChart3,
   Clock,
   Megaphone,
+  ClipboardList,
 } from 'lucide-react';
 import {
   getClassById,
@@ -42,10 +43,11 @@ import {
   updateClass,
   deleteClass,
   getClassAnnouncements,
+  getClassAssignments,
 } from '@/lib/api/lecturer';
 import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
 import { getApiErrorMessage } from '@/lib/api/client';
-import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement } from '@/lib/api/types';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement, ClassAssignment } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 
 const tabs = ['Students', 'Assignments', 'Announcements', 'Settings'] as const;
@@ -91,6 +93,8 @@ export default function ClassDetailPage({
 
   const [classAnnouncements, setClassAnnouncements] = useState<Announcement[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [classAssignments, setClassAssignments] = useState<ClassAssignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
 
   // Edit class dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -182,6 +186,24 @@ export default function ClassDetailPage({
         if (!cancelled) setClassAnnouncements([]);
       } finally {
         if (!cancelled) setAnnouncementsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [classId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAssignmentsLoading(true);
+    (async () => {
+      try {
+        const list = await getClassAssignments(classId);
+        if (!cancelled) setClassAssignments(list);
+      } catch {
+        if (!cancelled) setClassAssignments([]);
+      } finally {
+        if (!cancelled) setAssignmentsLoading(false);
       }
     })();
     return () => {
@@ -515,11 +537,28 @@ export default function ClassDetailPage({
             {/* Active Assignments */}
             <div>
               <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {([] as any[]).map((assignment) => (
-                    <AssignmentCard key={assignment.id} {...assignment} />
+              {assignmentsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading assignments…
+                </div>
+              ) : classAssignments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No assignments yet. Use <strong className="text-foreground">New Assignment</strong> to create one.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {classAssignments.slice(0, 4).map((a) => (
+                    <AssignmentCard
+                      key={a.id}
+                      {...a}
+                      className={a.className}
+                      submitted={a.submittedCount}
+                      graded={a.gradedCount}
+                    />
                   ))}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Stats */}
@@ -656,20 +695,44 @@ export default function ClassDetailPage({
             {activeTab === 'Assignments' && (
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-muted-foreground">0 assignments</p>
+                  <p className="text-sm text-muted-foreground">
+                    {assignmentsLoading
+                      ? 'Loading…'
+                      : `${classAssignments.length} assignment${classAssignments.length === 1 ? '' : 's'}`}
+                  </p>
                   <Link
                     href={`/lecturer/assignments/create?classId=${classId}`}
-                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
+                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     New Assignment
                   </Link>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {([] as any[]).map((assignment) => (
-                    <AssignmentCard key={assignment.id} {...assignment} />
+                {assignmentsLoading ? (
+                  <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Loading assignments…
+                  </div>
+                ) : classAssignments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-muted/20 py-12 text-center">
+                    <ClipboardList className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No assignments for this class yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {classAssignments.map((a) => (
+                    <AssignmentCard
+                      key={a.id}
+                      {...a}
+                      className={a.className}
+                      submitted={a.submittedCount}
+                      graded={a.gradedCount}
+                    />
                   ))}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
