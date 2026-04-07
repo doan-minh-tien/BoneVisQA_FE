@@ -57,9 +57,7 @@ http.interceptors.response.use(
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('activeRole');
-      if (!window.location.pathname.startsWith('/auth/sign-in')) {
-        window.location.href = '/auth/sign-in';
-      }
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(err);
   },

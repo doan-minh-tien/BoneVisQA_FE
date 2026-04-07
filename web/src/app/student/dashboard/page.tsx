@@ -457,6 +457,13 @@ export default function StudentDashboardPage() {
                     <ol className="space-y-4">
                       {recentActivity.map((activity, actIdx) => {
                         const normalizedStatus = activity.status?.toLowerCase();
+                        const normalizedType = activity.type?.trim().toLowerCase() ?? '';
+                        const activityHref =
+                          normalizedType === 'quiz_completed' || normalizedType.includes('quiz')
+                            ? '/student/quiz'
+                            : normalizedType === 'question_asked' || normalizedType.includes('question')
+                              ? '/student/history'
+                              : '/student/history';
                         const statusBadge =
                           normalizedStatus === 'approved' || normalizedStatus === 'revised'
                             ? {
@@ -476,34 +483,36 @@ export default function StudentDashboardPage() {
                         return (
                           <li
                             key={activity.id?.trim() || `activity-${actIdx}`}
-                            className="rounded-xl border border-border bg-card p-4"
+                            className="rounded-xl border border-border bg-card p-4 transition hover:border-primary/30 hover:bg-blue-50/30"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">
-                                  {activity.title?.trim() || 'Activity'}
-                                </p>
-                                {activity.description?.trim() ? (
-                                  <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
+                            <Link href={activityHref} className="block">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {activity.title?.trim() || 'Activity'}
+                                  </p>
+                                  {activity.description?.trim() ? (
+                                    <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
+                                  ) : null}
+                                </div>
+                                <span className="shrink-0 text-xs text-slate-500">
+                                  {activity.occurredAt?.trim() || '—'}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-900">
+                                  {activity.type?.trim() || 'General'}
+                                </span>
+                                {statusBadge && StatusIcon ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.className}`}
+                                  >
+                                    <StatusIcon className="h-3.5 w-3.5" />
+                                    {statusBadge.label}
+                                  </span>
                                 ) : null}
                               </div>
-                              <span className="shrink-0 text-xs text-slate-500">
-                                {activity.occurredAt?.trim() || '—'}
-                              </span>
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-900">
-                                {activity.type?.trim() || 'General'}
-                              </span>
-                              {statusBadge && StatusIcon ? (
-                                <span
-                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge.className}`}
-                                >
-                                  <StatusIcon className="h-3.5 w-3.5" />
-                                  {statusBadge.label}
-                                </span>
-                              ) : null}
-                            </div>
+                            </Link>
                           </li>
                         );
                       })}

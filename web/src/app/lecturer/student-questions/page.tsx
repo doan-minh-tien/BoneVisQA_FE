@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Search,
   Loader2,
   MessageSquare,
-  ChevronRight,
-  Eye,
   ZoomIn,
   Contrast,
   Pencil,
@@ -16,12 +15,10 @@ import {
   AlertTriangle,
   Plus,
   Bell,
-  Settings,
-  BarChart3,
 } from 'lucide-react';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
+import type { LectStudentQuestionDto } from '@/lib/api/types';
 
 const XRAY_PLACEHOLDER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCINRzGp6z40Z2fsIZBJEM-zldyzpS3z_ih-Bfgh4mig52ts5MniL-9e43XYgucFN-WgwCWVHHmb6ZmiKWBe1o5U38a_alK5WfGZVT6MDhkHtaegScow4-aHvPzDfZMToJd55FiQox63njJi0VcktL5yJKoYeuQo47pBabw2NzpMgmK7qNcyKcxZbFP9puiQVdiuUDTOokGV-Hy573lajieFijGkk9MGyb0Mcz6zVto6MmqVxXgStDewXjMh4rzuqAcWxG1RyRzYiY';
@@ -103,7 +100,6 @@ function QuestionCard({
 }
 
 export default function StudentQuestionsPage() {
-  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +119,6 @@ export default function StudentQuestionsPage() {
       const userId = getStoredUserId();
       if (!userId) return;
       const data = await getLecturerClasses(userId);
-      setClasses(data);
       if (data.length > 0) setSelectedClass(data[0].id);
     } catch {
       // silent
@@ -233,18 +228,18 @@ export default function StudentQuestionsPage() {
               Inquiry Dashboard
             </h2>
             <nav className="hidden md:flex items-center gap-6">
-              <a href="/lecturer" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/lecturer/dashboard" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Dashboard
-              </a>
-              <a href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Curricula
-              </a>
-              <a href="/lecturer/reports" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
-                Reports
-              </a>
-              <a href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/student-questions" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
+                Inquiries
+              </Link>
+              <Link href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Settings
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-4">
@@ -338,7 +333,7 @@ export default function StudentQuestionsPage() {
                       {/* Quote */}
                       <div className="rounded-xl border border-border/40 bg-muted/50 p-5">
                         <p className="text-sm leading-relaxed text-foreground italic">
-                          "{selectedQuestion.questionText}"
+                          &ldquo;{selectedQuestion.questionText}&rdquo;
                         </p>
                       </div>
 

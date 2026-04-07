@@ -22,15 +22,15 @@ function LandingHeader() {
           BoneVisQA
         </Link>
         <nav className="flex flex-wrap items-center justify-center gap-6 text-sm font-medium text-slate-600 sm:flex-1">
-          <a href="#features" className="transition-colors hover:text-blue-600">
+          <Link href="#features" className="transition-colors hover:text-blue-600">
             Features
-          </a>
-          <a href="#roles" className="transition-colors hover:text-blue-600">
+          </Link>
+          <Link href="#roles" className="transition-colors hover:text-blue-600">
             Roles
-          </a>
-          <a href="#university" className="transition-colors hover:text-blue-600">
+          </Link>
+          <Link href="#university" className="transition-colors hover:text-blue-600">
             University
-          </a>
+          </Link>
         </nav>
         <div className="flex justify-center sm:justify-end">
           <Link
@@ -69,12 +69,12 @@ function HeroSection() {
               Get Started (Student)
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <a
+            <Link
               href="#university"
               className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50/80 px-6 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               Partner with us (University)
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -340,12 +340,12 @@ function CtaFooter() {
           >
             Get Started for Free
           </Link>
-          <a
+          <Link
             href="mailto:support@bonevisqa.edu"
             className="inline-flex w-full max-w-xs items-center justify-center rounded-lg border border-slate-300 bg-white px-8 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
           >
             Schedule a Walkthrough
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -362,9 +362,9 @@ function CtaFooter() {
             <Link href="#" className="hover:text-blue-600">
               Terms of Service
             </Link>
-            <a href="mailto:support@bonevisqa.edu" className="hover:text-blue-600">
+            <Link href="mailto:support@bonevisqa.edu" className="hover:text-blue-600">
               Contact Support
-            </a>
+            </Link>
           </div>
           <div className="flex gap-4 text-slate-400">
             <span className="h-9 w-9 rounded-full border border-slate-200 bg-white" aria-hidden />
