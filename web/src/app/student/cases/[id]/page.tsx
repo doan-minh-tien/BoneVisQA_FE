@@ -3,31 +3,46 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { EmptyState } from '@/components/shared/EmptyState';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchCaseCatalogDetail } from '@/lib/api/student';
 import type { StudentCaseCatalogDetail } from '@/lib/api/types';
-import { BookOpen, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, BookOpen, ChevronRight, Loader2 } from 'lucide-react';
 
 export default function StudentCaseDetailPage() {
   const toast = useToast();
   const params = useParams<{ id: string }>();
-  const caseId = String(params?.id ?? '');
+  const rawParam = params?.id;
+  const caseId = Array.isArray(rawParam) ? String(rawParam[0] ?? '') : String(rawParam ?? '');
   const [item, setItem] = useState<StudentCaseCatalogDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFoundCase, setNotFoundCase] = useState(false);
 
   useEffect(() => {
-    if (!caseId) return;
+    if (!caseId) {
+      setNotFoundCase(true);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       setLoading(true);
+      setNotFoundCase(false);
       try {
         const detail = await fetchCaseCatalogDetail(caseId);
         if (!cancelled) setItem(detail);
       } catch (error) {
         if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load case detail.');
+          const message = error instanceof Error ? error.message : 'Failed to load case detail.';
+          const is404 = /404|not found/i.test(message);
+          if (is404) {
+            setNotFoundCase(true);
+            setItem(null);
+          } else {
+            toast.error(message);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -57,10 +72,18 @@ export default function StudentCaseDetailPage() {
           <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-border bg-card">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
+        ) : notFoundCase ? (
+          <EmptyState
+            icon={<AlertCircle className="h-6 w-6 text-amber-600" />}
+            title="Case not found"
+            description="This case may have been removed or is no longer available. Please return to the catalog and choose another case."
+          />
         ) : !item ? (
-          <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-            Case detail unavailable.
-          </div>
+          <EmptyState
+            icon={<AlertCircle className="h-6 w-6 text-slate-500" />}
+            title="Case detail unavailable"
+            description="We could not load this case right now. Please try again in a moment."
+          />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
             <section className="rounded-xl border border-border bg-card p-4">

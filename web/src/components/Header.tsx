@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, Search } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { fetchNotifications } from '@/lib/api/notifications';
+import { searchGlobal, type SearchResultItem } from '@/lib/api/users';
 import type { AppNotificationItem } from '@/lib/api/types';
 import { Input } from '@/components/ui/input';
 
@@ -18,8 +20,13 @@ export default function Header({ title, subtitle }: HeaderProps) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState<AppNotificationItem[]>([]);
   const [openNotifications, setOpenNotifications] = useState(false);
+  const desktopSearchRef = useRef<HTMLDivElement | null>(null);
+  const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const fullName = user?.fullName?.trim() || user?.email?.trim() || 'Authenticated User';
   const roleLabel = useMemo(() => {
     const activeRole = user?.activeRole;
@@ -56,15 +63,46 @@ export default function Header({ title, subtitle }: HeaderProps) {
   }, []);
 
   useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      return;
+    }
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      const query = searchQuery.trim();
-      if (!query) return;
-      if (user?.activeRole === 'Student') {
-        router.replace(`/student/catalog?q=${encodeURIComponent(query)}`);
-      }
+      void searchGlobal(query)
+        .then((results) => {
+          if (!cancelled) {
+            setSearchResults(results);
+            setSearchOpen(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearchLoading(false);
+        });
     }, 350);
-    return () => window.clearTimeout(timer);
-  }, [router, searchQuery, user?.activeRole]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const inDesktop = desktopSearchRef.current?.contains(target);
+      const inMobile = mobileSearchRef.current?.contains(target);
+      if (!inDesktop && !inMobile) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+    };
+  }, []);
 
   const unreadCount = notifications.filter((item) => !item.isRead).length;
 
@@ -82,27 +120,80 @@ export default function Header({ title, subtitle }: HeaderProps) {
 
   const onSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const query = searchQuery.trim();
-    if (!query) return;
-    if (user?.activeRole === 'Student') {
-      router.push(`/student/catalog?q=${encodeURIComponent(query)}`);
-    }
+    setSearchOpen(true);
   };
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, SearchResultItem[]>();
+    for (const item of searchResults) {
+      const group = item.type?.trim() || 'Results';
+      if (!map.has(group)) map.set(group, []);
+      map.get(group)!.push(item);
+    }
+    return Array.from(map.entries());
+  }, [searchResults]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-border-color bg-background/95 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-4 px-6 py-4">
-        <div className="relative hidden w-full max-w-2xl md:block">
+        <div ref={desktopSearchRef} className="relative hidden w-full max-w-2xl md:block">
           <form onSubmit={onSearchSubmit}>
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSearchQuery(next);
+                setSearchOpen(true);
+                if (!next.trim()) {
+                  setSearchResults([]);
+                  setSearchLoading(false);
+                } else {
+                  setSearchLoading(true);
+                }
+              }}
+              onFocus={() => setSearchOpen(true)}
               placeholder="Search studies, cases, lectures, or AI findings..."
               className="pl-10"
             />
           </form>
+          {searchOpen && (searchQuery.trim() || searchLoading) ? (
+            <div className="absolute left-0 right-0 top-12 z-50 max-h-[360px] overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl">
+              {searchLoading ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground">Searching...</div>
+              ) : grouped.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-muted-foreground">No matching results.</div>
+              ) : (
+                grouped.map(([group, items]) => (
+                  <div key={group} className="pb-2 last:pb-0">
+                    <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group}
+                    </p>
+                    <ul>
+                      {items.map((item) => (
+                        <li key={`${group}-${item.id}`}>
+                          <Link
+                            href={item.href}
+                            className="block w-full rounded-lg px-2 py-2 text-left hover:bg-muted/60"
+                            onClick={() => {
+                              setSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <p className="text-sm font-medium text-card-foreground">{item.title}</p>
+                            {item.subtitle ? (
+                              <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{item.subtitle}</p>
+                            ) : null}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -144,7 +235,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
               )}
             </div>
           ) : null}
-          <div className="flex items-center gap-3 rounded-xl border border-border-color bg-surface px-3 py-2">
+          <Link href="/profile" className="flex items-center gap-3 rounded-xl border border-border-color bg-surface px-3 py-2 hover:bg-muted/40">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
               {initials || 'BV'}
             </div>
@@ -152,7 +243,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
               <p className="truncate text-sm font-semibold text-text-main">{fullName}</p>
               <p className="truncate text-xs text-text-muted">{roleLabel}</p>
             </div>
-          </div>
+          </Link>
         </div>
       </div>
       <div className="px-6 pb-4">
@@ -162,16 +253,65 @@ export default function Header({ title, subtitle }: HeaderProps) {
         ) : null}
       </div>
       <div className="px-6 pb-4 md:hidden">
+        <div ref={mobileSearchRef} className="relative">
         <form onSubmit={onSearchSubmit} className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setSearchQuery(next);
+              setSearchOpen(true);
+              if (!next.trim()) {
+                setSearchResults([]);
+                setSearchLoading(false);
+              } else {
+                setSearchLoading(true);
+              }
+            }}
+            onFocus={() => setSearchOpen(true)}
             placeholder={pathname.startsWith('/student') ? 'Search catalog...' : 'Search...'}
             className="pl-10"
           />
         </form>
+        {searchOpen && (searchQuery.trim() || searchLoading) ? (
+          <div className="absolute left-0 right-0 top-12 z-50 max-h-[320px] overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl">
+            {searchLoading ? (
+              <div className="px-3 py-4 text-sm text-muted-foreground">Searching...</div>
+            ) : grouped.length === 0 ? (
+              <div className="px-3 py-4 text-sm text-muted-foreground">No matching results.</div>
+            ) : (
+              grouped.map(([group, items]) => (
+                <div key={`mobile-${group}`} className="pb-2 last:pb-0">
+                  <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group}
+                  </p>
+                  <ul>
+                    {items.map((item) => (
+                      <li key={`mobile-${group}-${item.id}`}>
+                        <Link
+                          href={item.href}
+                          className="block w-full rounded-lg px-2 py-2 text-left hover:bg-muted/60"
+                          onClick={() => {
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                        >
+                          <p className="text-sm font-medium text-card-foreground">{item.title}</p>
+                          {item.subtitle ? (
+                            <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{item.subtitle}</p>
+                          ) : null}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+        </div>
       </div>
     </header>
   );

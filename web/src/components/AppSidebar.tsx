@@ -174,7 +174,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             {meta.actionLabel}
           </Button>
         </Link>
-        <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3">
+        <Link href="/profile" className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:bg-slate-50">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
             {profileName
               .split(' ')
@@ -188,7 +188,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             <p className="truncate text-xs text-slate-500">{profileRole}</p>
           </div>
           <UserCog className="h-4 w-4 text-slate-500" />
-        </div>
+        </Link>
         <Button onClick={logout} variant="outline" className="mt-3 w-full justify-center">
           <LogOut className="h-4 w-4" />
           Logout
