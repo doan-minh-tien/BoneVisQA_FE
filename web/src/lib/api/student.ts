@@ -472,6 +472,83 @@ export interface StudentQuizAttemptSummary {
   isAiGenerated: boolean;
 }
 
+/** ====== Class Detail ====== */
+
+export interface StudentClassDetail {
+  classId: string;
+  className: string;
+  semester: string;
+  lecturerId?: string | null;
+  lecturerName?: string | null;
+  enrolledAt?: string | null;
+  quizzes: Array<{
+    quizId: string;
+    title: string;
+    topic?: string | null;
+    openTime?: string | null;
+    closeTime?: string | null;
+    totalQuestions: number;
+    timeLimit?: number | null;
+    passingScore?: number | null;
+    isCompleted: boolean;
+    score?: number | null;
+  }>;
+  students: Array<{
+    studentId: string;
+    studentName: string;
+    studentCode?: string | null;
+  }>;
+  announcements: Array<{
+    id: string;
+    title: string;
+    content: string;
+    createdAt?: string | null;
+  }>;
+}
+
+export async function fetchStudentClassDetail(classId: string): Promise<StudentClassDetail> {
+  try {
+    const { data } = await http.get<unknown>(`/api/students/classes/${classId}`);
+    const item = data as Record<string, unknown>;
+    const quizzes = Array.isArray(item.quizzes) ? (item.quizzes as Record<string, unknown>[]) : [];
+    const students = Array.isArray(item.students) ? (item.students as Record<string, unknown>[]) : [];
+    const announcements = Array.isArray(item.announcements) ? (item.announcements as Record<string, unknown>[]) : [];
+    return {
+      classId: String(item.classId ?? item.ClassId ?? classId),
+      className: String(item.className ?? item.ClassName ?? ''),
+      semester: String(item.semester ?? item.Semester ?? ''),
+      lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
+      lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
+      quizzes: quizzes.map((q) => ({
+        quizId: String(q.quizId ?? q.QuizId ?? ''),
+        title: String(q.title ?? q.Title ?? ''),
+        topic: q.topic != null ? String(q.topic) : q.Topic != null ? String(q.Topic) : null,
+        openTime: q.openTime != null ? String(q.openTime) : q.OpenTime != null ? String(q.OpenTime) : null,
+        closeTime: q.closeTime != null ? String(q.closeTime) : q.CloseTime != null ? String(q.CloseTime) : null,
+        totalQuestions: Number(q.totalQuestions ?? q.TotalQuestions ?? 0),
+        timeLimit: q.timeLimit != null ? Number(q.timeLimit) : q.TimeLimit != null ? Number(q.TimeLimit) : null,
+        passingScore: q.passingScore != null ? Number(q.passingScore) : q.PassingScore != null ? Number(q.PassingScore) : null,
+        isCompleted: Boolean(q.isCompleted ?? q.IsCompleted ?? false),
+        score: q.score != null ? Number(q.score) : q.Score != null ? Number(q.Score) : null,
+      })),
+      students: students.map((s) => ({
+        studentId: String(s.studentId ?? s.StudentId ?? ''),
+        studentName: String(s.studentName ?? s.StudentName ?? ''),
+        studentCode: s.studentCode != null ? String(s.studentCode) : s.StudentCode != null ? String(s.StudentCode) : null,
+      })),
+      announcements: announcements.map((a) => ({
+        id: String(a.id ?? a.Id ?? ''),
+        title: String(a.title ?? a.Title ?? ''),
+        content: String(a.content ?? a.Content ?? ''),
+        createdAt: a.createdAt != null ? String(a.createdAt) : a.CreatedAt != null ? String(a.CreatedAt) : null,
+      })),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
   try {
     const { data } = await http.get<unknown>('/api/students/classes');
@@ -556,6 +633,18 @@ export async function submitAIPracticeQuiz(
       totalQuestions: Number(item.totalQuestions ?? item.TotalQuestions ?? 0),
       correctAnswers: Number(item.correctAnswers ?? item.CorrectAnswers ?? 0),
     };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete a quiz attempt from history.
+ * DELETE /api/student/quizzes/{attemptId}
+ */
+export async function deleteQuizAttempt(attemptId: string): Promise<void> {
+  try {
+    await http.delete(`/api/student/quizzes/${attemptId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

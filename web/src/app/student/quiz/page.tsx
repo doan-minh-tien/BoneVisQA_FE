@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StudentAppChrome, StudentDashboardFab } from '@/components/student/StudentAppChrome';
 import {
+  deleteQuizAttempt,
   fetchQuizAttemptReview,
   fetchStudentClasses,
   fetchStudentQuizHistory,
@@ -34,6 +35,7 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   Trophy,
   XCircle,
 } from 'lucide-react';
@@ -391,6 +393,17 @@ export default function StudentQuizPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to load review.');
     } finally {
       setReviewLoading(false);
+    }
+  };
+
+  const handleDeleteAttempt = async (attemptId: string) => {
+    if (!confirm('Are you sure you want to delete this quiz attempt?')) return;
+    try {
+      await deleteQuizAttempt(attemptId);
+      setHistoryAttempts(historyAttempts.filter((a) => a.attemptId !== attemptId));
+      toast.success('Quiz attempt deleted.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete quiz attempt.');
     }
   };
 
@@ -1119,6 +1132,14 @@ export default function StudentQuizPage() {
                                     Retake Quiz
                                   </button>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAttempt(attempt.attemptId)}
+                                  className="ml-auto flex items-center gap-2 rounded-xl border border-[#ba1a1a]/30 bg-white px-4 py-2 text-xs font-semibold text-[#ba1a1a] hover:bg-[#f8d7da]"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </button>
                               </div>
                             )}
                           </div>

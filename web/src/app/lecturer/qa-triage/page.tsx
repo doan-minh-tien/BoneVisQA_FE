@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getStudentQuestions } from '@/lib/api/lecturer';
-import { escalateToExpert } from '@/lib/api/lecturer-triage';
+import { escalateToExpert, approveAnswer, respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getLecturerClasses } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
@@ -58,6 +58,13 @@ export default function QATriagePage() {
   const [escalateNote, setEscalateNote] = useState('');
   const [selectedDept, setSelectedDept] = useState('radiology');
 
+  const [showModifyDialog, setShowModifyDialog] = useState(false);
+  const [editAnswerText, setEditAnswerText] = useState('');
+  const [editStructuredDiagnosis, setEditStructuredDiagnosis] = useState('');
+  const [editDifferentialDiagnoses, setEditDifferentialDiagnoses] = useState('');
+  const [modifying, setModifying] = useState(false);
+  const [modifyError, setModifyError] = useState<string | null>(null);
+
   const currentQ = questions[currentIndex] ?? null;
   const total = questions.length;
 
@@ -92,11 +99,50 @@ export default function QATriagePage() {
     if (selectedClassId) loadQuestions(selectedClassId);
   }, [selectedClassId, loadQuestions]);
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
+    if (!currentQ || !selectedClassId) return;
+    try {
+      await approveAnswer(selectedClassId, currentQ.id, currentQ.answerText ?? '');
+      setQuestions((prev) => prev.filter((q) => q.id !== currentQ.id));
+      if (currentIndex >= questions.length - 1) setCurrentIndex((i) => Math.max(0, i - 1));
+    } catch (e) {
+      console.error('Approve failed:', e);
+    }
+  };
+
+  const openModifyDialog = () => {
     if (!currentQ) return;
-    // BE approve API — UI feedback only for now
-    setQuestions((prev) => prev.filter((q) => q.id !== currentQ.id));
-    if (currentIndex >= questions.length - 1) setCurrentIndex((i) => Math.max(0, i - 1));
+    setEditAnswerText(currentQ.answerText ?? '');
+    setEditStructuredDiagnosis('');
+    setEditDifferentialDiagnoses('');
+    setModifyError(null);
+    setShowModifyDialog(true);
+  };
+
+  const handleModifySubmit = async () => {
+    if (!currentQ || !selectedClassId || !editAnswerText.trim()) return;
+    setModifying(true);
+    setModifyError(null);
+    try {
+      await respondToQuestion(selectedClassId, currentQ.id, {
+        answerText: editAnswerText.trim(),
+        structuredDiagnosis: editStructuredDiagnosis.trim() || undefined,
+        differentialDiagnoses: editDifferentialDiagnoses.trim() || undefined,
+        approve: false,
+      });
+      setShowModifyDialog(false);
+      setQuestions((prev) =>
+        prev.map((q) =>
+          q.id === currentQ.id
+            ? { ...q, answerText: editAnswerText.trim(), answerStatus: 'Edited' }
+            : q,
+        ),
+      );
+    } catch (e) {
+      setModifyError(e instanceof Error ? e.message : 'Failed to save changes');
+    } finally {
+      setModifying(false);
+    }
   };
 
   const handleEscalate = async () => {
@@ -358,6 +404,7 @@ export default function QATriagePage() {
                   </button>
                   <button
                     type="button"
+                    onClick={openModifyDialog}
                     className="flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted"
                   >
                     <Edit3 className="h-4 w-4" />
@@ -511,6 +558,127 @@ export default function QATriagePage() {
                     <>
                       <Send className="h-5 w-5" />
                       Send to expert
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modify answer dialog */}
+      {showModifyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !modifying && setShowModifyDialog(false)}
+            aria-label="Close"
+          />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-border bg-card shadow-2xl">
+            <div className="p-10">
+              {/* Dialog header */}
+              <div className="mb-8 flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Edit3 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-extrabold tracking-tight text-card-foreground">
+                      Modify AI Answer
+                    </h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Edit the response before approving for student review
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={modifying}
+                  onClick={() => setShowModifyDialog(false)}
+                  className="rounded-lg p-2 hover:bg-muted transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Question context */}
+              <div className="mb-6 rounded-2xl border border-border/60 bg-muted/30 p-5">
+                <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  Student Question
+                </p>
+                <p className="text-sm font-medium text-card-foreground">{currentQ?.questionText}</p>
+              </div>
+
+              {/* Answer text */}
+              <div className="mb-5 space-y-2">
+                <label className="block text-sm font-bold text-card-foreground">
+                  Response text <span className="text-destructive">*</span>
+                </label>
+                <textarea
+                  value={editAnswerText}
+                  onChange={(e) => setEditAnswerText(e.target.value)}
+                  rows={8}
+                  placeholder="Write or edit the curator's response…"
+                  className="w-full rounded-2xl border border-border bg-muted/30 p-4 text-sm leading-relaxed focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              {/* Structured diagnosis */}
+              <div className="mb-5 space-y-2">
+                <label className="block text-sm font-bold text-card-foreground">
+                  Structured diagnosis
+                </label>
+                <input
+                  type="text"
+                  value={editStructuredDiagnosis}
+                  onChange={(e) => setEditStructuredDiagnosis(e.target.value)}
+                  placeholder="e.g., Spiral fracture of the tibial shaft (AO 42-A3)"
+                  className="w-full rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              {/* Differential diagnoses */}
+              <div className="mb-6 space-y-2">
+                <label className="block text-sm font-bold text-card-foreground">
+                  Differential diagnoses
+                </label>
+                <textarea
+                  value={editDifferentialDiagnoses}
+                  onChange={(e) => setEditDifferentialDiagnoses(e.target.value)}
+                  rows={3}
+                  placeholder="List alternative diagnoses to consider…"
+                  className="w-full rounded-2xl border border-border bg-muted/30 p-4 text-sm leading-relaxed focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              {modifyError && (
+                <p className="mb-4 text-sm text-destructive">{modifyError}</p>
+              )}
+
+              {/* Dialog footer */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={modifying}
+                  onClick={() => setShowModifyDialog(false)}
+                  className="flex-1 rounded-full py-4 font-bold text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={modifying || !editAnswerText.trim()}
+                  onClick={handleModifySubmit}
+                  className="flex flex-[2] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-primary/80 py-4 font-bold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {modifying ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-5 w-5" />
+                      Save &amp; Approve
                     </>
                   )}
                 </button>

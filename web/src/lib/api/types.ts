@@ -570,3 +570,56 @@ export interface LecturerAnswer {
   status: string;
   updatedAt: string;
 }
+
+// ── Quiz Review Types ────────────────────────────────────────────────────────────
+
+export interface StudentQuizAttemptDto {
+  attemptId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  totalQuestions: number;
+  correctCount: number;
+  isGraded: boolean;
+}
+
+export interface QuizAttemptDetailDto {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  passingScore: number | null;
+  questions: QuestionWithAnswerDto[];
+}
+
+export interface QuestionWithAnswerDto {
+  questionId: string;
+  questionText: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  studentAnswer: string | null;
+  isCorrect: boolean | null;
+  answerId: string;
+}
+
+export interface UpdateQuizAttemptRequestDto {
+  score?: number | null;
+  answers: UpdateAnswerDto[];
+}
+
+export interface UpdateAnswerDto {
+  answerId: string;
+  studentAnswer?: string | null;
+  isCorrect?: boolean | null;
+}

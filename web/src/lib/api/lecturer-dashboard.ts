@@ -58,6 +58,84 @@ export async function fetchLecturerClassLeaderboard(
   }
 }
 
+// ── Lecturer Analytics ─────────────────────────────────────────────────────────
+
+export interface LecturerAnalyticsData {
+  classPerformance: Array<{
+    classId: string;
+    className: string;
+    semester: string;
+    studentCount: number;
+    totalCasesViewed: number;
+    avgQuizScore: number | null;
+    completionRate: number;
+    trendPercent: number;
+    totalQuestions: number;
+    escalatedCount: number;
+  }>;
+  topicScores: Array<{
+    topic: string;
+    avgScore: number;
+    attempts: number;
+    commonErrors: string[];
+  }>;
+  topStudents: LecturerLeaderboardEntry[];
+  bottomStudents: LecturerLeaderboardEntry[];
+}
+
+function mapClassPerfRow(item: unknown): LecturerAnalyticsData['classPerformance'][0] {
+  const o = item as Record<string, unknown>;
+  return {
+    classId: String(o.classId ?? o.ClassId ?? ''),
+    className: String(o.className ?? o.ClassName ?? ''),
+    semester: String(o.semester ?? o.Semester ?? ''),
+    studentCount: Number(o.studentCount ?? o.StudentCount ?? 0),
+    totalCasesViewed: Number(o.totalCasesViewed ?? o.TotalCasesViewed ?? 0),
+    avgQuizScore: (() => { const v = o.avgQuizScore ?? o.AvgQuizScore; return typeof v === 'number' ? v : null; })(),
+    completionRate: Number(o.completionRate ?? o.CompletionRate ?? 0),
+    trendPercent: Number(o.trendPercent ?? o.TrendPercent ?? 0),
+    totalQuestions: Number(o.totalQuestions ?? o.TotalQuestions ?? 0),
+    escalatedCount: Number(o.escalatedCount ?? o.EscalatedCount ?? 0),
+  };
+}
+
+function mapTopicRow(item: unknown): LecturerAnalyticsData['topicScores'][0] {
+  const o = item as Record<string, unknown>;
+  const avgScore = Number(o.avgScore ?? o.AvgScore ?? 0);
+  const attempts = Number(o.attempts ?? o.Attempts ?? 0);
+  return {
+    topic: String(o.topic ?? o.Topic ?? ''),
+    avgScore: isNaN(avgScore) ? 0 : avgScore,
+    attempts: isNaN(attempts) ? 0 : attempts,
+    commonErrors: Array.isArray(o.commonErrors ?? o.CommonErrors)
+      ? (o.commonErrors as unknown[]).map(String)
+      : [],
+  };
+}
+
+export async function fetchLecturerAnalytics(): Promise<LecturerAnalyticsData> {
+  try {
+    const { data } = await http.get<unknown>('/api/lecturer/dashboard/analytics');
+    const r = data as Record<string, unknown>;
+    return {
+      classPerformance: Array.isArray(r.classPerformance ?? r.ClassPerformance)
+        ? (r.classPerformance as unknown[]).map(mapClassPerfRow)
+        : [],
+      topicScores: Array.isArray(r.topicScores ?? r.TopicScores)
+        ? (r.topicScores as unknown[]).map(mapTopicRow)
+        : [],
+      topStudents: Array.isArray(r.topStudents ?? r.TopStudents)
+        ? (r.topStudents as unknown[]).map(mapLeaderboardEntry).filter((x): x is NonNullable<typeof x> => x !== null)
+        : [],
+      bottomStudents: Array.isArray(r.bottomStudents ?? r.BottomStudents)
+        ? (r.bottomStudents as unknown[]).map(mapLeaderboardEntry).filter((x): x is NonNullable<typeof x> => x !== null)
+        : [],
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 // ── Lecturer Profile ──────────────────────────────────────────────────────────
 
 export interface LecturerProfile {

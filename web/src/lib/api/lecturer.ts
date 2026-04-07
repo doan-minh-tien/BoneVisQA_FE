@@ -10,6 +10,9 @@ import type {
   LectStudentQuestionDto,
   UpdateClassRequest,
   ClassStudentProgress,
+  StudentQuizAttemptDto,
+  QuizAttemptDetailDto,
+  UpdateQuizAttemptRequestDto,
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -402,6 +405,63 @@ export async function getClassStudentProgress(
       `/api/lecturer/classes/${classId}/student-progress`,
     );
     return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ── Quiz Review API ────────────────────────────────────────────────────────────
+
+/**
+ * Lấy danh sách bài quiz attempts của tất cả sinh viên trong lớp cho 1 quiz cụ thể.
+ */
+export async function getClassQuizAttempts(
+  classId: string,
+  quizId: string,
+): Promise<StudentQuizAttemptDto[]> {
+  try {
+    const { data } = await http.get<StudentQuizAttemptDto[]>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/attempts`,
+    );
+    return data ?? [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Lấy chi tiết bài làm của 1 sinh viên (câu hỏi + câu trả lời + điểm).
+ */
+export async function getQuizAttemptDetail(
+  classId: string,
+  quizId: string,
+  attemptId: string,
+): Promise<QuizAttemptDetailDto> {
+  try {
+    const { data } = await http.get<QuizAttemptDetailDto>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/attempts/${attemptId}`,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cập nhật điểm / câu trả lời của 1 bài quiz (lecturer chỉnh sửa).
+ */
+export async function updateQuizAttempt(
+  classId: string,
+  quizId: string,
+  attemptId: string,
+  body: UpdateQuizAttemptRequestDto,
+): Promise<QuizAttemptDetailDto> {
+  try {
+    const { data } = await http.put<QuizAttemptDetailDto>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/attempts/${attemptId}`,
+      body,
+    );
+    return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
