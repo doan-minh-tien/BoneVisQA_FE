@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string | null;
   activeRole: BackendRole | null;
   roles: BackendRole[];
+  status: string | null;
 }
 
 function normalizeRole(raw: string | null | undefined): BackendRole | null {
@@ -32,6 +33,7 @@ export function useAuth() {
       const fullName = localStorage.getItem('fullName');
       const email = localStorage.getItem('email');
       const activeRole = normalizeRole(localStorage.getItem('activeRole'));
+      const status = localStorage.getItem('userStatus');
 
       let roles: BackendRole[] = [];
       try {
@@ -46,6 +48,7 @@ export function useAuth() {
         email,
         activeRole,
         roles,
+        status,
       };
 
       if (!cancelled) {
@@ -60,6 +63,8 @@ export function useAuth() {
           activeRole?: string | null;
           role?: string | null;
           roles?: string[] | null;
+          status?: string | null;
+          userStatus?: string | null;
         }>('/api/users/me')
         .then((response) => {
           if (cancelled) return;
@@ -77,6 +82,8 @@ export function useAuth() {
             email: payload.email ?? localUser.email,
             activeRole: normalizedActiveRole,
             roles: normalizedRoles,
+            status:
+              payload.status ?? payload.userStatus ?? localUser.status,
           });
         })
         .catch(() => {

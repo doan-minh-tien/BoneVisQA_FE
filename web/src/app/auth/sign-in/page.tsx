@@ -41,6 +41,28 @@ function getRouteForRole(role: string | null | undefined) {
   }
 }
 
+function isPendingOrUnassignedUser(payload: {
+  roles?: string[] | null;
+  status?: string | null;
+  userStatus?: string | null;
+}) {
+  const normalizedStatus = (payload.status ?? payload.userStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'pending') {
+    return true;
+  }
+
+  const roles = Array.isArray(payload.roles)
+    ? payload.roles.map((r) => r.trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (roles.length === 0) {
+    return true;
+  }
+  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('pending')) {
+    return true;
+  }
+  return false;
+}
+
 type LoginPageInnerProps = {
   googleEnabled: boolean;
 };
@@ -72,6 +94,19 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
       localStorage.setItem("fullName", data.fullName);
       localStorage.setItem("email", data.email);
       localStorage.setItem("roles", JSON.stringify(data.roles));
+      const resolvedStatus = data.status ?? data.userStatus ?? null;
+      if (resolvedStatus) {
+        localStorage.setItem("userStatus", resolvedStatus);
+      } else {
+        localStorage.removeItem("userStatus");
+      }
+
+      if (isPendingOrUnassignedUser(data)) {
+        localStorage.removeItem("activeRole");
+        router.push("/pending-approval");
+        return;
+      }
+
       const primaryRole = Array.isArray(data.roles)
         ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
         : null;

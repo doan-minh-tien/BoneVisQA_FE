@@ -127,6 +127,9 @@ export interface LoginResponse {
   email: string;
   token: string;
   roles: string[];
+  /** Backend account lifecycle status (e.g. Pending, Active). */
+  status?: string;
+  userStatus?: string;
   requiresMedicalVerification?: boolean;
 }
 
