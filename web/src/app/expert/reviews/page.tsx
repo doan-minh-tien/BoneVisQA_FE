@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -25,6 +26,7 @@ import {
   Edit3,
   Flag,
   Loader2,
+  Inbox,
   Link2,
   Save,
   User,
@@ -200,9 +202,11 @@ export default function ExpertReviewsPage() {
         ) : (
           <div className="space-y-4">
             {items.length === 0 ? (
-              <div className="rounded-xl border border-border-color bg-surface p-12 text-center text-text-muted">
-                No escalated diagnostic requests at this time.
-              </div>
+              <EmptyState
+                icon={<Inbox className="h-6 w-6 text-cyan-accent" />}
+                title="All caught up!"
+                description="There are no escalated cases requiring your expert review right now."
+              />
             ) : (
               items.map((item) => {
                 const isExp = expanded === item.id;

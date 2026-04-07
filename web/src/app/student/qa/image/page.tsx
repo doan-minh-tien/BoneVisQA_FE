@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import {
   ArrowLeft,
+  AlertTriangle,
   CheckCircle,
   FileQuestion,
   Loader2,
@@ -53,6 +55,7 @@ export default function StudentVisualQaImagePage() {
   const [loadingPhase, setLoadingPhase] = useState<'upload' | 'analyzing'>('upload');
   const [uploadPct, setUploadPct] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
+  const [networkWarning, setNetworkWarning] = useState<string | null>(null);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [customPolygon, setCustomPolygon] = useState<NormalizedPolygonPoint[] | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
@@ -165,6 +168,7 @@ export default function StudentVisualQaImagePage() {
       return;
     }
     const q = question.trim();
+    setNetworkWarning(null);
     setLoading(true);
     setLoadingPhase('upload');
     setUploadPct(0);
@@ -176,7 +180,27 @@ export default function StudentVisualQaImagePage() {
       toast.success('Diagnostic report generated.');
       clearDraft();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Request failed');
+      if (axios.isAxiosError(err)) {
+        const isNetworkDrop = !err.response;
+        const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
+        if (isNetworkDrop || isTimeout) {
+          const warning =
+            'Network connection lost. The AI is still processing your request on the server. Please check your History tab in a few minutes to see the result.';
+          setNetworkWarning(warning);
+          toast.info('Connection interrupted. You can continue safely and check History shortly.');
+        } else {
+          const maybeData = err.response?.data;
+          const apiMessage =
+            typeof maybeData === 'string'
+              ? maybeData
+              : maybeData && typeof maybeData === 'object' && 'message' in maybeData
+                ? String((maybeData as { message?: unknown }).message ?? '')
+                : '';
+          toast.error(apiMessage || err.message || 'Request failed');
+        }
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Request failed');
+      }
     } finally {
       setLoading(false);
       setUploadPct(0);
@@ -254,6 +278,14 @@ export default function StudentVisualQaImagePage() {
               onSubmit={handleSubmit}
               className="space-y-5 rounded-xl border border-border-color bg-surface p-5 shadow-panel"
             >
+              {networkWarning ? (
+                <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                    <p>{networkWarning}</p>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-cyan-accent" />
                 <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-text-muted">

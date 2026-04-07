@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
-import { AlertCircle, Clock3, Loader2, Send, Sparkles, User } from 'lucide-react';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { AlertCircle, CheckCircle2, Clock3, Loader2, Send, Sparkles, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { getStudentQuestions } from '@/lib/api/lecturer';
@@ -134,9 +135,11 @@ export default function QATriagePage() {
           </Button>
         </div>
       ) : questions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card px-6 py-20 text-center">
-          <p className="text-sm text-slate-600">No pending triage requests for this class.</p>
-        </div>
+        <EmptyState
+          icon={<CheckCircle2 className="h-6 w-6 text-emerald-600" />}
+          title="All caught up!"
+          description="There are no cases requiring your attention right now for this class."
+        />
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">

@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
 import type { NormalizedPolygonPoint, VisualQaReport } from './types';
@@ -32,6 +33,9 @@ export async function postStudentVisualQa(
         : data;
     return normalizeVisualQaReport(payload);
   } catch (e) {
+    if (axios.isAxiosError(e)) {
+      throw e;
+    }
     throw new Error(getApiErrorMessage(e));
   }
 }

@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
+import { EmptyState } from '@/components/shared/EmptyState';
 import CaseCard from '@/components/student/CaseCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fetchStudentCases } from '@/lib/api/student';
 import type { StudentCaseHistoryItem } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
-import { Filter, Loader2, Search } from 'lucide-react';
+import { Filter, History, Loader2, Search } from 'lucide-react';
 
 const difficultyFilters = [
   { id: 'all', label: 'All levels' },
@@ -122,12 +123,11 @@ export default function StudentHistoryPage() {
             </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <h2 className="text-lg font-semibold text-card-foreground">No history available</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Your submitted visual questions will appear here after the backend returns student case history.
-            </p>
-          </div>
+          <EmptyState
+            icon={<History className="h-6 w-6 text-primary" />}
+            title="All caught up!"
+            description="No Visual QA history matches your current filters yet. Try broadening filters or submit a new case."
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 md:gap-5">
             {filtered.map((item) => (
