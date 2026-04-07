@@ -216,15 +216,35 @@ export async function getAssignedQuizzes(): Promise<AssignedQuizItem[]> {
   }
 }
 
+function asOptionalNumber(v: unknown): number | null {
+  if (typeof v === 'number' && !Number.isNaN(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  }
+  return null;
+}
+
 function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
+  const totalQ =
+    asOptionalNumber(item.totalQuestions) ??
+    asOptionalNumber(item.TotalQuestions) ??
+    0;
+  const timeLimit =
+    asOptionalNumber(item.timeLimit) ??
+    asOptionalNumber(item.TimeLimit) ??
+    asOptionalNumber(item.timeLimitMinutes) ??
+    asOptionalNumber(item.TimeLimitMinutes);
+  const passing =
+    asOptionalNumber(item.passingScore) ?? asOptionalNumber(item.PassingScore);
   return {
     quizId: String(item.quizId ?? item.QuizId ?? ''),
     quizName: String(item.title ?? item.Title ?? item.quizName ?? 'Untitled quiz'),
     classId: String(item.classId ?? item.ClassId ?? ''),
     className: String(item.className ?? item.ClassName ?? ''),
-    totalQuestions: typeof item.totalQuestions === 'number' ? item.totalQuestions : 0,
-    timeLimit: typeof item.timeLimit === 'number' ? item.timeLimit : null,
-    passingScore: typeof item.passingScore === 'number' ? item.passingScore : null,
+    totalQuestions: totalQ,
+    timeLimit,
+    passingScore: passing,
     openTime: item.openTime != null ? String(item.openTime) : null,
     closeTime: item.closeTime != null ? String(item.closeTime) : null,
     isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
@@ -239,19 +259,32 @@ function pickStr(r: Record<string, unknown>, camel: string, pascal: string): str
   return s.length ? s : null;
 }
 
+/** Đọc chuỗi từ nhiều kiểu tên thuộc tính (camelCase, PascalCase, snake_case). */
+function pickStrAny(r: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s.length) return s;
+  }
+  return null;
+}
+
 function normalizeStudentSessionQuestion(row: unknown): StudentSessionQuestion {
   const q = row as Record<string, unknown>;
   return {
-    questionId: String(q.questionId ?? q.QuestionId ?? ''),
-    questionText: String(q.questionText ?? q.QuestionText ?? ''),
-    type: pickStr(q, 'type', 'Type'),
-    caseId: pickStr(q, 'caseId', 'CaseId'),
-    caseTitle: pickStr(q, 'caseTitle', 'CaseTitle'),
-    optionA: pickStr(q, 'optionA', 'OptionA'),
-    optionB: pickStr(q, 'optionB', 'OptionB'),
-    optionC: pickStr(q, 'optionC', 'OptionC'),
-    optionD: pickStr(q, 'optionD', 'OptionD'),
-    imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
+    questionId: String(pickStrAny(q, 'questionId', 'QuestionId', 'question_id') ?? ''),
+    questionText: String(
+      pickStrAny(q, 'questionText', 'QuestionText', 'question_text') ?? '',
+    ),
+    type: pickStrAny(q, 'type', 'Type'),
+    caseId: pickStrAny(q, 'caseId', 'CaseId', 'case_id'),
+    caseTitle: pickStrAny(q, 'caseTitle', 'CaseTitle', 'case_title'),
+    optionA: pickStrAny(q, 'optionA', 'OptionA', 'option_a'),
+    optionB: pickStrAny(q, 'optionB', 'OptionB', 'option_b'),
+    optionC: pickStrAny(q, 'optionC', 'OptionC', 'option_c'),
+    optionD: pickStrAny(q, 'optionD', 'OptionD', 'option_d'),
+    imageUrl: pickStrAny(q, 'imageUrl', 'ImageUrl', 'image_url'),
   };
 }
 
@@ -275,7 +308,6 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
 export async function startQuizSession(quizId: string): Promise<QuizSessionDto> {
   try {
     const { data } = await http.post<unknown>(`/api/student/quizzes/${quizId}/start`);
-    console.log('[API] StartQuiz raw response:', JSON.stringify(data, null, 2));
     return normalizeQuizSessionPayload(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
