@@ -55,8 +55,9 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   ],
   expert: [
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
-    { label: 'Validation Workbench', href: '/expert/reviews', icon: CheckSquare },
-    { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
+    { label: 'Quiz', href: '/expert/quizzes', icon: FileQuestion },
+    { label: 'Reviews', href: '/expert/reviews', icon: CheckSquare },
+    { label: 'Medical case', href: '/expert/cases', icon: BookOpen },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },

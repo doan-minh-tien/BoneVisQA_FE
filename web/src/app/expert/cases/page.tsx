@@ -1,40 +1,23 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import {
   FolderOpen, Search, Plus, CheckCircle, Clock, Eye,
-  Edit, Trash2, ChevronDown, ChevronRight,
+  Edit, Trash2, ChevronDown, ChevronRight, Loader2,
 } from 'lucide-react';
-
-type CaseStatus = 'approved' | 'pending' | 'draft';
-type Difficulty = 'basic' | 'intermediate' | 'advanced';
-
-interface Case {
-  id: string;
-  title: string;
-  boneLocation: string;
-  lesionType: string;
-  difficulty: Difficulty;
-  status: CaseStatus;
-  addedBy: string;
-  addedDate: string;
-  viewCount: number;
-  learningPoints: string[];
-  tags: string[];
-}
-
-const initialCases: Case[] = [
-  { id: '1', title: 'Distal Radius Fracture - Colles Type', boneLocation: 'Wrist', lesionType: 'Fracture', difficulty: 'basic', status: 'approved', addedBy: 'Dr. Pham Expert', addedDate: '2025-08-15', viewCount: 342, learningPoints: ['Identify dorsal angulation', 'AO classification 23-A2', 'FOOSH mechanism'], tags: ['fracture', 'wrist', 'Colles', 'basic'] },
-  { id: '2', title: 'Osteoarthritis of the Knee Joint', boneLocation: 'Knee', lesionType: 'Degenerative', difficulty: 'intermediate', status: 'approved', addedBy: 'Dr. Hoang Expert', addedDate: '2025-08-20', viewCount: 287, learningPoints: ['Kellgren-Lawrence grading', 'Joint space narrowing', 'Osteophyte formation'], tags: ['osteoarthritis', 'knee', 'degenerative'] },
-  { id: '3', title: 'Complex Tibial Plateau Fracture', boneLocation: 'Tibia', lesionType: 'Fracture', difficulty: 'advanced', status: 'pending', addedBy: 'Dr. Pham Expert', addedDate: '2025-09-01', viewCount: 0, learningPoints: ['Schatzker classification', 'CT assessment', 'Surgical planning'], tags: ['fracture', 'tibia', 'plateau', 'complex'] },
-  { id: '4', title: 'Shoulder Dislocation - Anterior Type', boneLocation: 'Shoulder', lesionType: 'Dislocation', difficulty: 'intermediate', status: 'approved', addedBy: 'Dr. Hoang Expert', addedDate: '2025-07-10', viewCount: 198, learningPoints: ['Hill-Sachs lesion', 'Bankart lesion', 'Reduction technique'], tags: ['dislocation', 'shoulder', 'anterior'] },
-  { id: '5', title: 'Osteosarcoma of the Distal Femur', boneLocation: 'Femur', lesionType: 'Tumor', difficulty: 'advanced', status: 'approved', addedBy: 'Dr. Pham Expert', addedDate: '2025-06-22', viewCount: 412, learningPoints: ['Sunburst periosteal reaction', 'Codman triangle', 'MRI staging'], tags: ['tumor', 'osteosarcoma', 'femur'] },
-  { id: '6', title: 'Scaphoid Fracture - Occult Detection', boneLocation: 'Wrist', lesionType: 'Fracture', difficulty: 'intermediate', status: 'draft', addedBy: 'Dr. Hoang Expert', addedDate: '2026-02-10', viewCount: 0, learningPoints: ['Anatomical snuffbox tenderness', 'MRI for occult fracture', 'Herbert screw fixation'], tags: ['fracture', 'scaphoid', 'wrist', 'occult'] },
-  { id: '7', title: 'Pelvic Ring Fracture - Trauma Case', boneLocation: 'Pelvis', lesionType: 'Fracture', difficulty: 'advanced', status: 'pending', addedBy: 'Dr. Pham Expert', addedDate: '2026-01-18', viewCount: 0, learningPoints: ['Young-Burgess classification', 'Hemodynamic instability', 'Pelvic binder'], tags: ['fracture', 'pelvis', 'trauma'] },
-  { id: '8', title: 'Clavicle Midshaft Fracture', boneLocation: 'Clavicle', lesionType: 'Fracture', difficulty: 'basic', status: 'approved', addedBy: 'Dr. Hoang Expert', addedDate: '2025-07-28', viewCount: 156, learningPoints: ['Allman classification', 'Non-operative vs operative', 'Neurovascular assessment'], tags: ['fracture', 'clavicle', 'basic'] },
-];
+import {
+  approveExpertCase,
+  createExpertCase,
+  deleteExpertCase,
+  fetchExpertCases,
+  updateExpertCase,
+  type CaseDifficulty as Difficulty,
+  type CaseStatus,
+  type ExpertCase as Case,
+} from '@/lib/api/expert-cases';
+import { useToast } from '@/components/ui/toast';
+import { getStoredUserId } from '@/lib/getStoredUserId';
 
 const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
   approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
@@ -43,34 +26,181 @@ const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string
 };
 
 const difficultyConfig: Record<Difficulty, { color: string }> = {
-  basic: { color: 'bg-success/10 text-success' },
-  intermediate: { color: 'bg-warning/10 text-warning' },
-  advanced: { color: 'bg-destructive/10 text-destructive' },
+  Easy: { color: 'bg-success/10 text-success' },
+  Medium: { color: 'bg-warning/10 text-warning' },
+  Hard: { color: 'bg-destructive/10 text-destructive' },
 };
 
 export default function ExpertCasesPage() {
-  const [cases, setCases] = useState<Case[]>(initialCases);
+  const toast = useToast();
+  const [cases, setCases] = useState<Case[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<CaseStatus | 'All'>('All');
   const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'All'>('All');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ c: Case; action: 'approve' | 'delete' } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isMutating, setIsMutating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingCase, setEditingCase] = useState<Case | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    categoryId: '',
+    description: '',
+    difficulty: 'Easy' as 'Easy' | 'Medium' | 'Hard',
+    isApproved: false,
+    isActive: true,
+    suggestedDiagnosis: '',
+    reflectiveQuestions: '',
+    keyFindings: '',
+  });
+
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of cases) {
+      const id = c.categoryId?.trim();
+      const name = c.categoryName?.trim();
+      if (id && name && !map.has(id)) map.set(id, name);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [cases]);
+
+  const loadCases = async () => {
+    try {
+      const data = await fetchExpertCases();
+      setCases(data);
+      setError(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load cases.';
+      setError(msg);
+      toast.error(msg);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchExpertCases();
+        if (!cancelled) setCases(data);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load cases.';
+        setError(msg);
+        toast.error(msg);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  const openCreateForm = () => {
+    setEditingCase(null);
+    setForm({
+      title: '',
+      categoryId: '',
+      description: '',
+      difficulty: 'Easy',
+      isApproved: false,
+      isActive: true,
+      suggestedDiagnosis: '',
+      reflectiveQuestions: '',
+      keyFindings: '',
+    });
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (c: Case) => {
+    setEditingCase(c);
+    setForm({
+      title: c.title,
+      categoryId: c.categoryId,
+      description: c.description,
+      difficulty: c.difficulty,
+      isApproved: c.isApproved,
+      isActive: c.isActive,
+      suggestedDiagnosis: c.suggestedDiagnosis,
+      reflectiveQuestions: c.reflectiveQuestions,
+      keyFindings: c.keyFindings,
+    });
+    setIsFormOpen(true);
+  };
+
+  const handleSaveCase = async () => {
+    const createdByExpertId = editingCase?.createdByExpertId || getStoredUserId();
+    if (!form.title.trim() || !form.categoryId.trim() || !createdByExpertId) {
+      toast.error('Title, category, and userId are required.');
+      return;
+    }
+    setIsMutating(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        createdByExpertId,
+        description: form.description.trim(),
+        difficulty: form.difficulty,
+        isApproved: form.isApproved,
+        isActive: form.isActive,
+        categoryId: form.categoryId.trim(),
+        suggestedDiagnosis: form.suggestedDiagnosis.trim(),
+        reflectiveQuestions: form.reflectiveQuestions.trim(),
+        keyFindings: form.keyFindings.trim(),
+      };
+      if (editingCase) {
+        await updateExpertCase(editingCase.id, payload);
+        toast.success('Case updated successfully.');
+      } else {
+        await createExpertCase(payload);
+        toast.success('Case created successfully.');
+      }
+      setIsFormOpen(false);
+      await loadCases();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Save failed.';
+      toast.error(msg);
+    } finally {
+      setIsMutating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return cases.filter((c) => {
       const q = search.toLowerCase();
-      const matchSearch = c.title.toLowerCase().includes(q) || c.boneLocation.toLowerCase().includes(q) || c.lesionType.toLowerCase().includes(q) || c.tags.some((t) => t.includes(q));
+      const matchSearch =
+        c.title.toLowerCase().includes(q) ||
+        c.categoryName.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q);
       const matchStatus = filterStatus === 'All' || c.status === filterStatus;
       const matchDiff = filterDifficulty === 'All' || c.difficulty === filterDifficulty;
       return matchSearch && matchStatus && matchDiff;
     });
   }, [cases, search, filterStatus, filterDifficulty]);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!dialog) return;
-    if (dialog.action === 'delete') setCases((prev) => prev.filter((c) => c.id !== dialog.c.id));
-    else if (dialog.action === 'approve') setCases((prev) => prev.map((c) => c.id === dialog.c.id ? { ...c, status: 'approved' as CaseStatus } : c));
+    const selected = dialog;
     setDialog(null);
+    setIsMutating(true);
+    try {
+      if (selected.action === 'delete') {
+        await deleteExpertCase(selected.c.id);
+        setCases((prev) => prev.filter((c) => c.id !== selected.c.id));
+        toast.success('Case deleted successfully.');
+      } else {
+        const updated = await approveExpertCase(selected.c.id);
+        setCases((prev) => prev.map((c) => (c.id === selected.c.id ? updated : c)));
+        toast.success('Case approved successfully.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Action failed.';
+      toast.error(msg);
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   return (
@@ -79,9 +209,9 @@ export default function ExpertCasesPage() {
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Actions + Search */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <Link href="/expert/cases/create" className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium">
+          <button onClick={openCreateForm} className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium">
             <Plus className="w-4 h-4" /> Add New Case
-          </Link>
+          </button>
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input type="text" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 pl-10 pr-4 rounded-lg bg-card border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
@@ -90,13 +220,22 @@ export default function ExpertCasesPage() {
             <option value="All">All Status</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="draft">Draft</option>
           </select>
           <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value as Difficulty | 'All')} className="h-10 px-4 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer">
-            <option value="All">All Difficulty</option><option value="basic">Basic</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option>
+            <option value="All">All Difficulty</option><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option>
           </select>
         </div>
 
         {/* Cases Table */}
         <div className="bg-card rounded-xl border border-border overflow-hidden">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center">
+              <Loader2 className="w-12 h-12 text-primary mx-auto mb-3 animate-spin" />
+              <p className="text-lg font-medium text-card-foreground">Loading cases...</p>
+            </div>
+          ) : error ? (
+            <div className="p-12 text-center">
+              <p className="text-lg font-medium text-destructive">{error}</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="p-12 text-center"><FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" /><p className="text-lg font-medium text-card-foreground">No cases found</p></div>
           ) : (
             <div className="divide-y divide-border">
@@ -113,14 +252,13 @@ export default function ExpertCasesPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-card-foreground">{c.title}</p>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">{c.boneLocation}</span>
-                            <span className="px-2 py-0.5 bg-accent/10 text-accent text-xs rounded font-medium">{c.lesionType}</span>
+                            <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">{c.categoryName}</span>
                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${df.color}`}>{c.difficulty.charAt(0).toUpperCase() + c.difficulty.slice(1)}</span>
                           </div>
                         </div>
                       </button>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><Eye className="w-3.5 h-3.5" />{c.viewCount}</span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><Eye className="w-3.5 h-3.5" />-</span>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}><StIcon className="w-3.5 h-3.5" />{st.label}</span>
                       </div>
                     </div>
@@ -128,17 +266,21 @@ export default function ExpertCasesPage() {
                       <div className="mt-3 ml-6 space-y-3">
                         <div className="text-xs text-muted-foreground">By {c.addedBy} &middot; {c.addedDate}</div>
                         <div>
-                          <p className="text-xs font-medium text-card-foreground mb-1">Key Learning Points:</p>
-                          <ul className="list-disc list-inside text-xs text-muted-foreground space-y-0.5">
-                            {c.learningPoints.map((lp, i) => <li key={i}>{lp}</li>)}
-                          </ul>
+                          <p className="text-xs font-medium text-card-foreground mb-1">Description:</p>
+                          <p className="text-xs text-muted-foreground">{c.description || '-'}</p>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {c.tags.map((tag) => <span key={tag} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">{tag}</span>)}
+                        <div>
+                          <p className="text-xs font-medium text-card-foreground mb-1">Key Findings:</p>
+                          <p className="text-xs text-muted-foreground">{c.keyFindings || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-card-foreground mb-1">Suggested Diagnosis:</p>
+                          <p className="text-xs text-muted-foreground">{c.suggestedDiagnosis || '-'}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {c.status !== 'approved' && <button onClick={() => setDialog({ c, action: 'approve' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Approve</button>}
-                          <button onClick={() => setDialog({ c, action: 'delete' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
+                          <button disabled={isMutating} onClick={() => openEditForm(c)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"><Edit className="w-3.5 h-3.5" />Edit</button>
+                          {c.status !== 'approved' && <button disabled={isMutating} onClick={() => setDialog({ c, action: 'approve' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 disabled:opacity-50 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Approve</button>}
+                          <button disabled={isMutating} onClick={() => setDialog({ c, action: 'delete' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
                         </div>
                       </div>
                     )}
@@ -157,11 +299,59 @@ export default function ExpertCasesPage() {
             <p className="text-sm text-muted-foreground text-center mb-6">{dialog.action === 'approve' ? <>Mark <strong className="text-card-foreground">{dialog.c.title}</strong> as approved?</> : <>Delete <strong className="text-card-foreground">{dialog.c.title}</strong>? This cannot be undone.</>}</p>
             <div className="flex gap-3">
               <button onClick={() => setDialog(null)} className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors">Cancel</button>
-              <button onClick={handleConfirm} className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${dialog.action === 'approve' ? 'bg-success hover:bg-success/90' : 'bg-destructive hover:bg-destructive/90'}`}>{dialog.action === 'approve' ? 'Approve' : 'Delete'}</button>
+              <button disabled={isMutating} onClick={handleConfirm} className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors disabled:opacity-50 ${dialog.action === 'approve' ? 'bg-success hover:bg-success/90' : 'bg-destructive hover:bg-destructive/90'}`}>{dialog.action === 'approve' ? 'Approve' : 'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setIsFormOpen(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-card-foreground mb-4">
+              {editingCase ? 'Edit Medical Case' : 'Create Medical Case'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Title" className="px-3 py-2 rounded-lg border border-border bg-input text-sm" />
+              <select
+                value={form.categoryId}
+                onChange={(e) => setForm((p) => ({ ...p, categoryId: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-border bg-input text-sm"
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.name}
+                  </option>
+                ))}
+              </select>
+              <select value={form.difficulty} onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value as 'Easy' | 'Medium' | 'Hard' }))} className="px-3 py-2 rounded-lg border border-border bg-input text-sm">
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.isApproved} onChange={(e) => setForm((p) => ({ ...p, isApproved: e.target.checked }))} />
+                Approved
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} />
+                Active
+              </label>
+              <textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} placeholder="Description" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
+              <textarea value={form.keyFindings} onChange={(e) => setForm((p) => ({ ...p, keyFindings: e.target.value }))} placeholder="Key findings" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
+              <textarea value={form.suggestedDiagnosis} onChange={(e) => setForm((p) => ({ ...p, suggestedDiagnosis: e.target.value }))} placeholder="Suggested diagnosis" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
+              <textarea value={form.reflectiveQuestions} onChange={(e) => setForm((p) => ({ ...p, reflectiveQuestions: e.target.value }))} placeholder="Reflective questions" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button disabled={isMutating} onClick={() => setIsFormOpen(false)} className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50">Cancel</button>
+              <button disabled={isMutating} onClick={handleSaveCase} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50">
+                {editingCase ? 'Update' : 'Create'}
+              </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
