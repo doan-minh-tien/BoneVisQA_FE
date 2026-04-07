@@ -22,13 +22,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
-import type { PercentageBoundingBox, VisualQaReport } from '@/lib/api/types';
+import type { NormalizedPolygonPoint, VisualQaReport } from '@/lib/api/types';
 import { splitLearningBullets } from '@/lib/utils/learning-text';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 
 type VisualQaDraft = {
   question: string;
-  annotationBox: PercentageBoundingBox | null;
+  customPolygon: NormalizedPolygonPoint[] | null;
   imageDataUrl: string | null;
   imageName: string | null;
   imageType: string | null;
@@ -36,7 +36,7 @@ type VisualQaDraft = {
 
 const EMPTY_DRAFT: VisualQaDraft = {
   question: '',
-  annotationBox: null,
+  customPolygon: null,
   imageDataUrl: null,
   imageName: null,
   imageType: null,
@@ -54,7 +54,7 @@ export default function StudentVisualQaImagePage() {
   const [uploadPct, setUploadPct] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
-  const [annotationBox, setAnnotationBox] = useState<PercentageBoundingBox | null>(null);
+  const [customPolygon, setCustomPolygon] = useState<NormalizedPolygonPoint[] | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [hydratingDraft, setHydratingDraft] = useState(true);
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
@@ -70,7 +70,7 @@ export default function StudentVisualQaImagePage() {
     let cancelled = false;
     (async () => {
       if (draft.question) setQuestion(draft.question);
-      if (draft.annotationBox) setAnnotationBox(draft.annotationBox);
+      if (draft.customPolygon?.length) setCustomPolygon(draft.customPolygon);
       if (draft.imageDataUrl && draft.imageName) {
         try {
           const response = await fetch(draft.imageDataUrl);
@@ -148,7 +148,7 @@ export default function StudentVisualQaImagePage() {
       setReport(null);
       setLastSubmittedQuestion(null);
       setFile(f);
-      setAnnotationBox(null);
+      setCustomPolygon(null);
     },
     [],
   );
@@ -170,7 +170,7 @@ export default function StudentVisualQaImagePage() {
     setUploadPct(0);
     setReport(null);
     try {
-      const res = await postStudentVisualQa(file, q, annotationBox, handleUploadProgress);
+      const res = await postStudentVisualQa(file, q, customPolygon, handleUploadProgress);
       setLastSubmittedQuestion(q);
       setReport(res);
       toast.success('Diagnostic report generated.');
@@ -198,8 +198,8 @@ export default function StudentVisualQaImagePage() {
 
   useEffect(() => {
     if (hydratingDraft) return;
-    setDraft((prev) => ({ ...prev, annotationBox }));
-  }, [annotationBox, hydratingDraft, setDraft]);
+    setDraft((prev) => ({ ...prev, customPolygon }));
+  }, [customPolygon, hydratingDraft, setDraft]);
 
   useEffect(() => {
     if (hydratingDraft || !file) return;
@@ -240,9 +240,11 @@ export default function StudentVisualQaImagePage() {
       <div className="grid flex-1 grid-cols-1 xl:grid-cols-2">
         <aside className="min-h-[50vh] border-b border-border-color xl:min-h-0 xl:border-b-0 xl:border-r">
           <MedicalImageViewer
+            key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
             src={previewUrl}
             alt="Study image for diagnostic request"
-            onAnnotationComplete={setAnnotationBox}
+            initialPolygon={hydratingDraft ? undefined : (customPolygon ?? undefined)}
+            onAnnotationComplete={setCustomPolygon}
           />
         </aside>
 
@@ -281,10 +283,9 @@ export default function StudentVisualQaImagePage() {
                   Preloading selected catalog image...
                 </div>
               ) : null}
-              {annotationBox && annotationBox.widthPct > 0 && annotationBox.heightPct > 0 ? (
+              {customPolygon && customPolygon.length >= 3 ? (
                 <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  Annotation saved: x {annotationBox.xPct.toFixed(1)}%, y {annotationBox.yPct.toFixed(1)}%,
-                  w {annotationBox.widthPct.toFixed(1)}%, h {annotationBox.heightPct.toFixed(1)}%
+                  Polygon saved: {customPolygon.length} vertices (normalized 0–1 coordinates)
                 </div>
               ) : null}
             </div>

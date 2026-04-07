@@ -335,6 +335,12 @@ export interface PercentageBoundingBox {
   heightPct: number;
 }
 
+/** Polygon vertices in normalized image space (0–1 per axis), for responsive `customPolygon` payloads. */
+export interface NormalizedPolygonPoint {
+  x: number;
+  y: number;
+}
+
 export interface ExpertReviewItem {
   answerId: string;
   id: string;
@@ -344,6 +350,8 @@ export interface ExpertReviewItem {
   question: string;
   imageUrl?: string;
   customCoordinates?: PercentageBoundingBox | null;
+  /** Preferred: student ROI as normalized polygon (replaces legacy bounding box when present). */
+  customPolygon?: NormalizedPolygonPoint[] | null;
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;

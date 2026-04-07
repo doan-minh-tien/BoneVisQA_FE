@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -279,11 +280,20 @@ export default function ExpertReviewsPage() {
                                       unoptimized
                                       className="mx-auto max-h-[420px] max-w-full object-contain"
                                     />
-                                    <AnnotationOverlay
-                                      box={item.customCoordinates}
-                                      label="STUDENT ROI"
-                                      className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
-                                    />
+                                    {item.customPolygon && item.customPolygon.length >= 3 ? (
+                                      <PolygonAnnotationOverlay
+                                        closed={item.customPolygon}
+                                        draft={[]}
+                                        label="STUDENT ROI"
+                                        className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+                                      />
+                                    ) : (
+                                      <AnnotationOverlay
+                                        box={item.customCoordinates}
+                                        label="STUDENT ROI"
+                                        className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+                                      />
+                                    )}
                                   </div>
                                 ) : (
                                   <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">

@@ -1,4 +1,4 @@
-import type { PercentageBoundingBox } from '@/lib/api/types';
+import type { NormalizedPolygonPoint, PercentageBoundingBox } from '@/lib/api/types';
 
 type PixelPoint = {
   x: number;
@@ -108,4 +108,69 @@ export function buildPercentageBoundingBox(
     widthPct,
     heightPct,
   };
+}
+
+const EPS = 1e-6;
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+export function isValidPolygon(
+  points: NormalizedPolygonPoint[] | null | undefined,
+): points is NormalizedPolygonPoint[] {
+  if (!points || points.length < 3) return false;
+  return points.every(
+    (p) =>
+      Number.isFinite(p.x) &&
+      Number.isFinite(p.y) &&
+      p.x >= -EPS &&
+      p.x <= 1 + EPS &&
+      p.y >= -EPS &&
+      p.y <= 1 + EPS,
+  );
+}
+
+function normalizeVertex(raw: unknown): NormalizedPolygonPoint | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  let x = Number(o.x);
+  let y = Number(o.y);
+  if (Number.isNaN(x) || Number.isNaN(y)) return null;
+  if (x > 1 + EPS || y > 1 + EPS) {
+    x /= 100;
+    y /= 100;
+  }
+  return { x: clamp01(x), y: clamp01(y) };
+}
+
+export function parseCustomPolygon(raw: unknown): NormalizedPolygonPoint[] | null {
+  if (!raw) return null;
+  let source: unknown = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      source = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(source)) return null;
+  const out: NormalizedPolygonPoint[] = [];
+  for (const row of source) {
+    const v = normalizeVertex(row);
+    if (v) out.push(v);
+  }
+  return isValidPolygon(out) ? out.map((p) => ({ x: clamp01(p.x), y: clamp01(p.y) })) : null;
+}
+
+export function serializeCustomPolygon(
+  points: NormalizedPolygonPoint[] | null | undefined,
+): string | null {
+  if (!points || points.length < 3) return null;
+  const normalized = points.map((p) => ({ x: clamp01(p.x), y: clamp01(p.y) }));
+  if (normalized.length < 3) return null;
+  return JSON.stringify(normalized);
 }

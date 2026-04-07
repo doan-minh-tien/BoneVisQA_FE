@@ -1,20 +1,20 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { PercentageBoundingBox, VisualQaReport } from './types';
-import { serializePercentageBoundingBox } from '@/lib/utils/annotations';
+import type { NormalizedPolygonPoint, VisualQaReport } from './types';
+import { serializeCustomPolygon } from '@/lib/utils/annotations';
 
 export async function postStudentVisualQa(
   file: File,
   questionText: string,
-  annotationBox?: PercentageBoundingBox | null,
+  customPolygon?: NormalizedPolygonPoint[] | null,
   onUploadProgress?: (percent: number) => void,
 ): Promise<VisualQaReport> {
   const form = new FormData();
   form.append('CustomImage', file);
   form.append('QuestionText', questionText);
-  const serializedBox = serializePercentageBoundingBox(annotationBox);
-  if (serializedBox) {
-    form.append('coordinates', serializedBox);
+  const serialized = serializeCustomPolygon(customPolygon);
+  if (serialized) {
+    form.append('customPolygon', serialized);
   }
 
   try {

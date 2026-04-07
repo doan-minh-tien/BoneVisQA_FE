@@ -1,7 +1,7 @@
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
 import type { Citation, ExpertReviewItem, VisualQaReport } from './types';
-import { parsePercentageBoundingBox } from '@/lib/utils/annotations';
+import { parseCustomPolygon, parsePercentageBoundingBox } from '@/lib/utils/annotations';
 
 function mapExpertCitation(row: unknown): Citation | null {
   if (!row || typeof row !== 'object') return null;
@@ -52,6 +52,9 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
       r.questionCoordinates ??
       r.coordinates,
   );
+  const customPolygon = parseCustomPolygon(
+    r.customPolygon ?? r.CustomPolygon,
+  );
   const citationSource = Array.isArray(r.citations)
     ? r.citations
     : Array.isArray(r.evidence)
@@ -73,6 +76,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     question: questionText,
     imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
     customCoordinates,
+    customPolygon,
     askedAt: String(r.askedAt ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,
