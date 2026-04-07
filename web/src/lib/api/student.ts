@@ -314,6 +314,21 @@ export async function startQuizSession(quizId: string): Promise<QuizSessionDto> 
   }
 }
 
+function mapSubmitQuizResult(raw: unknown): StudentQuizResultDto {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const scoreRaw = r.score ?? r.Score;
+  const passingRaw = r.passingScore ?? r.PassingScore;
+  return {
+    attemptId: String(r.attemptId ?? r.AttemptId ?? ''),
+    quizId: String(r.quizId ?? r.QuizId ?? ''),
+    score: scoreRaw != null && scoreRaw !== '' ? Number(scoreRaw) : null,
+    passingScore: passingRaw != null && passingRaw !== '' ? Number(passingRaw) : null,
+    passed: Boolean(r.passed ?? r.Passed ?? false),
+    totalQuestions: Number(r.totalQuestions ?? r.TotalQuestions ?? 0),
+    correctAnswers: Number(r.correctAnswers ?? r.CorrectAnswers ?? 0),
+  };
+}
+
 /**
  * Submit all quiz answers.
  */
@@ -322,11 +337,11 @@ export async function submitQuizSession(
   answers: StudentSubmitQuestionDto[],
 ): Promise<StudentQuizResultDto> {
   try {
-    const { data } = await http.post<StudentQuizResultDto>('/api/student/quizzes/submit', {
+    const { data } = await http.post<unknown>('/api/student/quizzes/submit', {
       attemptId,
       answers: answers.map((a) => ({ questionId: a.questionId, studentAnswer: a.studentAnswer })),
     });
-    return data;
+    return mapSubmitQuizResult(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
