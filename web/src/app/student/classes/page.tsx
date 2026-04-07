@@ -1,297 +1,456 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { StudentAppChrome } from '@/components/student/StudentAppChrome';
-import { fetchStudentClasses, fetchStudentClassDetail } from '@/lib/api/student';
+import { ActiveCourseworkBento } from '@/components/student/ActiveCourseworkBento';
+import { ClassDetailCover, ClassDetailHeroSvg } from '@/components/student/ClassDetailVisuals';
+import { fetchStudentClasses, fetchStudentClassDetail, leaveStudentClass } from '@/lib/api/student';
 import type { StudentClassItem } from '@/lib/api/student';
 import type { StudentClassDetail } from '@/lib/api/student';
 import { useToast } from '@/components/ui/toast';
+import { Modal } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
 import {
-  ArrowLeft,
-  BookOpen,
-  CheckCircle,
   ChevronRight,
-  Clock,
-  FileQuestion,
   GraduationCap,
   Loader2,
+  Mail,
   Megaphone,
+  Plus,
+  Timer,
   Trophy,
-  Users,
+  UserMinus,
 } from 'lucide-react';
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// ── Sub-components (MedEd-style class detail) ───────────────────────────────
+
+function useClientNow(intervalMs = 60_000) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const t0 = window.setTimeout(() => setNow(Date.now()), 0);
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearInterval(id);
+    };
+  }, [intervalMs]);
+  return now;
+}
+
+const ANNOUNCEMENT_BADGE_STYLES = [
+  { label: 'Urgent', className: 'bg-[#ffdcc3] text-[#6e3900]' },
+  { label: 'Resource', className: 'bg-[#94efec] text-[#006e6d]' },
+  { label: 'Update', className: 'bg-[#d6e3ff] text-[#00468c]' },
+] as const;
+
+function formatClassDate(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatDueLine(closeTime?: string | null) {
+  if (!closeTime) return 'Due: See lecturer';
+  const end = new Date(closeTime);
+  if (Number.isNaN(end.getTime())) return 'Due: See lecturer';
+  return `Due: ${end.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function quizProgressPercent(quiz: StudentClassDetail['quizzes'][number]) {
+  if (quiz.isCompleted && quiz.score != null) return Math.min(100, Math.round(quiz.score));
+  return 0;
+}
+
+function MedEdAnnouncementsBlock({
+  announcements,
+}: {
+  announcements: StudentClassDetail['announcements'];
+}) {
+  return (
+    <section className="rounded-3xl bg-[#f2f4f6] p-6 md:p-8">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-['Manrope',sans-serif] text-2xl font-bold tracking-tight text-[#191c1e]">Announcements</h2>
+        <span className="text-sm font-bold text-[#00478d]">{announcements.length} posted</span>
+      </div>
+      {announcements.length === 0 ? (
+        <div className="relative overflow-hidden rounded-2xl border border-[#c2c6d4]/50 bg-gradient-to-br from-white via-[#f2f4f6] to-[#d6e3ff]/40">
+          <div
+            className="pointer-events-none absolute -right-8 -top-8 h-48 w-48 rounded-full bg-[#00478d]/[0.06]"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-12 left-1/4 h-40 w-40 rounded-full bg-[#94efec]/25"
+            aria-hidden
+          />
+          <div className="relative flex flex-col items-center px-6 py-16 text-center md:flex-row md:items-center md:gap-10 md:py-14 md:text-left">
+            <div className="mb-8 shrink-0 md:mb-0">
+              <div className="relative h-28 w-28 overflow-hidden rounded-3xl bg-[#0d2137] shadow-md ring-1 ring-[#c2c6d4]/40 md:h-32 md:w-32">
+                <ClassDetailHeroSvg className="absolute inset-0 h-full w-full" />
+              </div>
+            </div>
+            <div className="max-w-md">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#00478d]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#00478d]">
+                <Megaphone className="h-3.5 w-3.5" aria-hidden />
+                Updates
+              </div>
+              <h3 className="font-['Manrope',sans-serif] text-lg font-bold text-[#191c1e] md:text-xl">
+                No announcements yet
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#424752]">
+                When your lecturer posts schedules, materials, or exam notes, they will show up here. You can still open
+                quizzes and cases from the right panel.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {announcements.map((ann, i) => {
+            const badge = ANNOUNCEMENT_BADGE_STYLES[i % ANNOUNCEMENT_BADGE_STYLES.length];
+            return (
+              <article
+                key={ann.id}
+                className="rounded-2xl bg-white p-6 shadow-sm transition-transform duration-200 hover:-translate-y-0.5"
+              >
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${badge.className}`}
+                  >
+                    {badge.label}
+                  </span>
+                  <time className="text-xs font-medium text-[#424752]">{formatClassDate(ann.createdAt)}</time>
+                </div>
+                <h3 className="font-['Manrope',sans-serif] text-lg font-bold text-[#191c1e]">{ann.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[#424752]">{ann.content}</p>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MedEdCaseAssignmentsBlock({
+  cls,
+  quizzes,
+}: {
+  cls: StudentClassItem;
+  quizzes: StudentClassDetail['quizzes'];
+}) {
+  type CardSpec = { key: string; title: string; due: string; progress: number; href: string };
+
+  const cards: CardSpec[] = [];
+  if (quizzes[0]) {
+    const q = quizzes[0];
+    cards.push({
+      key: q.quizId,
+      title: q.title,
+      due: formatDueLine(q.closeTime),
+      progress: quizProgressPercent(q),
+      href: `/student/quiz/${q.quizId}`,
+    });
+  }
+  if (quizzes[1]) {
+    const q = quizzes[1];
+    cards.push({
+      key: q.quizId,
+      title: q.title,
+      due: formatDueLine(q.closeTime),
+      progress: quizProgressPercent(q),
+      href: `/student/quiz/${q.quizId}`,
+    });
+  }
+  while (cards.length < 2) {
+    if (cls.totalCases > 0 && !cards.some((c) => c.key === 'catalog')) {
+      cards.push({
+        key: 'catalog',
+        title: 'Clinical case bank',
+        due: 'Self-paced · curriculum',
+        progress: 0,
+        href: '/student/catalog',
+      });
+      continue;
+    }
+    if (!cards.some((c) => c.key === 'qa')) {
+      cards.push({
+        key: 'qa',
+        title: 'Visual QA practice',
+        due: 'Practice anytime',
+        progress: 0,
+        href: '/student/qa',
+      });
+      continue;
+    }
+    break;
+  }
+
+  const filled = cards;
+
+  return (
+    <section>
+      <h2 className="mb-6 font-['Manrope',sans-serif] text-2xl font-bold tracking-tight text-[#191c1e]">
+        Case assignments
+      </h2>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {filled.map((c) => (
+          <Link
+            key={c.key}
+            href={c.href}
+            className="block rounded-2xl border border-[#c2c6d4]/40 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <h4 className="font-bold text-[#191c1e]">{c.title}</h4>
+            <p className="mb-4 mt-1 text-xs text-[#424752]">{c.due}</p>
+            <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-[#eceef0]">
+              <div className="h-full rounded-full bg-[#00478d]" style={{ width: `${c.progress}%` }} />
+            </div>
+            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-[#424752]">
+              <span>Progress</span>
+              <span>{c.progress > 0 ? `${c.progress}%` : '—'}</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MedEdActiveAssessmentsBlock({ quizzes }: { quizzes: StudentClassDetail['quizzes'] }) {
+  const now = useClientNow();
+
+  function isLocked(openTime?: string | null) {
+    if (!openTime || now == null) return false;
+    const t = new Date(openTime).getTime();
+    if (Number.isNaN(t)) return false;
+    return t > now;
+  }
+
+  function opensLine(openTime?: string | null) {
+    if (!openTime) return null;
+    const d = new Date(openTime);
+    if (Number.isNaN(d.getTime())) return null;
+    return `Opens ${d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}`;
+  }
+
+  return (
+    <section className="rounded-3xl bg-[#2d3133] p-6 text-white shadow-xl md:p-8" id="assessments">
+      <div className="mb-6 flex items-center gap-2">
+        <Timer className="h-6 w-6 shrink-0 text-[#97f2ef]" aria-hidden />
+        <h2 className="font-['Manrope',sans-serif] text-xl font-bold">Active assessments</h2>
+      </div>
+      {quizzes.length === 0 ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 py-10 text-center">
+          <Trophy className="mx-auto h-10 w-10 text-white/40" />
+          <p className="mt-3 text-sm text-white/60">No quizzes assigned to this class yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {quizzes.map((quiz) => {
+            const locked = isLocked(quiz.openTime);
+            const meta = [
+              `${quiz.totalQuestions} questions`,
+              quiz.timeLimit ? `${quiz.timeLimit} min` : null,
+            ]
+              .filter(Boolean)
+              .join(' • ');
+            const secondary = locked ? opensLine(quiz.openTime) : quizDueLine(quiz.closeTime);
+
+            return (
+              <div
+                key={quiz.quizId}
+                className={`flex flex-col gap-3 rounded-xl border border-white/10 p-4 ${locked ? 'bg-white/5 opacity-80' : 'bg-white/10'}`}
+              >
+                <div>
+                  <h4 className="text-sm font-bold">{quiz.title}</h4>
+                  <p className="text-xs text-white/60">{meta}</p>
+                  {secondary ? <p className="mt-1 text-xs text-white/50">{secondary}</p> : null}
+                </div>
+                {locked ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full cursor-not-allowed rounded-lg bg-white/20 py-2 text-sm font-bold text-white"
+                  >
+                    Locked
+                  </button>
+                ) : (
+                  <Link
+                    href={`/student/quiz/${quiz.quizId}`}
+                    className="flex w-full items-center justify-center rounded-lg bg-[#97f2ef] py-2 text-sm font-bold text-[#00201f] transition-transform hover:scale-[1.02] active:scale-95"
+                  >
+                    {quiz.isCompleted ? 'Resume / retake' : 'Start quiz'}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function quizDueLine(closeTime?: string | null): string {
+  if (!closeTime) return '';
+  const end = new Date(closeTime);
+  if (Number.isNaN(end.getTime())) return '';
+  return `Closes ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+}
+
+function MedEdRosterBlock({ students }: { students: StudentClassDetail['students'] }) {
+  const [expanded, setExpanded] = useState(false);
+  const preview = expanded ? students : students.slice(0, 3);
+
+  if (students.length === 0) {
+    return (
+      <section className="rounded-3xl bg-[#eceef0] p-8">
+        <h2 className="mb-4 font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e]">Class roster</h2>
+        <p className="text-sm text-[#424752]">No classmates listed yet.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-3xl bg-[#eceef0] p-6 md:p-8">
+      <h2 className="mb-6 font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e]">Class roster</h2>
+      <div className="space-y-4">
+        {preview.map((s) => (
+          <div key={s.studentId} className="group flex items-center justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e0e3e5] text-xs font-bold text-[#00478d]">
+                {(s.studentName || '?')
+                  .split(' ')
+                  .filter(Boolean)
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-[#191c1e]">{s.studentName}</p>
+                <p className="text-[10px] font-medium text-[#424752]">{s.studentCode?.trim() || 'Student'}</p>
+              </div>
+            </div>
+            <Mail className="h-4 w-4 shrink-0 text-[#424752] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+          </div>
+        ))}
+      </div>
+      {students.length > 3 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-4 w-full rounded-xl border border-[#c2c6d4]/50 py-3 text-xs font-bold text-[#424752] transition-colors hover:bg-[#e6e8ea]"
+        >
+          {expanded ? 'Show fewer' : `View all ${students.length} students`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
 function ClassDetailPanel({
   cls,
   detail,
   detailLoading,
   onBack,
+  onRequestLeave,
 }: {
   cls: StudentClassItem;
   detail: StudentClassDetail | null;
   detailLoading: boolean;
   onBack: () => void;
+  onRequestLeave: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'quizzes' | 'students' | 'announcements'>('quizzes');
-
-  const tabs = [
-    { key: 'quizzes', label: 'Quizzes', icon: FileQuestion, count: detail?.quizzes.length ?? cls.totalQuizzes },
-    { key: 'students', label: 'Students', icon: Users, count: detail?.students.length ?? 0 },
-    { key: 'announcements', label: 'Announcements', icon: Megaphone, count: detail?.announcements.length ?? cls.totalAnnouncements },
-  ] as const;
-
-  function formatDate(iso?: string | null) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
+  const lecturer = cls.lecturerName?.trim() || 'Instructor';
+  const lecturerInitials = initialsFromName(lecturer);
 
   return (
-    <div className="space-y-4">
-      {/* Back button */}
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-2 text-sm font-semibold text-[#00478d] hover:text-[#003366]"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to all classes
-      </button>
-
-      {/* Class header */}
-      <div className="overflow-hidden rounded-2xl border border-[#c2c6d4]/30 bg-white shadow-sm">
-        <div className="flex items-center gap-4 bg-gradient-to-r from-[#00478d] to-[#005eb8] p-6 text-white">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white/20">
-            <GraduationCap className="h-7 w-7" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-['Manrope',sans-serif] text-xl font-bold truncate">{cls.className}</h2>
-            <p className="text-sm text-white/80">{cls.semester}</p>
-          </div>
-        </div>
-
-        {/* Meta row */}
-        <div className="grid grid-cols-2 gap-4 border-t border-white/10 bg-white/5 p-4 sm:grid-cols-4">
-          <div className="text-center">
-            <p className="text-xs text-white/60">Lecturer</p>
-            <p className="mt-0.5 text-sm font-semibold truncate">{cls.lecturerName ?? '—'}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-white/60">Enrolled</p>
-            <p className="mt-0.5 text-sm font-semibold">{detail?.students.length ?? '—'}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-white/60">Quizzes</p>
-            <p className="mt-0.5 text-sm font-semibold">{detail?.quizzes.length ?? cls.totalQuizzes}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-white/60">Cases</p>
-            <p className="mt-0.5 text-sm font-semibold">{cls.totalCases}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-[#c2c6d4]/30">
-        {tabs.map(({ key, label, icon: Icon, count }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-colors ${
-              activeTab === key
-                ? 'border-b-2 border-[#00478d] text-[#00478d]'
-                : 'text-[#727783] hover:text-[#191c1e]'
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            <span className="rounded-full bg-[#eceef0] px-2 py-0.5 text-[10px] font-bold text-[#424752]">
-              {count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div>
-        {detailLoading ? (
-          <div className="flex items-center justify-center rounded-2xl border border-[#c2c6d4]/30 bg-white py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-[#00478d]" />
-          </div>
-        ) : detail === null ? (
-          <div className="flex items-center justify-center rounded-2xl border border-dashed border-[#c2c6d4] py-16">
-            <p className="text-sm text-[#727783]">Failed to load class details.</p>
-          </div>
-        ) : activeTab === 'quizzes' ? (
-          <QuizzesTab quizzes={detail.quizzes} />
-        ) : activeTab === 'students' ? (
-          <StudentsTab students={detail.students} />
-        ) : (
-          <AnnouncementsTab announcements={detail.announcements} formatDate={formatDate} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function QuizzesTab({ quizzes }: { quizzes: StudentClassDetail['quizzes'] }) {
-  if (quizzes.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-[#c2c6d4] py-12 text-center">
-        <Trophy className="mx-auto h-8 w-8 text-[#727783]" />
-        <p className="mt-3 text-sm font-semibold text-[#191c1e]">No quizzes assigned yet</p>
-        <p className="mt-1 text-xs text-[#727783]">Your lecturer has not assigned any quizzes to this class.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {quizzes.map((quiz) => (
-        <div
-          key={quiz.quizId}
-          className="overflow-hidden rounded-2xl border border-[#c2c6d4]/30 bg-white transition-all hover:shadow-sm"
-        >
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                quiz.isCompleted ? 'bg-[#006a68]/10' : 'bg-[#ffdcc3]/40'
-              }`}>
-                {quiz.isCompleted
-                  ? <CheckCircle className="h-4 w-4 text-[#006a68]" />
-                  : <FileQuestion className="h-4 w-4 text-[#703a00]" />}
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-[#191c1e] truncate">{quiz.title}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#727783]">
-                  {quiz.topic && <span className="rounded-full bg-[#eceef0] px-2 py-0.5">{quiz.topic}</span>}
-                  <span className="flex items-center gap-1">
-                    <FileQuestion className="h-3 w-3" />
-                    {quiz.totalQuestions} Qs
-                  </span>
-                  {quiz.timeLimit && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {quiz.timeLimit} min
-                    </span>
-                  )}
-                  {quiz.closeTime && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Due: {new Date(quiz.closeTime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-3">
-              {quiz.isCompleted && quiz.score != null ? (
-                <div className="text-right">
-                  <p className={`text-lg font-black ${
-                    quiz.score >= 80 ? 'text-[#006a68]'
-                    : quiz.score >= 60 ? 'text-[#924e00]'
-                    : 'text-[#ba1a1a]'
-                  }`}>
-                    {Math.round(quiz.score)}%
-                  </p>
-                  {quiz.passingScore && (
-                    <p className="text-[10px] text-[#727783]">
-                      Pass: {quiz.passingScore}%
-                    </p>
-                  )}
-                </div>
-              ) : quiz.isCompleted ? (
-                <span className="rounded-full bg-[#d6e3ff] px-3 py-1 text-xs font-semibold text-[#00478d]">Submitted</span>
-              ) : (
-                <span className="rounded-full bg-[#ffdcc3]/40 px-3 py-1 text-xs font-semibold text-[#703a00]">Not started</span>
-              )}
-
-              <a
-                href={`/student/quiz/${quiz.quizId}`}
-                className={`flex items-center gap-1 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
-                  quiz.isCompleted
-                    ? 'border border-[#00478d]/30 bg-white text-[#00478d] hover:bg-[#d6e3ff]'
-                    : 'bg-gradient-to-r from-[#00478d] to-[#005eb8] text-white shadow-sm hover:opacity-95'
-                }`}
+    <div className="relative pb-20">
+      <section className="mb-10 flex flex-col gap-8 md:mb-12 md:flex-row md:items-start md:justify-between lg:mb-14">
+        <div className="max-w-2xl min-w-0 flex-1">
+          <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm font-medium text-[#424752]">
+            <button type="button" onClick={onBack} className="transition-colors hover:text-[#005eb8]">
+              Classes
+            </button>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+            <span className="truncate text-[#191c1e]">{cls.semester || 'Curriculum'}</span>
+          </nav>
+          <h1 className="font-['Manrope',sans-serif] text-4xl font-extrabold tracking-tighter text-[#191c1e] sm:text-5xl">
+            {cls.className}
+          </h1>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm ring-1 ring-black/5">
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#005eb8] text-[10px] font-bold text-white"
+                aria-hidden
               >
-                {quiz.isCompleted ? 'Retake' : 'Start'}
-                <ChevronRight className="h-4 w-4" />
-              </a>
+                {lecturerInitials}
+              </div>
+              <span className="text-sm font-semibold text-[#00478d]">{lecturer}</span>
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#006a68]" aria-hidden />
+              <span className="text-xs font-medium text-[#424752]">Course lecturer</span>
             </div>
+            <button
+              type="button"
+              onClick={onRequestLeave}
+              className="inline-flex items-center gap-2 rounded-full border border-destructive/25 bg-white px-4 py-2 text-xs font-bold text-destructive shadow-sm transition-colors hover:bg-destructive/5"
+            >
+              <UserMinus className="h-3.5 w-3.5" />
+              Leave class
+            </button>
           </div>
         </div>
-      ))}
-    </div>
-  );
-}
+        <div className="h-48 w-full shrink-0 overflow-hidden rounded-2xl shadow-xl ring-1 ring-black/5 md:h-auto md:w-80 md:aspect-[4/3]">
+          <ClassDetailCover variant="hero" className="min-h-[12rem] md:min-h-0 md:h-full" />
+        </div>
+      </section>
 
-function StudentsTab({ students }: { students: StudentClassDetail['students'] }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[#c2c6d4]/30 bg-white">
-      <div className="border-b border-[#eceef0] bg-[#f8fafc] px-4 py-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-[#727783]">
-          {students.length} student{students.length !== 1 ? 's' : ''} enrolled
-        </p>
-      </div>
-      {students.length === 0 ? (
-        <div className="py-8 text-center">
-          <Users className="mx-auto h-8 w-8 text-[#727783]" />
-          <p className="mt-2 text-sm text-[#727783]">No students found.</p>
+      {detailLoading ? (
+        <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-[#e0e3e5] bg-white py-20">
+          <Loader2 className="h-10 w-10 animate-spin text-[#00478d]" />
+          <p className="mt-4 text-sm text-[#424752]">Loading class workspace…</p>
+        </div>
+      ) : detail === null ? (
+        <div className="rounded-3xl border border-dashed border-[#c2c6d4] bg-[#f2f4f6] py-20 text-center">
+          <p className="text-sm text-[#424752]">Could not load this class. Go back and try again.</p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-4 text-sm font-bold text-[#00478d] underline-offset-4 hover:underline"
+          >
+            All classes
+          </button>
         </div>
       ) : (
-        <ul className="divide-y divide-[#eceef0]">
-          {students.map((s, i) => (
-            <li key={s.studentId} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00478d]/10 text-xs font-bold text-[#00478d]">
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[#191c1e] truncate">{s.studentName}</p>
-                {s.studentCode && (
-                  <p className="text-xs text-[#727783]">{s.studentCode}</p>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function AnnouncementsTab({
-  announcements,
-  formatDate,
-}: {
-  announcements: StudentClassDetail['announcements'];
-  formatDate: (iso?: string | null) => string;
-}) {
-  return (
-    <div className="space-y-3">
-      {announcements.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#c2c6d4] py-12 text-center">
-          <Megaphone className="mx-auto h-8 w-8 text-[#727783]" />
-          <p className="mt-3 text-sm font-semibold text-[#191c1e]">No announcements</p>
-          <p className="mt-1 text-xs text-[#727783]">No announcements have been posted for this class yet.</p>
-        </div>
-      ) : (
-        announcements.map((ann) => (
-          <div key={ann.id} className="overflow-hidden rounded-2xl border border-[#eceef0] bg-white">
-            <div className="flex items-start justify-between gap-3 bg-[#f8fafc] p-4">
-              <div className="flex items-center gap-2">
-                <Megaphone className="h-4 w-4 shrink-0 text-[#00478d]" />
-                <p className="font-semibold text-[#191c1e]">{ann.title}</p>
-              </div>
-              <span className="shrink-0 text-xs text-[#727783]">{formatDate(ann.createdAt)}</span>
-            </div>
-            <p className="border-t border-[#eceef0] p-4 text-sm leading-relaxed text-[#424752]">
-              {ann.content}
-            </p>
+        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 lg:gap-8">
+          <div className="space-y-8 lg:col-span-8">
+            <MedEdAnnouncementsBlock announcements={detail.announcements} />
+            <MedEdCaseAssignmentsBlock cls={cls} quizzes={detail.quizzes} />
           </div>
-        ))
+          <div className="space-y-8 lg:col-span-4">
+            <div className="aspect-[16/10] w-full overflow-hidden rounded-3xl shadow-lg ring-1 ring-black/5">
+              <ClassDetailCover variant="spotlight" className="h-full" />
+            </div>
+            <MedEdActiveAssessmentsBlock quizzes={detail.quizzes} />
+            <MedEdRosterBlock students={detail.students} />
+          </div>
+        </div>
       )}
+
+      <Link
+        href="/student/catalog"
+        className="fixed bottom-8 right-8 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] text-white shadow-2xl transition-transform hover:scale-110 active:scale-95"
+        aria-label="Open case catalog"
+      >
+        <Plus className="h-7 w-7" strokeWidth={2.5} />
+      </Link>
     </div>
   );
 }
@@ -305,6 +464,8 @@ export default function StudentClassesPage() {
   const [selectedClass, setSelectedClass] = useState<StudentClassItem | null>(null);
   const [detail, setDetail] = useState<StudentClassDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<StudentClassItem | null>(null);
+  const [leaveLoading, setLeaveLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,103 +498,106 @@ export default function StudentClassesPage() {
     }
   };
 
+  const handleConfirmLeaveClass = async () => {
+    if (!leaveTarget) return;
+    const leftName = leaveTarget.className;
+    const leftId = leaveTarget.classId;
+    setLeaveLoading(true);
+    try {
+      await leaveStudentClass(leftId);
+      setClasses((prev) => prev.filter((c) => c.classId !== leftId));
+      if (selectedClass?.classId === leftId) {
+        setSelectedClass(null);
+        setDetail(null);
+      }
+      setLeaveTarget(null);
+      toast.success(`You left “${leftName}”.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not leave this class.');
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen text-[#191c1e]">
-      <StudentAppChrome breadcrumb="Classes" />
+    <div
+      className={`min-h-screen text-foreground ${!selectedClass ? 'bg-[#f7f9fb]' : 'bg-background'}`}
+    >
+      <StudentAppChrome breadcrumb={!selectedClass ? 'Curriculum' : 'Classes'} />
 
-      <div className="px-6 pb-16 pt-6 md:px-10">
-
-        {/* ── Header ── */}
-        <div className="mb-6">
-          <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-[#00478d]">Learning Hub</span>
-          <h1 className="font-['Manrope',sans-serif] text-2xl font-extrabold tracking-tight md:text-3xl">
-            My Classes
-          </h1>
-        </div>
+      <div className={`mx-auto px-4 pb-20 pt-6 sm:px-6 md:px-10 ${selectedClass ? 'max-w-[1440px]' : 'max-w-[1440px]'}`}>
 
         {loading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-[#c2c6d4]/30 bg-white">
-            <div className="flex items-center gap-3 text-sm text-[#424752]">
+          <div className="flex min-h-[280px] items-center justify-center rounded-3xl border border-[#e0e3e5] bg-white shadow-sm">
+            <div className="flex items-center gap-3 text-sm font-medium text-[#424752]">
               <Loader2 className="h-5 w-5 animate-spin text-[#00478d]" />
               Loading your classes…
             </div>
           </div>
         ) : classes.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#c2c6d4] bg-white px-6 py-16 text-center">
-            <GraduationCap className="mx-auto h-10 w-10 text-[#727783]" />
-            <h3 className="mt-4 text-lg font-semibold text-[#191c1e]">No enrolled classes</h3>
-            <p className="mt-2 text-sm text-[#424752]">
+          <div className="rounded-3xl border border-dashed border-[#c2c6d4] bg-white px-6 py-16 text-center shadow-sm">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d6e3ff] text-[#00478d]">
+              <GraduationCap className="h-7 w-7" />
+            </div>
+            <h3 className="mt-5 font-['Manrope',sans-serif] text-lg font-bold text-[#191c1e]">No enrolled classes</h3>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#424752]">
               You are not enrolled in any classes yet. Contact your department administrator or lecturer to get enrolled.
             </p>
           </div>
+        ) : !selectedClass ? (
+          <ActiveCourseworkBento
+            classes={classes}
+            onEnterClass={handleSelectClass}
+            onLeaveClass={setLeaveTarget}
+            onArchiveView={() => toast.info('Archive view is not available yet.')}
+            onEnrollNew={() => toast.info('Ask your lecturer or admin to add you to a class.')}
+          />
         ) : (
-          <div className="flex flex-col gap-6 lg:flex-row">
-
-            {/* ── Class list (left panel) ── */}
-            <div className={`space-y-3 ${selectedClass ? 'lg:w-72 lg:shrink-0' : 'w-full'}`}>
-              {!selectedClass && (
-                <p className="text-sm text-[#424752]">
-                  <span className="font-semibold text-[#191c1e]">{classes.length}</span> enrolled class{classes.length !== 1 ? 'es' : ''}
-                </p>
-              )}
-
-              {classes.map((cls) => {
-                const isActive = selectedClass?.classId === cls.classId;
-                return (
-                  <div
-                    key={cls.classId}
-                    className={`overflow-hidden rounded-2xl border bg-white transition-all cursor-pointer ${
-                      isActive
-                        ? 'border-[#00478d]/50 shadow-md ring-2 ring-[#00478d]/20'
-                        : 'border-[#c2c6d4]/30 hover:border-[#00478d]/40 hover:shadow-sm'
-                    }`}
-                    onClick={() => handleSelectClass(cls)}
-                  >
-                    <div className="flex items-center gap-3 p-4">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                        isActive ? 'bg-[#00478d] text-white' : 'bg-[#00478d]/10 text-[#00478d]'
-                      }`}>
-                        <GraduationCap className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[#191c1e] truncate">{cls.className}</p>
-                        <p className="text-xs text-[#727783]">
-                          {cls.semester}
-                          {cls.lecturerName ? ` • ${cls.lecturerName}` : ''}
-                        </p>
-                      </div>
-                      <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
-                        <div className="flex items-center gap-1 text-[10px] text-[#727783]">
-                          <FileQuestion className="h-3 w-3" />
-                          {cls.totalQuizzes} quizzes
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-[#727783]">
-                          <BookOpen className="h-3 w-3" />
-                          {cls.totalCases} cases
-                        </div>
-                      </div>
-                      <ChevronRight className={`h-4 w-4 shrink-0 text-[#727783] transition-transform ${isActive ? 'rotate-90' : ''}`} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── Detail panel (right) ── */}
-            {selectedClass && (
-              <div className="flex-1 min-w-0">
-                <ClassDetailPanel
-                  cls={selectedClass}
-                  detail={detail}
-                  detailLoading={detailLoading}
-                  onBack={() => { setSelectedClass(null); setDetail(null); }}
-                />
-              </div>
-            )}
-
-          </div>
+          <ClassDetailPanel
+            cls={selectedClass}
+            detail={detail}
+            detailLoading={detailLoading}
+            onBack={() => { setSelectedClass(null); setDetail(null); }}
+            onRequestLeave={() => setLeaveTarget(selectedClass)}
+          />
         )}
       </div>
+
+      <Modal
+        open={leaveTarget !== null}
+        title="Leave this class?"
+        onClose={() => { if (!leaveLoading) setLeaveTarget(null); }}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={leaveLoading}
+              onClick={() => setLeaveTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              isLoading={leaveLoading}
+              onClick={handleConfirmLeaveClass}
+            >
+              Leave class
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          You will lose access to this class&apos;s quizzes and announcements. A lecturer can add you back later if
+          needed.
+        </p>
+        {leaveTarget && (
+          <p className="mt-3 font-['Manrope',sans-serif] text-base font-bold text-card-foreground">
+            {leaveTarget.className}
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

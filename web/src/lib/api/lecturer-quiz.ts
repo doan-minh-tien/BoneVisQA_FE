@@ -67,13 +67,40 @@ export async function getLecturerQuizzes(lecturerId: string): Promise<ClassQuizD
   }
 }
 
+const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
+
+/** BE có thể trả camelCase hoặc PascalCase — giống normalizeClassQuizDto để dropdown Class không bị trống. */
+export function normalizeQuizDto(raw: unknown): QuizDto {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  const cid = String(r.classId ?? r.ClassId ?? '').trim();
+  const classId =
+    !cid || cid.toLowerCase() === EMPTY_GUID ? '' : cid;
+
+  return {
+    id,
+    classId,
+    title: String(r.title ?? r.Title ?? ''),
+    topic: (r.topic ?? r.Topic ?? null) as string | null,
+    isAiGenerated: Boolean(r.isAiGenerated ?? r.IsAiGenerated ?? false),
+    difficulty: (r.difficulty ?? r.Difficulty ?? null) as string | null,
+    classification: (r.classification ?? r.Classification ?? null) as string | null,
+    openTime: (r.openTime ?? r.OpenTime ?? null) as string | null,
+    closeTime: (r.closeTime ?? r.CloseTime ?? null) as string | null,
+    timeLimit: (r.timeLimit ?? r.TimeLimit ?? null) as number | null,
+    passingScore: (r.passingScore ?? r.PassingScore ?? null) as number | null,
+    createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
+  };
+}
+
 /**
  * Get quizzes for a specific class
  */
 export async function getClassQuizzes(classId: string): Promise<QuizDto[]> {
   try {
     const { data } = await http.get<QuizDto[]>(`/api/lecturer/classes/${classId}/quizzes`);
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map((row) => normalizeQuizDto(row));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -85,7 +112,7 @@ export async function getClassQuizzes(classId: string): Promise<QuizDto[]> {
 export async function getQuiz(quizId: string): Promise<QuizDto> {
   try {
     const { data } = await http.get<QuizDto>(`/api/lecturer/quizzes/${quizId}`);
-    return data;
+    return normalizeQuizDto(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -99,7 +126,8 @@ export async function getQuizzesByIds(quizIds: string[]): Promise<QuizDto[]> {
     const { data } = await http.get<QuizDto[]>('/api/lecturer/quizzes/batch', {
       params: { quizIds },
     });
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map((row) => normalizeQuizDto(row));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -111,7 +139,7 @@ export async function getQuizzesByIds(quizIds: string[]): Promise<QuizDto[]> {
 export async function createQuiz(body: CreateQuizRequest): Promise<QuizDto> {
   try {
     const { data } = await http.post<QuizDto>('/api/lecturer', body);
-    return data;
+    return normalizeQuizDto(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -123,7 +151,7 @@ export async function createQuiz(body: CreateQuizRequest): Promise<QuizDto> {
 export async function updateQuiz(quizId: string, body: UpdateQuizRequest): Promise<QuizDto> {
   try {
     const { data } = await http.put<QuizDto>(`/api/lecturer/quizzes/${quizId}`, body);
-    return data;
+    return normalizeQuizDto(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -226,6 +254,17 @@ export async function updateQuizQuestion(
 export async function deleteQuizQuestion(questionId: string): Promise<void> {
   try {
     await http.delete(`/api/lecturer/quizzes/questions/${questionId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete a quiz and all its related data
+ */
+export async function deleteQuiz(quizId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/quizzes/${quizId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -117,6 +117,8 @@ export interface ClassStats {
   totalCasesViewed: number;
   totalQuestionsAsked: number;
   avgQuizScore: number | null;
+  totalAssignments: number;
+  completedAssignments: number;
 }
 
 export interface LoginResponse {
@@ -280,6 +282,7 @@ export interface StudentSessionQuestion {
   optionB: string | null;
   optionC: string | null;
   optionD: string | null;
+  imageUrl?: string | null;
 }
 
 export interface StudentSubmitQuestionDto {

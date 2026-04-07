@@ -13,6 +13,7 @@ import type {
   StudentQuizSubmissionResult,
   StudentQuizResultDto,
   StudentRecentActivityItem,
+  StudentSessionQuestion,
   StudentSubmitQuestionDto,
   StudentTopicStat,
 } from './types';
@@ -231,14 +232,51 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
   };
 }
 
+function pickStr(r: Record<string, unknown>, camel: string, pascal: string): string | null {
+  const v = r[camel] ?? r[pascal];
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+}
+
+function normalizeStudentSessionQuestion(row: unknown): StudentSessionQuestion {
+  const q = row as Record<string, unknown>;
+  return {
+    questionId: String(q.questionId ?? q.QuestionId ?? ''),
+    questionText: String(q.questionText ?? q.QuestionText ?? ''),
+    type: pickStr(q, 'type', 'Type'),
+    caseId: pickStr(q, 'caseId', 'CaseId'),
+    caseTitle: pickStr(q, 'caseTitle', 'CaseTitle'),
+    optionA: pickStr(q, 'optionA', 'OptionA'),
+    optionB: pickStr(q, 'optionB', 'OptionB'),
+    optionC: pickStr(q, 'optionC', 'OptionC'),
+    optionD: pickStr(q, 'optionD', 'OptionD'),
+    imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
+  };
+}
+
+function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
+  const o = raw as Record<string, unknown>;
+  const rawQs = o.questions ?? o.Questions;
+  const list = Array.isArray(rawQs) ? rawQs : [];
+  return {
+    attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
+    quizId: String(o.quizId ?? o.QuizId ?? ''),
+    title: String(o.title ?? o.Title ?? ''),
+    topic: pickStr(o, 'topic', 'Topic'),
+    questions: list.map(normalizeStudentSessionQuestion),
+  };
+}
+
 /**
- * Start a quiz session: GET /api/student/quizzes/{quizId}/start
+ * Start a quiz session: POST /api/student/quizzes/{quizId}/start
  * Returns questions so the student can begin answering.
  */
 export async function startQuizSession(quizId: string): Promise<QuizSessionDto> {
   try {
-    const { data } = await http.get<QuizSessionDto>(`/api/student/quizzes/${quizId}/start`);
-    return data;
+    const { data } = await http.post<unknown>(`/api/student/quizzes/${quizId}/start`);
+    console.log('[API] StartQuiz raw response:', JSON.stringify(data, null, 2));
+    return normalizeQuizSessionPayload(data);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -439,15 +477,15 @@ export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAtt
       questions: questions.map((q) => ({
         questionId: String(q.questionId ?? q.QuestionId ?? ''),
         questionText: String(q.questionText ?? q.QuestionText ?? ''),
-        optionA: q.optionA ?? q.OptionA ?? null,
-        optionB: q.optionB ?? q.OptionB ?? null,
-        optionC: q.optionC ?? q.OptionC ?? null,
-        optionD: q.optionD ?? q.OptionD ?? null,
-        studentAnswer: q.studentAnswer ?? q.StudentAnswer ?? null,
-        correctAnswer: q.correctAnswer ?? q.CorrectAnswer ?? null,
+        optionA: pickStr(q, 'optionA', 'OptionA'),
+        optionB: pickStr(q, 'optionB', 'OptionB'),
+        optionC: pickStr(q, 'optionC', 'OptionC'),
+        optionD: pickStr(q, 'optionD', 'OptionD'),
+        studentAnswer: pickStr(q, 'studentAnswer', 'StudentAnswer'),
+        correctAnswer: pickStr(q, 'correctAnswer', 'CorrectAnswer'),
         isCorrect: Boolean(q.isCorrect ?? q.IsCorrect ?? false),
-        imageUrl: q.imageUrl ?? q.ImageUrl ?? null,
-        caseId: q.caseId ?? q.CaseId ?? null,
+        imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
+        caseId: pickStr(q, 'caseId', 'CaseId'),
       })),
     };
   } catch (e) {
@@ -510,9 +548,12 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
   try {
     const { data } = await http.get<unknown>(`/api/students/classes/${classId}`);
     const item = data as Record<string, unknown>;
-    const quizzes = Array.isArray(item.quizzes) ? (item.quizzes as Record<string, unknown>[]) : [];
-    const students = Array.isArray(item.students) ? (item.students as Record<string, unknown>[]) : [];
-    const announcements = Array.isArray(item.announcements) ? (item.announcements as Record<string, unknown>[]) : [];
+    const quizRows = item.quizzes ?? item.Quizzes;
+    const studentRows = item.students ?? item.Students;
+    const announcementRows = item.announcements ?? item.Announcements;
+    const quizzes = Array.isArray(quizRows) ? (quizRows as Record<string, unknown>[]) : [];
+    const students = Array.isArray(studentRows) ? (studentRows as Record<string, unknown>[]) : [];
+    const announcements = Array.isArray(announcementRows) ? (announcementRows as Record<string, unknown>[]) : [];
     return {
       classId: String(item.classId ?? item.ClassId ?? classId),
       className: String(item.className ?? item.ClassName ?? ''),
@@ -564,6 +605,15 @@ export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
       totalCases: Number(item.totalCases ?? item.TotalCases ?? 0),
       enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
     }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Student self-unenrolls from a class (DELETE enrollment). */
+export async function leaveStudentClass(classId: string): Promise<void> {
+  try {
+    await http.delete(`/api/students/classes/${classId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -135,77 +135,44 @@ export default function ClassDetailPage({
   }, [classId]);
 
   useEffect(() => {
+    let cancelled = false;
     setStudentsLoading(true);
-    (async () => {
-      try {
-        const data = await getClassStudents(classId);
-        setStudents(data);
-      } catch {
-        // silently fail
-      } finally {
-        setStudentsLoading(false);
-      }
-    })();
-
-    (async () => {
-      try {
-        const data = await getClassStats(classId);
-        setClassStats(data);
-      } catch {
-        // silently fail
-      }
-    })();
-  }, [classId]);
-
-  useEffect(() => {
-    let cancelled = false;
     setClassQuizzesLoading(true);
-    (async () => {
-      try {
-        const list = await getClassQuizzes(classId);
-        if (!cancelled) setClassQuizzes(list);
-      } catch {
-        if (!cancelled) setClassQuizzes([]);
-      } finally {
-        if (!cancelled) setClassQuizzesLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [classId]);
-
-  useEffect(() => {
-    let cancelled = false;
     setAnnouncementsLoading(true);
-    (async () => {
-      try {
-        const list = await getClassAnnouncements(classId);
-        if (!cancelled) setClassAnnouncements(list);
-      } catch {
-        if (!cancelled) setClassAnnouncements([]);
-      } finally {
-        if (!cancelled) setAnnouncementsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [classId]);
-
-  useEffect(() => {
-    let cancelled = false;
     setAssignmentsLoading(true);
+
     (async () => {
       try {
-        const list = await getClassAssignments(classId);
-        if (!cancelled) setClassAssignments(list);
+        const [s, st, q, a, asgn] = await Promise.all([
+          getClassStudents(classId),
+          getClassStats(classId),
+          getClassQuizzes(classId),
+          getClassAnnouncements(classId),
+          getClassAssignments(classId),
+        ]);
+        if (!cancelled) {
+          setStudents(s);
+          setClassStats(st);
+          setClassQuizzes(q);
+          setClassAnnouncements(a);
+          setClassAssignments(asgn);
+        }
       } catch {
-        if (!cancelled) setClassAssignments([]);
+        if (!cancelled) {
+          setClassQuizzes([]);
+          setClassAnnouncements([]);
+          setClassAssignments([]);
+        }
       } finally {
-        if (!cancelled) setAssignmentsLoading(false);
+        if (!cancelled) {
+          setStudentsLoading(false);
+          setClassQuizzesLoading(false);
+          setAnnouncementsLoading(false);
+          setAssignmentsLoading(false);
+        }
       }
     })();
+
     return () => {
       cancelled = true;
     };

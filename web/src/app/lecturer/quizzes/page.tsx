@@ -21,10 +21,12 @@ import {
   TrendingUp,
   Copy,
   Check,
+  Trash,
 } from 'lucide-react';
-import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
+import { getLecturerQuizzes, deleteQuiz } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassQuizDto } from '@/lib/api/types';
+import { Modal } from '@/components/ui/modal';
 
 type QuizStatus = 'Active' | 'Draft' | 'Completed';
 
@@ -39,7 +41,7 @@ interface EnrichedQuiz extends ClassQuizDto {
   compactAssigned: string;
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 function formatQuizInstant(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -98,12 +100,58 @@ export default function QuizListPage() {
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrichedQuiz | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedQuizIds, setSelectedQuizIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteTarget, setBulkDeleteTarget] = useState<Set<string> | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelect = (quizId: string) => {
+    setSelectedQuizIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(quizId)) next.delete(quizId);
+      else next.add(quizId);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!bulkDeleteTarget || bulkDeleteTarget.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const ids = [...bulkDeleteTarget];
+      await Promise.allSettled(ids.map((id) => deleteQuiz(id)));
+      setQuizzes((prev) => prev.filter((q) => !bulkDeleteTarget.has(q.quizId)));
+      setSelectedQuizIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      setBulkDeleteTarget(null);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const handleCopyId = (id: string) => {
     navigator.clipboard.writeText(id).then(() => {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     });
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteQuiz(deleteTarget.quizId);
+      setQuizzes((prev) => prev.filter((q) => q.quizId !== deleteTarget.quizId));
+      setDeleteTarget(null);
+    } catch {
+      // silently fail
+    } finally {
+      setDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -116,7 +164,7 @@ export default function QuizListPage() {
     try {
       const lecturerId = getStoredUserId();
       if (!lecturerId) {
-        setError('Chưa đăng nhập hoặc thiếu userId. Vui lòng đăng nhập lại.');
+        setError('Not logged in or userId is missing. Please log in again.');
         return;
       }
 
@@ -180,6 +228,23 @@ export default function QuizListPage() {
       ? []
       : filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const pageItems = buildPageList(totalPages, currentPage);
+
+  const allPageSelected = paged.length > 0 && paged.every((q) => selectedQuizIds.has(q.quizId));
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      setSelectedQuizIds((prev) => {
+        const next = new Set(prev);
+        paged.forEach((q) => next.delete(q.quizId));
+        return next;
+      });
+    } else {
+      setSelectedQuizIds((prev) => {
+        const next = new Set(prev);
+        paged.forEach((q) => next.add(q.quizId));
+        return next;
+      });
+    }
+  };
 
   const totalQuizzes = quizzes.length;
   const activeModules = quizzes.filter((q) => q.status === 'Active').length;
@@ -301,6 +366,32 @@ export default function QuizListPage() {
           </div>
         </div>
 
+        {/* Bulk action bar */}
+        {selectedQuizIds.size > 0 && (
+          <div className="flex items-center gap-3 border-b border-border bg-primary/5 px-6 py-3">
+          <span className="text-sm font-semibold text-primary">
+            {selectedQuizIds.size} selected
+          </span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setBulkDeleteTarget(new Set(selectedQuizIds))}
+                className="flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                <Trash className="h-4 w-4" />
+                Delete selected
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedQuizIds(new Set())}
+                className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
+              >
+                Clear selection
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Search bar */}
         <div className="border-b border-border px-6 py-3">
           <div className="relative max-w-md">
@@ -322,16 +413,25 @@ export default function QuizListPage() {
         <div className="min-w-0">
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
-              <col style={{ width: '24%' }} />
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '22%' }} />
               <col style={{ width: '14%' }} />
               <col style={{ width: '6%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '20%' }} />
-              <col style={{ width: '12%' }} />
               <col style={{ width: '14%' }} />
             </colgroup>
             <thead>
               <tr className="bg-muted/40">
+                <th className="px-2 py-3 sm:px-3 sm:py-4">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 cursor-pointer accent-primary"
+                    title={allPageSelected ? 'Deselect all' : 'Select all'}
+                  />
+                </th>
                 <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs sm:tracking-widest">
                   Quiz Title
                 </th>
@@ -346,9 +446,6 @@ export default function QuizListPage() {
                 </th>
                 <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Opens / Closes
-                </th>
-                <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Assigned
                 </th>
                 <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
                   Actions
@@ -368,6 +465,18 @@ export default function QuizListPage() {
                     key={`${quiz.quizId}-${quiz.classId}`}
                     className="group cursor-pointer hover:bg-muted/40 transition-colors"
                   >
+                    <td className="px-2 py-4 sm:px-3 sm:py-5">
+                      <input
+                        type="checkbox"
+                        checked={selectedQuizIds.has(quiz.quizId)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleSelect(quiz.quizId);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 cursor-pointer accent-primary"
+                      />
+                    </td>
                     <td className="px-3 py-4 sm:px-4 sm:py-5">
                         <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                         <button
@@ -469,6 +578,19 @@ export default function QuizListPage() {
                     </td>
                     <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
                       <div className="flex justify-end gap-1.5 sm:gap-2">
+                        {quiz.classId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/lecturer/quizzes/${quiz.quizId}/results`);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success"
+                            title="View Results"
+                          >
+                            <BarChart3 className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -482,7 +604,10 @@ export default function QuizListPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(quiz);
+                          }}
                           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                           title="Delete"
                         >
@@ -634,6 +759,91 @@ export default function QuizListPage() {
       >
         <Plus className="h-6 w-6" />
       </button>
+
+      {/* Delete confirmation dialog */}
+      <Modal
+        open={deleteTarget !== null}
+        title="Delete Quiz"
+        onClose={() => !deleting && setDeleteTarget(null)}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={handleDelete}
+              className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        }
+      >
+        {deleteTarget && (
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete{' '}
+            <strong className="text-foreground">{deleteTarget.quizName ?? 'this quiz'}</strong>
+            ? This will also delete all questions and attempts. This action cannot be undone.
+          </p>
+        )}
+      </Modal>
+
+      {/* Bulk delete confirmation dialog */}
+      <Modal
+        open={bulkDeleteTarget !== null}
+        title="Delete Multiple Quizzes"
+        onClose={() => !bulkDeleting && setBulkDeleteTarget(null)}
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={() => setBulkDeleteTarget(null)}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={handleBulkDelete}
+              className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50"
+            >
+              {bulkDeleting ? `Deleting…` : `Delete ${bulkDeleteTarget?.size ?? 0} Quizzes`}
+            </button>
+          </div>
+        }
+      >
+        {bulkDeleteTarget && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              You are about to delete <strong className="text-foreground">{bulkDeleteTarget.size} quiz</strong>(s) from your library.
+            </p>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/50 p-3">
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {[...bulkDeleteTarget].map((id) => {
+                  const quiz = quizzes.find((q) => q.quizId === id);
+                  return (
+                    <li key={id} className="truncate">
+                      • {quiz?.quizName ?? id}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p className="text-xs text-destructive font-medium">
+              This action will delete all related questions and attempt history. Cannot be undone.
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
