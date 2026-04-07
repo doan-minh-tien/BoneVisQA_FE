@@ -1,539 +1,314 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import StatCard from '@/components/StatCard';
-import ClassManagementWorkbench from '@/components/lecturer/classes/ClassManagementWorkbench';
-import AssignmentCard from '@/components/lecturer/AssignmentCard';
-import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
+import { ArrowLeft, BookOpen, ShieldAlert, UserPlus, Users } from 'lucide-react';
+import Header from '@/components/Header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Modal } from '@/components/ui/modal';
+import { useToast } from '@/components/ui/toast';
+import { EmptyState } from '@/components/shared/EmptyState';
+import type { CaseDto, ClassItem, QuizDto, StudentEnrollment } from '@/lib/api/types';
 import {
-  Users,
-  Award,
-  ArrowLeft,
-  Settings,
-  Plus,
-  ChevronRight,
-  Search,
-  Loader2,
-  Mail,
-  UserMinus,
-  UserPlus,
-  X,
-  MessageSquare,
-  Eye,
-  Upload,
-  Pencil,
-  Trash2,
-  AlertTriangle,
-  FolderOpen,
-  BarChart3,
-  Clock,
-} from 'lucide-react';
-import {
-  getClassById,
-  getClassStudents,
-  getAvailableStudents,
-  enrollStudent,
-  removeStudent,
-  getClassStats,
-  updateClass,
-  deleteClass,
-} from '@/lib/api/lecturer';
-import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
-import { getApiErrorMessage } from '@/lib/api/client';
-import type { ClassItem, StudentEnrollment, ClassStats, QuizDto } from '@/lib/api/types';
+  ForbiddenApiError,
+  assignCasesToLecturerClass,
+  assignQuizToLecturerClass,
+  enrollStudentsMany,
+  fetchAssignedCases,
+  fetchAssignedQuizzes,
+  fetchAvailableStudents,
+  fetchClassStudents,
+  fetchLecturerCaseLibrary,
+  fetchLecturerClassById,
+  fetchLecturerQuizLibrary,
+  removeStudentFromClass,
+} from '@/lib/api/lecturer-classes';
 
-const tabs = ['Students', 'Assignments', 'Settings'] as const;
+type DetailTab = 'students' | 'cases' | 'quizzes';
 
-export default function ClassDetailPage({
+export default function LecturerClassDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id: classId } = use(params);
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<string>('Students');
+  const toast = useToast();
 
-  // Class data
-  const [classData, setClassData] = useState<ClassItem | null>(null);
-  const [classLoading, setClassLoading] = useState(true);
-  const [classError, setClassError] = useState('');
+  const [activeTab, setActiveTab] = useState<DetailTab>('students');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [forbidden, setForbidden] = useState(false);
 
-  // Stats state
-  const [classStats, setClassStats] = useState<ClassStats | null>(null);
-
-  // Students state
+  const [classInfo, setClassInfo] = useState<ClassItem | null>(null);
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
-  const [studentsLoading, setStudentsLoading] = useState(true);
-  const [studentSearch, setStudentSearch] = useState('');
+  const [assignedCases, setAssignedCases] = useState<CaseDto[]>([]);
+  const [assignedQuizzes, setAssignedQuizzes] = useState<QuizDto[]>([]);
 
-  // Enroll dialog
-  const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [availableStudents, setAvailableStudents] = useState<StudentEnrollment[]>([]);
-  const [availableLoading, setAvailableLoading] = useState(false);
-  const [availableSearch, setAvailableSearch] = useState('');
-  const [enrollingIds, setEnrollingIds] = useState<Set<string>>(new Set());
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
 
-  // Remove dialog
-  const [removeTarget, setRemoveTarget] = useState<StudentEnrollment | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
+  const [assignCasesOpen, setAssignCasesOpen] = useState(false);
+  const [caseLibrary, setCaseLibrary] = useState<CaseDto[]>([]);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
+  const [caseDueDate, setCaseDueDate] = useState('');
+  const [caseMandatory, setCaseMandatory] = useState(true);
+  const [assignCasesSubmitting, setAssignCasesSubmitting] = useState(false);
 
-  const [classQuizzes, setClassQuizzes] = useState<QuizDto[]>([]);
-  const [classQuizzesLoading, setClassQuizzesLoading] = useState(true);
-  const [quizRepoSearch, setQuizRepoSearch] = useState('');
-
-  // Edit class dialog
-  const [showEdit, setShowEdit] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editSemester, setEditSemester] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editError, setEditError] = useState('');
-
-  // Delete class dialog
-  const [showDelete, setShowDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  // Load class detail
-  useEffect(() => {
-    setClassLoading(true);
-    (async () => {
-      try {
-        const data = await getClassById(classId);
-        setClassData(data);
-        setEditName(data.className);
-        setEditSemester(data.semester);
-      } catch (e) {
-        setClassError(getApiErrorMessage(e) || 'Failed to load class.');
-      } finally {
-        setClassLoading(false);
-      }
-    })();
-  }, [classId]);
-
-  const refreshClassRosterAndStats = useCallback(async () => {
-    try {
-      const [s, st] = await Promise.all([getClassStudents(classId), getClassStats(classId)]);
-      setStudents(s);
-      setClassStats(st);
-    } catch {
-      // silently fail
-    }
-  }, [classId]);
+  const [assignQuizOpen, setAssignQuizOpen] = useState(false);
+  const [quizLibrary, setQuizLibrary] = useState<QuizDto[]>([]);
+  const [selectedQuizId, setSelectedQuizId] = useState('');
+  const [quizOpenTime, setQuizOpenTime] = useState('');
+  const [quizCloseTime, setQuizCloseTime] = useState('');
+  const [quizTimeLimit, setQuizTimeLimit] = useState('60');
+  const [quizPassingScore, setQuizPassingScore] = useState('70');
+  const [assignQuizSubmitting, setAssignQuizSubmitting] = useState(false);
 
   useEffect(() => {
-    setStudentsLoading(true);
+    let ignore = false;
     (async () => {
       try {
-        const data = await getClassStudents(classId);
-        setStudents(data);
-      } catch {
-        // silently fail
+        const [klass, classStudents, classCases, classQuizzes] = await Promise.all([
+          fetchLecturerClassById(classId),
+          fetchClassStudents(classId),
+          fetchAssignedCases(classId),
+          fetchAssignedQuizzes(classId),
+        ]);
+        if (ignore) return;
+        setClassInfo(klass);
+        setStudents(classStudents);
+        setAssignedCases(classCases);
+        setAssignedQuizzes(classQuizzes);
+      } catch (err) {
+        if (ignore) return;
+        if (err instanceof ForbiddenApiError) {
+          setForbidden(true);
+          setError(err.message);
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to load class workbench.');
+        }
       } finally {
-        setStudentsLoading(false);
-      }
-    })();
-
-    (async () => {
-      try {
-        const data = await getClassStats(classId);
-        setClassStats(data);
-      } catch {
-        // silently fail
-      }
-    })();
-  }, [classId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setClassQuizzesLoading(true);
-    (async () => {
-      try {
-        const list = await getClassQuizzes(classId);
-        if (!cancelled) setClassQuizzes(list);
-      } catch {
-        if (!cancelled) setClassQuizzes([]);
-      } finally {
-        if (!cancelled) setClassQuizzesLoading(false);
+        if (!ignore) setLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      ignore = true;
     };
   }, [classId]);
 
-  const handleOpenEnroll = async () => {
-    setShowEnroll(true);
-    setAvailableLoading(true);
-    setAvailableSearch('');
+  const availableCasesToAssign = useMemo(
+    () => caseLibrary.filter((item) => !assignedCases.some((assigned) => assigned.id === item.id)),
+    [assignedCases, caseLibrary],
+  );
+
+  const availableQuizzesToAssign = useMemo(
+    () => quizLibrary.filter((item) => !assignedQuizzes.some((assigned) => assigned.id === item.id)),
+    [assignedQuizzes, quizLibrary],
+  );
+
+  const onOpenEnrollModal = async () => {
+    setEnrollModalOpen(true);
     try {
-      const data = await getAvailableStudents(classId);
+      const data = await fetchAvailableStudents(classId);
       setAvailableStudents(data);
-    } catch {
-      setAvailableStudents([]);
-    } finally {
-      setAvailableLoading(false);
+      setSelectedStudentIds(new Set());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load available students.');
     }
   };
 
-  const handleEnroll = async (studentId: string) => {
-    setEnrollingIds((prev) => new Set(prev).add(studentId));
+  const onEnrollMany = async () => {
+    if (selectedStudentIds.size === 0) return;
+    setEnrollSubmitting(true);
     try {
-      await enrollStudent(classId, studentId);
-      // Move from available to enrolled
-      const enrolled = availableStudents.find((s) => s.studentId === studentId);
-      if (enrolled) {
-        setStudents((prev) => [...prev, enrolled]);
-        setAvailableStudents((prev) => prev.filter((s) => s.studentId !== studentId));
-      }
-    } catch {
-      // silently fail
+      const ids = Array.from(selectedStudentIds);
+      await enrollStudentsMany(classId, ids);
+      const newlyEnrolled = availableStudents.filter((student) => ids.includes(student.studentId));
+      setStudents((prev) => [...prev, ...newlyEnrolled]);
+      setEnrollModalOpen(false);
+      toast.success('Students enrolled successfully.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Enrollment failed.');
     } finally {
-      setEnrollingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(studentId);
-        return next;
+      setEnrollSubmitting(false);
+    }
+  };
+
+  const onRemoveStudent = async (studentId: string) => {
+    try {
+      await removeStudentFromClass(classId, studentId);
+      setStudents((prev) => prev.filter((item) => item.studentId !== studentId));
+      toast.success('Student removed from class.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove student.');
+    }
+  };
+
+  const onOpenAssignCases = async () => {
+    setAssignCasesOpen(true);
+    try {
+      const data = await fetchLecturerCaseLibrary();
+      setCaseLibrary(data);
+      setSelectedCaseIds(new Set());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load case library.');
+    }
+  };
+
+  const onAssignCases = async () => {
+    if (selectedCaseIds.size === 0) return;
+    setAssignCasesSubmitting(true);
+    try {
+      const ids = Array.from(selectedCaseIds);
+      await assignCasesToLecturerClass(classId, {
+        caseIds: ids,
+        dueDate: caseDueDate || undefined,
+        isMandatory: caseMandatory,
       });
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    setRemoving(true);
-    try {
-      await removeStudent(classId, removeTarget.studentId);
-      setStudents((prev) => prev.filter((s) => s.studentId !== removeTarget.studentId));
-    } catch {
-      // silently fail
+      const newlyAssigned = caseLibrary.filter((item) => ids.includes(item.id));
+      setAssignedCases((prev) => [...prev, ...newlyAssigned]);
+      setAssignCasesOpen(false);
+      toast.success('Cases assigned successfully.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Case assignment failed.');
     } finally {
-      setRemoving(false);
-      setRemoveTarget(null);
+      setAssignCasesSubmitting(false);
     }
   };
 
-  const handleEditClass = async () => {
-    if (!editName.trim() || !editSemester.trim()) {
-      setEditError('Vui lòng điền đầy đủ thông tin.');
+  const onOpenAssignQuiz = async () => {
+    setAssignQuizOpen(true);
+    try {
+      const data = await fetchLecturerQuizLibrary();
+      setQuizLibrary(data);
+      setSelectedQuizId('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load quiz library.');
+    }
+  };
+
+  const onAssignQuiz = async () => {
+    if (!selectedQuizId) {
+      toast.error('Please select a quiz to assign.');
       return;
     }
-    setEditing(true);
-    setEditError('');
+    setAssignQuizSubmitting(true);
     try {
-      const updated = await updateClass(classId, {
-        className: editName.trim(),
-        semester: editSemester.trim(),
+      await assignQuizToLecturerClass(classId, {
+        quizId: selectedQuizId,
+        openTime: quizOpenTime || undefined,
+        closeTime: quizCloseTime || undefined,
+        timeLimitMinutes: Number(quizTimeLimit) || undefined,
+        passingScore: Number(quizPassingScore) || undefined,
       });
-      setClassData(updated);
-      setShowEdit(false);
-    } catch (e) {
-      setEditError(getApiErrorMessage(e) || 'Cập nhật thất bại.');
+      const quiz = quizLibrary.find((item) => item.id === selectedQuizId);
+      if (quiz) setAssignedQuizzes((prev) => [...prev, quiz]);
+      setAssignQuizOpen(false);
+      toast.success('Quiz assigned successfully.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Quiz assignment failed.');
     } finally {
-      setEditing(false);
+      setAssignQuizSubmitting(false);
     }
   };
-
-  const handleDeleteClass = async () => {
-    setDeleting(true);
-    try {
-      await deleteClass(classId);
-      router.push('/lecturer/classes');
-    } catch (e) {
-      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
-      setDeleting(false);
-    }
-  };
-
-  const filteredStudents = students.filter((s) => {
-    const q = studentSearch.toLowerCase();
-    return (
-      (s.studentName?.toLowerCase().includes(q) ?? false) ||
-      (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
-      (s.studentCode?.toLowerCase().includes(q) ?? false)
-    );
-  });
-
-  const filteredAvailable = availableStudents.filter((s) => {
-    const q = availableSearch.toLowerCase();
-    return (
-      (s.studentName?.toLowerCase().includes(q) ?? false) ||
-      (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
-      (s.studentCode?.toLowerCase().includes(q) ?? false)
-    );
-  });
-
-  const filteredClassQuizzes = classQuizzes.filter((q) => {
-    const s = quizRepoSearch.trim().toLowerCase();
-    if (!s) return true;
-    return (
-      (q.title?.toLowerCase().includes(s) ?? false) ||
-      (q.topic?.toLowerCase().includes(s) ?? false)
-    );
-  });
-
-  const stats = [
-    {
-      title: 'Students Enrolled',
-      value: String(classStats?.totalStudents ?? students.length),
-      change: `${students.length} in class`,
-      changeType: 'neutral' as const,
-      icon: Users,
-      iconColor: 'bg-primary/10 text-primary',
-    },
-    {
-      title: 'Cases Viewed',
-      value: String(classStats?.totalCasesViewed ?? 0),
-      change: 'Total views',
-      changeType: 'neutral' as const,
-      icon: Eye,
-      iconColor: 'bg-success/10 text-success',
-    },
-    {
-      title: 'Questions Asked',
-      value: String(classStats?.totalQuestionsAsked ?? 0),
-      change: 'AI Q&A sessions',
-      changeType: 'neutral' as const,
-      icon: MessageSquare,
-      iconColor: 'bg-accent/10 text-accent',
-    },
-    {
-      title: 'Avg. Quiz Score',
-      value: classStats?.avgQuizScore != null ? `${Math.round(classStats.avgQuizScore)}%` : '—',
-      change: classStats?.avgQuizScore != null ? 'Class average' : 'No quizzes yet',
-      changeType: classStats?.avgQuizScore != null ? 'positive' as const : 'neutral' as const,
-      icon: Award,
-      iconColor: 'bg-warning/10 text-warning',
-    },
-  ];
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="sticky top-0 z-30 bg-background/90 border-b border-border/60 backdrop-blur-md px-8 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <nav className="flex items-center gap-6">
-              <Link href="/lecturer" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/lecturer/classes" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
-                Classes
-              </Link>
-              <Link href="/lecturer/reports" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
-                Reports
-              </Link>
-              <Link href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
-                Settings
-              </Link>
-            </nav>
+      <Header
+        title={classInfo?.className ?? 'Class Workbench'}
+        subtitle={classInfo ? `Semester ${classInfo.semester}` : 'Manage students, cases, and quizzes.'}
+      />
+
+      <section className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <Link href="/lecturer/classes" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+          Back to classes
+        </Link>
+
+        {loading ? (
+          <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
+            Loading class management workbench...
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setImportPreviewOpen(true)}
-              className="flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Upload className="h-4 w-4" />
-              Excel Import
-            </button>
-            <Link
-              href="/lecturer/quizzes/create"
-              className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary/90 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-95"
-            >
-              <Plus className="h-4 w-4" />
-              Assign Quiz
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <div className="p-8 lg:p-12 max-w-7xl mx-auto">
-        {/* Page Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-12">
-          <div>
-            <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-              <Link href="/lecturer/classes" className="hover:text-primary transition-colors">
-                Classes
-              </Link>
-              <ChevronRight className="h-3 w-3" />
-              <span className="font-semibold text-primary">{classData?.className ?? '...'}</span>
-            </nav>
-            {classLoading ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              </div>
-            ) : classError ? (
-              <p className="text-sm text-destructive">{classError}</p>
-            ) : (
-              <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
-                {classData?.className}
-              </h1>
-            )}
-            <p className="mt-2 max-w-md text-muted-foreground">
-              Manage surgical rotations, import student rosters, and assign diagnostic assessments.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setShowEdit(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-input transition-colors cursor-pointer"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </button>
-            <button
-              onClick={() => setShowDelete(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-12 gap-8 items-start">
-          {/* Main Left Column */}
-          <div className="col-span-12 space-y-8 lg:col-span-8">
-
-            <ClassManagementWorkbench
-              classId={classId}
-              enrolledCount={students.length}
-              caseActivityCount={classStats?.totalCasesViewed ?? 0}
-              enrolledCapacity={students.length}
-              onRosterChanged={refreshClassRosterAndStats}
-            />
-
-            {/* Active Assignments */}
-            <div>
-              <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {([] as any[]).map((assignment) => (
-                    <AssignmentCard key={assignment.id} {...assignment} />
-                  ))}
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {stats.map((stat) => (
-                <StatCard key={stat.title} {...stat} />
-              ))}
-            </div>
-
-            {/* Tabs */}
-            <div className="flex items-center gap-1 border-b border-border">
-              {tabs.map((tab) => (
+        ) : forbidden ? (
+          <EmptyState
+            icon={<ShieldAlert className="h-6 w-6" />}
+            title="You do not have permission to manage this class"
+            description={error || 'Please contact your administrator for access.'}
+          />
+        ) : error ? (
+          <EmptyState title="Unable to load class workbench" description={error} />
+        ) : (
+          <>
+            <div className="rounded-xl border border-border bg-card p-2">
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-150 cursor-pointer ${
-                    activeTab === tab
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  type="button"
+                  onClick={() => setActiveTab('students')}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                    activeTab === 'students' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
                   }`}
                 >
-                  {tab}
+                  Students ({students.length})
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cases')}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                    activeTab === 'cases' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  Cases ({assignedCases.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('quizzes')}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                    activeTab === 'quizzes' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  Quizzes ({assignedQuizzes.length})
+                </button>
+              </div>
             </div>
 
-            {/* Tab Content */}
-            {activeTab === 'Students' && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm text-muted-foreground">{students.length} students enrolled</p>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder="Search students..."
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleOpenEnroll}
-                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Student
-                  </button>
+            {activeTab === 'students' ? (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-card-foreground">Enrolled Students</h2>
+                  <Button onClick={onOpenEnrollModal}>
+                    <UserPlus className="h-4 w-4" />
+                    Enroll Students
+                  </Button>
                 </div>
-
-                {studentsLoading ? (
-                  <div className="text-center py-16 bg-card rounded-xl border border-border">
-                    <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
-                    <p className="text-sm text-muted-foreground">Loading students...</p>
-                  </div>
-                ) : filteredStudents.length === 0 ? (
-                  <div className="text-center py-16 bg-card rounded-xl border border-border">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                    <h3 className="text-lg font-semibold text-card-foreground mb-1">
-                      {students.length === 0 ? 'No students enrolled' : 'No students match your search'}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {students.length === 0 ? 'Click "Add Student" to enroll students into this class.' : 'Try a different search term.'}
-                    </p>
-                  </div>
+                {students.length === 0 ? (
+                  <EmptyState
+                    icon={<Users className="h-6 w-6" />}
+                    title="No enrolled students"
+                    description="Use Enroll Students to add learners to this class."
+                  />
                 ) : (
-                  <div className="bg-card rounded-xl border border-border overflow-hidden">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-border bg-muted/30">
-                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Student</th>
-                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Code</th>
-                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Email</th>
-                          <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Enrolled At</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">Actions</th>
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full min-w-[640px]">
+                      <thead className="bg-slate-50/60 text-left text-xs uppercase tracking-wider text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3">Name</th>
+                          <th className="px-4 py-3">Student Code</th>
+                          <th className="px-4 py-3">Email</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border">
-                        {filteredStudents.map((student) => (
-                          <tr key={student.enrollmentId} className="hover:bg-muted/20 transition-colors">
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                                  {(student.studentName || '?')
-                                    .split(' ')
-                                    .map((n) => n[0])
-                                    .join('')
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </div>
-                                <span className="font-medium text-sm text-card-foreground">
-                                  {student.studentName || 'Unknown'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3 text-sm text-muted-foreground">
-                              {student.studentCode || '—'}
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                <Mail className="w-3.5 h-3.5" />
-                                {student.studentEmail || '—'}
-                              </div>
-                            </td>
-                            <td className="px-5 py-3 text-sm text-muted-foreground">
-                              {student.enrolledAt
-                                ? new Date(student.enrolledAt).toLocaleDateString('vi-VN', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                  })
-                                : '—'}
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              <button
-                                onClick={() => setRemoveTarget(student)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 cursor-pointer transition-colors"
-                              >
-                                <UserMinus className="w-3.5 h-3.5" />
+                      <tbody>
+                        {students.map((student, index) => (
+                          <tr key={student.enrollmentId} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/45'} hover:bg-slate-50/80`}>
+                            <td className="px-4 py-3 text-sm text-card-foreground">{student.studentName || 'Unknown student'}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentCode || '—'}</td>
+                            <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentEmail || '—'}</td>
+                            <td className="px-4 py-3 text-right">
+                              <Button variant="outline" size="sm" onClick={() => onRemoveStudent(student.studentId)}>
                                 Remove
-                              </button>
+                              </Button>
                             </td>
                           </tr>
                         ))}
@@ -542,403 +317,213 @@ export default function ClassDetailPage({
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {activeTab === 'Assignments' && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-muted-foreground">0 assignments</p>
-                  <Link
-                    href={`/lecturer/assignments/create?classId=${classId}`}
-                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    New Assignment
-                  </Link>
+            {activeTab === 'cases' ? (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-card-foreground">Assigned Cases</h2>
+                  <Button onClick={onOpenAssignCases}>Assign Cases</Button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {([] as any[]).map((assignment) => (
-                    <AssignmentCard key={assignment.id} {...assignment} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'Settings' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-card rounded-xl border border-border p-6">
-                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Class Information</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm text-muted-foreground">Class Name</label>
-                      <p className="text-sm font-medium text-card-foreground mt-1">
-                        {classData?.className ?? '—'}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm text-muted-foreground">Semester</label>
-                        <p className="text-sm font-medium text-card-foreground mt-1">
-                          {classData?.semester ?? '—'}
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-sm text-muted-foreground">Created</label>
-                        <p className="text-sm font-medium text-card-foreground mt-1">
-                          {classData?.createdAt
-                            ? new Date(classData.createdAt).toLocaleDateString('vi-VN', {
-                                day: '2-digit', month: '2-digit', year: 'numeric',
-                              })
-                            : '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card rounded-xl border border-border p-6">
-                  <h3 className="text-lg font-semibold text-card-foreground mb-4">Danger Zone</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Deleting a class will permanently remove it and all its enrollments. This action cannot be undone.
-                  </p>
-                  <button
-                    onClick={() => setShowDelete(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 bg-destructive/5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete this class
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Sidebar */}
-          <aside className="col-span-12 space-y-8 lg:col-span-4">
-            {/* Quizzes for this class — sidebar only (main column stays for workbench + assignments) */}
-            <div className="overflow-hidden rounded-2xl bg-slate-900 p-8 text-white shadow-xl">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <h4 className="flex items-center gap-2 text-xl font-bold">
-                  <FolderOpen className="h-5 w-5 text-secondary" />
-                  Quizzes in this class
-                </h4>
-                <Link
-                  href="/lecturer/quizzes"
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
-                >
-                  Quiz Library
-                </Link>
-              </div>
-              <p className="mb-4 text-xs text-slate-400">
-                Quiz đã gán cho lớp. Để gán thêm, mở quiz trong thư viện và chọn lớp.
-              </p>
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  value={quizRepoSearch}
-                  onChange={(e) => setQuizRepoSearch(e.target.value)}
-                  placeholder="Tìm theo tên hoặc topic…"
-                  className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-secondary/50 placeholder:text-slate-500"
-                />
-              </div>
-              <div className="max-h-[min(360px,50vh)] space-y-3 overflow-y-auto">
-                {classQuizzesLoading ? (
-                  <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Đang tải…
-                  </div>
-                ) : classQuizzes.length === 0 ? (
-                  <p className="py-4 text-sm text-slate-400">
-                    Chưa có quiz nào. Dùng nút trên hoặc thư viện quiz để gán.
-                  </p>
-                ) : filteredClassQuizzes.length === 0 ? (
-                  <p className="py-4 text-sm text-slate-400">Không khớp từ khóa tìm kiếm.</p>
+                {assignedCases.length === 0 ? (
+                  <EmptyState
+                    icon={<BookOpen className="h-6 w-6" />}
+                    title="No assigned cases"
+                    description="Assign case sets to this class for guided practice."
+                  />
                 ) : (
-                  filteredClassQuizzes.map((q) => {
-                    const meta = [
-                      q.topic,
-                      q.timeLimit != null ? `${q.timeLimit} min` : null,
-                      q.passingScore != null ? `Pass ${q.passingScore}%` : null,
-                    ].filter(Boolean) as string[];
-                    return (
-                      <Link
-                        key={q.id}
-                        href={`/lecturer/quizzes/${q.id}`}
-                        className="block rounded-xl border border-white/5 bg-white/5 p-4 transition-all hover:bg-white/10"
-                      >
-                        <h6 className="font-bold text-sm leading-snug">{q.title || 'Untitled'}</h6>
-                        {meta.length > 0 ? (
-                          <p className="mt-1 text-xs text-slate-400">
-                            {q.timeLimit != null ? (
-                              <span className="inline-flex items-center gap-1">
-                                <Clock className="h-3 w-3 shrink-0" />
-                                <span>{meta.join(' · ')}</span>
-                              </span>
-                            ) : (
-                              meta.join(' · ')
-                            )}
-                          </p>
-                        ) : null}
-                      </Link>
-                    );
-                  })
+                  <div className="space-y-3">
+                    {assignedCases.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-4">
+                        <p className="font-medium text-card-foreground">{item.title || 'Untitled case'}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{item.description || 'No description available.'}</p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              <Link
-                href="/lecturer/quizzes"
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-secondary py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-95"
-              >
-                <BarChart3 className="h-4 w-4" />
-                Quiz Library
-              </Link>
-            </div>
+            ) : null}
 
-            {/* Class Overview */}
-            <div className="rounded-2xl border border-border bg-card p-6">
-              <h5 className="mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                Class overview
-              </h5>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total enrolled</span>
-                  <span className="font-bold">{students.length}</span>
+            {activeTab === 'quizzes' ? (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-card-foreground">Assigned Quizzes</h2>
+                  <Button onClick={onOpenAssignQuiz}>Assign Quiz</Button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Avg. score</span>
-                  <span className="font-bold text-secondary">
-                    {classStats?.avgQuizScore != null ? `${Math.round(classStats.avgQuizScore)}%` : '—'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Quizzes assigned</span>
-                  <span className="font-bold">{classQuizzes.length}</span>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </div>
-
-      {/* Enroll Dialog */}
-      {showEnroll && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEnroll(false)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-card-foreground">Add Students</h3>
-                <p className="text-sm text-muted-foreground">Select students to enroll into this class</p>
-              </div>
-              <button
-                onClick={() => setShowEnroll(false)}
-                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by name, email, or code..."
-                value={availableSearch}
-                onChange={(e) => setAvailableSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-input border border-border rounded-lg text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
-              {availableLoading ? (
-                <div className="text-center py-12">
-                  <Loader2 className="w-6 h-6 text-primary mx-auto mb-2 animate-spin" />
-                  <p className="text-sm text-muted-foreground">Loading available students...</p>
-                </div>
-              ) : filteredAvailable.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    {availableStudents.length === 0 ? 'No available students to enroll.' : 'No students match your search.'}
-                  </p>
-                </div>
-              ) : (
-                filteredAvailable.map((student) => {
-                  const isEnrolling = enrollingIds.has(student.studentId);
-                  return (
-                    <div
-                      key={student.studentId}
-                      className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-input/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                          {(student.studentName || '?')
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-card-foreground">
-                            {student.studentName || 'Unknown'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {student.studentCode || ''}{student.studentCode && student.studentEmail ? ' · ' : ''}{student.studentEmail || ''}
-                          </p>
-                        </div>
+                {assignedQuizzes.length === 0 ? (
+                  <EmptyState title="No assigned quizzes" description="Assign a quiz session to this class." />
+                ) : (
+                  <div className="space-y-3">
+                    {assignedQuizzes.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border bg-background p-4">
+                        <p className="font-medium text-card-foreground">{item.title || 'Untitled quiz'}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {item.topic || 'General topic'} - Pass score {item.passingScore ?? 70}%
+                        </p>
                       </div>
-                      <button
-                        onClick={() => handleEnroll(student.studentId)}
-                        disabled={isEnrolling}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {isEnrolling ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <UserPlus className="w-3.5 h-3.5" />
-                        )}
-                        {isEnrolling ? 'Adding...' : 'Add'}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Remove Confirm Dialog */}
-      {removeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setRemoveTarget(null)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
-            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-              <UserMinus className="w-6 h-6 text-destructive" />
-            </div>
-            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Remove Student</h3>
-            <p className="text-sm text-muted-foreground text-center mb-6">
-              Remove <strong className="text-card-foreground">{removeTarget.studentName}</strong> from this class?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setRemoveTarget(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRemove}
-                disabled={removing}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {removing ? 'Removing...' : 'Remove'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Preview Dialog */}
-      {importPreviewOpen && (
-        <ImportPreviewDialog
-          open={true}
-          classId={classId}
-          onClose={() => setImportPreviewOpen(false)}
-          onSuccess={() => {
-            setImportPreviewOpen(false);
-            refreshClassRosterAndStats();
-          }}
-        />
-      )}
-
-      {/* Edit Class Dialog */}
-      {showEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowEdit(false)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-card-foreground">Edit Class</h3>
-              <button
-                onClick={() => setShowEdit(false)}
-                className="w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">Class Name</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-sm text-muted-foreground">Semester</label>
-                <input
-                  type="text"
-                  value={editSemester}
-                  onChange={(e) => setEditSemester(e.target.value)}
-                  placeholder="e.g. 2026-Spring"
-                  className="w-full mt-1 px-3 py-2.5 bg-input border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-              {editError && (
-                <p className="text-sm text-destructive">{editError}</p>
-              )}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowEdit(false)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditClass}
-                disabled={editing}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {editing ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            ) : null}
+          </>
+        )}
+      </section>
 
-      {/* Delete Class Dialog */}
-      {showDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowDelete(false)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
-            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-6 h-6 text-destructive" />
+      <Modal
+        open={enrollModalOpen}
+        onClose={() => !enrollSubmitting && setEnrollModalOpen(false)}
+        title="Enroll Students"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEnrollModalOpen(false)} disabled={enrollSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={onEnrollMany} isLoading={enrollSubmitting} disabled={selectedStudentIds.size === 0}>
+              Enroll Selected
+            </Button>
+          </div>
+        }
+      >
+        {availableStudents.length === 0 ? (
+          <EmptyState title="No available students" description="All students may already be enrolled." />
+        ) : (
+          <div className="space-y-2">
+            {availableStudents.map((student) => {
+              const checked = selectedStudentIds.has(student.studentId);
+              return (
+                <label key={student.studentId} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() =>
+                      setSelectedStudentIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(student.studentId)) next.delete(student.studentId);
+                        else next.add(student.studentId);
+                        return next;
+                      })
+                    }
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-card-foreground">{student.studentName || 'Unknown student'}</p>
+                    <p className="text-xs text-muted-foreground">{student.studentEmail || 'No email'}</p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={assignCasesOpen}
+        onClose={() => !assignCasesSubmitting && setAssignCasesOpen(false)}
+        title="Assign Cases"
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAssignCasesOpen(false)} disabled={assignCasesSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={onAssignCases} isLoading={assignCasesSubmitting} disabled={selectedCaseIds.size === 0}>
+              Assign Cases
+            </Button>
+          </div>
+        }
+      >
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm text-muted-foreground">Due Date</label>
+            <Input type="datetime-local" value={caseDueDate} onChange={(event) => setCaseDueDate(event.target.value)} />
+          </div>
+          <label className="mt-6 flex items-center gap-2 text-sm text-card-foreground md:mt-8">
+            <input type="checkbox" checked={caseMandatory} onChange={(event) => setCaseMandatory(event.target.checked)} />
+            Mandatory assignment
+          </label>
+        </div>
+        {availableCasesToAssign.length === 0 ? (
+          <EmptyState title="No available cases" description="All cases in your library are already assigned." />
+        ) : (
+          <div className="space-y-2">
+            {availableCasesToAssign.map((item) => (
+              <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-background p-3">
+                <input
+                  type="checkbox"
+                  checked={selectedCaseIds.has(item.id)}
+                  onChange={() =>
+                    setSelectedCaseIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.id)) next.delete(item.id);
+                      else next.add(item.id);
+                      return next;
+                    })
+                  }
+                />
+                <div>
+                  <p className="text-sm font-medium text-card-foreground">{item.title || 'Untitled case'}</p>
+                  <p className="text-xs text-muted-foreground">{item.description || 'No description'}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={assignQuizOpen}
+        onClose={() => !assignQuizSubmitting && setAssignQuizOpen(false)}
+        title="Assign Quiz"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAssignQuizOpen(false)} disabled={assignQuizSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={onAssignQuiz} isLoading={assignQuizSubmitting}>
+              Assign Quiz
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm text-muted-foreground">Quiz</label>
+            <select
+              value={selectedQuizId}
+              onChange={(event) => setSelectedQuizId(event.target.value)}
+              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <option value="">Select quiz</option>
+              {availableQuizzesToAssign.map((quiz) => (
+                <option key={quiz.id} value={quiz.id}>
+                  {quiz.title || 'Untitled quiz'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm text-muted-foreground">Open Time</label>
+              <Input type="datetime-local" value={quizOpenTime} onChange={(event) => setQuizOpenTime(event.target.value)} />
             </div>
-            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">Delete Class?</h3>
-            <p className="text-sm text-muted-foreground text-center mb-6">
-              Are you sure you want to delete <strong>{classData?.className}</strong>? All enrollments will be removed. This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDelete(false)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteClass}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+            <div>
+              <label className="mb-1 block text-sm text-muted-foreground">Close Time</label>
+              <Input type="datetime-local" value={quizCloseTime} onChange={(event) => setQuizCloseTime(event.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm text-muted-foreground">Time Limit (minutes)</label>
+              <Input type="number" min={1} value={quizTimeLimit} onChange={(event) => setQuizTimeLimit(event.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-muted-foreground">Passing Score (%)</label>
+              <Input type="number" min={0} max={100} value={quizPassingScore} onChange={(event) => setQuizPassingScore(event.target.value)} />
             </div>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
