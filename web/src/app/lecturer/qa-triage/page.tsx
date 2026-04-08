@@ -17,20 +17,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
-import {
-  approveAnswer,
-  escalateToExpert,
-  respondToQuestion,
-  TRIAGE_ALREADY_ESCALATED,
-} from '@/lib/api/lecturer-triage';
+import { escalateToExpert, respondToQuestion, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
 
 function scoreLabel(score: number | null | undefined) {
-  if (score == null || Number.isNaN(score)) return { label: 'Unknown', tone: 'bg-slate-100 text-slate-600' };
-  if (score >= 0.8) return { label: 'High confidence', tone: 'bg-emerald-100 text-emerald-700' };
-  if (score >= 0.5) return { label: 'Medium confidence', tone: 'bg-amber-100 text-amber-700' };
-  return { label: 'Low confidence', tone: 'bg-red-100 text-red-700' };
+  if (score == null || Number.isNaN(score)) {
+    return { label: 'N/A (AI Failed)', tone: 'bg-muted text-muted-foreground' };
+  }
+  if (score >= 0.8) return { label: 'High confidence', tone: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200' };
+  if (score >= 0.5) return { label: 'Medium confidence', tone: 'bg-amber-500/15 text-amber-800 dark:text-amber-200' };
+  return { label: 'Low confidence', tone: 'bg-red-500/15 text-red-800 dark:text-red-200' };
 }
 
 /** POST /api/lecturer/triage/{answerId}/escalate expects the answer row GUID, not the question id. */
@@ -61,8 +58,6 @@ export default function QATriagePage() {
   const [editDifferentialDiagnoses, setEditDifferentialDiagnoses] = useState('');
   const [modifying, setModifying] = useState(false);
   const [modifyError, setModifyError] = useState<string | null>(null);
-
-  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const selectedQuestion = useMemo(
     () => questions.find((item) => item.id === selectedQuestionId) ?? questions[0] ?? null,
@@ -142,22 +137,6 @@ export default function QATriagePage() {
     }
   };
 
-  const handleApprove = async () => {
-    if (!selectedQuestion || !selectedClassId) return;
-    setApprovingId(selectedQuestion.id);
-    try {
-      await approveAnswer(selectedClassId, selectedQuestion.id, selectedQuestion.answerText ?? '');
-      const nextList = questions.filter((q) => q.id !== selectedQuestion.id);
-      setQuestions(nextList);
-      setSelectedQuestionId(nextList[0]?.id ?? null);
-      toast.success('Answer approved.');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Approve failed.');
-    } finally {
-      setApprovingId(null);
-    }
-  };
-
   const openModifyDialog = () => {
     if (!selectedQuestion) return;
     setEditAnswerText(selectedQuestion.answerText ?? '');
@@ -198,17 +177,17 @@ export default function QATriagePage() {
     <div className="min-h-screen pb-10">
       <Header
         title="Diagnostic triage"
-        subtitle="Review class requests and escalate only what needs expert clinical auditing."
+        subtitle="Review class requests and escalate cases that need expert clinical auditing. Lecturers cannot approve AI answers directly."
       />
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 pt-2 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted-foreground">
               Select a class, review the AI answer, then escalate when the case should reach the expert workbench.
             </p>
           </div>
           <div className="w-full max-w-sm">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Class
             </label>
             <select
@@ -247,7 +226,7 @@ export default function QATriagePage() {
         ) : (
           <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
             <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold text-slate-900">Incoming Requests ({questions.length})</h2>
+              <h2 className="text-sm font-semibold text-foreground">Incoming Requests ({questions.length})</h2>
               <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
                 {questions.map((question) => {
                   const isSelected =
@@ -262,28 +241,28 @@ export default function QATriagePage() {
                       onClick={() => setSelectedQuestionId(question.id)}
                       className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                         isSelected
-                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-offset-2 ring-offset-background'
-                          : 'border-border bg-background hover:bg-slate-50/80'
+                          ? 'border-primary bg-blue-50 text-foreground ring-2 ring-primary ring-offset-2 ring-offset-background dark:bg-blue-900/30 dark:text-blue-100'
+                          : 'border-border bg-background hover:bg-muted/60'
                       }`}
                     >
                       <div className="mb-2 flex items-start justify-between gap-3">
-                        <p className="line-clamp-2 text-sm font-semibold leading-relaxed text-slate-900">
+                        <p className="line-clamp-2 text-sm font-semibold leading-relaxed text-foreground">
                           {question.questionText}
                         </p>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${score.tone}`}>
                           {score.label}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
                           <User className="h-3 w-3" />
                           {question.studentName}
                         </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                        <span className="rounded-full bg-muted px-2 py-0.5">
                           Case {question.caseId.slice(0, 8).toUpperCase()}
                         </span>
                         {question.createdAt ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
                             <Clock3 className="h-3 w-3" />
                             {new Date(question.createdAt).toLocaleString('vi-VN')}
                           </span>
@@ -300,8 +279,8 @@ export default function QATriagePage() {
                 <>
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Selected request</p>
-                      <h3 className="mt-1 text-lg font-semibold text-slate-900">{selectedQuestion.studentName}</h3>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Selected request</p>
+                      <h3 className="mt-1 text-lg font-semibold text-foreground">{selectedQuestion.studentName}</h3>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {(() => {
@@ -314,57 +293,64 @@ export default function QATriagePage() {
                             AI confidence: {pct}%
                           </span>
                         ) : (
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                            AI confidence: —
+                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            AI confidence: N/A (AI Failed)
                           </span>
                         );
                       })()}
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
                         {selectedQuestion.escalatedById ? 'Already escalated' : 'Pending decision'}
                       </span>
                     </div>
                   </div>
 
-                  {confidencePercent(selectedQuestion.aiConfidenceScore) != null ? (
-                    <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-                      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600">
-                        <span>Model confidence</span>
-                        <span>{confidencePercent(selectedQuestion.aiConfidenceScore)}%</span>
-                      </div>
-                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full bg-blue-600 transition-[width]"
-                          style={{
-                            width: `${confidencePercent(selectedQuestion.aiConfidenceScore)}%`,
-                          }}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        Lower scores often warrant expert review before students rely on the answer.
-                      </p>
+                  <div className="mb-4 rounded-lg border border-border bg-muted/50 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                      <span>AI confidence score</span>
+                      <span className="font-mono text-foreground">
+                        {confidencePercent(selectedQuestion.aiConfidenceScore) != null
+                          ? `${confidencePercent(selectedQuestion.aiConfidenceScore)}%`
+                          : 'N/A (AI Failed)'}
+                      </span>
                     </div>
-                  ) : null}
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width]"
+                        style={{
+                          width:
+                            confidencePercent(selectedQuestion.aiConfidenceScore) != null
+                              ? `${confidencePercent(selectedQuestion.aiConfidenceScore)}%`
+                              : '0%',
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {confidencePercent(selectedQuestion.aiConfidenceScore) != null
+                        ? 'Lower scores often warrant expert review before students rely on the answer.'
+                        : 'The model did not return a confidence score for this answer. Escalate if clinical review is needed.'}
+                    </p>
+                  </div>
 
                   <div className="space-y-4">
                     <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Student question</p>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-900">{selectedQuestion.questionText}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Student question</p>
+                      <p className="mt-2 text-sm leading-relaxed text-foreground">{selectedQuestion.questionText}</p>
                     </article>
 
                     <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">AI answer preview</p>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI answer preview</p>
+                      <p className="mt-2 text-sm leading-relaxed text-foreground/90">
                         {selectedQuestion.answerText?.trim() || 'No generated answer available.'}
                       </p>
                     </article>
 
                     <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Case metadata</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Case metadata</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                           {selectedQuestion.caseTitle || 'Untitled case'}
                         </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                           Case ID: {selectedQuestion.caseId.slice(0, 8).toUpperCase()}
                         </span>
                       </div>
@@ -372,21 +358,11 @@ export default function QATriagePage() {
                   </div>
 
                   <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                    <p className="inline-flex items-center gap-2 text-xs text-slate-500">
-                      <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                      Approve, edit, or escalate to expert clinical auditing.
+                    <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Edit the draft or escalate to expert clinical auditing. Direct approval is not available.
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={Boolean(selectedQuestion.escalatedById) || approvingId === selectedQuestion.id}
-                        isLoading={approvingId === selectedQuestion.id}
-                        onClick={() => void handleApprove()}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Approve
-                      </Button>
                       <Button type="button" variant="outline" onClick={openModifyDialog}>
                         <Edit3 className="h-4 w-4" />
                         Modify answer
@@ -432,7 +408,7 @@ export default function QATriagePage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-card-foreground">Modify AI answer</h3>
-                    <p className="text-sm text-muted-foreground">Edit before saving or approving separately.</p>
+                    <p className="text-sm text-muted-foreground">Edit before saving. Escalate from the workbench when expert review is required.</p>
                   </div>
                 </div>
                 <button

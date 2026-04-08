@@ -1,0 +1,354 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
+import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
+import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { useToast } from '@/components/ui/toast';
+import {
+  fetchStudentClassDetail,
+  fetchStudentClasses,
+  leaveStudentClass,
+  type StudentClassDetail,
+  type StudentClassItem,
+} from '@/lib/api/student';
+import {
+  ChevronRight,
+  ClipboardList,
+  GraduationCap,
+  Loader2,
+  Megaphone,
+  Stethoscope,
+  UserMinus,
+  Users,
+} from 'lucide-react';
+
+type ClassTab = 'roster' | 'cases' | 'quizzes' | 'announcements';
+
+function initials(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (p.length === 0) return '?';
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
+}
+
+function formatWhen(iso?: string | null) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
+}
+
+export default function StudentClassDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const toast = useToast();
+  const classId = String(params?.id ?? '');
+
+  const [summary, setSummary] = useState<StudentClassItem | null>(null);
+  const [detail, setDetail] = useState<StudentClassDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<ClassTab>('roster');
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!classId) return;
+    setLoading(true);
+    setDetail(null);
+    setSummary(null);
+    try {
+      const classes = await fetchStudentClasses();
+      const found = classes.find((c) => c.classId === classId) ?? null;
+      setSummary(found);
+      const d = await fetchStudentClassDetail(classId);
+      setDetail(d);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not load this class.');
+    } finally {
+      setLoading(false);
+    }
+  }, [classId, toast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const title = detail?.className ?? summary?.className ?? 'Class';
+  const semester = detail?.semester ?? summary?.semester ?? '';
+  const lecturerName = detail?.lecturerName?.trim() || summary?.lecturerName?.trim() || 'Instructor';
+  const expertName = detail?.expertName?.trim();
+  const expertEmail = detail?.expertEmail?.trim();
+
+  const classmates = useMemo(() => {
+    if (!detail?.students?.length) return [];
+    return detail.students;
+  }, [detail]);
+
+  const handleLeave = async () => {
+    if (!classId) return;
+    setLeaveLoading(true);
+    try {
+      await leaveStudentClass(classId);
+      toast.success(`You left “${title}”.`);
+      router.push('/student/classes');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not leave this class.');
+    } finally {
+      setLeaveLoading(false);
+      setLeaveOpen(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <StudentAppChrome breadcrumb="Classes" />
+
+      <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6">
+        <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/student/classes" className="hover:text-foreground">
+            Classes
+          </Link>
+          <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
+          <span className="truncate text-foreground">{title}</span>
+        </nav>
+
+        {loading ? (
+          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-border bg-card">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading class…</p>
+          </div>
+        ) : !detail ? (
+          <div className="rounded-2xl border border-dashed border-border px-6 py-16 text-center">
+            <GraduationCap className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-4 text-sm text-muted-foreground">This class could not be loaded or you are not enrolled.</p>
+            <Link
+              href="/student/classes"
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground hover:bg-muted/60"
+            >
+              Back to classes
+            </Link>
+          </div>
+        ) : (
+          <>
+            <header className="mb-8 grid gap-6 lg:grid-cols-[1fr_280px]">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">{semester || 'Curriculum'}</p>
+                <h1 className="mt-1 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight sm:text-4xl">
+                  {title}
+                </h1>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary">
+                      {initials(lecturerName)}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Lecturer</p>
+                      <p className="text-sm font-semibold text-foreground">{lecturerName}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-primary">
+                      <Stethoscope className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Expert</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {expertName || 'Not assigned'}
+                      </p>
+                      {expertEmail ? (
+                        <p className="text-xs text-muted-foreground">{expertEmail}</p>
+                      ) : !expertName ? (
+                        <p className="text-xs text-muted-foreground">Shown when your school assigns a reviewer.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setLeaveOpen(true)}>
+                    <UserMinus className="mr-2 h-4 w-4" />
+                    Leave class
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-border shadow-md">
+                <ClassDetailCover variant="hero" className="min-h-[12rem]" />
+              </div>
+            </header>
+
+            <div
+              className="mb-6 flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1"
+              role="tablist"
+              aria-label="Class sections"
+            >
+              {(
+                [
+                  ['roster', 'Classmates', Users],
+                  ['cases', 'Assigned cases', GraduationCap],
+                  ['quizzes', 'Quizzes', ClipboardList],
+                  ['announcements', 'Announcements', Megaphone],
+                ] as const
+              ).map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    tab === id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => setTab(id)}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'roster' && (
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-foreground">Class roster</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Peers enrolled in this cohort.</p>
+                {classmates.length === 0 ? (
+                  <p className="mt-6 text-sm text-muted-foreground">No roster data yet.</p>
+                ) : (
+                  <ul className="mt-6 divide-y divide-border">
+                    {classmates.map((s) => (
+                      <li key={s.studentId} className="flex items-center gap-3 py-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-xs font-bold text-primary">
+                          {initials(s.studentName || '?')}
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{s.studentName}</p>
+                          <p className="text-xs text-muted-foreground">{s.studentCode?.trim() || 'Student'}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {tab === 'cases' && (
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-foreground">Assigned cases</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Cases your lecturer assigned to this class.</p>
+                <div className="mt-6 space-y-3">
+                  {detail.assignedCases && detail.assignedCases.length > 0 ? (
+                    detail.assignedCases.map((c) => (
+                      <div
+                        key={c.caseId}
+                        className="flex flex-col gap-2 rounded-xl border border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground">{c.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {c.dueDate ? `Due ${formatWhen(c.dueDate)}` : 'Due date TBA'}
+                            {c.isMandatory ? ' · Required' : ''}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/student/cases/${c.caseId}`}
+                          className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-muted/60"
+                        >
+                          Open
+                        </Link>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+                      No assigned cases are listed for this class yet. Browse the{' '}
+                      <Link href="/student/catalog" className="font-semibold text-primary underline-offset-4 hover:underline">
+                        case catalog
+                      </Link>{' '}
+                      for self-paced study.
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {tab === 'quizzes' && (
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-foreground">Class quizzes</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Micro quizzes tied to this class.</p>
+                {detail.quizzes.length === 0 ? (
+                  <p className="mt-6 text-sm text-muted-foreground">No quizzes assigned yet.</p>
+                ) : (
+                  <ul className="mt-6 space-y-3">
+                    {detail.quizzes.map((q) => (
+                      <li
+                        key={q.quizId}
+                        className="flex flex-col gap-3 rounded-xl border border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground">{q.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {q.totalQuestions} questions
+                            {q.timeLimit != null ? ` · ${q.timeLimit} min` : ''}
+                            {q.isCompleted && q.score != null ? ` · Score ${Math.round(q.score)}%` : ''}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/student/quiz/${q.quizId}`}
+                          className="inline-flex h-9 items-center justify-center rounded-lg border border-primary bg-primary px-3 text-xs font-medium text-white hover:opacity-95"
+                        >
+                          {q.isCompleted ? 'Review' : 'Start'}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {tab === 'announcements' && (
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-foreground">Announcements</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Updates from your lecturer.</p>
+                {detail.announcements.length === 0 ? (
+                  <p className="mt-6 text-sm text-muted-foreground">No announcements yet.</p>
+                ) : (
+                  <ul className="mt-6 space-y-4">
+                    {detail.announcements.map((a) => (
+                      <li key={a.id} className="rounded-xl border border-border bg-background px-4 py-4">
+                        <p className="text-xs text-muted-foreground">{formatWhen(a.createdAt)}</p>
+                        <h3 className="mt-1 font-semibold text-foreground">{a.title}</h3>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{a.content}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </div>
+
+      <Modal
+        open={leaveOpen}
+        title="Leave this class?"
+        onClose={() => { if (!leaveLoading) setLeaveOpen(false); }}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={leaveLoading} onClick={() => setLeaveOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" isLoading={leaveLoading} onClick={() => void handleLeave()}>
+              Leave class
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          You will lose access to this class&apos;s quizzes and announcements until a lecturer adds you again.
+        </p>
+      </Modal>
+    </div>
+  );
+}

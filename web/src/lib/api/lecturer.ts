@@ -290,6 +290,36 @@ export async function getClassStats(classId: string): Promise<ClassStats> {
 }
 
 /**
+ * Pulls the answer row GUID for POST /api/lecturer/triage/{answerId}/escalate from flat or nested payloads.
+ */
+function extractAnswerIdFromQuestionRow(r: Record<string, unknown>): string | null {
+  const direct =
+    r.answerId ??
+    r.AnswerId ??
+    r.answer_id ??
+    r.latestAnswerId ??
+    r.LatestAnswerId ??
+    r.answerGuid ??
+    r.AnswerGuid;
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+
+  const nested =
+    r.answer ??
+    r.Answer ??
+    r.answerDto ??
+    r.AnswerDto ??
+    r.latestAnswer ??
+    r.LatestAnswer;
+  if (nested && typeof nested === 'object') {
+    const a = nested as Record<string, unknown>;
+    const id = a.id ?? a.Id ?? a.answerId ?? a.AnswerId ?? a.guid ?? a.Guid;
+    if (id != null && String(id).trim() !== '') return String(id).trim();
+  }
+
+  return null;
+}
+
+/**
  * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
  * `answerId` is populated when the backend sends PascalCase or alternate keys.
  * Escalation uses POST /api/lecturer/triage/{answerId}/escalate — the route id must be the answer GUID, not the question id.
@@ -303,11 +333,7 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
   ).trim();
   if (!questionId) return null;
 
-  const answerIdRaw = r.answerId ?? r.AnswerId ?? r.answer_id;
-  const answerId =
-    answerIdRaw != null && String(answerIdRaw).trim() !== ''
-      ? String(answerIdRaw).trim()
-      : null;
+  const answerId = extractAnswerIdFromQuestionRow(r);
 
   const scoreRaw = r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? r.SimilarityScore;
   let aiConfidenceScore: number | null = null;

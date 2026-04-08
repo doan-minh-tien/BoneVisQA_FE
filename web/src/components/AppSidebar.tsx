@@ -68,7 +68,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
     { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
-    { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
+    { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
     { label: 'Classes', href: '/student/classes', icon: Users },
     { label: 'Profile', href: '/profile', icon: UserCircle },
   ],
@@ -123,7 +123,7 @@ export function AppSidebar({
       .map((part) => part[0]?.toUpperCase())
       .join('') || 'BV';
 
-  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-sidebar-bg text-sidebar-text shadow-sm transition-[width] duration-200 ease-out ${
+  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-background text-foreground shadow-sm transition-[width] duration-200 ease-out ${
     collapsed ? 'w-[72px]' : 'w-[260px]'
   }`;
 
@@ -131,35 +131,39 @@ export function AppSidebar({
     return (
       <aside className={shellClass}>
         <div
-          className={`flex shrink-0 items-center border-b border-white/10 py-2 ${
+          className={`flex shrink-0 items-center border-b border-border py-2 ${
             collapsed ? 'flex-col gap-2 px-1' : 'h-14 justify-between px-2'
           }`}
         >
           <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-accent/30 bg-cyan-accent/10">
-              <Stethoscope className="h-5 w-5 text-cyan-accent" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-muted/60">
+              <Stethoscope className="h-5 w-5 text-primary" />
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold text-sidebar-text">BoneVisQA</h1>
-                <p className="truncate text-[11px] text-sidebar-text/70">Radiology Education</p>
+                <h1 className="truncate text-sm font-semibold text-foreground">BoneVisQA</h1>
+                <p className="truncate text-[11px] text-muted-foreground">Radiology Education</p>
               </div>
             ) : null}
           </div>
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/80 hover:bg-sidebar-hover hover:text-sidebar-text"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </button>
         </div>
-        <div className="flex-1 px-2 py-4 text-center text-xs text-sidebar-text/70">
+        <div className="flex-1 px-2 py-4 text-center text-xs text-muted-foreground">
           {!collapsed ? 'No role-based navigation available.' : '—'}
         </div>
-        <div className="border-t border-white/10 p-2">
-          <Button onClick={logout} variant="outline" className="w-full justify-center border-white/20 bg-transparent text-sidebar-text hover:bg-sidebar-hover">
+        <div className="border-t border-border p-2">
+          <Button
+            onClick={logout}
+            variant="outline"
+            className="w-full justify-center border-border bg-muted/40 text-foreground hover:bg-muted"
+          >
             <LogOut className="h-4 w-4" />
             {!collapsed ? <span className="ml-2">Logout</span> : null}
           </Button>
@@ -171,25 +175,25 @@ export function AppSidebar({
   return (
     <aside className={shellClass}>
       <div
-        className={`flex shrink-0 items-center border-b border-white/10 py-2 ${
+        className={`flex shrink-0 items-center border-b border-border py-2 ${
           collapsed ? 'flex-col gap-2 px-1' : 'h-[4.5rem] justify-between gap-1 px-2'
         }`}
       >
         <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-cyan-accent/30 bg-cyan-accent/10">
-            <Stethoscope className="h-5 w-5 text-cyan-accent" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/60">
+            <Stethoscope className="h-5 w-5 text-primary" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold tracking-wide text-sidebar-text">BoneVisQA</h1>
-              <p className="truncate text-[11px] text-sidebar-text/70">{meta.label}</p>
+              <h1 className="truncate text-sm font-semibold tracking-wide text-foreground">BoneVisQA</h1>
+              <p className="truncate text-[11px] text-muted-foreground">{meta.label}</p>
             </div>
           ) : null}
         </div>
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/80 hover:bg-sidebar-hover"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -213,8 +217,8 @@ export function AppSidebar({
                     collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                   } ${
                     isActive
-                      ? 'bg-sidebar-active text-sidebar-text'
-                      : 'text-sidebar-text/85 hover:bg-sidebar-hover hover:text-sidebar-text'
+                      ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
@@ -226,7 +230,7 @@ export function AppSidebar({
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 p-2">
+      <div className="border-t border-border p-2">
         <Link href={meta.actionHref} className="block" title={collapsed ? meta.actionLabel : undefined}>
           <Button className={`w-full justify-center ${collapsed ? 'px-2' : ''}`}>
             <Plus className="h-4 w-4 shrink-0" />
@@ -235,7 +239,7 @@ export function AppSidebar({
         </Link>
         <Link
           href={profileHrefForRole(resolvedRole)}
-          className={`mt-2 flex items-center rounded-lg border border-white/10 bg-sidebar-hover/30 hover:bg-sidebar-hover ${
+          className={`mt-2 flex items-center rounded-lg border border-border bg-muted/40 hover:bg-muted ${
             collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2.5'
           }`}
           title="Account & profile"
@@ -245,11 +249,11 @@ export function AppSidebar({
             <img
               src={avatarResolved}
               alt=""
-              className={`shrink-0 rounded-full border border-white/20 object-cover ${collapsed ? 'h-9 w-9' : 'h-10 w-10'}`}
+              className={`shrink-0 rounded-full border border-border object-cover ${collapsed ? 'h-9 w-9' : 'h-10 w-10'}`}
             />
           ) : (
             <div
-              className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white ${
+              className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary ${
                 collapsed ? 'h-9 w-9' : 'h-10 w-10'
               }`}
             >
@@ -259,17 +263,17 @@ export function AppSidebar({
           {!collapsed ? (
             <>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-sidebar-text">{profileName}</p>
-                <p className="truncate text-xs text-sidebar-text/70">{profileRole}</p>
+                <p className="truncate text-sm font-semibold text-foreground">{profileName}</p>
+                <p className="truncate text-xs text-muted-foreground">{profileRole}</p>
               </div>
-              <UserCog className="h-4 w-4 shrink-0 text-sidebar-text/60" aria-hidden />
+              <UserCog className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             </>
           ) : null}
         </Link>
         <Button
           onClick={logout}
           variant="outline"
-          className="mt-2 w-full justify-center border-white/20 bg-transparent text-sidebar-text hover:bg-sidebar-hover"
+          className="mt-2 w-full justify-center border-border bg-muted/40 text-foreground hover:bg-muted"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           {!collapsed ? <span className="ml-2">Logout</span> : null}

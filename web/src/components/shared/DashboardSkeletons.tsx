@@ -398,6 +398,117 @@ export function ExpertReviewQueueSkeleton() {
   );
 }
 
+/** Admin users table (toolbar + rows). */
+export function UserManagementTableSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="w-full p-4" aria-hidden>
+        <div className="mb-4 grid grid-cols-5 gap-3 border-b border-border pb-3">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Sk key={i} className="h-3 w-20" />
+          ))}
+        </div>
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="grid grid-cols-5 items-center gap-3 border-b border-border py-3">
+            <Sk className="h-4 w-36" />
+            <Sk className="h-4 w-44" />
+            <Sk className="h-6 w-20 rounded-full" />
+            <Sk className="h-6 w-16 rounded-full" />
+            <Sk className="h-8 w-24 rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Lecturer quiz list / workbench initial load. */
+export function QuizWorkbenchListSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="mx-auto max-w-7xl space-y-8 px-8 pb-16" aria-hidden>
+        <div className="space-y-2">
+          <Sk className="h-4 w-40" />
+          <Sk className="h-12 w-full max-w-xl" />
+          <Sk className="h-5 w-full max-w-2xl" />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Sk className="h-12 w-48 rounded-full" />
+          <Sk className="h-12 w-40 rounded-full" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <Sk className="h-5 w-4/5" />
+              <Sk className="mt-3 h-4 w-full" />
+              <Sk className="mt-2 h-4 w-2/3" />
+              <div className="mt-4 flex gap-2">
+                <Sk className="h-9 w-24 rounded-lg" />
+                <Sk className="h-9 w-20 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Lecturer cases table + toolbar. */
+export function LecturerCasesPageSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Sk className="h-10 w-64 max-w-full rounded-lg" />
+          <Sk className="h-10 w-40 rounded-lg" />
+        </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="grid grid-cols-6 gap-2 border-b border-border bg-muted/30 px-4 py-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Sk key={i} className="h-3 w-16" />
+            ))}
+          </div>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="grid grid-cols-6 items-center gap-2 border-b border-border px-4 py-4">
+              <Sk className="h-4 w-8" />
+              <Sk className="col-span-2 h-4 w-full" />
+              <Sk className="h-4 w-20" />
+              <Sk className="h-6 w-16 rounded-full" />
+              <Sk className="h-8 w-20 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Settings pages (admin / expert / lecturer) profile form shell. */
+export function SettingsFormSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="space-y-2">
+          <Sk className="h-3 w-32" />
+          <Sk className="h-8 w-48" />
+          <Sk className="h-4 w-96 max-w-full" />
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          <div className="flex flex-col gap-6 sm:flex-row">
+            <Sk className="mx-auto h-24 w-24 shrink-0 rounded-full sm:mx-0" />
+            <div className="min-w-0 flex-1 space-y-4">
+              <Sk className="h-10 w-full" />
+              <Sk className="h-10 w-full" />
+              <Sk className="h-28 w-full rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
 export function AdminDashboardSkeleton() {
   return (
     <PageLoadingSkeleton>

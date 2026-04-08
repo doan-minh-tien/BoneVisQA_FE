@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, Loader2, RotateCcw, Save } from 'lucide-react';
+import { Bell, RotateCcw, Save } from 'lucide-react';
+import { SettingsFormSkeleton } from '@/components/shared/DashboardSkeletons';
 import { fetchLecturerProfile, updateLecturerProfile } from '@/lib/api/lecturer-dashboard';
 import type { LecturerProfile, UpdateLecturerProfilePayload } from '@/lib/api/lecturer-dashboard';
 import { Button } from '@/components/ui/button';
@@ -160,12 +161,7 @@ export default function LecturerSettingsPage() {
           <h1 className="mt-1 text-2xl font-bold text-card-foreground">Settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage your lecturer profile and preferences.</p>
         </div>
-        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Loading profile…
-          </div>
-        </div>
+        <SettingsFormSkeleton />
       </div>
     );
   }

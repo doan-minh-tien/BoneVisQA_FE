@@ -343,6 +343,7 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     quizName: String(item.title ?? item.Title ?? item.quizName ?? 'Untitled quiz'),
     classId: String(item.classId ?? item.ClassId ?? ''),
     className: String(item.className ?? item.ClassName ?? ''),
+    topic: item.topic != null ? String(item.topic) : item.Topic != null ? String(item.Topic) : null,
     totalQuestions: totalQ,
     timeLimit,
     passingScore: passing,
@@ -523,7 +524,7 @@ export async function fetchCaseCatalog(filters: {
 
 export async function fetchCaseCatalogDetail(caseId: string): Promise<StudentCaseCatalogDetail> {
   try {
-    const { data } = await http.get<unknown>(`/api/student/cases/catalog/${caseId}`);
+    const { data } = await http.get<unknown>(`/api/student/cases/${caseId}`);
     const mapped = mapStudentCaseCatalogDetail(data);
     if (!mapped) {
       throw new Error('Case detail is unavailable.');
@@ -726,7 +727,17 @@ export interface StudentClassDetail {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
+  /** Clinical expert attached to this cohort when returned by the API. */
+  expertName?: string | null;
+  expertEmail?: string | null;
   enrolledAt?: string | null;
+  /** Case assignments for this class (optional; depends on backend). */
+  assignedCases?: Array<{
+    caseId: string;
+    title: string;
+    dueDate?: string | null;
+    isMandatory?: boolean;
+  }>;
   quizzes: Array<{
     quizId: string;
     title: string;
@@ -759,16 +770,38 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
     const quizRows = item.quizzes ?? item.Quizzes;
     const studentRows = item.students ?? item.Students;
     const announcementRows = item.announcements ?? item.Announcements;
+    const caseRows = item.assignedCases ?? item.AssignedCases ?? item.cases ?? item.Cases;
     const quizzes = Array.isArray(quizRows) ? (quizRows as Record<string, unknown>[]) : [];
     const students = Array.isArray(studentRows) ? (studentRows as Record<string, unknown>[]) : [];
     const announcements = Array.isArray(announcementRows) ? (announcementRows as Record<string, unknown>[]) : [];
+    const cases = Array.isArray(caseRows) ? (caseRows as Record<string, unknown>[]) : [];
     return {
       classId: String(item.classId ?? item.ClassId ?? classId),
       className: String(item.className ?? item.ClassName ?? ''),
       semester: String(item.semester ?? item.Semester ?? ''),
       lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
       lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      expertName:
+        item.expertName != null
+          ? String(item.expertName)
+          : item.ExpertName != null
+            ? String(item.ExpertName)
+            : item.expertFullName != null
+              ? String(item.expertFullName)
+              : null,
+      expertEmail:
+        item.expertEmail != null
+          ? String(item.expertEmail)
+          : item.ExpertEmail != null
+            ? String(item.ExpertEmail)
+            : null,
       enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
+      assignedCases: cases.map((c) => ({
+        caseId: String(c.caseId ?? c.CaseId ?? c.id ?? c.Id ?? ''),
+        title: String(c.title ?? c.Title ?? c.caseTitle ?? c.CaseTitle ?? 'Case'),
+        dueDate: c.dueDate != null ? String(c.dueDate) : c.DueDate != null ? String(c.DueDate) : null,
+        isMandatory: Boolean(c.isMandatory ?? c.IsMandatory ?? false),
+      })),
       quizzes: quizzes.map((q) => ({
         quizId: String(q.quizId ?? q.QuizId ?? ''),
         title: String(q.title ?? q.Title ?? ''),

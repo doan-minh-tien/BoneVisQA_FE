@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import { LecturerCasesPageSkeleton } from '@/components/shared/DashboardSkeletons';
 import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
 import CasesTable from '@/components/lecturer/cases/CasesTable';
 import {
@@ -9,7 +10,6 @@ import {
   Search,
   CheckCircle,
   XCircle,
-  Loader2,
   Eye,
   Plus,
 } from 'lucide-react';
@@ -191,10 +191,7 @@ export default function LecturerCasesPage() {
 
         {/* Content */}
         {loading ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border">
-            <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading cases...</p>
-          </div>
+          <LecturerCasesPageSkeleton />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 bg-card rounded-xl border border-border">
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />

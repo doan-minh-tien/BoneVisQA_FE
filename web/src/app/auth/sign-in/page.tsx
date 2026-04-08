@@ -161,7 +161,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         throw new Error("Google did not return a credential token.");
       }
 
-      const { data } = await http.post("/api/Auths/google-login", {
+      const { data } = await http.post("/api/auths/google-login", {
         idToken: credentialResponse.credential,
       });
 

@@ -44,16 +44,8 @@ export default function Header({ title, subtitle }: HeaderProps) {
   const desktopSearchRef = useRef<HTMLDivElement | null>(null);
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const fullName = user?.fullName?.trim() || user?.email?.trim() || 'Authenticated User';
-  const roleLabel = useMemo(() => {
-    const activeRole = user?.activeRole;
-    const labelMap = {
-      Admin: 'System Administrator',
-      Lecturer: 'Senior Lecturer',
-      Expert: 'Clinical Expert',
-      Student: 'Medical Student',
-    } as const;
-    return activeRole ? labelMap[activeRole] : 'Signed-in Session';
-  }, [user?.activeRole]);
+  /** Display role from session/API only — no placeholder copy. */
+  const roleLabel = user?.activeRole?.trim() || '—';
 
   const initials = useMemo(() => {
     return fullName
@@ -305,7 +297,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
                 className="h-10 w-10 shrink-0 rounded-full border border-border object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary">
                 {initials || 'BV'}
               </div>
             )}

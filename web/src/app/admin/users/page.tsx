@@ -16,6 +16,7 @@ import {
 } from '@/components/admin/users/UserDialogs';
 import { ManageClassesDialog } from '@/components/admin/users/ManageClassesDialog';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
+import { UserManagementTableSkeleton } from '@/components/shared/DashboardSkeletons';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
 import { ToolbarField } from '@/components/shared/ToolbarField';
 import { useToast } from '@/components/ui/toast';
@@ -29,7 +30,7 @@ import {
   type CreateUserPayload,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
-import { ChevronDown, Filter, Loader2, Plus, Search, Users } from 'lucide-react';
+import { ChevronDown, Filter, Plus, Search, Users } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
 
@@ -317,10 +318,7 @@ export default function AdminUsersPage() {
         {/* Table */}
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {loading ? (
-            <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-3 h-5 w-5 animate-spin text-primary" />
-              Loading users...
-            </div>
+            <UserManagementTableSkeleton />
           ) : filtered.length === 0 ? (
             <table className="w-full">
               <tbody>
