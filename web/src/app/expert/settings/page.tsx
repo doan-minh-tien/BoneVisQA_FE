@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Header from '@/components/Header';
+import ExpertHeader from '@/components/expert/ExpertHeader';
 import { Bell, Shield, Save, RotateCcw, CheckCircle, User } from 'lucide-react';
 
 export default function ExpertSettingsPage() {
@@ -17,7 +17,7 @@ export default function ExpertSettingsPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Settings" subtitle="Manage your expert preferences" />
+      <ExpertHeader title="Settings" subtitle="Manage your expert preferences" />
       <div className="p-6 max-w-3xl mx-auto space-y-6">
         {/* Profile */}
         <div className="bg-card rounded-xl border border-border p-6">

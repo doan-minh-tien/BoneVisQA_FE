@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import ExpertHeader from '@/components/expert/ExpertHeader';
 import {
   FolderOpen, Search, Plus, CheckCircle, Clock, Eye,
   Edit, Trash2, ChevronDown, ChevronRight, Loader2,
@@ -22,7 +22,7 @@ import { getStoredUserId } from '@/lib/getStoredUserId';
 const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
   approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
   pending: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10', label: 'Pending' },
-  draft: { icon: Edit, color: 'text-muted-foreground', bg: 'bg-muted', label: 'Draft' },
+  rejected: { icon: Edit, color: 'text-muted-foreground', bg: 'bg-muted', label: 'Rejected' },
 };
 
 const difficultyConfig: Record<Difficulty, { color: string }> = {
@@ -205,7 +205,7 @@ export default function ExpertCasesPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Case Library" subtitle={`${cases.length} cases`} />
+      <ExpertHeader title="Case Library" subtitle={`${cases.length} cases`} />
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Actions + Search */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -217,7 +217,7 @@ export default function ExpertCasesPage() {
             <input type="text" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 pl-10 pr-4 rounded-lg bg-card border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as CaseStatus | 'All')} className="h-10 px-4 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer">
-            <option value="All">All Status</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="draft">Draft</option>
+            <option value="All">All Status</option><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option>
           </select>
           <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value as Difficulty | 'All')} className="h-10 px-4 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer">
             <option value="All">All Difficulty</option><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option>
@@ -325,6 +325,11 @@ export default function ExpertCasesPage() {
                   </option>
                 ))}
               </select>
+              {categoryOptions.length === 0 && (
+                <p className="md:col-span-2 text-xs text-muted-foreground">
+                  No categories available (category options are derived from cases list).
+                </p>
+              )}
               <select value={form.difficulty} onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value as 'Easy' | 'Medium' | 'Hard' }))} className="px-3 py-2 rounded-lg border border-border bg-input text-sm">
                 <option value="Easy">Easy</option>
                 <option value="Medium">Medium</option>

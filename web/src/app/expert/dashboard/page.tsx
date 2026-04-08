@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Header from '@/components/Header';
+import ExpertHeader from '@/components/expert/ExpertHeader';
 import QuickStatsCard from '@/components/expert/QuickStatsCard';
 import ReviewCard from '@/components/expert/ReviewCard';
 import CaseManagementCard from '@/components/expert/CaseManagementCard';
@@ -106,7 +106,7 @@ export default function ExpertDashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <Header
+      <ExpertHeader
         title="Clinical Expert Dashboard"
         subtitle="Manage cases and review student questions"
       />

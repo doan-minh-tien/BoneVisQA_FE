@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
-import Header from '@/components/Header';
+import ExpertHeader from '@/components/expert/ExpertHeader';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -167,7 +167,7 @@ export default function ExpertReviewsPage() {
 
   return (
     <div className="dark min-h-screen bg-background text-text-main">
-      <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
+      <ExpertHeader title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
       <div className="mx-auto max-w-[1600px] p-6">
         {loading ? (
           <div className="flex justify-center py-20 text-text-muted">
