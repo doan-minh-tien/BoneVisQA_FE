@@ -1,8 +1,7 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast';
 import {
   Loader2,
@@ -23,7 +22,8 @@ import {
   Ruler,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAssignedQuizzes, startQuizSession, submitQuizSession } from '@/lib/api/student';
+import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview } from '@/lib/api/student';
+import type { QuizAttemptReview } from '@/lib/api/student';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentQuizResultDto } from '@/lib/api/types';
 import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
@@ -73,12 +73,15 @@ export default function QuizSessionPage({
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<StudentQuizResultDto | null>(null);
+  const [quizReview, setQuizReview] = useState<QuizAttemptReview | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
+  const timeExpiredToastSent = useRef(false);
 
   const questions: QuizModeQuestion[] = session?.questions ?? [];
   const currentQ = questions[currentIndex];
@@ -86,6 +89,11 @@ export default function QuizSessionPage({
   const answeredCount = Object.keys(answers).length;
   const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
   const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
+  const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
+  const timeLimitMinutes =
+    rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
+  const timerDisplaySeconds =
+    !submitted && timeLimitMinutes != null ? (secondsLeft ?? timeLimitMinutes * 60) : null;
 
   useEffect(() => {
     (async () => {
@@ -107,21 +115,35 @@ export default function QuizSessionPage({
       setSecondsLeft(null);
       return;
     }
-    const limitMin = quizInfo?.timeLimit;
-    if (limitMin == null || limitMin <= 0) {
+    if (timeLimitMinutes == null) {
       setSecondsLeft(null);
       return;
     }
-    const total = Math.round(limitMin * 60);
+    const total = timeLimitMinutes * 60;
     setSecondsLeft(total);
+    timeExpiredToastSent.current = false;
     const tick = setInterval(() => {
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
-  }, [session?.attemptId, quizInfo?.timeLimit, submitted, session]);
+  }, [session?.attemptId, timeLimitMinutes, submitted, session]);
+
+  useEffect(() => {
+    if (
+      secondsLeft === 0 &&
+      !submitted &&
+      timeLimitMinutes != null &&
+      session &&
+      !timeExpiredToastSent.current
+    ) {
+      timeExpiredToastSent.current = true;
+      toast.error('Time is up. Please submit your answers now.');
+    }
+  }, [secondsLeft, submitted, timeLimitMinutes, session, toast]);
 
   const handleStart = async () => {
     setLoadingSession(true);
+    setStartError(null);
     try {
       const data = await startQuizSession(quizId);
       setSession(data);
@@ -130,7 +152,11 @@ export default function QuizSessionPage({
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Không thể bắt đầu quiz: ${msg}`);
+      if (msg.includes('đã nộp') || msg.includes('already submitted') || msg.includes('không được retake')) {
+        setStartError(msg);
+      } else {
+        toast.error(`Không thể bắt đầu quiz: ${msg}`);
+      }
       console.error('[QuizSession] start error:', e);
     } finally {
       setLoadingSession(false);
@@ -177,7 +203,16 @@ export default function QuizSessionPage({
       const result = await submitQuizSession(session.attemptId, payload);
       setQuizResult(result);
       setSubmitted(true);
+      // Load review after successful submission
+      try {
+        const review = await fetchQuizAttemptReview(session.attemptId);
+        setQuizReview(review);
+      } catch {
+        // Review load failure is non-critical; continue
+      }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to submit: ${msg}`);
       console.error('Submit failed', e);
     } finally {
       setSubmitting(false);
@@ -186,7 +221,6 @@ export default function QuizSessionPage({
 
   const currentAnswer = currentQ ? answers[currentQ.questionId] : null;
   const currentState = currentQ ? (answerStates[currentQ.questionId] ?? 'unanswered') : 'unanswered';
-  const isLast = currentIndex === totalQ - 1;
   const allAnswered = answeredCount === totalQ;
 
   // ---------- Loading quiz info ----------
@@ -301,10 +335,25 @@ export default function QuizSessionPage({
           )}
         </div>
         <div className="flex items-center gap-3 sm:gap-6">
-          {secondsLeft != null && !submitted ? (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 font-headline text-sm font-bold tabular-nums text-primary dark:bg-slate-800 dark:text-blue-400">
+          {!submitted && timeLimitMinutes != null ? (
+            <div
+              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-headline text-sm font-bold tabular-nums sm:px-4 ${
+                timerDisplaySeconds === 0
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                  : 'bg-slate-100 text-primary dark:bg-slate-800 dark:text-blue-400'
+              }`}
+              title="Time remaining"
+            >
               <Timer className="h-4 w-4 shrink-0" />
-              {formatMmSs(secondsLeft)}
+              {formatMmSs(timerDisplaySeconds ?? 0)}
+            </div>
+          ) : !submitted ? (
+            <div
+              className="flex max-w-[9rem] items-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-low px-2 py-1.5 text-[10px] font-semibold leading-tight text-on-surface-variant sm:max-w-none sm:gap-2 sm:px-3 sm:text-xs"
+              title="Quiz has no time limit"
+            >
+              <Timer className="h-3.5 w-3.5 shrink-0 opacity-70 sm:h-4 sm:w-4" />
+              No time limit
             </div>
           ) : null}
           <button
@@ -353,13 +402,41 @@ export default function QuizSessionPage({
           </div>
         </div>
 
+        {!submitted ? (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-primary px-2.5 py-1 font-headline text-sm font-extrabold text-white">
+                Câu {currentIndex + 1} / {totalQ}
+              </span>
+              <span className="hidden text-sm text-on-surface-variant sm:inline">
+                Question {currentIndex + 1} of {totalQ}
+              </span>
+            </div>
+            {timeLimitMinutes != null ? (
+              <div
+                className={`flex items-center gap-2 font-headline text-base font-bold tabular-nums sm:text-lg ${
+                  timerDisplaySeconds === 0 ? 'text-destructive' : 'text-primary'
+                }`}
+              >
+                <Timer className="h-5 w-5 shrink-0" />
+                {formatMmSs(timerDisplaySeconds ?? 0)}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant">
+                <Timer className="h-4 w-4 shrink-0" />
+                No time limit
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           {/* Left: image (template: 7 cols) */}
           <div className="lg:col-span-7">
             <div className="lg:sticky lg:top-28 space-y-6">
-              <div className="group relative flex aspect-[4/5] items-center justify-center overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:aspect-square">
+              <div className="group relative w-full min-h-[52vh] overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:min-h-[58vh] lg:min-h-[60vh]">
                 <div
-                  className={`flex h-full w-full origin-center items-center justify-center overflow-hidden transition-transform duration-300 ${
+                  className={`flex min-h-[52vh] w-full origin-center items-center justify-center overflow-auto p-2 transition-transform duration-300 sm:p-4 md:min-h-[58vh] lg:min-h-[60vh] ${
                     highContrastImg ? 'contrast-125 saturate-125' : ''
                   }`}
                   style={{
@@ -371,7 +448,8 @@ export default function QuizSessionPage({
                     <img
                       src={resolveApiAssetUrl(currentQ.imageUrl)}
                       alt={currentQ.caseTitle ?? 'Case image'}
-                      className="max-h-full max-w-full object-contain opacity-90 transition-opacity group-hover:opacity-100"
+                      className="h-auto w-full max-w-full object-contain opacity-95 transition-opacity group-hover:opacity-100"
+                      style={{ maxHeight: 'min(78vh, 920px)' }}
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center px-6">
@@ -509,9 +587,14 @@ export default function QuizSessionPage({
           {/* Right: question + answers (template: 5 cols) */}
           <div className="flex flex-col gap-8 lg:col-span-5">
             <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-6 sm:p-8">
-              <span className="mb-4 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
-                {questionTag}
-              </span>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-lg bg-primary px-2.5 py-1 font-headline text-xs font-extrabold text-white sm:text-sm">
+                  Câu {currentIndex + 1} / {totalQ}
+                </span>
+                <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+                  {questionTag}
+                </span>
+              </div>
               <p className="font-headline text-lg font-bold leading-snug text-on-surface sm:text-xl">
                 {currentQ.questionText}
               </p>
@@ -598,32 +681,33 @@ export default function QuizSessionPage({
                     <ArrowLeft className="h-5 w-5" />
                     Previous
                   </button>
-                  {isLast ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleSubmit()}
-                      disabled={submitting || !allAnswered}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                    >
-                      {submitting ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : allAnswered ? (
-                        'Submit quiz'
-                      ) : (
-                        `${answeredCount}/${totalQ} answered`
-                      )}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleNext}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Next question
-                      <ArrowRight className="h-5 w-5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={currentIndex >= totalQ - 1}
+                    className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
+                  >
+                    Next
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSubmit()}
+                  disabled={submitting || !allAnswered}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/25 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Submitting…
+                    </>
+                  ) : allAnswered ? (
+                    'Submit'
+                  ) : (
+                    `Submit (${answeredCount}/${totalQ} answered)`
+                  )}
+                </button>
               </div>
             ) : null}
 
@@ -715,8 +799,8 @@ export default function QuizSessionPage({
                       Back to quizzes
                     </Button>
                   </Link>
-                  <Link href="/student/history">
-                    <Button className="rounded-xl font-bold">View history</Button>
+                  <Link href="/student/quiz/history">
+                    <Button className="rounded-xl font-bold">Quiz history</Button>
                   </Link>
                 </div>
               </div>
@@ -724,17 +808,132 @@ export default function QuizSessionPage({
           </div>
         </div>
 
+        {/* ── Review: hiển thị đáp án đúng & đáp án đã chọn ── */}
+        {submitted && quizReview && quizReview.questions.length > 0 && (
+          <section className="mt-10 border-t border-outline-variant/10 pt-10">
+            <div className="mb-6 flex items-center gap-3">
+              <span className="h-1 w-6 rounded-full bg-primary" />
+              <h4 className="font-headline text-base font-bold text-on-surface">
+                Review answers
+              </h4>
+              <span className="ml-auto text-xs text-on-surface-variant">
+                {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
+              </span>
+            </div>
+
+                <div className="space-y-3">
+                  {quizReview.questions.map((q, i) => {
+                    const studentChoice = q.studentAnswer?.toUpperCase();
+                    const correctChoice = q.correctAnswer?.toUpperCase();
+                    const isCorrect = q.isCorrect;
+
+                return (
+                  <div
+                    key={q.questionId}
+                    className={`rounded-2xl border-2 p-5 transition-all ${
+                      isCorrect
+                        ? 'border-emerald-400/50 bg-emerald-50 dark:border-emerald-600/40 dark:bg-emerald-950/25'
+                        : 'border-destructive/40 bg-destructive/5 dark:border-destructive/30 dark:bg-destructive/10'
+                    }`}
+                  >
+                    {/* Header row */}
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-headline text-sm font-extrabold text-white ${
+                            isCorrect ? 'bg-emerald-500' : 'bg-destructive'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <p className="font-semibold text-on-surface-variant">
+                          {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                        </p>
+                      </div>
+                      {q.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={resolveApiAssetUrl(q.imageUrl)}
+                          alt="case"
+                          className="h-14 w-14 rounded-xl border border-outline-variant/20 object-cover"
+                        />
+                      ) : null}
+                    </div>
+
+                    {/* Câu hỏi */}
+                    <p className="mb-4 text-sm font-semibold text-on-surface leading-snug">
+                      {q.questionText}
+                    </p>
+
+                    {/* Các đáp án A–D */}
+                    <div className="space-y-2">
+                      {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                        const text = q[`option${key}` as keyof typeof q];
+                        if (!text) return null;
+                        const isStudent = studentChoice === key;
+                        const isCorrectKey = correctChoice === key;
+                        const isCorrectAnswer = isCorrectKey;
+
+                        let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
+                        if (isCorrectAnswer) {
+                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800 dark:border-emerald-500/50 dark:bg-emerald-950/40 dark:text-emerald-100';
+                        } else if (isStudent && !isCorrect) {
+                          cls = 'border-destructive/50 bg-destructive/10 text-destructive';
+                        }
+
+                        return (
+                          <div
+                            key={key}
+                            className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${cls}`}
+                          >
+                            <span
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                                isCorrectAnswer
+                                  ? 'bg-emerald-500 text-white'
+                                  : isStudent
+                                    ? 'bg-destructive text-white'
+                                    : 'bg-surface-container text-on-surface-variant'
+                              }`}
+                            >
+                              {key}
+                            </span>
+                            <span className="flex-1">{text}</span>
+                            {isCorrectAnswer && (
+                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                            )}
+                            {isStudent && !isCorrectAnswer && (
+                              <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+                            )}
+                            {isStudent && isCorrectAnswer && (
+                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
-          <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
+            <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
             <span className="h-1 w-6 rounded-full bg-primary" />
-            Question navigator
+            Question navigation
           </h4>
           <div className="flex flex-wrap gap-2">
             {questions.map((q, i) => {
               const state = answerStates[q.questionId];
               const isCurrent = i === currentIndex;
+              const reviewQ = quizReview?.questions.find(rq => rq.questionId === q.questionId);
               let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
-              if (state === 'correct') cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
+              if (reviewQ) {
+                cls = reviewQ.isCorrect
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (state === 'correct') cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
               else if (state === 'incorrect') cls = 'border-destructive/40 bg-destructive/10 text-destructive';
               else if (answers[q.questionId]) cls = 'border-primary/40 bg-primary/10 text-primary';
               if (isCurrent) cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
@@ -765,8 +964,8 @@ export default function QuizSessionPage({
           <Link href="/student/quiz" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Back to quizzes
           </Link>
-          <Link href="/student/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
-            History
+          <Link href="/student/quiz/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
+            Quiz history
           </Link>
         </div>
       </footer>

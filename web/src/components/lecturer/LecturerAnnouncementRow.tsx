@@ -154,10 +154,10 @@ export function LecturerAnnouncementRow({
             aria-labelledby="announcement-delete-title"
           >
             <p id="announcement-delete-title" className="text-sm font-medium text-card-foreground">
-              Xóa thông báo này?
+              Delete this announcement?
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Sinh viên sẽ không còn thấy nội dung này trên hệ thống.
+              Students will no longer see this content on the platform.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -166,7 +166,7 @@ export function LecturerAnnouncementRow({
                 disabled={deleting}
                 className="rounded-lg bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60 cursor-pointer"
               >
-                {deleting ? 'Đang xóa…' : 'Xóa'}
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
               <button
                 type="button"
@@ -174,7 +174,7 @@ export function LecturerAnnouncementRow({
                 disabled={deleting}
                 className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted cursor-pointer disabled:opacity-50"
               >
-                Hủy
+                Cancel
               </button>
             </div>
           </div>

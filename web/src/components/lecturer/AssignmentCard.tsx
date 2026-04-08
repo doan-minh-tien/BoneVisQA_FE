@@ -82,7 +82,7 @@ export default function AssignmentCard({
             )}
             {isMandatory && (
               <span className="px-2 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning">
-                Bắt buộc
+                Mandatory
               </span>
             )}
           </div>
@@ -95,7 +95,7 @@ export default function AssignmentCard({
       <div className="flex items-center gap-2 mb-4 p-2 bg-muted/30 rounded">
         <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
         <span className="text-sm text-card-foreground">
-          Hạn: {formatDueDate(dueDate)}
+          Due: {formatDueDate(dueDate)}
         </span>
       </div>
 
@@ -105,7 +105,7 @@ export default function AssignmentCard({
           {/* Submission Progress */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Nộp bài</span>
+              <span className="text-xs text-muted-foreground">Submitted</span>
               <span className="text-xs font-medium text-card-foreground">
                 {submitted}/{totalStudents} ({submissionRate}%)
               </span>
@@ -122,7 +122,7 @@ export default function AssignmentCard({
           {submitted > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">Đã chấm</span>
+                <span className="text-xs text-muted-foreground">Graded</span>
                 <span className="text-xs font-medium text-card-foreground">
                   {graded}/{submitted} ({gradingProgress}%)
                 </span>
@@ -143,12 +143,12 @@ export default function AssignmentCard({
         <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border">
           <div className="flex items-center gap-1 text-sm">
             <CheckCircle className="w-4 h-4 text-success" />
-            <span className="text-muted-foreground">{graded} đã chấm</span>
+            <span className="text-muted-foreground">{graded} graded</span>
           </div>
           {submitted - graded > 0 && (
             <div className="flex items-center gap-1 text-sm">
               <AlertCircle className="w-4 h-4 text-warning" />
-              <span className="text-muted-foreground">{submitted - graded} chưa chấm</span>
+              <span className="text-muted-foreground">{submitted - graded} pending grading</span>
             </div>
           )}
         </div>

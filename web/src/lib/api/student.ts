@@ -292,11 +292,18 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
   const o = raw as Record<string, unknown>;
   const rawQs = o.questions ?? o.Questions;
   const list = Array.isArray(rawQs) ? rawQs : [];
+  const rawTl = o.timeLimit ?? o.TimeLimit;
+  let timeLimit: number | null = null;
+  if (rawTl != null && rawTl !== '') {
+    const n = typeof rawTl === 'number' ? rawTl : Number(rawTl);
+    if (Number.isFinite(n) && n > 0) timeLimit = Math.round(n);
+  }
   return {
     attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
     quizId: String(o.quizId ?? o.QuizId ?? ''),
     title: String(o.title ?? o.Title ?? ''),
     topic: pickStr(o, 'topic', 'Topic'),
+    timeLimit,
     questions: list.map(normalizeStudentSessionQuestion),
   };
 }

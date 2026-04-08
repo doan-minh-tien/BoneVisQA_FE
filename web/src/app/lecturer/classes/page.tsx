@@ -66,7 +66,7 @@ export default function LecturerClassesPage() {
       });
       setDeleteTarget(null);
     } catch (e) {
-      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
+      alert(getApiErrorMessage(e) || 'Delete failed.');
     } finally {
       setDeleting(false);
     }
@@ -80,7 +80,7 @@ export default function LecturerClassesPage() {
       setSelectedIds(new Set());
       setShowBulkDelete(false);
     } catch (e) {
-      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
+      alert(getApiErrorMessage(e) || 'Delete failed.');
     } finally {
       setBulkDeleting(false);
     }
@@ -108,7 +108,7 @@ export default function LecturerClassesPage() {
       try {
         const userId = getStoredUserId();
         if (!userId) {
-          setError('Chưa đăng nhập hoặc thiếu userId. Vui lòng đăng nhập lại.');
+          setError('Not logged in or userId is missing. Please log in again.');
           return;
         }
         const data = await getLecturerClasses(userId);

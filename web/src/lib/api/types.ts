@@ -269,6 +269,8 @@ export interface QuizSessionDto {
   quizId: string;
   title: string;
   topic: string | null;
+  /** Phút — từ BE khi start quiz; ưu tiên hơn danh sách quiz để đồng hồ đếm ngược đúng. */
+  timeLimit?: number | null;
   questions: StudentSessionQuestion[];
 }
 

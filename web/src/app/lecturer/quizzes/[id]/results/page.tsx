@@ -16,9 +16,10 @@ import {
   Users,
   FileText,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { getQuiz } from '@/lib/api/lecturer-quiz';
-import { getClassQuizAttempts, getQuizAttemptDetail } from '@/lib/api/lecturer';
+import { getClassQuizAttempts, getQuizAttemptDetail, allowRetakeForAttempt, allowRetakeAll } from '@/lib/api/lecturer';
 import { getApiErrorMessage } from '@/lib/api/client';
 import type { QuizDto, StudentQuizAttemptDto, QuizAttemptDetailDto, QuestionWithAnswerDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
@@ -197,8 +198,42 @@ export default function QuizResultsPage({
   const [attemptDetail, setAttemptDetail] = useState<QuizAttemptDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [retakingId, setRetakingId] = useState<string | null>(null);
+  const [retakingAll, setRetakingAll] = useState(false);
 
   const classId = quiz?.classId ?? '';
+
+  async function handleRetakeSingle(attempt: StudentQuizAttemptDto) {
+    if (!classId) return;
+    if (!confirm(`Cho phép "${attempt.studentName}" làm lại bài quiz này?`)) return;
+    setRetakingId(attempt.attemptId);
+    try {
+      await allowRetakeForAttempt(classId, quizId, attempt.attemptId);
+      toast.success(`Đã cho phép "${attempt.studentName}" làm lại.`);
+      const data = await getClassQuizAttempts(classId, quizId);
+      setAttempts(data);
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setRetakingId(null);
+    }
+  }
+
+  async function handleRetakeAll() {
+    if (!classId) return;
+    if (!confirm('Cho phép TẤT CẢ sinh viên đã nộp làm lại bài quiz này?')) return;
+    setRetakingAll(true);
+    try {
+      await allowRetakeAll(classId, quizId);
+      toast.success('Đã cho phép tất cả sinh viên làm lại.');
+      const data = await getClassQuizAttempts(classId, quizId);
+      setAttempts(data);
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setRetakingAll(false);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -355,6 +390,29 @@ export default function QuizResultsPage({
         </div>
       </div>
 
+      {/* Retake All */}
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4">
+        <div>
+          <h3 className="font-semibold text-sm">Quản lý làm lại (Retake)</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {attempts.filter(a => a.completedAt).length} sinh viên đã nộp bài
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleRetakeAll}
+          disabled={retakingAll || attempts.filter(a => a.completedAt).length === 0}
+          className="inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {retakingAll ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="h-4 w-4" />
+          )}
+          Cho phép tất cả làm lại
+        </button>
+      </div>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -445,6 +503,22 @@ export default function QuizResultsPage({
                       {formatDate(a.completedAt ?? a.startedAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {a.completedAt && (
+                        <button
+                          type="button"
+                          onClick={() => handleRetakeSingle(a)}
+                          disabled={retakingId === a.attemptId}
+                          title="Cho phép sinh viên làm lại"
+                          className="mr-2 inline-flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {retakingId === a.attemptId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          )}
+                          Retake
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openAttemptDetail(a)}

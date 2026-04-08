@@ -229,7 +229,7 @@ export default function ClassDetailPage({
 
   const handleEditClass = async () => {
     if (!editName.trim() || !editSemester.trim()) {
-      setEditError('Vui lòng điền đầy đủ thông tin.');
+      setEditError('Please fill in all required fields.');
       return;
     }
     setEditing(true);
@@ -242,7 +242,7 @@ export default function ClassDetailPage({
       setClassData(updated);
       setShowEdit(false);
     } catch (e) {
-      setEditError(getApiErrorMessage(e) || 'Cập nhật thất bại.');
+      setEditError(getApiErrorMessage(e) || 'Update failed.');
     } finally {
       setEditing(false);
     }
@@ -254,7 +254,7 @@ export default function ClassDetailPage({
       await deleteClass(classId);
       router.push('/lecturer/classes');
     } catch (e) {
-      alert(getApiErrorMessage(e) || 'Xóa thất bại.');
+      alert(getApiErrorMessage(e) || 'Delete failed.');
       setDeleting(false);
     }
   };
@@ -844,7 +844,7 @@ export default function ClassDetailPage({
                 </Link>
               </div>
               <p className="mb-4 text-xs text-slate-400">
-                Quiz đã gán cho lớp. Để gán thêm, mở quiz trong thư viện và chọn lớp.
+                Quizzes are already assigned to this class. To assign more, open the quiz in the library and select this class.
               </p>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
@@ -852,7 +852,7 @@ export default function ClassDetailPage({
                   type="text"
                   value={quizRepoSearch}
                   onChange={(e) => setQuizRepoSearch(e.target.value)}
-                  placeholder="Tìm theo tên hoặc topic…"
+                  placeholder="Search by name or topic..."
                   className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-secondary/50 placeholder:text-slate-500"
                 />
               </div>
@@ -860,14 +860,14 @@ export default function ClassDetailPage({
                 {classQuizzesLoading ? (
                   <div className="flex items-center gap-2 py-6 text-sm text-slate-400">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Đang tải…
+                    Loading…
                   </div>
                 ) : classQuizzes.length === 0 ? (
                   <p className="py-4 text-sm text-slate-400">
-                    Chưa có quiz nào. Dùng nút trên hoặc thư viện quiz để gán.
+                    No quizzes assigned yet. Use the button above or the quiz library to assign one.
                   </p>
                 ) : filteredClassQuizzes.length === 0 ? (
-                  <p className="py-4 text-sm text-slate-400">Không khớp từ khóa tìm kiếm.</p>
+                  <p className="py-4 text-sm text-slate-400">No matches found for your search.</p>
                 ) : (
                   filteredClassQuizzes.map((q) => {
                     const meta = [

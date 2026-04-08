@@ -27,6 +27,7 @@ import {
   Microscope,
   Stethoscope,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -129,6 +130,7 @@ function CreateAssignmentPageContent({
     passingScore: 70,
     shuffleQuestions: false,
     showResults: true,
+    allowRetake: false,
   });
 
   const isQuiz = formData.type === 'Quiz';
@@ -317,6 +319,8 @@ function CreateAssignmentPageContent({
                 closeTime: formData.dueDate || undefined,
                 timeLimitMinutes: formData.timeLimitMinutes || undefined,
                 passingScore: formData.passingScore || undefined,
+                shuffleQuestions: formData.shuffleQuestions,
+                allowRetake: formData.allowRetake,
               })
             : assignCasesToClass(classId, {
                 caseIds: validCaseGuids,
@@ -787,6 +791,13 @@ function CreateAssignmentPageContent({
                           value={formData.showResults}
                           onChange={() => setFormData({ ...formData, showResults: !formData.showResults })}
                           icon={<BarChart2 className="w-4 h-4 text-success" />}
+                        />
+                        <ToggleRow
+                          title="Allow Retake"
+                          description="Students can redo the quiz after submitting (you can also retake per student)"
+                          value={formData.allowRetake}
+                          onChange={() => setFormData({ ...formData, allowRetake: !formData.allowRetake })}
+                          icon={<RotateCcw className="w-4 h-4 text-accent" />}
                         />
                       </>
                     )}

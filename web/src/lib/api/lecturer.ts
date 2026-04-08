@@ -162,6 +162,8 @@ export async function assignQuizToClass(
     closeTime?: string;
     timeLimitMinutes?: number;
     passingScore?: number;
+    shuffleQuestions?: boolean;
+    allowRetake?: boolean;
   },
 ): Promise<void> {
   try {
@@ -171,6 +173,8 @@ export async function assignQuizToClass(
       closeTime: payload.closeTime,
       timeLimitMinutes: payload.timeLimitMinutes,
       passingScore: payload.passingScore,
+      shuffleQuestions: payload.shuffleQuestions,
+      allowRetake: payload.allowRetake,
     });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -462,6 +466,38 @@ export async function updateQuizAttempt(
       body,
     );
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cho phép một sinh viên làm lại quiz (reset attempt).
+ */
+export async function allowRetakeForAttempt(
+  classId: string,
+  quizId: string,
+  attemptId: string,
+): Promise<void> {
+  try {
+    await http.post(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/attempts/${attemptId}/retake`,
+      {},
+    );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cho phép TẤT CẢ sinh viên trong lớp đã nộp quiz được làm lại.
+ */
+export async function allowRetakeAll(classId: string, quizId: string): Promise<void> {
+  try {
+    await http.post(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
+      {},
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
