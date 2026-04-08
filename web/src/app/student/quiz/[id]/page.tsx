@@ -148,14 +148,20 @@ export default function QuizSessionPage({
       const data = await startQuizSession(quizId);
       setSession(data);
       if (!data.questions || data.questions.length === 0) {
-        toast.error('Quiz này không có câu hỏi nào. Vui lòng liên hệ giảng viên.');
+        toast.error('This quiz has no questions. Please contact your lecturer.');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes('đã nộp') || msg.includes('already submitted') || msg.includes('không được retake')) {
+      if (
+        msg.includes('already submitted') ||
+        msg.includes('cannot retake') ||
+        msg.includes('nộp bài') ||
+        msg.includes('làm lại') ||
+        msg.includes('đã nộp')
+      ) {
         setStartError(msg);
       } else {
-        toast.error(`Không thể bắt đầu quiz: ${msg}`);
+        toast.error(`Cannot start quiz: ${msg}`);
       }
       console.error('[QuizSession] start error:', e);
     } finally {
@@ -203,12 +209,11 @@ export default function QuizSessionPage({
       const result = await submitQuizSession(session.attemptId, payload);
       setQuizResult(result);
       setSubmitted(true);
-      // Load review after successful submission
       try {
         const review = await fetchQuizAttemptReview(session.attemptId);
         setQuizReview(review);
       } catch {
-        // Review load failure is non-critical; continue
+        // Review load failure is non-critical
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -223,7 +228,6 @@ export default function QuizSessionPage({
   const currentState = currentQ ? (answerStates[currentQ.questionId] ?? 'unanswered') : 'unanswered';
   const allAnswered = answeredCount === totalQ;
 
-  // ---------- Loading quiz info ----------
   if (loadingInfo) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -245,23 +249,36 @@ export default function QuizSessionPage({
     );
   }
 
-  // ---------- Pre-start screen ----------
+  // Pre-start screen
   if (!session) {
-    // Case: quiz đã nộp và không được retake
     if (startError) {
+      const retakeHint =
+        /nộp bài|làm lại|đã nộp|retake|submitted/i.test(startError) ||
+        startError.toLowerCase().includes('lecturer');
       return (
         <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
-          <div className="w-full max-w-lg space-y-6 rounded-2xl border-2 border-destructive/40 bg-destructive/5 p-10 text-center shadow-lg">
-            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive/15">
-              <AlertCircle className="h-8 w-8 text-destructive" />
+          <div className="w-full max-w-md space-y-5 rounded-2xl border border-destructive/30 bg-surface-container-low p-8 text-center shadow-lg">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
             </div>
-            <h2 className="font-headline text-xl font-extrabold text-destructive">Không thể bắt đầu</h2>
-            <p className="text-sm leading-relaxed text-on-surface-variant">{startError}</p>
-            <p className="text-xs leading-relaxed text-on-surface-variant">
-              Nếu cần làm lại, vui lòng liên hệ giảng viên để được bật chức năng retake.
-            </p>
+            <div>
+              <h2 className="font-headline text-lg font-bold text-on-surface">
+                {retakeHint ? 'Quiz đã nộp / chưa được làm lại' : 'Không thể bắt đầu quiz'}
+              </h2>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {retakeHint ? 'Quiz already submitted or retake not enabled yet' : 'Unable to open this quiz'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-muted/50 px-4 py-3 text-left">
+              <p className="text-sm leading-relaxed text-on-surface break-words">{startError}</p>
+            </div>
+            {retakeHint ? (
+              <p className="text-xs leading-relaxed text-on-surface-variant">
+                Nếu cần làm lại, hãy nhắn giảng viên bật retake trong lớp. Nếu đã bật, thử tải lại trang sau vài giây.
+              </p>
+            ) : null}
             <Link href="/student/quiz">
-              <Button variant="outline" className="mt-2 h-11 rounded-xl font-bold">
+              <Button variant="outline" className="h-11 w-full rounded-xl font-bold">
                 Quay lại danh sách quiz
               </Button>
             </Link>
@@ -270,7 +287,6 @@ export default function QuizSessionPage({
       );
     }
 
-    // Case: bình thường — chưa làm hoặc được retake
     return (
       <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
         <div className="w-full max-w-lg space-y-6 rounded-2xl border border-outline-variant/20 bg-surface-container-low p-10 text-center shadow-lg shadow-primary/5">
@@ -282,9 +298,9 @@ export default function QuizSessionPage({
             <h1 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface">
               {quizInfo?.quizName ?? 'Clinical Quiz'}
             </h1>
-            {quizInfo?.className ? (
+            {quizInfo?.className && (
               <p className="mt-2 text-sm text-on-surface-variant">{quizInfo.className}</p>
-            ) : null}
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4 rounded-xl border border-outline-variant/15 bg-surface-container-lowest/80 p-4">
             <div className="text-center">
@@ -322,7 +338,7 @@ export default function QuizSessionPage({
     );
   }
 
-  // ---------- Quiz Mode ----------
+  // Quiz Mode: no questions
   if (!currentQ || totalQ === 0) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
@@ -426,11 +442,11 @@ export default function QuizSessionPage({
           </div>
         </div>
 
-        {!submitted ? (
+        {!submitted && (
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 shadow-sm">
             <div className="flex items-center gap-2">
               <span className="rounded-lg bg-primary px-2.5 py-1 font-headline text-sm font-extrabold text-white">
-                Câu {currentIndex + 1} / {totalQ}
+                Q{currentIndex + 1} / {totalQ}
               </span>
               <span className="hidden text-sm text-on-surface-variant sm:inline">
                 Question {currentIndex + 1} of {totalQ}
@@ -452,10 +468,10 @@ export default function QuizSessionPage({
               </div>
             )}
           </div>
-        ) : null}
+        )}
 
         <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-          {/* Left: image (template: 7 cols) */}
+          {/* Left: image panel */}
           <div className="lg:col-span-7">
             <div className="lg:sticky lg:top-28 space-y-6">
               <div className="group relative w-full min-h-[52vh] overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:min-h-[58vh] lg:min-h-[60vh]">
@@ -486,7 +502,7 @@ export default function QuizSessionPage({
                     </div>
                   )}
 
-                  {currentQ.imageUrl ? (
+                  {currentQ.imageUrl && (
                     <>
                       <svg
                         className="pointer-events-none absolute inset-0 h-full w-full"
@@ -510,7 +526,7 @@ export default function QuizSessionPage({
                         </div>
                       </div>
                     </>
-                  ) : null}
+                  )}
                 </div>
 
                 <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
@@ -558,28 +574,28 @@ export default function QuizSessionPage({
                     className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
                     title="Reset zoom"
                   >
-                    {ZOOM_LEVELS[zoomIndex]}×
+                    {ZOOM_LEVELS[zoomIndex]}x
                   </button>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {currentQ.caseId ? (
+                {currentQ.caseId && (
                   <span className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-xs font-semibold text-on-surface-variant">
                     <span className="font-bold text-on-surface">ID:</span> {currentQ.caseId.slice(0, 8)}
                   </span>
-                ) : null}
-                {currentQ.caseTitle ? (
+                )}
+                {currentQ.caseTitle && (
                   <span className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-xs font-semibold text-on-surface-variant">
                     <BookOpen className="h-4 w-4 shrink-0" />
                     {currentQ.caseTitle}
                   </span>
-                ) : null}
-                {currentQ.type ? (
+                )}
+                {currentQ.type && (
                   <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
                     {currentQ.type}
                   </span>
-                ) : null}
+                )}
               </div>
 
               <div>
@@ -608,12 +624,12 @@ export default function QuizSessionPage({
             </div>
           </div>
 
-          {/* Right: question + answers (template: 5 cols) */}
+          {/* Right: question + answers */}
           <div className="flex flex-col gap-8 lg:col-span-5">
             <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-6 sm:p-8">
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-lg bg-primary px-2.5 py-1 font-headline text-xs font-extrabold text-white sm:text-sm">
-                  Câu {currentIndex + 1} / {totalQ}
+                  Q{currentIndex + 1} / {totalQ}
                 </span>
                 <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
                   {questionTag}
@@ -666,26 +682,24 @@ export default function QuizSessionPage({
                     >
                       {key}
                     </span>
-                    <span
-                      className={`flex-1 font-semibold text-on-surface ${isSelected && state === 'unanswered' ? 'font-bold' : ''}`}
-                    >
+                    <span className="flex-1 font-semibold text-on-surface">
                       {text}
                     </span>
-                    {state === 'unanswered' && isSelected ? (
+                    {state === 'unanswered' && isSelected && (
                       <CheckCircle2 className="ml-2 h-6 w-6 shrink-0 text-primary" />
-                    ) : null}
-                    {state !== 'unanswered' && isCorrect ? (
+                    )}
+                    {state !== 'unanswered' && isCorrect && (
                       <CheckCircle2 className="ml-2 h-6 w-6 shrink-0 text-success" />
-                    ) : null}
-                    {state === 'incorrect' && isSelected && !isCorrect ? (
+                    )}
+                    {state === 'incorrect' && isSelected && !isCorrect && (
                       <XCircle className="ml-2 h-6 w-6 shrink-0 text-destructive" />
-                    ) : null}
+                    )}
                   </button>
                 );
               })}
             </div>
 
-            {!submitted ? (
+            {!submitted && (
               <div className="flex flex-col gap-4">
                 <button
                   type="button"
@@ -733,9 +747,9 @@ export default function QuizSessionPage({
                   )}
                 </button>
               </div>
-            ) : null}
+            )}
 
-            {showFeedback ? (
+            {showFeedback && (
               <div
                 className={`rounded-2xl border p-6 sm:p-8 ${
                   currentState === 'correct'
@@ -760,10 +774,10 @@ export default function QuizSessionPage({
                     </>
                   )}
                 </div>
-                {currentQ.explanation ? (
+                {currentQ.explanation && (
                   <p className="text-sm leading-relaxed text-on-surface-variant">{currentQ.explanation}</p>
-                ) : null}
-                {currentState === 'incorrect' && currentQ.correctAnswer ? (
+                )}
+                {currentState === 'incorrect' && currentQ.correctAnswer && (
                   <p className="mt-3 text-sm font-semibold text-on-surface">
                     Correct answer:{' '}
                     <span className="text-success">
@@ -771,7 +785,7 @@ export default function QuizSessionPage({
                       {String(currentQ[`option${currentQ.correctAnswer}` as keyof QuizModeQuestion] ?? '')}
                     </span>
                   </p>
-                ) : null}
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -789,9 +803,9 @@ export default function QuizSessionPage({
                   )}
                 </button>
               </div>
-            ) : null}
+            )}
 
-            {submitted && quizResult ? (
+            {submitted && quizResult && (
               <div className="space-y-6 rounded-2xl border border-primary/25 bg-primary/5 p-8">
                 <div>
                   <p className="text-center font-headline text-lg font-bold text-on-surface">Quiz submitted</p>
@@ -828,13 +842,13 @@ export default function QuizSessionPage({
                   </Link>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
-        {/* ── Review: hiển thị đáp án đúng & đáp án đã chọn ── */}
+        {/* Review answers */}
         {submitted && quizReview && quizReview.questions.length > 0 && (
-          <section className="mt-10 border-t border-outline-variant/10 pt-10">
+          <div>
             <div className="mb-6 flex items-center gap-3">
               <span className="h-1 w-6 rounded-full bg-primary" />
               <h4 className="font-headline text-base font-bold text-on-surface">
@@ -844,12 +858,11 @@ export default function QuizSessionPage({
                 {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
               </span>
             </div>
-
-                <div className="space-y-3">
-                  {quizReview.questions.map((q, i) => {
-                    const studentChoice = q.studentAnswer?.toUpperCase();
-                    const correctChoice = q.correctAnswer?.toUpperCase();
-                    const isCorrect = q.isCorrect;
+            <div className="space-y-3">
+              {quizReview.questions.map((q, i) => {
+                const studentChoice = q.studentAnswer?.toUpperCase();
+                const correctChoice = q.correctAnswer?.toUpperCase();
+                const isCorrect = q.isCorrect;
 
                 return (
                   <div
@@ -860,7 +873,6 @@ export default function QuizSessionPage({
                         : 'border-destructive/40 bg-destructive/5 dark:border-destructive/30 dark:bg-destructive/10'
                     }`}
                   >
-                    {/* Header row */}
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span
@@ -871,35 +883,32 @@ export default function QuizSessionPage({
                           {i + 1}
                         </span>
                         <p className="font-semibold text-on-surface-variant">
-                          {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                          {isCorrect ? 'Correct' : 'Incorrect'}
                         </p>
                       </div>
-                      {q.imageUrl ? (
+                      {q.imageUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={resolveApiAssetUrl(q.imageUrl)}
                           alt="case"
                           className="h-14 w-14 rounded-xl border border-outline-variant/20 object-cover"
                         />
-                      ) : null}
+                      )}
                     </div>
 
-                    {/* Câu hỏi */}
                     <p className="mb-4 text-sm font-semibold text-on-surface leading-snug">
                       {q.questionText}
                     </p>
 
-                    {/* Các đáp án A–D */}
                     <div className="space-y-2">
                       {(['A', 'B', 'C', 'D'] as const).map((key) => {
                         const text = q[`option${key}` as keyof typeof q];
                         if (!text) return null;
                         const isStudent = studentChoice === key;
                         const isCorrectKey = correctChoice === key;
-                        const isCorrectAnswer = isCorrectKey;
 
                         let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
-                        if (isCorrectAnswer) {
+                        if (isCorrectKey) {
                           cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800 dark:border-emerald-500/50 dark:bg-emerald-950/40 dark:text-emerald-100';
                         } else if (isStudent && !isCorrect) {
                           cls = 'border-destructive/50 bg-destructive/10 text-destructive';
@@ -912,7 +921,7 @@ export default function QuizSessionPage({
                           >
                             <span
                               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                                isCorrectAnswer
+                                isCorrectKey
                                   ? 'bg-emerald-500 text-white'
                                   : isStudent
                                     ? 'bg-destructive text-white'
@@ -922,15 +931,9 @@ export default function QuizSessionPage({
                               {key}
                             </span>
                             <span className="flex-1">{text}</span>
-                            {isCorrectAnswer && (
-                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
-                            )}
-                            {isStudent && !isCorrectAnswer && (
-                              <XCircle className="h-5 w-5 shrink-0 text-destructive" />
-                            )}
-                            {isStudent && isCorrectAnswer && (
-                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
-                            )}
+                            {isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                            {isStudent && !isCorrectKey && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
+                            {isStudent && isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
                           </div>
                         );
                       })}
@@ -939,11 +942,12 @@ export default function QuizSessionPage({
                 );
               })}
             </div>
-          </section>
+          </div>
         )}
 
+        {/* Question navigation */}
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
-            <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
+          <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
             <span className="h-1 w-6 rounded-full bg-primary" />
             Question navigation
           </h4>
@@ -957,10 +961,16 @@ export default function QuizSessionPage({
                 cls = reviewQ.isCorrect
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
                   : 'border-destructive/40 bg-destructive/10 text-destructive';
-              } else if (state === 'correct') cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
-              else if (state === 'incorrect') cls = 'border-destructive/40 bg-destructive/10 text-destructive';
-              else if (answers[q.questionId]) cls = 'border-primary/40 bg-primary/10 text-primary';
-              if (isCurrent) cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+              } else if (state === 'correct') {
+                cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
+              } else if (state === 'incorrect') {
+                cls = 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (answers[q.questionId]) {
+                cls = 'border-primary/40 bg-primary/10 text-primary';
+              }
+              if (isCurrent) {
+                cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+              }
               return (
                 <button
                   key={q.questionId}

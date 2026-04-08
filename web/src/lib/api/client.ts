@@ -65,6 +65,24 @@ http.interceptors.response.use(
   },
 );
 
+/** Lấy dòng thông báo ngắn từ chuỗi lỗi dài (HTML/stack trace từ dev middleware hoặc axios). */
+function shortenExceptionMessage(raw: string): string {
+  const s = raw.trim();
+  if (!s) return raw;
+  // JSON string từ axios: "Error: System.InvalidOperationException: ..."
+  const afterColon = s.match(
+    /(?:System\.)?(?:InvalidOperation|KeyNotFound|UnauthorizedAccess)Exception:\s*([^\r\n]+)/i,
+  );
+  if (afterColon?.[1]) return afterColon[1].trim();
+  // Cắt trước "   at BoneVisQA" hoặc dòng "at ..."
+  const atMatch = s.search(/\r?\n\s*at\s+[A-Za-z]/);
+  if (atMatch > 0) return s.slice(0, atMatch).replace(/^Error:\s*/i, '').trim();
+  const headMatch = s.match(/:\s*([^\r\n]{1,500})/);
+  if (headMatch?.[1] && headMatch[1].length < s.length * 0.9) return headMatch[1].trim();
+  if (s.length > 400) return `${s.slice(0, 380).trim()}…`;
+  return s;
+}
+
 export function getApiErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     if (!err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error')) {
@@ -72,7 +90,7 @@ export function getApiErrorMessage(err: unknown): string {
       return `Cannot reach the API at ${base}. Start the backend and ensure NEXT_PUBLIC_API_URL matches its URL and port.`;
     }
     const data = err.response?.data as unknown;
-    if (typeof data === 'string' && data.trim()) return data;
+    if (typeof data === 'string' && data.trim()) return shortenExceptionMessage(data);
     if (data && typeof data === 'object') {
       const o = data as Record<string, unknown>;
       // ASP.NET Core validation: { title, errors: { "field": ["msg"] } }
@@ -93,11 +111,11 @@ export function getApiErrorMessage(err: unknown): string {
         }
       }
       const msg = o.message ?? o.title ?? o.detail ?? o.error;
-      if (typeof msg === 'string') return msg;
+      if (typeof msg === 'string') return shortenExceptionMessage(msg);
       if (Array.isArray(o.errors) && o.errors[0]) return String(o.errors[0]);
     }
-    if (err.message) return err.message;
+    if (err.message) return shortenExceptionMessage(err.message);
   }
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) return shortenExceptionMessage(err.message);
   return 'Request failed';
 }
