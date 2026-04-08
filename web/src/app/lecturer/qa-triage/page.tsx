@@ -19,6 +19,18 @@ function scoreLabel(score: number | null | undefined) {
   return { label: 'Low confidence', tone: 'bg-red-100 text-red-700' };
 }
 
+/** POST /api/lecturer/triage/{answerId}/escalate expects the answer row GUID, not the question id. */
+function resolveEscalationAnswerId(item: LectStudentQuestionDto): string | null {
+  const aid = item.answerId?.trim();
+  return aid && aid.length > 0 ? aid : null;
+}
+
+function confidencePercent(score: number | null | undefined): number | null {
+  if (score == null || Number.isNaN(score)) return null;
+  const pct = score <= 1 ? score * 100 : score;
+  return Math.round(Math.min(100, Math.max(0, pct)));
+}
+
 export default function QATriagePage() {
   const toast = useToast();
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -68,19 +80,36 @@ export default function QATriagePage() {
     void loadQuestions(selectedClassId);
   }, [selectedClassId, loadQuestions]);
 
-  const handleEscalate = async (answerId: string, questionId: string) => {
-    setEscalatingId(questionId);
+  const handleEscalate = async (item: LectStudentQuestionDto) => {
+    const routeAnswerId = resolveEscalationAnswerId(item);
+    if (!routeAnswerId) {
+      console.warn('[triage] escalate blocked: missing answerId', {
+        questionId: item.id,
+        answerId: item.answerId,
+      });
+      toast.error(
+        'Cannot escalate: missing answer id from server. Refresh the page or contact support if this persists.',
+      );
+      return;
+    }
+
+    console.log('[triage] escalate POST /api/lecturer/triage/{answerId}/escalate', {
+      answerId: routeAnswerId,
+      questionId: item.id,
+    });
+
+    setEscalatingId(item.id);
     try {
-      await escalateToExpert(answerId);
+      await escalateToExpert(routeAnswerId);
       setQuestions((prev) =>
-        prev.map((item) => (item.id === questionId ? { ...item, escalatedById: 'lecturer' } : item)),
+        prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'lecturer' } : q)),
       );
       toast.success('Escalated to clinical expert workbench.');
     } catch (error) {
       if (error instanceof Error && error.message === TRIAGE_ALREADY_ESCALATED) {
         toast.info('This case has already been escalated.');
         setQuestions((prev) =>
-          prev.map((item) => (item.id === questionId ? { ...item, escalatedById: 'prior' } : item)),
+          prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'prior' } : q)),
         );
       } else {
         toast.error(error instanceof Error ? error.message : 'Escalation failed.');
@@ -146,7 +175,10 @@ export default function QATriagePage() {
             <h2 className="text-sm font-semibold text-slate-900">Incoming Requests ({questions.length})</h2>
             <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
               {questions.map((question) => {
-                const isSelected = selectedQuestion?.id === question.id;
+                const isSelected =
+                  selectedQuestionId != null
+                    ? selectedQuestionId === question.id
+                    : selectedQuestion?.id === question.id;
                 const score = scoreLabel(question.aiConfidenceScore);
                 return (
                   <button
@@ -155,7 +187,7 @@ export default function QATriagePage() {
                     onClick={() => setSelectedQuestionId(question.id)}
                     className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                       isSelected
-                        ? 'border-blue-300 bg-blue-50/70'
+                        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-offset-2 ring-offset-background'
                         : 'border-border bg-background hover:bg-slate-50/80'
                     }`}
                   >
@@ -196,10 +228,47 @@ export default function QATriagePage() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Selected request</p>
                     <h3 className="mt-1 text-lg font-semibold text-slate-900">{selectedQuestion.studentName}</h3>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                    {selectedQuestion.escalatedById ? 'Already escalated' : 'Pending decision'}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(() => {
+                      const pct = confidencePercent(selectedQuestion.aiConfidenceScore);
+                      const badge = scoreLabel(selectedQuestion.aiConfidenceScore);
+                      return pct != null ? (
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${badge.tone}`}
+                        >
+                          AI confidence: {pct}%
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                          AI confidence: —
+                        </span>
+                      );
+                    })()}
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      {selectedQuestion.escalatedById ? 'Already escalated' : 'Pending decision'}
+                    </span>
+                  </div>
                 </div>
+
+                {confidencePercent(selectedQuestion.aiConfidenceScore) != null ? (
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600">
+                      <span>Model confidence</span>
+                      <span>{confidencePercent(selectedQuestion.aiConfidenceScore)}%</span>
+                    </div>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-[width]"
+                        style={{
+                          width: `${confidencePercent(selectedQuestion.aiConfidenceScore)}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Lower scores often warrant expert review before students rely on the answer.
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="space-y-4">
                   <article className="rounded-lg border border-border bg-background p-4">
@@ -234,15 +303,15 @@ export default function QATriagePage() {
                   </p>
                   <Button
                     type="button"
-                    disabled={Boolean(selectedQuestion.escalatedById) || escalatingId === selectedQuestion.id}
-                    isLoading={escalatingId === selectedQuestion.id}
-                    className="bg-red-50 text-red-600 hover:bg-red-100"
-                    onClick={() =>
-                      void handleEscalate(
-                        selectedQuestion.answerId ?? selectedQuestion.id,
-                        selectedQuestion.id,
-                      )
+                    disabled={
+                      Boolean(selectedQuestion.escalatedById) ||
+                      escalatingId === selectedQuestion.id ||
+                      !resolveEscalationAnswerId(selectedQuestion)
                     }
+                    isLoading={escalatingId === selectedQuestion.id}
+                    variant="primary"
+                    className="!border-red-700 !bg-red-600 font-bold !text-white shadow-md hover:!bg-red-700 focus-visible:!ring-red-500"
+                    onClick={() => void handleEscalate(selectedQuestion)}
                   >
                     <Send className="h-4 w-4" />
                     {selectedQuestion.escalatedById ? 'Escalated' : 'Escalate to Expert'}

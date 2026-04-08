@@ -174,6 +174,54 @@ export async function getClassStats(classId: string): Promise<ClassStats> {
 }
 
 /**
+ * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
+ * `answerId` is populated when the backend sends PascalCase or alternate keys.
+ * Escalation uses POST /api/lecturer/triage/{answerId}/escalate — the route id must be the answer GUID, not the question id.
+ */
+function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const questionId = String(
+    r.questionId ?? r.QuestionId ?? r.id ?? r.Id ?? '',
+  ).trim();
+  if (!questionId) return null;
+
+  const answerIdRaw = r.answerId ?? r.AnswerId ?? r.answer_id;
+  const answerId =
+    answerIdRaw != null && String(answerIdRaw).trim() !== ''
+      ? String(answerIdRaw).trim()
+      : null;
+
+  const scoreRaw = r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? r.SimilarityScore;
+  let aiConfidenceScore: number | null = null;
+  if (typeof scoreRaw === 'number' && !Number.isNaN(scoreRaw)) {
+    aiConfidenceScore = scoreRaw > 1 ? Math.min(1, scoreRaw / 100) : scoreRaw;
+  } else if (typeof scoreRaw === 'string' && scoreRaw.trim() !== '') {
+    const n = parseFloat(scoreRaw);
+    if (!Number.isNaN(n)) aiConfidenceScore = n > 1 ? Math.min(1, n / 100) : n;
+  }
+
+  return {
+    id: questionId,
+    answerId,
+    studentId: String(r.studentId ?? r.StudentId ?? ''),
+    studentName: String(r.studentName ?? r.StudentName ?? ''),
+    studentEmail: String(r.studentEmail ?? r.StudentEmail ?? ''),
+    caseId: String(r.caseId ?? r.CaseId ?? ''),
+    caseTitle: String(r.caseTitle ?? r.CaseTitle ?? ''),
+    questionText: String(r.questionText ?? r.QuestionText ?? ''),
+    language: r.language == null && r.Language == null ? null : String(r.language ?? r.Language ?? ''),
+    createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
+    answerText: (r.answerText ?? r.AnswerText ?? null) as string | null,
+    answerStatus: (r.answerStatus ?? r.AnswerStatus ?? null) as string | null,
+    escalatedById: (r.escalatedById ?? r.EscalatedById ?? null) as string | null,
+    escalatedAt: (r.escalatedAt ?? r.EscalatedAt ?? null) as string | null,
+    aiConfidenceScore,
+  };
+}
+
+/**
  * Get student questions for a class
  */
 export async function getStudentQuestions(
@@ -181,7 +229,7 @@ export async function getStudentQuestions(
   options?: { caseId?: string; studentId?: string },
 ): Promise<LectStudentQuestionDto[]> {
   try {
-    const { data } = await http.get<LectStudentQuestionDto[]>(
+    const { data } = await http.get<unknown[]>(
       `/api/lecturer/classes/${classId}/questions`,
       {
         params: {
@@ -190,7 +238,10 @@ export async function getStudentQuestions(
         },
       },
     );
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeLectStudentQuestionDto)
+      .filter((row): row is LectStudentQuestionDto => row !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
