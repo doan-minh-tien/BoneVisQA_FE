@@ -11,6 +11,8 @@ export interface AuthUser {
   activeRole: BackendRole | null;
   roles: BackendRole[];
   status: string | null;
+  /** Profile image URL (synced with /profile and localStorage after upload). */
+  avatarUrl: string | null;
 }
 
 function normalizeRole(raw: string | null | undefined): BackendRole | null {
@@ -34,6 +36,7 @@ export function useAuth() {
       const email = localStorage.getItem('email');
       const activeRole = normalizeRole(localStorage.getItem('activeRole'));
       const status = localStorage.getItem('userStatus');
+      const avatarUrl = localStorage.getItem('avatarUrl');
 
       let roles: BackendRole[] = [];
       try {
@@ -49,6 +52,7 @@ export function useAuth() {
         activeRole,
         roles,
         status,
+        avatarUrl: avatarUrl?.trim() || null,
       };
 
       if (!cancelled) {
@@ -65,6 +69,7 @@ export function useAuth() {
           roles?: string[] | null;
           status?: string | null;
           userStatus?: string | null;
+          avatarUrl?: string | null;
         }>('/api/users/me')
         .then((response) => {
           if (cancelled) return;
@@ -77,6 +82,14 @@ export function useAuth() {
                 .filter((role): role is BackendRole => role !== null)
             : localUser.roles;
 
+          const nextAvatar =
+            payload.avatarUrl != null && String(payload.avatarUrl).trim()
+              ? String(payload.avatarUrl).trim()
+              : localUser.avatarUrl;
+          if (nextAvatar && typeof window !== 'undefined') {
+            localStorage.setItem('avatarUrl', nextAvatar);
+          }
+
           setUser({
             fullName: payload.fullName ?? localUser.fullName,
             email: payload.email ?? localUser.email,
@@ -84,6 +97,7 @@ export function useAuth() {
             roles: normalizedRoles,
             status:
               payload.status ?? payload.userStatus ?? localUser.status,
+            avatarUrl: nextAvatar,
           });
         })
         .catch(() => {
@@ -93,9 +107,11 @@ export function useAuth() {
 
     readAuth();
     window.addEventListener('storage', readAuth);
+    window.addEventListener('bonevis:auth-refresh', readAuth);
     return () => {
       cancelled = true;
       window.removeEventListener('storage', readAuth);
+      window.removeEventListener('bonevis:auth-refresh', readAuth);
     };
   }, []);
 

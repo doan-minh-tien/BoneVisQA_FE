@@ -5,7 +5,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import Header from '@/components/Header';
 import { SectionCard } from '@/components/shared/SectionCard';
-import { StudentDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
+import { SkeletonBlock, StudentDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
 import ProgressRing from '@/components/student/ProgressRing';
 import QuickActionCard from '@/components/student/QuickActionCard';
 import { StudentDashboardFab } from '@/components/student/StudentAppChrome';
@@ -14,6 +14,7 @@ import {
   fetchStudentRecentActivity,
   fetchStudentTopicStats,
 } from '@/lib/api/student';
+import { resolveStudentRecentActivityHref } from '@/lib/student/recent-activity-href';
 import type {
   StudentProgress,
   StudentRecentActivityItem,
@@ -442,9 +443,25 @@ export default function StudentDashboardPage() {
                   description="Latest study, quiz, and expert-review events (chronological)."
                 >
                   {activityLoading ? (
-                    <div className="space-y-3">
-                      <div className="h-24 animate-pulse rounded-xl bg-muted/60" />
-                      <div className="h-24 animate-pulse rounded-xl bg-muted/60" />
+                    <div className="space-y-4" aria-busy="true" aria-label="Loading recent activity">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="rounded-xl border border-border bg-card p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <SkeletonBlock className="h-4 w-48 max-w-full" />
+                              <SkeletonBlock className="h-3 w-full max-w-md" />
+                            </div>
+                            <SkeletonBlock className="h-3 w-16 shrink-0" />
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <SkeletonBlock className="h-5 w-20 rounded-full" />
+                            <SkeletonBlock className="h-5 w-28 rounded-full" />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : activityError ? (
                     <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
@@ -458,13 +475,7 @@ export default function StudentDashboardPage() {
                     <ol className="space-y-4">
                       {recentActivity.map((activity, actIdx) => {
                         const normalizedStatus = activity.status?.toLowerCase();
-                        const normalizedType = activity.type?.trim().toLowerCase() ?? '';
-                        const activityHref =
-                          normalizedType === 'quiz_completed' || normalizedType.includes('quiz')
-                            ? '/student/quiz'
-                            : normalizedType === 'question_asked' || normalizedType.includes('question')
-                              ? '/student/history'
-                              : '/student/history';
+                        const activityHref = resolveStudentRecentActivityHref(activity);
                         const statusBadge =
                           normalizedStatus === 'approved' || normalizedStatus === 'revised'
                             ? {

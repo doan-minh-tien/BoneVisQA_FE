@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { TriageWorkbenchSkeleton } from '@/components/shared/DashboardSkeletons';
 import {
   AlertCircle,
   CheckCircle2,
   Clock3,
   Edit3,
-  Loader2,
   Send,
   Sparkles,
   User,
@@ -227,9 +227,7 @@ export default function QATriagePage() {
         </div>
 
         {loading ? (
-          <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-border bg-card">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
+          <TriageWorkbenchSkeleton />
         ) : loadError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-6">
             <div className="flex items-center gap-2 text-sm font-medium text-red-700">

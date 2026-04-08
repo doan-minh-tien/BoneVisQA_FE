@@ -51,6 +51,7 @@ export function AppShell({
   const router = useRouter();
   const pathname = usePathname();
   const [{ token, isPendingOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -71,15 +72,18 @@ export function AppShell({
     return <SessionGateSkeleton />;
   }
 
-  // Sidebar cố định 260px — dùng padding-left inline để luôn lệch phải, tránh chồng chữ lên sidebar (Tailwind ml-[260px] đôi khi không áp dụng).
-  const sidebarPx = 260;
+  const sidebarPx = sidebarCollapsed ? 72 : 260;
   const gutterPx = 24;
 
   return (
     <div className="min-h-screen bg-background text-text-main">
-      <AppSidebar role={role} />
+      <AppSidebar
+        role={role}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+      />
       <div
-        className="min-h-screen min-w-0 bg-background py-6 pr-6"
+        className="min-h-screen min-w-0 bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
         style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
       >
         <main className="min-h-screen min-w-0">{children}</main>

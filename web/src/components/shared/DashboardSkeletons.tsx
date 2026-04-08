@@ -249,6 +249,155 @@ export function LecturerLeaderboardSkeleton() {
   );
 }
 
+/** Student history: tab bar + search + card grid. */
+export function StudentHistoryPageSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 md:p-5">
+          <div className="flex flex-wrap gap-2">
+            <Sk className="h-9 w-36 rounded-full" />
+            <Sk className="h-9 w-40 rounded-full" />
+          </div>
+          <Sk className="h-12 w-full max-w-md rounded-xl" />
+          <div className="flex flex-wrap gap-2 pt-1">
+            {[0, 1, 2, 3].map((i) => (
+              <Sk key={i} className="h-8 w-24 rounded-full" />
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 md:gap-5">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
+              <Sk className="h-48 w-full rounded-none" />
+              <div className="space-y-3 p-4">
+                <Sk className="h-5 w-4/5 max-w-full" />
+                <Sk className="h-4 w-full" />
+                <Sk className="h-4 w-2/3" />
+                <Sk className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Case catalog filter row + card grid. */
+export function StudentCatalogSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <Sk className="mb-4 h-4 w-40" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Sk className="h-10 w-full rounded-xl" />
+            <Sk className="h-10 w-full rounded-xl" />
+            <Sk className="h-10 w-full rounded-xl" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <Sk className="aspect-[4/3] w-full rounded-none" />
+              <div className="space-y-2 p-4">
+                <Sk className="h-5 w-[92%] max-w-full" />
+                <Sk className="h-3 w-full" />
+                <Sk className="h-3 w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Student case detail hero + body. */
+export function StudentCaseDetailSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Sk className="aspect-[4/3] w-full rounded-xl lg:min-h-[320px]" />
+          <div className="space-y-4">
+            <Sk className="h-8 w-3/4 max-w-md" />
+            <Sk className="h-4 w-full" />
+            <Sk className="h-4 w-full" />
+            <Sk className="h-4 w-5/6" />
+            <div className="flex gap-2 pt-2">
+              <Sk className="h-10 w-32 rounded-lg" />
+              <Sk className="h-10 w-36 rounded-lg" />
+            </div>
+          </div>
+        </div>
+        <Sk className="h-40 w-full rounded-xl" />
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Lecturer QA triage: class select + two-column workbench. */
+export function TriageWorkbenchSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-6" aria-hidden>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <Sk className="h-4 w-full max-w-xl" />
+          <Sk className="h-10 w-full max-w-sm rounded-lg" />
+        </div>
+        <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+          <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <Sk className="h-5 w-48" />
+            <div className="max-h-[70vh] space-y-3">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="rounded-lg border border-border bg-muted/20 p-4">
+                  <Sk className="h-4 w-3/4" />
+                  <Sk className="mt-2 h-3 w-1/2" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="min-h-[320px] rounded-xl border border-border bg-card p-6">
+            <Sk className="mb-4 h-6 w-56" />
+            <Sk className="h-4 w-full" />
+            <Sk className="mt-2 h-4 w-full" />
+            <Sk className="mt-4 h-32 w-full rounded-lg" />
+            <div className="mt-6 flex gap-2">
+              <Sk className="h-10 w-28 rounded-lg" />
+              <Sk className="h-10 w-28 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
+/** Expert review queue accordion list. */
+export function ExpertReviewQueueSkeleton() {
+  return (
+    <PageLoadingSkeleton>
+      <div className="space-y-4" aria-hidden>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="flex items-start gap-3 px-5 py-5">
+              <Sk className="h-14 w-14 shrink-0 rounded-lg" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Sk className="h-5 w-2/3 max-w-md" />
+                <Sk className="h-4 w-full" />
+                <Sk className="h-4 w-4/5" />
+              </div>
+              <Sk className="h-8 w-8 shrink-0 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </PageLoadingSkeleton>
+  );
+}
+
 export function AdminDashboardSkeleton() {
   return (
     <PageLoadingSkeleton>

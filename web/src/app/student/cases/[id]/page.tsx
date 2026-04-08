@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { StudentCaseDetailSkeleton } from '@/components/shared/DashboardSkeletons';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { fetchCaseCatalogDetail } from '@/lib/api/student';
 import type { StudentCaseCatalogDetail } from '@/lib/api/types';
-import { AlertCircle, BookOpen, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, BookOpen, ChevronRight } from 'lucide-react';
 
 export default function StudentCaseDetailPage() {
   const toast = useToast();
@@ -69,9 +70,7 @@ export default function StudentCaseDetailPage() {
       />
       <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 sm:px-6">
         {loading ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-border bg-card">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
+          <StudentCaseDetailSkeleton />
         ) : notFoundCase ? (
           <EmptyState
             icon={<AlertCircle className="h-6 w-6 text-amber-600" />}

@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   BookOpen,
-  BotMessageSquare,
   CheckSquare,
   Database,
   LayoutDashboard,
@@ -24,6 +24,8 @@ import {
   BarChart3,
   Megaphone,
   Settings,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -67,9 +69,8 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
-    { label: 'AI Q&A', href: '/student/qa', icon: BotMessageSquare },
     { label: 'Classes', href: '/student/classes', icon: Users },
-    { label: 'Profile', href: '/student/profile', icon: UserCircle },
+    { label: 'Profile', href: '/profile', icon: UserCircle },
   ],
 };
 
@@ -80,7 +81,6 @@ const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel
   student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
 
-/** Unified profile route; JWT determines visible fields. */
 function profileHrefForRole(_role: RoleKey): string {
   return '/profile';
 }
@@ -93,7 +93,15 @@ function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey 
   return null;
 }
 
-export function AppSidebar({ role }: { role?: RoleKey }) {
+export function AppSidebar({
+  role,
+  collapsed,
+  onToggleCollapsed,
+}: {
+  role?: RoleKey;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
   const pathname = usePathname();
   const logout = useLogout();
   const { user } = useAuth();
@@ -103,30 +111,57 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
 
   const profileName = user?.fullName?.trim() || user?.email?.trim() || 'Authenticated User';
   const profileRole = user?.activeRole || 'Member';
+  const avatarResolved = user?.avatarUrl?.trim()
+    ? resolveApiAssetUrl(user.avatarUrl.trim())
+    : '';
+
+  const initials =
+    profileName
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || 'BV';
+
+  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-sidebar-bg text-sidebar-text shadow-sm transition-[width] duration-200 ease-out ${
+    collapsed ? 'w-[72px]' : 'w-[260px]'
+  }`;
 
   if (!resolvedRole || !meta) {
     return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50 text-slate-900">
-        <div className="border-b border-slate-200 px-5 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 shadow-sm">
-              <Stethoscope className="h-5 w-5 text-blue-700" />
+      <aside className={shellClass}>
+        <div
+          className={`flex shrink-0 items-center border-b border-white/10 py-2 ${
+            collapsed ? 'flex-col gap-2 px-1' : 'h-14 justify-between px-2'
+          }`}
+        >
+          <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-accent/30 bg-cyan-accent/10">
+              <Stethoscope className="h-5 w-5 text-cyan-accent" />
             </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-wide text-slate-900">
-                BoneVisQA
-              </h1>
-              <p className="truncate text-xs text-slate-500">Radiology Education</p>
-            </div>
+            {!collapsed ? (
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-semibold text-sidebar-text">BoneVisQA</h1>
+                <p className="truncate text-[11px] text-sidebar-text/70">Radiology Education</p>
+              </div>
+            ) : null}
           </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/80 hover:bg-sidebar-hover hover:text-sidebar-text"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
         </div>
-        <div className="flex-1 px-4 py-6 text-sm text-slate-500">
-          No role-based navigation available.
+        <div className="flex-1 px-2 py-4 text-center text-xs text-sidebar-text/70">
+          {!collapsed ? 'No role-based navigation available.' : '—'}
         </div>
-        <div className="border-t border-slate-200 px-4 py-4">
-          <Button onClick={logout} variant="outline" className="w-full justify-center">
+        <div className="border-t border-white/10 p-2">
+          <Button onClick={logout} variant="outline" className="w-full justify-center border-white/20 bg-transparent text-sidebar-text hover:bg-sidebar-hover">
             <LogOut className="h-4 w-4" />
-            Logout
+            {!collapsed ? <span className="ml-2">Logout</span> : null}
           </Button>
         </div>
       </aside>
@@ -134,23 +169,35 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
   }
 
   return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50 text-slate-900 shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 shadow-sm">
-            <Stethoscope className="h-5 w-5 text-blue-700" />
+    <aside className={shellClass}>
+      <div
+        className={`flex shrink-0 items-center border-b border-white/10 py-2 ${
+          collapsed ? 'flex-col gap-2 px-1' : 'h-[4.5rem] justify-between gap-1 px-2'
+        }`}
+      >
+        <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-cyan-accent/30 bg-cyan-accent/10">
+            <Stethoscope className="h-5 w-5 text-cyan-accent" />
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold tracking-wide text-slate-900">
-              BoneVisQA
-            </h1>
-            <p className="truncate text-xs text-slate-500">{meta.label}</p>
-          </div>
+          {!collapsed ? (
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-semibold tracking-wide text-sidebar-text">BoneVisQA</h1>
+              <p className="truncate text-[11px] text-sidebar-text/70">{meta.label}</p>
+            </div>
+          ) : null}
         </div>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/80 hover:bg-sidebar-hover"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="space-y-1.5">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+        <ul className="space-y-1">
           {items.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -161,14 +208,17 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center rounded-lg text-sm font-medium transition-colors duration-150 ${
+                    collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                  } ${
                     isActive
-                      ? 'bg-slate-100 text-blue-700'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-sidebar-active text-sidebar-text'
+                      : 'text-sidebar-text/85 hover:bg-sidebar-hover hover:text-sidebar-text'
                   }`}
                 >
-                  <Icon className="h-5 w-5" />
-                  <span>{item.label}</span>
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!collapsed ? <span className="truncate">{item.label}</span> : null}
                 </Link>
               </li>
             );
@@ -176,37 +226,53 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
         </ul>
       </nav>
 
-      <div className="border-t border-slate-200 px-4 py-4">
-        <Link href={meta.actionHref} className="block">
-          <Button
-            className="w-full justify-center"
-          >
-            <Plus className="h-4 w-4" />
-            {meta.actionLabel}
+      <div className="border-t border-white/10 p-2">
+        <Link href={meta.actionHref} className="block" title={collapsed ? meta.actionLabel : undefined}>
+          <Button className={`w-full justify-center ${collapsed ? 'px-2' : ''}`}>
+            <Plus className="h-4 w-4 shrink-0" />
+            {!collapsed ? <span className="ml-2">{meta.actionLabel}</span> : null}
           </Button>
         </Link>
         <Link
           href={profileHrefForRole(resolvedRole)}
-          className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:bg-slate-50"
+          className={`mt-2 flex items-center rounded-lg border border-white/10 bg-sidebar-hover/30 hover:bg-sidebar-hover ${
+            collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2.5'
+          }`}
           title="Account & profile"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-            {profileName
-              .split(' ')
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((part) => part[0]?.toUpperCase())
-              .join('') || 'BV'}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
-            <p className="truncate text-xs text-slate-500">{profileRole}</p>
-          </div>
-          <UserCog className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+          {avatarResolved ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarResolved}
+              alt=""
+              className={`shrink-0 rounded-full border border-white/20 object-cover ${collapsed ? 'h-9 w-9' : 'h-10 w-10'}`}
+            />
+          ) : (
+            <div
+              className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white ${
+                collapsed ? 'h-9 w-9' : 'h-10 w-10'
+              }`}
+            >
+              {initials}
+            </div>
+          )}
+          {!collapsed ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-sidebar-text">{profileName}</p>
+                <p className="truncate text-xs text-sidebar-text/70">{profileRole}</p>
+              </div>
+              <UserCog className="h-4 w-4 shrink-0 text-sidebar-text/60" aria-hidden />
+            </>
+          ) : null}
         </Link>
-        <Button onClick={logout} variant="outline" className="mt-3 w-full justify-center">
-          <LogOut className="h-4 w-4" />
-          Logout
+        <Button
+          onClick={logout}
+          variant="outline"
+          className="mt-2 w-full justify-center border-white/20 bg-transparent text-sidebar-text hover:bg-sidebar-hover"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed ? <span className="ml-2">Logout</span> : null}
         </Button>
       </div>
     </aside>

@@ -229,6 +229,10 @@ export interface StudentRecentActivityItem {
   occurredAt: string;
   type: string;
   status?: string;
+  /** Absolute or app-relative navigation target when the API provides one. */
+  targetUrl?: string;
+  caseId?: string;
+  quizId?: string;
 }
 
 export interface StudentQuizQuestion {
@@ -319,6 +323,9 @@ export interface StudentQuizResultDto {
   correctAnswers: number;
 }
 
+/** Distinguishes expert library case work vs student-upload Visual QA in history UI. */
+export type StudentHistoryKind = 'caseStudy' | 'personalQa';
+
 export interface StudentCaseHistoryItem {
   id: string;
   title: string;
@@ -332,6 +339,9 @@ export interface StudentCaseHistoryItem {
   askedAt?: string;
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
+  historyKind: StudentHistoryKind;
+  /** Published catalog case id when this row is tied to the case library (deep link to `/student/cases/[id]`). */
+  catalogCaseId?: string | null;
 }
 
 export interface StudentCaseCatalogItem {

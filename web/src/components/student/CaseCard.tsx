@@ -1,7 +1,7 @@
+import Link from 'next/link';
 import { BookOpen, CheckCircle2, Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
 
 interface CaseCardProps {
-  id: string;
   title: string;
   thumbnail?: string;
   boneLocation: string;
@@ -14,6 +14,8 @@ interface CaseCardProps {
   /** SEPS learning fields when returned by history API */
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
+  /** When set, the whole card links (e.g. catalog case detail). */
+  href?: string;
 }
 
 const difficultyConfig = {
@@ -43,6 +45,7 @@ export default function CaseCard({
   askedAt,
   keyImagingFindings,
   reflectiveQuestions,
+  href,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
   const normalizedStatus = status?.toLowerCase();
@@ -62,7 +65,7 @@ export default function CaseCard({
         : null;
   const ReviewIcon = reviewBadge?.icon;
 
-  return (
+  const article = (
     <article className="group block overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-lg">
       {/* Thumbnail */}
       <div className="relative h-48 bg-muted overflow-hidden">
@@ -147,4 +150,14 @@ export default function CaseCard({
       </div>
     </article>
   );
+
+  if (href?.trim()) {
+    return (
+      <Link href={href.trim()} className="block rounded-xl no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        {article}
+      </Link>
+    );
+  }
+
+  return article;
 }

@@ -23,10 +23,21 @@ export type SearchResultItem = {
 function buildDefaultHref(type: string | undefined): string {
   const key = (type ?? '').toLowerCase();
   if (key.includes('quiz')) return '/student/quiz';
-  if (key.includes('case')) return '/student/history';
-  if (key.includes('question')) return '/student/history';
+  if (key.includes('assignment')) return '/student/assignments';
+  if (key.includes('analytics')) return '/student/analytics';
+  if (key.includes('case')) return '/student/history?tab=cases';
+  if (key.includes('question')) return '/student/history?tab=personal';
   if (key.includes('document')) return '/admin/documents';
   return '/';
+}
+
+/** Backend sometimes returns app paths without the `/student` prefix. */
+function normalizeSearchHref(href: string): string {
+  const t = href.trim();
+  if (!t.startsWith('/')) return t;
+  if (t === '/assignments' || t.startsWith('/assignments?')) return `/student${t}`;
+  if (t === '/analytics' || t.startsWith('/analytics?')) return `/student${t}`;
+  return t;
 }
 
 function mapSearchItem(row: unknown, idx: number): SearchResultItem | null {
@@ -41,7 +52,7 @@ function mapSearchItem(row: unknown, idx: number): SearchResultItem | null {
     title,
     subtitle: r.subtitle != null ? String(r.subtitle) : r.description != null ? String(r.description) : undefined,
     type,
-    href: route || buildDefaultHref(type),
+    href: route ? normalizeSearchHref(route) : buildDefaultHref(type),
   };
 }
 

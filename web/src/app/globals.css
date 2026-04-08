@@ -15,8 +15,9 @@
   --surface: #ffffff;
   /* Sidebar: deep navy-earth — keep in sync with AppSidebar bg-[#0F1F35]; do not swap for MD3 surface tokens */
   --sidebar: #0f1f35;
-  --primary: #00478d;
-  --primary-hover: #003a73;
+  /* Medical blue core (aligned with primary-600 scale) */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
   --cyan-accent: #00e5ff;
   --text-main: #191c1e;
   --text-muted: #424752;
@@ -50,8 +51,8 @@
   --background: #0B1320;
   --surface: #132238;
   --sidebar: #0D192B;
-  --primary: #007BFF;
-  --primary-hover: #0056b3;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
   --cyan-accent: #00E5FF;
   --text-main: #FFFFFF;
   --text-muted: #8BA0B2;
@@ -108,6 +109,18 @@
   --color-sidebar-text: var(--sidebar-text);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
+
+  /* Medical blue scale (Tailwind-style utilities: bg-primary-600, text-primary-900, …) */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
 
   /* MD3 tokens for student shell / dashboards (sidebar excluded) */
   --color-on-surface: #191c1e;

@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, Search } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/lib/useAuth';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchNotifications } from '@/lib/api/notifications';
 import { searchGlobal, type SearchResultItem } from '@/lib/api/users';
 import type { AppNotificationItem, NotificationDto } from '@/lib/api/types';
@@ -61,6 +63,12 @@ export default function Header({ title, subtitle }: HeaderProps) {
       .map((part) => part[0]?.toUpperCase())
       .join('');
   }, [fullName]);
+
+  const avatarSrc = useMemo(() => {
+    const raw = user?.avatarUrl?.trim();
+    if (!raw) return '';
+    return resolveApiAssetUrl(raw);
+  }, [user?.avatarUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,7 +179,13 @@ export default function Header({ title, subtitle }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border-color bg-background/95 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-4 px-6 py-4">
-        <div ref={desktopSearchRef} className="relative hidden w-full max-w-2xl md:block">
+        <Link
+          href="/"
+          className="shrink-0 font-headline text-lg font-bold tracking-tight text-text-main md:hidden"
+        >
+          BoneVisQA
+        </Link>
+        <div ref={desktopSearchRef} className="relative hidden min-w-0 flex-1 md:block md:max-w-2xl">
           <form onSubmit={onSearchSubmit}>
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
@@ -230,7 +244,8 @@ export default function Header({ title, subtitle }: HeaderProps) {
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 md:gap-3">
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => setOpenNotifications((prev) => !prev)}
@@ -277,11 +292,24 @@ export default function Header({ title, subtitle }: HeaderProps) {
               )}
             </div>
           ) : null}
-          <Link href="/profile" className="flex items-center gap-3 rounded-xl border border-border-color bg-surface px-3 py-2 hover:bg-muted/40">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
-              {initials || 'BV'}
-            </div>
-            <div className="min-w-0">
+          <Link
+            href="/profile"
+            className="flex max-w-[200px] items-center gap-3 rounded-xl border border-border-color bg-surface px-3 py-2 hover:bg-muted/40 sm:max-w-none"
+            title="My profile"
+          >
+            {avatarSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarSrc}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-full border border-border object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+                {initials || 'BV'}
+              </div>
+            )}
+            <div className="min-w-0 hidden sm:block">
               <p className="truncate text-sm font-semibold text-text-main">{fullName}</p>
               <p className="truncate text-xs text-text-muted">{roleLabel}</p>
             </div>

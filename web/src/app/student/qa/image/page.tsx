@@ -257,7 +257,7 @@ export default function StudentVisualQaImagePage() {
   }, [draft.imageDataUrl, draft.imageName, file, hydratingDraft, setDraft]);
 
   return (
-    <div className="dark flex min-h-screen flex-col bg-background text-text-main">
+    <div className="flex min-h-screen flex-col bg-background text-text-main">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-color bg-background px-4 md:px-6">
         <div className="flex items-center gap-3">
           <Link

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ExpertReviewQueueSkeleton } from '@/components/shared/DashboardSkeletons';
 import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -26,7 +27,6 @@ import {
   Clock,
   Edit3,
   Flag,
-  Loader2,
   Inbox,
   Link2,
   Save,
@@ -208,13 +208,11 @@ export default function ExpertReviewsPage() {
   const pending = items.filter((i) => !isTerminal(i.status)).length;
 
   return (
-    <div className="dark min-h-screen bg-background text-text-main">
+    <div className="min-h-screen bg-background text-text-main">
       <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
         {loading ? (
-          <div className="flex justify-center py-20 text-text-muted">
-            <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
-          </div>
+          <ExpertReviewQueueSkeleton />
         ) : (
           <div className="space-y-4">
             {items.length === 0 ? (

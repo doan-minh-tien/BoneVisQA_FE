@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
+import { StudentCatalogSkeleton } from '@/components/shared/DashboardSkeletons';
 import { CaseCatalogCard } from '@/components/student/CaseCatalogCard';
 import { fetchCaseCatalog } from '@/lib/api/student';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
-import { Filter, Loader2 } from 'lucide-react';
+import { Filter } from 'lucide-react';
 
 const difficultyOptions = [
   { value: '', label: 'All difficulty levels' },
@@ -142,12 +143,7 @@ export default function StudentCaseCatalogPage() {
         </div>
 
         {loading ? (
-          <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading case catalog...
-            </div>
-          </div>
+          <StudentCatalogSkeleton />
         ) : visibleItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-card-foreground">No cases match your filters/search</h2>

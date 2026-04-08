@@ -6,6 +6,7 @@ import { Camera, Loader2, ShieldCheck } from 'lucide-react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchMyProfile, uploadMyAvatar, type UserProfileDto } from '@/lib/api/users';
 
 function getInitials(name: string) {
@@ -59,6 +60,10 @@ export default function ProfilePage() {
 
   const displayName = profile?.fullName?.trim() || profile?.email?.trim() || 'Authenticated User';
   const avatarSrc = profile?.avatarUrl?.trim() || '';
+  const avatarDisplaySrc = useMemo(() => {
+    if (!avatarSrc) return '';
+    return resolveApiAssetUrl(avatarSrc);
+  }, [avatarSrc]);
 
   const handleAvatarChange = async (file: File | null) => {
     if (!file) return;
@@ -68,6 +73,10 @@ export default function ProfilePage() {
       // cache-bust avatar URL so browser re-renders immediately after upload.
       const bustedUrl = `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
       setProfile((prev) => ({ ...(prev ?? {}), avatarUrl: bustedUrl }));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('avatarUrl', bustedUrl);
+        window.dispatchEvent(new Event('bonevis:auth-refresh'));
+      }
       toast.success('Avatar updated successfully.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to upload avatar.');
@@ -77,36 +86,36 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background text-text-main">
       <Header title="My Profile" subtitle="Manage your account details and avatar." />
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
         {loading ? (
-          <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-slate-200 bg-white">
-            <Loader2 className="h-7 w-7 animate-spin text-blue-600" />
+          <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-border bg-card">
+            <Loader2 className="h-7 w-7 animate-spin text-primary-600" />
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-4">
-                {avatarSrc ? (
+                {avatarDisplaySrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={avatarSrc}
+                    src={avatarDisplaySrc}
                     alt={displayName}
-                    className="h-20 w-20 rounded-full border border-slate-200 object-cover"
+                    className="h-20 w-20 rounded-full border border-border object-cover"
                   />
                 ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary-100 text-xl font-bold text-primary-800 dark:bg-primary-900/50 dark:text-primary-200">
                     {getInitials(displayName)}
                   </div>
                 )}
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">{displayName}</h2>
-                  <p className="text-sm text-slate-600">{profile?.email || 'No email'}</p>
+                  <h2 className="text-xl font-semibold text-text-main">{displayName}</h2>
+                  <p className="text-sm text-text-muted">{profile?.email || 'No email'}</p>
                 </div>
               </div>
 
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm font-medium text-text-main hover:bg-muted">
                 <Camera className="h-4 w-4" />
                 {uploading ? 'Uploading...' : 'Upload avatar'}
                 <input
@@ -120,20 +129,20 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Role</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{roleLabel}</p>
+              <div className="rounded-xl border border-border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Role</p>
+                <p className="mt-1 text-sm font-medium text-text-main">{roleLabel}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</p>
-                <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-slate-900">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              <div className="rounded-xl border border-border bg-muted/40 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
+                <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-text-main">
+                  <ShieldCheck className="h-4 w-4 text-success" />
                   {statusLabel}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">School / Cohort</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+              <div className="rounded-xl border border-border bg-muted/40 p-4 sm:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">School / Cohort</p>
+                <p className="mt-1 text-sm font-medium text-text-main">
                   {profile?.schoolCohort?.trim() || 'Not provided'}
                 </p>
               </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
+import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import QuickStatsCard from '@/components/expert/QuickStatsCard';
 import ReviewCard from '@/components/expert/ReviewCard';
 import CaseManagementCard from '@/components/expert/CaseManagementCard';
@@ -14,7 +15,6 @@ import {
   Users,
   Plus,
   Filter,
-  Loader2,
 } from 'lucide-react';
 import {
   fetchExpertDashboardStats,
@@ -113,12 +113,23 @@ export default function ExpertDashboardPage() {
 
       <div className="p-6 max-w-[1600px] mx-auto">
         {isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading dashboard data...
+          <PageLoadingSkeleton>
+            <div className="space-y-6" aria-hidden>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                    <SkeletonBlock className="mb-3 h-4 w-28" />
+                    <SkeletonBlock className="h-9 w-16" />
+                    <SkeletonBlock className="mt-2 h-3 w-36" />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <SkeletonBlock className="min-h-[280px] rounded-2xl" />
+                <SkeletonBlock className="min-h-[280px] rounded-2xl" />
+              </div>
             </div>
-          </div>
+          </PageLoadingSkeleton>
         ) : error ? (
           <div className="rounded-2xl border border-destructive bg-destructive/10 px-6 py-8 text-center">
             <p className="text-destructive font-medium">{error}</p>

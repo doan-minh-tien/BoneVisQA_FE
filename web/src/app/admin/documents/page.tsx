@@ -16,7 +16,7 @@ import {
   uploadAdminDocument,
 } from '@/lib/api/admin-documents';
 import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
-import { CheckCircle2, FileText, Loader2, Trash2, Upload, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, FileText, Loader2, Trash2, Upload, XCircle } from 'lucide-react';
 
 const MAX_BYTES = 50 * 1024 * 1024;
 
@@ -28,6 +28,9 @@ type UploadRow = {
   progress: number;
   status: UploadRowStatus;
   error?: string;
+  title: string;
+  categoryId: string;
+  tagIds: string[];
 };
 
 function newRowId() {
@@ -36,14 +39,28 @@ function newRowId() {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function defaultTitleFromFile(file: File): string {
+  const base = file.name.replace(/\.[^.]+$/, '');
+  return (base || file.name).trim();
+}
+
+function createRowFromFile(file: File): UploadRow {
+  return {
+    id: newRowId(),
+    file,
+    progress: 0,
+    status: 'queued',
+    title: defaultTitleFromFile(file),
+    categoryId: '',
+    tagIds: [],
+  };
+}
+
 export default function AdminDocumentsPage() {
   const toast = useToast();
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [tags, setTags] = useState<TagOption[]>([]);
-  const [categoryId, setCategoryId] = useState('');
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [uploadQueue, setUploadQueue] = useState<UploadRow[]>([]);
-  const [documentTitle, setDocumentTitle] = useState('');
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
@@ -97,17 +114,10 @@ export default function AdminDocumentsPage() {
           toast.error(`${f.name}: exceeds the maximum size of 50MB.`);
           continue;
         }
-        nextRows.push({ id: newRowId(), file: f, progress: 0, status: 'queued' });
+        nextRows.push(createRowFromFile(f));
       }
       if (nextRows.length === 0) return;
       setUploadQueue((prev) => [...prev, ...nextRows]);
-      setDocumentTitle((prev) => {
-        if (prev.trim()) return prev;
-        const first = nextRows[0]?.file;
-        if (!first) return prev;
-        const base = first.name.replace(/\.[^.]+$/, '');
-        return base || first.name;
-      });
     },
     [toast],
   );
@@ -136,14 +146,22 @@ export default function AdminDocumentsPage() {
     accept: { 'application/pdf': ['.pdf'] },
   });
 
-  const toggleTag = (id: string) => {
-    setSelectedTagIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const updateRow = useCallback((rowId: string, patch: Partial<Pick<UploadRow, 'title' | 'categoryId'>>) => {
+    setUploadQueue((prev) => prev.map((r) => (r.id === rowId ? { ...r, ...patch } : r)));
+  }, []);
+
+  const toggleRowTag = useCallback((rowId: string, tagId: string) => {
+    setUploadQueue((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const has = r.tagIds.includes(tagId);
+        return {
+          ...r,
+          tagIds: has ? r.tagIds.filter((id) => id !== tagId) : [...r.tagIds, tagId],
+        };
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     const processingIds = documents
@@ -181,50 +199,40 @@ export default function AdminDocumentsPage() {
     };
   }, [documents]);
 
-  const resolveTitleForFile = (file: File, index: number, total: number) => {
-    const base = documentTitle.trim();
-    if (total === 1) {
-      return base || file.name.replace(/\.[^.]+$/, '') || file.name;
-    }
-    if (base) return `${base} — ${file.name}`;
-    return file.name.replace(/\.[^.]+$/, '') || file.name;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (uploadQueue.length === 0 || !categoryId) {
-      toast.error('Please add at least one PDF and select a category.');
+    if (uploadQueue.length === 0) {
+      toast.error('Please add at least one PDF.');
       return;
     }
-    if (!documentTitle.trim() && uploadQueue.length > 1) {
-      toast.error('Please enter a document title (used as a prefix when uploading multiple files).');
+    const pending = uploadQueue.filter((r) => r.status !== 'success');
+    const missingMeta = pending.some((r) => !r.categoryId.trim() || !r.title.trim());
+    if (missingMeta) {
+      toast.error('Each file needs a title and a category. Expand the rows below to complete metadata.');
       return;
     }
-    const tagIds = Array.from(selectedTagIds);
-    const totalFiles = uploadQueue.length;
+
+    const totalFiles = pending.length;
     setSubmitting(true);
 
     let successCount = 0;
     let failCount = 0;
 
-    for (let i = 0; i < uploadQueue.length; i++) {
-      const row = uploadQueue[i];
-      if (row.status === 'success') continue;
-
-      const title = resolveTitleForFile(row.file, i, uploadQueue.length);
-
+    for (const row of pending) {
       setUploadQueue((prev) =>
         prev.map((r) =>
           r.id === row.id ? { ...r, status: 'uploading' as const, progress: 0, error: undefined } : r,
         ),
       );
 
+      const title = row.title.trim() || defaultTitleFromFile(row.file);
+
       try {
         const res = await uploadAdminDocument({
           file: row.file,
           title,
-          categoryId,
-          tagIds,
+          categoryId: row.categoryId.trim(),
+          tagIds: row.tagIds,
           onUploadProgress: (pct) => {
             setUploadQueue((prev) =>
               prev.map((r) => (r.id === row.id ? { ...r, progress: Math.min(100, pct) } : r)),
@@ -234,9 +242,7 @@ export default function AdminDocumentsPage() {
         successCount += 1;
         const status = res.indexingStatus ?? '';
         setUploadQueue((prev) =>
-          prev.map((r) =>
-            r.id === row.id ? { ...r, status: 'success' as const, progress: 100 } : r,
-          ),
+          prev.map((r) => (r.id === row.id ? { ...r, status: 'success' as const, progress: 100 } : r)),
         );
         if (totalFiles === 1) {
           if (status.toLowerCase() === 'processing') {
@@ -269,9 +275,6 @@ export default function AdminDocumentsPage() {
 
     if (failCount === 0) {
       setUploadQueue([]);
-      setDocumentTitle('');
-      setCategoryId('');
-      setSelectedTagIds(new Set());
     }
 
     setSubmitting(false);
@@ -293,6 +296,14 @@ export default function AdminDocumentsPage() {
     return date.toLocaleString();
   };
 
+  const canSubmit =
+    uploadQueue.length > 0 &&
+    !loadingMeta &&
+    uploadQueue.some((r) => r.status !== 'success') &&
+    uploadQueue
+      .filter((r) => r.status !== 'success')
+      .every((r) => r.categoryId.trim() && r.title.trim());
+
   return (
     <div className="min-h-screen">
       <Header
@@ -302,25 +313,8 @@ export default function AdminDocumentsPage() {
       <div className="mx-auto max-w-4xl p-6">
         <form onSubmit={handleSubmit} className="space-y-8">
           <SectionCard
-            title="Document title"
-            description="Shown in the knowledge base and used for indexing metadata."
-          >
-            <label htmlFor="kb-title" className="block text-sm font-medium text-card-foreground">
-              Title <span className="text-destructive">*</span>
-            </label>
-            <input
-              id="kb-title"
-              type="text"
-              value={documentTitle}
-              onChange={(e) => setDocumentTitle(e.target.value)}
-              placeholder="e.g. MSK radiology reference — fractures"
-              className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </SectionCard>
-
-          <SectionCard
             title="Document files"
-            description="PDF only, up to 25 files per batch. Each file uploads with its own progress bar (50MB max per file)."
+            description="PDF only, up to 25 files per batch (50MB max per file). After selecting files, set title, category, and tags for each document below."
           >
             <div
               {...getRootProps()}
@@ -339,130 +333,156 @@ export default function AdminDocumentsPage() {
             </div>
 
             {uploadQueue.length > 0 ? (
-              <ul className="mt-4 space-y-3">
-                {uploadQueue.map((row) => (
-                  <li
-                    key={row.id}
-                    className="rounded-xl border border-border bg-background/65 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <FileText className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-card-foreground">{row.file.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {(row.file.size / (1024 * 1024)).toFixed(2)} MB
-                          </p>
-                          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                            <div
-                              className={`h-full rounded-full transition-all duration-150 ${
-                                row.status === 'failed' ? 'bg-destructive' : 'bg-primary'
-                              }`}
-                              style={{ width: `${row.progress}%` }}
+              <div className="mt-6 space-y-3">
+                <p className="text-sm font-medium text-card-foreground">Per-file metadata</p>
+                <p className="text-xs text-muted-foreground">
+                  Each PDF has its own title (defaults to the filename), category, and tags. Expand a row to edit.
+                </p>
+                <ul className="space-y-2">
+                  {uploadQueue.map((row) => (
+                    <li key={row.id} className="rounded-xl border border-border bg-background/65">
+                      <details className="group" open={row.status === 'queued' || row.status === 'failed'}>
+                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 rounded-xl p-4 marker:hidden [&::-webkit-details-marker]:hidden">
+                          <div className="flex min-w-0 flex-1 items-start gap-3">
+                            <ChevronDown className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                              <FileText className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-card-foreground">{row.file.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {(row.file.size / (1024 * 1024)).toFixed(2)} MB
+                                {row.title.trim() ? ` · Title: ${row.title.trim()}` : ''}
+                                {row.categoryId
+                                  ? ` · ${categories.find((c) => c.id === row.categoryId)?.name ?? 'Category'}`
+                                  : ''}
+                              </p>
+                              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-150 ${
+                                    row.status === 'failed' ? 'bg-destructive' : 'bg-primary'
+                                  }`}
+                                  style={{ width: `${row.progress}%` }}
+                                />
+                              </div>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {row.status === 'queued' && 'Queued — set metadata then upload all'}
+                                {row.status === 'uploading' && `Uploading… ${row.progress}%`}
+                                {row.status === 'success' && 'Uploaded'}
+                                {row.status === 'failed' && (row.error ?? 'Failed')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {row.status === 'uploading' || row.status === 'queued' ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Uploading" />
+                            ) : null}
+                            {row.status === 'success' ? (
+                              <CheckCircle2 className="h-5 w-5 text-success" aria-label="Success" />
+                            ) : null}
+                            {row.status === 'failed' ? (
+                              <XCircle className="h-5 w-5 text-destructive" aria-label="Failed" />
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={submitting}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setUploadQueue((prev) => prev.filter((r) => r.id !== row.id));
+                              }}
+                              className="shrink-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </summary>
+                        <div className="space-y-4 border-t border-border px-4 pb-4 pt-2 sm:px-5">
+                          <div>
+                            <label
+                              htmlFor={`kb-title-${row.id}`}
+                              className="block text-sm font-medium text-card-foreground"
+                            >
+                              Title <span className="text-destructive">*</span>
+                            </label>
+                            <input
+                              id={`kb-title-${row.id}`}
+                              type="text"
+                              value={row.title}
+                              onChange={(e) => updateRow(row.id, { title: e.target.value })}
+                              placeholder="Shown in the knowledge base"
+                              disabled={row.status === 'success' || submitting}
+                              className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                             />
                           </div>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {row.status === 'queued' && 'Queued'}
-                            {row.status === 'uploading' && `Uploading… ${row.progress}%`}
-                            {row.status === 'success' && 'Uploaded'}
-                            {row.status === 'failed' && (row.error ?? 'Failed')}
-                          </p>
+                          <div>
+                            <label
+                              htmlFor={`kb-category-${row.id}`}
+                              className="block text-sm font-medium text-card-foreground"
+                            >
+                              Category <span className="text-destructive">*</span>
+                            </label>
+                            <select
+                              id={`kb-category-${row.id}`}
+                              required
+                              disabled={loadingMeta || row.status === 'success' || submitting}
+                              value={row.categoryId}
+                              onChange={(e) => updateRow(row.id, { categoryId: e.target.value })}
+                              className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                            >
+                              <option value="">
+                                {loadingMeta ? 'Loading categories...' : 'Select a document category'}
+                              </option>
+                              {categories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-card-foreground">Tags</p>
+                            <p className="text-xs text-muted-foreground">
+                              Optional — improve retrieval precision for this document only.
+                            </p>
+                            {loadingMeta ? (
+                              <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                Loading tags...
+                              </div>
+                            ) : tags.length > 0 ? (
+                              <div className="mt-3 flex flex-wrap gap-3">
+                                {tags.map((t) => (
+                                  <label
+                                    key={`${row.id}-${t.id}`}
+                                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-input/40 px-3 py-2 text-sm hover:bg-input/70"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={row.tagIds.includes(t.id)}
+                                      disabled={row.status === 'success' || submitting}
+                                      onChange={() => toggleRowTag(row.id, t.id)}
+                                      className="h-4 w-4 rounded border-border accent-primary"
+                                    />
+                                    <span>{t.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-3 rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+                                The backend returned no tags for selection yet.
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {row.status === 'uploading' || row.status === 'queued' ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Uploading" />
-                        ) : null}
-                        {row.status === 'success' ? (
-                          <CheckCircle2 className="h-5 w-5 text-success" aria-label="Success" />
-                        ) : null}
-                        {row.status === 'failed' ? (
-                          <XCircle className="h-5 w-5 text-destructive" aria-label="Failed" />
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={submitting}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUploadQueue((prev) => prev.filter((r) => r.id !== row.id));
-                          }}
-                          className="shrink-0"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </SectionCard>
-
-          <SectionCard title="Classification" description="Choose the backend category and any supporting tags before upload.">
-            <div className="mt-4 grid gap-6 md:grid-cols-2">
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium text-card-foreground">
-                  Category
-                </label>
-                <select
-                  id="category"
-                  required
-                  disabled={loadingMeta}
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">
-                    {loadingMeta ? 'Loading categories...' : 'Select a document category'}
-                  </option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
+                      </details>
+                    </li>
                   ))}
-                </select>
-                {!loadingMeta && categories.length === 0 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    No categories are currently available from the backend.
-                  </p>
-                ) : null}
+                </ul>
               </div>
-            </div>
-            <div className="mt-6">
-              <p className="text-sm font-medium text-card-foreground">Tags (multi-select)</p>
-              <p className="text-xs text-muted-foreground">Choose any tags that should improve retrieval precision.</p>
-              {loadingMeta ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  Loading tags...
-                </div>
-              ) : tags.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-3">
-                {tags.map((t) => (
-                  <label
-                    key={t.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-input/40 px-3 py-2 text-sm hover:bg-input/70"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedTagIds.has(t.id)}
-                      onChange={() => toggleTag(t.id)}
-                      className="h-4 w-4 rounded border-border accent-primary"
-                    />
-                    <span>{t.name}</span>
-                  </label>
-                ))}
-                </div>
-              ) : (
-                <div className="mt-3 rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
-                  The backend returned no tags for selection yet.
-                </div>
-              )}
-            </div>
+            ) : null}
           </SectionCard>
 
           <div className="flex justify-end gap-3">
@@ -471,26 +491,14 @@ export default function AdminDocumentsPage() {
               variant="outline"
               onClick={() => {
                 setUploadQueue([]);
-                setDocumentTitle('');
-                setCategoryId('');
-                setSelectedTagIds(new Set());
               }}
               disabled={submitting}
             >
               Clear
             </Button>
-            <Button
-              type="submit"
-              isLoading={submitting}
-              disabled={
-                loadingMeta ||
-                uploadQueue.length === 0 ||
-                !categoryId ||
-                (uploadQueue.length > 1 && !documentTitle.trim())
-              }
-            >
+            <Button type="submit" isLoading={submitting} disabled={!canSubmit}>
               <Upload className="h-4 w-4" />
-              Upload to knowledge base
+              Upload all
             </Button>
           </div>
         </form>

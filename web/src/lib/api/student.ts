@@ -6,6 +6,7 @@ import type {
   StudentCaseCatalogItem,
   StudentCaseCatalogDetail,
   StudentCaseHistoryItem,
+  StudentHistoryKind,
   StudentPracticeQuiz,
   StudentProfile,
   StudentProfileUpdatePayload,
@@ -26,11 +27,69 @@ function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty']
   return 'basic';
 }
 
+/**
+ * Classify history rows for the two student tabs. Prefer explicit API fields; fall back to light heuristics.
+ */
+function inferHistoryKind(item: Record<string, unknown>): StudentHistoryKind {
+  const explicit =
+    item.historyKind ??
+    item.historyType ??
+    item.interactionSource ??
+    item.source ??
+    item.origin ??
+    item.caseSource;
+  if (typeof explicit === 'string') {
+    const e = explicit.toLowerCase();
+    if (
+      e.includes('catalog') ||
+      e.includes('library') ||
+      e.includes('expert') ||
+      e.includes('published') ||
+      e.includes('case_study') ||
+      e === 'casestudy'
+    ) {
+      return 'caseStudy';
+    }
+    if (
+      e.includes('upload') ||
+      e.includes('custom') ||
+      e.includes('personal') ||
+      e.includes('student_image') ||
+      e.includes('visualqa')
+    ) {
+      return 'personalQa';
+    }
+  }
+  if (item.fromCatalog === true || item.isFromCatalog === true) return 'caseStudy';
+  if (item.isCustomUpload === true || item.isUpload === true || item.hasCustomImage === true) {
+    return 'personalQa';
+  }
+  const catalogId = item.catalogCaseId ?? item.publishedCaseId ?? item.caseCatalogId;
+  if (catalogId != null && String(catalogId).trim()) return 'caseStudy';
+
+  const thumb = String(item.thumbnailUrl ?? item.imageUrl ?? '').toLowerCase();
+  if (
+    thumb.includes('customimage') ||
+    thumb.includes('student-visual') ||
+    thumb.includes('/uploads/students/') ||
+    thumb.includes('user-upload')
+  ) {
+    return 'personalQa';
+  }
+
+  return 'caseStudy';
+}
+
 function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
   const id = String(item.id ?? item.caseId ?? item.answerId ?? '');
   if (!id) return null;
+
+  const historyKind = inferHistoryKind(item);
+  const catalogRaw = item.catalogCaseId ?? item.publishedCaseId ?? item.caseCatalogId ?? item.libraryCaseId;
+  const catalogCaseId =
+    catalogRaw != null && String(catalogRaw).trim() ? String(catalogRaw).trim() : null;
 
   return {
     id,
@@ -56,6 +115,8 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
       item.reflectiveQuestions != null && item.reflectiveQuestions !== ''
         ? String(item.reflectiveQuestions)
         : null,
+    historyKind,
+    catalogCaseId,
   };
 }
 
@@ -401,6 +462,42 @@ export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   }
 }
 
+/**
+ * Optional dedicated upload / custom Visual QA timeline (when backend exposes it).
+ * Swallows errors so the UI still works with only `/api/student/cases/history`.
+ */
+export async function fetchStudentUploadQaHistory(): Promise<StudentCaseHistoryItem[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/student/visual-qa/history');
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown[] }).items ?? []
+        : [];
+    return list
+      .map(mapStudentCase)
+      .filter((item): item is StudentCaseHistoryItem => item !== null)
+      .map((item) => ({ ...item, historyKind: 'personalQa' as const }));
+  } catch {
+    return [];
+  }
+}
+
+/** Merges catalog/case history with optional upload-only feed for the student history UI. */
+export async function fetchStudentHistoryForUi(): Promise<StudentCaseHistoryItem[]> {
+  const [catalogRows, uploadRows] = await Promise.all([fetchStudentCases(), fetchStudentUploadQaHistory()]);
+  if (uploadRows.length === 0) return catalogRows;
+  const seen = new Set(catalogRows.map((r) => r.id));
+  const merged = [...catalogRows];
+  for (const row of uploadRows) {
+    if (!seen.has(row.id)) {
+      merged.push(row);
+      seen.add(row.id);
+    }
+  }
+  return merged;
+}
+
 export async function fetchCaseCatalog(filters: {
   location?: string;
   lesionType?: string;
@@ -456,6 +553,14 @@ function mapStudentRecentActivity(row: unknown, index: number): StudentRecentAct
   const occurredAt = String(item.occurredAt ?? item.createdAt ?? item.timestamp ?? '');
   if (!title || !occurredAt) return null;
 
+  const targetRaw = item.targetUrl ?? item.route ?? item.href ?? item.url ?? item.deepLink;
+  const targetUrl =
+    targetRaw != null && String(targetRaw).trim() ? String(targetRaw).trim() : undefined;
+  const caseRaw = item.caseId ?? item.catalogCaseId ?? item.libraryCaseId;
+  const caseId = caseRaw != null && String(caseRaw).trim() ? String(caseRaw).trim() : undefined;
+  const quizRaw = item.quizId ?? item.assignedQuizId;
+  const quizId = quizRaw != null && String(quizRaw).trim() ? String(quizRaw).trim() : undefined;
+
   return {
     id: String(item.id ?? item.activityId ?? index),
     title,
@@ -463,6 +568,9 @@ function mapStudentRecentActivity(row: unknown, index: number): StudentRecentAct
     occurredAt,
     type: String(item.type ?? item.activityType ?? 'activity'),
     status: item.status != null ? String(item.status) : undefined,
+    targetUrl,
+    caseId,
+    quizId,
   };
 }
 

@@ -24,7 +24,10 @@ import { login } from "@/lib/api/auth";
 import { http, getApiErrorMessage } from "@/lib/api/client";
 import type { LoginResponse } from "@/lib/api/types";
 import { useToast } from "@/components/ui/toast";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+
+const motionEase = [0.22, 1, 0.36, 1] as const;
 
 function getRouteForRole(role: string | null | undefined) {
   switch (role?.trim().toLowerCase()) {
@@ -197,7 +200,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         dir="ltr"
         className="grid min-h-[100dvh] w-full grid-cols-1 items-stretch lg:grid-cols-[1.22fr_1fr]"
       >
-        <section className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col">
+        <motion.section
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: motionEase }}
+          className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col"
+        >
           {/* Animated mesh — soft drifting blobs + grid (no heavy JS). */}
           <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
             <div className="absolute -left-[10%] top-[8%] h-[min(52vw,420px)] w-[min(52vw,420px)] rounded-full bg-blue-500/25 blur-3xl animate-blob" />
@@ -255,7 +263,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </div>
             </div>
 
-            <div className="max-w-xl shrink-0">
+            <motion.div
+              className="max-w-xl shrink-0"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.12, ease: motionEase }}
+            >
               <h1 className="text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl">
                 BoneVisQA
               </h1>
@@ -266,12 +279,17 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                 A medical imaging workspace for students, lecturers, experts, and administrators to
                 analyze radiographs, validate AI reasoning, and accelerate radiology education.
               </p>
-            </div>
+            </motion.div>
           </div>
-        </section>
+        </motion.section>
 
         <section className="flex min-h-[100dvh] min-w-0 items-center justify-center bg-surface px-6 py-10 lg:min-h-0">
-          <div className="w-full max-w-md">
+          <motion.div
+            className="w-full max-w-md"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08, ease: motionEase }}
+          >
             <div className="mb-8 text-center lg:text-left">
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
                 Secure access
@@ -284,7 +302,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </p>
             </div>
 
-            <div className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+            <motion.div
+              className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.18, ease: motionEase }}
+            >
               {error ? (
                 <div className="mb-5 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
                   {error}
@@ -401,8 +424,8 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                   Sign up
                 </Link>
               </p>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </section>
       </div>
     </div>

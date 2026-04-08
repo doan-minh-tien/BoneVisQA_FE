@@ -13,6 +13,7 @@ export function useLogout() {
     localStorage.removeItem('roles');
     localStorage.removeItem('activeRole');
     localStorage.removeItem('userStatus');
-    router.push('/auth/sign-in');
+    localStorage.removeItem('avatarUrl');
+    router.push('/');
   };
 }
