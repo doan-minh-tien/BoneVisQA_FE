@@ -247,8 +247,32 @@ export default function QuizSessionPage({
 
   // ---------- Pre-start screen ----------
   if (!session) {
+    // Case: quiz đã nộp và không được retake
+    if (startError) {
+      return (
+        <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
+          <div className="w-full max-w-lg space-y-6 rounded-2xl border-2 border-destructive/40 bg-destructive/5 p-10 text-center shadow-lg">
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-xl bg-destructive/15">
+              <AlertCircle className="h-8 w-8 text-destructive" />
+            </div>
+            <h2 className="font-headline text-xl font-extrabold text-destructive">Không thể bắt đầu</h2>
+            <p className="text-sm leading-relaxed text-on-surface-variant">{startError}</p>
+            <p className="text-xs leading-relaxed text-on-surface-variant">
+              Nếu cần làm lại, vui lòng liên hệ giảng viên để được bật chức năng retake.
+            </p>
+            <Link href="/student/quiz">
+              <Button variant="outline" className="mt-2 h-11 rounded-xl font-bold">
+                Quay lại danh sách quiz
+              </Button>
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    // Case: bình thường — chưa làm hoặc được retake
     return (
-      <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center gap-8 px-4 py-10">
+      <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
         <div className="w-full max-w-lg space-y-6 rounded-2xl border border-outline-variant/20 bg-surface-container-low p-10 text-center shadow-lg shadow-primary/5">
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-container text-white shadow-md shadow-primary/25">
             <PlayCircle className="h-8 w-8" />
