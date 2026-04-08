@@ -59,6 +59,28 @@ export async function respondToQuestion(
 
 export const TRIAGE_ALREADY_ESCALATED = 'TRIAGE_ALREADY_ESCALATED';
 
+/**
+ * Quick-approve an existing AI answer (marks it Approved without editing).
+ * Uses the existing respond endpoint with approve=true and existing answer text.
+ */
+export async function approveAnswer(
+  classId: string,
+  questionId: string,
+  existingAnswerText: string,
+): Promise<void> {
+  try {
+    await http.put(
+      `/api/lecturer/classes/${classId}/questions/${questionId}/respond`,
+      {
+        answerText: existingAnswerText,
+        approve: true,
+      },
+    );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function escalateToExpert(answerId: string): Promise<void> {
   try {
     await http.post(`/api/lecturer/triage/${answerId}/escalate`);

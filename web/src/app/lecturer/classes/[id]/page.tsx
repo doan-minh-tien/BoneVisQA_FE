@@ -2,14 +2,26 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, ShieldAlert, UserPlus, Users } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  BookOpen,
+  Loader2,
+  Megaphone,
+  Plus,
+  ShieldAlert,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { EmptyState } from '@/components/shared/EmptyState';
-import type { CaseDto, ClassItem, QuizDto, StudentEnrollment } from '@/lib/api/types';
+import { LecturerAnnouncementRow } from '@/components/lecturer/LecturerAnnouncementRow';
+import type { Announcement, CaseDto, ClassItem, QuizDto, StudentEnrollment } from '@/lib/api/types';
+import { getClassAnnouncements } from '@/lib/api/lecturer';
 import {
   ForbiddenApiError,
   assignCasesToLecturerClass,
@@ -25,7 +37,7 @@ import {
   removeStudentFromClass,
 } from '@/lib/api/lecturer-classes';
 
-type DetailTab = 'students' | 'cases' | 'quizzes';
+type DetailTab = 'students' | 'cases' | 'quizzes' | 'announcements';
 
 export default function LecturerClassDetailPage({
   params,
@@ -33,6 +45,7 @@ export default function LecturerClassDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: classId } = use(params);
+  const router = useRouter();
   const toast = useToast();
 
   const [activeTab, setActiveTab] = useState<DetailTab>('students');
@@ -44,6 +57,8 @@ export default function LecturerClassDetailPage({
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [assignedCases, setAssignedCases] = useState<CaseDto[]>([]);
   const [assignedQuizzes, setAssignedQuizzes] = useState<QuizDto[]>([]);
+  const [classAnnouncements, setClassAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [availableStudents, setAvailableStudents] = useState<StudentEnrollment[]>([]);
@@ -69,18 +84,21 @@ export default function LecturerClassDetailPage({
   useEffect(() => {
     let ignore = false;
     (async () => {
+      setAnnouncementsLoading(true);
       try {
-        const [klass, classStudents, classCases, classQuizzes] = await Promise.all([
+        const [klass, classStudents, classCases, classQuizzes, announcements] = await Promise.all([
           fetchLecturerClassById(classId),
           fetchClassStudents(classId),
           fetchAssignedCases(classId),
           fetchAssignedQuizzes(classId),
+          getClassAnnouncements(classId),
         ]);
         if (ignore) return;
         setClassInfo(klass);
         setStudents(classStudents);
         setAssignedCases(classCases);
         setAssignedQuizzes(classQuizzes);
+        setClassAnnouncements(Array.isArray(announcements) ? announcements : []);
       } catch (err) {
         if (ignore) return;
         if (err instanceof ForbiddenApiError) {
@@ -90,7 +108,10 @@ export default function LecturerClassDetailPage({
           setError(err instanceof Error ? err.message : 'Failed to load class workbench.');
         }
       } finally {
-        if (!ignore) setLoading(false);
+        if (!ignore) {
+          setLoading(false);
+          setAnnouncementsLoading(false);
+        }
       }
     })();
     return () => {
@@ -222,10 +243,36 @@ export default function LecturerClassDetailPage({
       />
 
       <section className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <Link href="/lecturer/classes" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-          Back to classes
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Link
+            href="/lecturer/classes"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to classes
+          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/lecturer/announcements?classId=${encodeURIComponent(classId)}`}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+            >
+              <Megaphone className="h-4 w-4" />
+              Announcements
+            </Link>
+            <Link
+              href={`/lecturer/assignments/create?classId=${encodeURIComponent(classId)}`}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+            >
+              Assignments
+            </Link>
+            <Link
+              href="/lecturer/quizzes/create"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+            >
+              New quiz
+            </Link>
+          </div>
+        </div>
 
         {loading ? (
           <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
@@ -270,6 +317,15 @@ export default function LecturerClassDetailPage({
                 >
                   Quizzes ({assignedQuizzes.length})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('announcements')}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                    activeTab === 'announcements' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  Announcements ({classAnnouncements.length})
+                </button>
               </div>
             </div>
 
@@ -301,8 +357,13 @@ export default function LecturerClassDetailPage({
                       </thead>
                       <tbody>
                         {students.map((student, index) => (
-                          <tr key={student.enrollmentId} className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/45'} hover:bg-slate-50/80`}>
-                            <td className="px-4 py-3 text-sm text-card-foreground">{student.studentName || 'Unknown student'}</td>
+                          <tr
+                            key={student.enrollmentId}
+                            className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/45'} hover:bg-slate-50/80`}
+                          >
+                            <td className="px-4 py-3 text-sm text-card-foreground">
+                              {student.studentName || 'Unknown student'}
+                            </td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentCode || '—'}</td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentEmail || '—'}</td>
                             <td className="px-4 py-3 text-right">
@@ -358,9 +419,69 @@ export default function LecturerClassDetailPage({
                       <div key={item.id} className="rounded-lg border border-border bg-background p-4">
                         <p className="font-medium text-card-foreground">{item.title || 'Untitled quiz'}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {item.topic || 'General topic'} - Pass score {item.passingScore ?? 70}%
+                          {item.topic || 'General topic'} — Pass score {item.passingScore ?? 70}%
                         </p>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {activeTab === 'announcements' ? (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-lg font-semibold text-card-foreground">Class announcements</h2>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        router.push(`/lecturer/announcements?classId=${encodeURIComponent(classId)}`)
+                      }
+                    >
+                      Manage all
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() =>
+                        router.push(`/lecturer/announcements?classId=${encodeURIComponent(classId)}&new=1`)
+                      }
+                    >
+                      <Plus className="h-4 w-4" />
+                      New announcement
+                    </Button>
+                  </div>
+                </div>
+                {announcementsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading announcements…
+                  </div>
+                ) : classAnnouncements.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No announcements yet. Use <strong className="text-foreground">New announcement</strong> to create one.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {classAnnouncements.map((a) => (
+                      <LecturerAnnouncementRow
+                        key={a.id}
+                        announcement={{
+                          ...a,
+                          className: a.className || classInfo?.className || '',
+                        }}
+                        showClassName={false}
+                        onUpdated={(updated) =>
+                          setClassAnnouncements((prev) =>
+                            prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)),
+                          )
+                        }
+                        onDeleted={(id) => setClassAnnouncements((prev) => prev.filter((x) => x.id !== id))}
+                        onError={(msg) => toast.error(msg)}
+                      />
                     ))}
                   </div>
                 )}
@@ -393,7 +514,10 @@ export default function LecturerClassDetailPage({
             {availableStudents.map((student) => {
               const checked = selectedStudentIds.has(student.studentId);
               return (
-                <label key={student.studentId} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3">
+                <label
+                  key={student.studentId}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3"
+                >
                   <input
                     type="checkbox"
                     checked={checked}
@@ -436,10 +560,10 @@ export default function LecturerClassDetailPage({
         <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm text-muted-foreground">Due Date</label>
-            <Input type="datetime-local" value={caseDueDate} onChange={(event) => setCaseDueDate(event.target.value)} />
+            <Input type="datetime-local" value={caseDueDate} onChange={(e) => setCaseDueDate(e.target.value)} />
           </div>
           <label className="mt-6 flex items-center gap-2 text-sm text-card-foreground md:mt-8">
-            <input type="checkbox" checked={caseMandatory} onChange={(event) => setCaseMandatory(event.target.checked)} />
+            <input type="checkbox" checked={caseMandatory} onChange={(e) => setCaseMandatory(e.target.checked)} />
             Mandatory assignment
           </label>
         </div>
@@ -491,7 +615,7 @@ export default function LecturerClassDetailPage({
             <label className="mb-1 block text-sm text-muted-foreground">Quiz</label>
             <select
               value={selectedQuizId}
-              onChange={(event) => setSelectedQuizId(event.target.value)}
+              onChange={(e) => setSelectedQuizId(e.target.value)}
               className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="">Select quiz</option>
@@ -505,21 +629,27 @@ export default function LecturerClassDetailPage({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm text-muted-foreground">Open Time</label>
-              <Input type="datetime-local" value={quizOpenTime} onChange={(event) => setQuizOpenTime(event.target.value)} />
+              <Input type="datetime-local" value={quizOpenTime} onChange={(e) => setQuizOpenTime(e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm text-muted-foreground">Close Time</label>
-              <Input type="datetime-local" value={quizCloseTime} onChange={(event) => setQuizCloseTime(event.target.value)} />
+              <Input type="datetime-local" value={quizCloseTime} onChange={(e) => setQuizCloseTime(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm text-muted-foreground">Time Limit (minutes)</label>
-              <Input type="number" min={1} value={quizTimeLimit} onChange={(event) => setQuizTimeLimit(event.target.value)} />
+              <Input type="number" min={1} value={quizTimeLimit} onChange={(e) => setQuizTimeLimit(e.target.value)} />
             </div>
             <div>
               <label className="mb-1 block text-sm text-muted-foreground">Passing Score (%)</label>
-              <Input type="number" min={0} max={100} value={quizPassingScore} onChange={(event) => setQuizPassingScore(event.target.value)} />
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={quizPassingScore}
+                onChange={(e) => setQuizPassingScore(e.target.value)}
+              />
             </div>
           </div>
         </div>

@@ -73,6 +73,23 @@ export function getApiErrorMessage(err: unknown): string {
     if (typeof data === 'string' && data.trim()) return data;
     if (data && typeof data === 'object') {
       const o = data as Record<string, unknown>;
+      // ASP.NET Core validation: { title, errors: { "field": ["msg"] } }
+      const errMap = o.errors;
+      if (errMap && typeof errMap === 'object' && !Array.isArray(errMap)) {
+        const lines: string[] = [];
+        for (const [, v] of Object.entries(errMap as Record<string, unknown>)) {
+          if (Array.isArray(v)) {
+            for (const item of v) {
+              if (typeof item === 'string' && item.trim()) lines.push(item.trim());
+            }
+          } else if (typeof v === 'string' && v.trim()) {
+            lines.push(v.trim());
+          }
+        }
+        if (lines.length > 0) {
+          return lines.join(' ');
+        }
+      }
       const msg = o.message ?? o.title ?? o.detail ?? o.error;
       if (typeof msg === 'string') return msg;
       if (Array.isArray(o.errors) && o.errors[0]) return String(o.errors[0]);

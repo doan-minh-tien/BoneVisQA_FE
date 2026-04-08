@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" fill="none">
+  <defs>
+    <linearGradient id="sbg" x1="0" y1="0" x2="640" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1a2f3d"/>
+      <stop offset="0.5" stop-color="#2d4a5c"/>
+      <stop offset="1" stop-color="#0f2433"/>
+    </linearGradient>
+    <radialGradient id="srad" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(480 80) rotate(120) scale(420 360)">
+      <stop stop-color="#97f2ef" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#97f2ef" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sbg)"/>
+  <rect width="640" height="400" fill="url(#srad)"/>
+  <circle cx="320" cy="200" r="120" stroke="#94efec" stroke-opacity="0.25" stroke-width="1.5" fill="none"/>
+  <circle cx="320" cy="200" r="72" stroke="#d6e3ff" stroke-opacity="0.2" stroke-width="1" fill="none"/>
+  <path d="M200 280 L320 140 L440 280" stroke="#97f2ef" stroke-opacity="0.4" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <g fill="#ffffff" fill-opacity="0.12">
+    <rect x="56" y="56" width="8" height="8" rx="2"/>
+    <rect x="576" y="320" width="8" height="8" rx="2"/>
+    <rect x="520" y="72" width="6" height="6" rx="1.5"/>
+  </g>
+  <text x="40" y="368" fill="#ffffff" fill-opacity="0.2" font-family="system-ui,sans-serif" font-size="11" font-weight="600" letter-spacing="0.15em">MODULE VISUAL</text>
+</svg>

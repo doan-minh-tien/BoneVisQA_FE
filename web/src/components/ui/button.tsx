@@ -17,17 +17,17 @@ const variantClass: Record<Variant, string> = {
     'border border-danger bg-danger text-white hover:bg-danger/90 focus-visible:ring-blue-500 shadow-[0_8px_24px_rgba(239,68,68,0.16)]',
 };
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: Size;
-  isLoading?: boolean;
-}
-
 const sizeClass: Record<Size, string> = {
   sm: 'h-9 px-3 text-xs',
   md: 'h-10 px-3.5 text-sm',
   lg: 'h-11 px-4 text-sm',
 };
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+  isLoading?: boolean;
+}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {

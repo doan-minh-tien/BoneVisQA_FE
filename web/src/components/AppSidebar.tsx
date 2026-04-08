@@ -6,6 +6,7 @@ import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
 import {
   BookOpen,
+  BotMessageSquare,
   CheckSquare,
   Database,
   LayoutDashboard,
@@ -15,6 +16,7 @@ import {
   ScanSearch,
   Stethoscope,
   UserCog,
+  UserCircle,
   ClipboardList,
   Users,
   ShieldCheck,
@@ -57,13 +59,17 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
     { label: 'Validation Workbench', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
+    { label: 'Settings', href: '/expert/settings', icon: Settings },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
-    { label: 'Case Catalog', href: '/student/catalog', icon: BookOpen },
+    { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
     { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
+    { label: 'AI Q&A', href: '/student/qa', icon: BotMessageSquare },
+    { label: 'Classes', href: '/student/classes', icon: Users },
+    { label: 'Profile', href: '/student/profile', icon: UserCircle },
   ],
 };
 
@@ -73,6 +79,11 @@ const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel
   expert: { label: 'Radiology Education', actionHref: '/expert/reviews', actionLabel: 'Open Workbench' },
   student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
+
+/** Unified profile route; JWT determines visible fields. */
+function profileHrefForRole(_role: RoleKey): string {
+  return '/profile';
+}
 
 function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey | null {
   if (role === 'Student') return 'student';
@@ -174,7 +185,11 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             {meta.actionLabel}
           </Button>
         </Link>
-        <Link href="/profile" className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:bg-slate-50">
+        <Link
+          href={profileHrefForRole(resolvedRole)}
+          className="mt-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 hover:bg-slate-50"
+          title="Account & profile"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
             {profileName
               .split(' ')
@@ -187,7 +202,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             <p className="truncate text-sm font-semibold text-slate-900">{profileName}</p>
             <p className="truncate text-xs text-slate-500">{profileRole}</p>
           </div>
-          <UserCog className="h-4 w-4 text-slate-500" />
+          <UserCog className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
         </Link>
         <Button onClick={logout} variant="outline" className="mt-3 w-full justify-center">
           <LogOut className="h-4 w-4" />

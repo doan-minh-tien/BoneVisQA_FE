@@ -108,7 +108,23 @@ export interface Announcement {
   className: string;
   title: string;
   content: string;
+  sendEmail: boolean;
   createdAt: string;
+}
+
+export interface ClassAssignment {
+  id: string;
+  classId: string;
+  className: string;
+  /** "case" hoặc "quiz" */
+  type: string;
+  title: string;
+  dueDate: string | null;
+  isMandatory: boolean;
+  assignedAt: string | null;
+  totalStudents: number;
+  submittedCount: number;
+  gradedCount: number;
 }
 
 export interface ClassStats {
@@ -117,6 +133,8 @@ export interface ClassStats {
   totalCasesViewed: number;
   totalQuestionsAsked: number;
   avgQuizScore: number | null;
+  totalAssignments: number;
+  completedAssignments: number;
 }
 
 export interface LoginResponse {
@@ -139,7 +157,8 @@ export interface LecturerDashboardStats {
   totalQuestions: number;
   escalatedItems: number;
   pendingReviews: number;
-  averageQuizScore: number;
+  /** Backend may return null when no quiz attempts exist. */
+  averageQuizScore: number | null;
 }
 
 export interface LecturerLeaderboardEntry {
@@ -158,12 +177,29 @@ export interface StudentProfile {
   avatarUrl: string;
   isActive: boolean;
   roles: string[];
+  /** ISO date string `YYYY-MM-DD` from API */
+  dateOfBirth?: string | null;
+  phoneNumber?: string | null;
+  gender?: string | null;
+  studentSchoolId?: string | null;
+  classCode?: string | null;
+  address?: string | null;
+  bio?: string | null;
+  emergencyContact?: string | null;
 }
 
 export interface StudentProfileUpdatePayload {
   fullName: string;
   schoolCohort: string;
   avatarUrl: string;
+  dateOfBirth?: string | null;
+  phoneNumber?: string | null;
+  gender?: string | null;
+  studentSchoolId?: string | null;
+  classCode?: string | null;
+  address?: string | null;
+  bio?: string | null;
+  emergencyContact?: string | null;
 }
 
 export interface StudentProgress {
@@ -236,6 +272,8 @@ export interface AssignedQuizItem {
   quizName: string;
   classId: string;
   className: string;
+  /** Topic/chủ đề của quiz */
+  topic?: string | null;
   totalQuestions: number;
   timeLimit: number | null;
   passingScore: number | null;
@@ -263,6 +301,7 @@ export interface StudentSessionQuestion {
   optionB: string | null;
   optionC: string | null;
   optionD: string | null;
+  imageUrl?: string | null;
 }
 
 export interface StudentSubmitQuestionDto {
@@ -387,6 +426,8 @@ export interface QuizDto {
   timeLimit: number | null;
   passingScore: number | null;
   createdAt: string | null;
+  /** Present when API returns aggregate question count. */
+  questionCount?: number | null;
 }
 
 export interface ClassQuizDto {
@@ -493,7 +534,7 @@ export interface AIAutoGenerateQuizRequest {
 
 export interface AISuggestQuestionsRequest {
   cases: Array<{
-    caseId?: string;
+    caseId?: string | null;
     caseTitle?: string | null;
     caseDescription?: string | null;
     imageUrl?: string | null;
@@ -503,7 +544,7 @@ export interface AISuggestQuestionsRequest {
     difficulty?: string | null;
   }>;
   questionsPerCase?: number;
-  difficulty?: string;
+  difficulty?: string | null;
 }
 
 export interface ImportStudentsSummary {
@@ -516,6 +557,17 @@ export interface ImportStudentsSummary {
     studentName: string;
     studentCode: string;
   }>;
+}
+
+// ========== Student Types ==========
+
+export interface StudentAnnouncement {
+  id: string;
+  classId: string;
+  className: string | null;
+  title: string;
+  content: string;
+  createdAt: string | null;
 }
 
 // ========== Lecturer Missing Types ==========
@@ -573,4 +625,57 @@ export interface LecturerAnswer {
   differentialDiagnoses: string | null;
   status: string;
   updatedAt: string;
+}
+
+// ── Quiz Review Types ────────────────────────────────────────────────────────────
+
+export interface StudentQuizAttemptDto {
+  attemptId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  totalQuestions: number;
+  correctCount: number;
+  isGraded: boolean;
+}
+
+export interface QuizAttemptDetailDto {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  score: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  passingScore: number | null;
+  questions: QuestionWithAnswerDto[];
+}
+
+export interface QuestionWithAnswerDto {
+  questionId: string;
+  questionText: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  studentAnswer: string | null;
+  isCorrect: boolean | null;
+  answerId: string;
+}
+
+export interface UpdateQuizAttemptRequestDto {
+  score?: number | null;
+  answers: UpdateAnswerDto[];
+}
+
+export interface UpdateAnswerDto {
+  answerId: string;
+  studentAnswer?: string | null;
+  isCorrect?: boolean | null;
 }

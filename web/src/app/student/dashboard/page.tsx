@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/shared/SectionCard';
 import { StudentDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
 import ProgressRing from '@/components/student/ProgressRing';
 import QuickActionCard from '@/components/student/QuickActionCard';
+import { StudentDashboardFab } from '@/components/student/StudentAppChrome';
 import {
   fetchStudentProgress,
   fetchStudentRecentActivity,
@@ -530,6 +531,7 @@ export default function StudentDashboardPage() {
           </>
         )}
       </div>
+      <StudentDashboardFab />
     </div>
   );
 }
