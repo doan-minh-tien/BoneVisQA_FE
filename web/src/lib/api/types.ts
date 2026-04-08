@@ -350,6 +350,17 @@ export interface StudentCaseCatalogDetail extends StudentCaseCatalogItem {
   approvedAt?: string;
 }
 
+/** Real-time payload from SignalR `ReceiveNotification` (aligned with backend hub). */
+export interface NotificationDto {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  targetUrl?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface AppNotificationItem {
   id: string;
   type: string;

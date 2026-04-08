@@ -26,6 +26,7 @@ import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
 import type { NormalizedPolygonPoint, VisualQaReport } from '@/lib/api/types';
 import { splitLearningBullets } from '@/lib/utils/learning-text';
+import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 
 type VisualQaDraft = {
@@ -56,6 +57,7 @@ export default function StudentVisualQaImagePage() {
   const [uploadPct, setUploadPct] = useState(0);
   const [report, setReport] = useState<VisualQaReport | null>(null);
   const [networkWarning, setNetworkWarning] = useState<string | null>(null);
+  const [aiOverload, setAiOverload] = useState(false);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [customPolygon, setCustomPolygon] = useState<NormalizedPolygonPoint[] | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
@@ -150,6 +152,7 @@ export default function StudentVisualQaImagePage() {
       if (!f) return;
       setReport(null);
       setLastSubmittedQuestion(null);
+      setAiOverload(false);
       setFile(f);
       setCustomPolygon(null);
     },
@@ -169,10 +172,12 @@ export default function StudentVisualQaImagePage() {
     }
     const q = question.trim();
     setNetworkWarning(null);
+    setAiOverload(false);
     setLoading(true);
     setLoadingPhase('upload');
     setUploadPct(0);
     setReport(null);
+    let overloadExit = false;
     try {
       const res = await postStudentVisualQa(file, q, customPolygon, handleUploadProgress);
       setLastSubmittedQuestion(q);
@@ -180,6 +185,14 @@ export default function StudentVisualQaImagePage() {
       toast.success('Diagnostic report generated.');
       clearDraft();
     } catch (err) {
+      if (isAiModelOverloadError(err)) {
+        overloadExit = true;
+        setAiOverload(true);
+        setLoading(false);
+        setUploadPct(0);
+        setLoadingPhase('upload');
+        return;
+      }
       if (axios.isAxiosError(err)) {
         const isNetworkDrop = !err.response;
         const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
@@ -202,9 +215,11 @@ export default function StudentVisualQaImagePage() {
         toast.error(err instanceof Error ? err.message : 'Request failed');
       }
     } finally {
-      setLoading(false);
-      setUploadPct(0);
-      setLoadingPhase('upload');
+      if (!overloadExit) {
+        setLoading(false);
+        setUploadPct(0);
+        setLoadingPhase('upload');
+      }
     }
   };
 
@@ -283,6 +298,30 @@ export default function StudentVisualQaImagePage() {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                     <p>{networkWarning}</p>
+                  </div>
+                </div>
+              ) : null}
+              {aiOverload ? (
+                <div className="rounded-xl border border-sky-400/45 bg-sky-500/15 px-4 py-4 text-sm text-sky-50">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                      <div>
+                        <p className="font-medium text-sky-100">
+                          Hệ thống AI hiện đang xử lý quá nhiều yêu cầu. Vui lòng đợi ít phút và gửi lại câu hỏi.
+                        </p>
+                        <p className="mt-1 text-xs text-sky-200/90">
+                          The AI system is experiencing high traffic. Please try again in a few minutes.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAiOverload(false)}
+                      className="shrink-0 rounded-lg border border-sky-400/40 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-950/50"
+                    >
+                      Đóng
+                    </button>
                   </div>
                 </div>
               ) : null}

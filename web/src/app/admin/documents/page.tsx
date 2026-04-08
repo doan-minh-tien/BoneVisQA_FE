@@ -16,9 +16,25 @@ import {
   uploadAdminDocument,
 } from '@/lib/api/admin-documents';
 import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
-import { FileText, Loader2, Trash2, Upload } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, Trash2, Upload, XCircle } from 'lucide-react';
 
 const MAX_BYTES = 50 * 1024 * 1024;
+
+type UploadRowStatus = 'queued' | 'uploading' | 'success' | 'failed';
+
+type UploadRow = {
+  id: string;
+  file: File;
+  progress: number;
+  status: UploadRowStatus;
+  error?: string;
+};
+
+function newRowId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export default function AdminDocumentsPage() {
   const toast = useToast();
@@ -26,11 +42,10 @@ export default function AdminDocumentsPage() {
   const [tags, setTags] = useState<TagOption[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
-  const [file, setFile] = useState<File | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadRow[]>([]);
   const [documentTitle, setDocumentTitle] = useState('');
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [statusByDocId, setStatusByDocId] = useState<Record<string, DocumentStatusResponse>>({});
@@ -76,18 +91,22 @@ export default function AdminDocumentsPage() {
 
   const onDrop = useCallback(
     (accepted: File[]) => {
-      const f = accepted[0];
-      if (!f) return;
-      if (f.size > MAX_BYTES) {
-        toast.error('File exceeds the maximum size of 50MB.');
-        return;
+      const nextRows: UploadRow[] = [];
+      for (const f of accepted) {
+        if (f.size > MAX_BYTES) {
+          toast.error(`${f.name}: exceeds the maximum size of 50MB.`);
+          continue;
+        }
+        nextRows.push({ id: newRowId(), file: f, progress: 0, status: 'queued' });
       }
-      setFile(f);
-      setProgress(0);
+      if (nextRows.length === 0) return;
+      setUploadQueue((prev) => [...prev, ...nextRows]);
       setDocumentTitle((prev) => {
         if (prev.trim()) return prev;
-        const base = f.name.replace(/\.[^.]+$/, '');
-        return base || f.name;
+        const first = nextRows[0]?.file;
+        if (!first) return prev;
+        const base = first.name.replace(/\.[^.]+$/, '');
+        return base || first.name;
       });
     },
     [toast],
@@ -112,7 +131,8 @@ export default function AdminDocumentsPage() {
     onDrop,
     onDropRejected,
     maxSize: MAX_BYTES,
-    maxFiles: 1,
+    maxFiles: 25,
+    multiple: true,
     accept: { 'application/pdf': ['.pdf'] },
   });
 
@@ -161,47 +181,100 @@ export default function AdminDocumentsPage() {
     };
   }, [documents]);
 
+  const resolveTitleForFile = (file: File, index: number, total: number) => {
+    const base = documentTitle.trim();
+    if (total === 1) {
+      return base || file.name.replace(/\.[^.]+$/, '') || file.name;
+    }
+    if (base) return `${base} — ${file.name}`;
+    return file.name.replace(/\.[^.]+$/, '') || file.name;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !categoryId) {
-      toast.error('Please select a PDF and a category.');
+    if (uploadQueue.length === 0 || !categoryId) {
+      toast.error('Please add at least one PDF and select a category.');
       return;
     }
-    const title = documentTitle.trim();
-    if (!title) {
-      toast.error('Please enter a document title.');
+    if (!documentTitle.trim() && uploadQueue.length > 1) {
+      toast.error('Please enter a document title (used as a prefix when uploading multiple files).');
       return;
     }
+    const tagIds = Array.from(selectedTagIds);
+    const totalFiles = uploadQueue.length;
     setSubmitting(true);
-    setProgress(0);
-    try {
-      const res = await uploadAdminDocument({
-        file,
-        title,
-        categoryId,
-        tagIds: Array.from(selectedTagIds),
-        onUploadProgress: setProgress,
-      });
-      const status = res.indexingStatus ?? '';
-      if (status.toLowerCase() === 'processing') {
-        toast.success('Upload accepted. Indexing is processing.');
-      } else if (status) {
-        toast.info(`Upload complete. Indexing status: ${status}`);
-      } else {
-        toast.success('Document uploaded successfully.');
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < uploadQueue.length; i++) {
+      const row = uploadQueue[i];
+      if (row.status === 'success') continue;
+
+      const title = resolveTitleForFile(row.file, i, uploadQueue.length);
+
+      setUploadQueue((prev) =>
+        prev.map((r) =>
+          r.id === row.id ? { ...r, status: 'uploading' as const, progress: 0, error: undefined } : r,
+        ),
+      );
+
+      try {
+        const res = await uploadAdminDocument({
+          file: row.file,
+          title,
+          categoryId,
+          tagIds,
+          onUploadProgress: (pct) => {
+            setUploadQueue((prev) =>
+              prev.map((r) => (r.id === row.id ? { ...r, progress: Math.min(100, pct) } : r)),
+            );
+          },
+        });
+        successCount += 1;
+        const status = res.indexingStatus ?? '';
+        setUploadQueue((prev) =>
+          prev.map((r) =>
+            r.id === row.id ? { ...r, status: 'success' as const, progress: 100 } : r,
+          ),
+        );
+        if (totalFiles === 1) {
+          if (status.toLowerCase() === 'processing') {
+            toast.success('Upload accepted. Indexing is processing.');
+          } else if (status) {
+            toast.info(`Upload complete. Indexing status: ${status}`);
+          } else {
+            toast.success('Document uploaded successfully.');
+          }
+        }
+      } catch (err) {
+        failCount += 1;
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        setUploadQueue((prev) =>
+          prev.map((r) => (r.id === row.id ? { ...r, status: 'failed' as const, progress: 0, error: msg } : r)),
+        );
+        toast.error(`${row.file.name}: ${msg}`);
       }
-      await loadDocuments();
-      setFile(null);
+    }
+
+    await loadDocuments();
+
+    if (totalFiles > 1) {
+      if (failCount === 0) {
+        toast.success(`${successCount} document(s) uploaded. Indexing will continue in the background.`);
+      } else if (successCount > 0) {
+        toast.info(`Completed with ${successCount} success and ${failCount} failure(s).`);
+      }
+    }
+
+    if (failCount === 0) {
+      setUploadQueue([]);
       setDocumentTitle('');
       setCategoryId('');
       setSelectedTagIds(new Set());
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Upload failed';
-      toast.error(msg);
-    } finally {
-      setSubmitting(false);
-      setProgress(0);
     }
+
+    setSubmitting(false);
   };
 
   const getEffectiveStatus = (doc: DocumentDto): DocumentStatusResponse => {
@@ -246,60 +319,87 @@ export default function AdminDocumentsPage() {
           </SectionCard>
 
           <SectionCard
-            title="Document file"
-            description="PDF only. Single-file upload is enforced for backend chunking stability, with a hard limit of 50MB."
+            title="Document files"
+            description="PDF only, up to 25 files per batch. Each file uploads with its own progress bar (50MB max per file)."
           >
-            {!file ? (
-              <div
-                {...getRootProps()}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-14 transition-colors ${
-                  isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-input/20 hover:bg-input/40'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                <p className="text-center text-sm font-medium text-card-foreground">
-                  Drag and drop a medical PDF here
-                </p>
-                <p className="mt-1 text-center text-xs text-muted-foreground">
-                  or click to browse your local device
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border bg-background/65 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <FileText className="h-6 w-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-card-foreground">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(file.size / (1024 * 1024)).toFixed(2)} MB selected
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setFile(null)}
-                    className="shrink-0"
+            <div
+              {...getRootProps()}
+              className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 transition-colors ${
+                isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-input/20 hover:bg-input/40'
+              }`}
+            >
+              <input {...getInputProps()} />
+              <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
+              <p className="text-center text-sm font-medium text-card-foreground">
+                Drag and drop medical PDFs here
+              </p>
+              <p className="mt-1 text-center text-xs text-muted-foreground">
+                or click to browse — multiple files allowed
+              </p>
+            </div>
+
+            {uploadQueue.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {uploadQueue.map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded-xl border border-border bg-background/65 p-4"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            )}
-            {submitting && (
-              <DynamicProgressTracker
-                mode="determinate"
-                label="Uploading"
-                progressPercentage={progress}
-                message="Uploading file to server..."
-                className="mt-4"
-              />
-            )}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-card-foreground">{row.file.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(row.file.size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={`h-full rounded-full transition-all duration-150 ${
+                                row.status === 'failed' ? 'bg-destructive' : 'bg-primary'
+                              }`}
+                              style={{ width: `${row.progress}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {row.status === 'queued' && 'Queued'}
+                            {row.status === 'uploading' && `Uploading… ${row.progress}%`}
+                            {row.status === 'success' && 'Uploaded'}
+                            {row.status === 'failed' && (row.error ?? 'Failed')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {row.status === 'uploading' || row.status === 'queued' ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Uploading" />
+                        ) : null}
+                        {row.status === 'success' ? (
+                          <CheckCircle2 className="h-5 w-5 text-success" aria-label="Success" />
+                        ) : null}
+                        {row.status === 'failed' ? (
+                          <XCircle className="h-5 w-5 text-destructive" aria-label="Failed" />
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={submitting}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUploadQueue((prev) => prev.filter((r) => r.id !== row.id));
+                          }}
+                          className="shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="Classification" description="Choose the backend category and any supporting tags before upload.">
@@ -370,7 +470,7 @@ export default function AdminDocumentsPage() {
               type="button"
               variant="outline"
               onClick={() => {
-                setFile(null);
+                setUploadQueue([]);
                 setDocumentTitle('');
                 setCategoryId('');
                 setSelectedTagIds(new Set());
@@ -382,7 +482,12 @@ export default function AdminDocumentsPage() {
             <Button
               type="submit"
               isLoading={submitting}
-              disabled={loadingMeta || !file || !categoryId || !documentTitle.trim()}
+              disabled={
+                loadingMeta ||
+                uploadQueue.length === 0 ||
+                !categoryId ||
+                (uploadQueue.length > 1 && !documentTitle.trim())
+              }
             >
               <Upload className="h-4 w-4" />
               Upload to knowledge base

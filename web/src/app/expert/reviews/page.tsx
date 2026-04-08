@@ -17,6 +17,7 @@ import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/l
 import { splitLearningBullets } from '@/lib/utils/learning-text';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast as sonnerToast } from 'sonner';
 import {
   AlertCircle,
   CheckCircle,
@@ -135,13 +136,16 @@ export default function ExpertReviewsPage() {
         keyImagingFindings: keyImagingEdit.trim() || null,
         reflectiveQuestions: reflectiveEdit.trim() || null,
       });
-      toast.success(
-        status === 'Approved'
-          ? 'Approved. This case can be published to the student reference library.'
-          : 'Marked as rejected.',
-      );
+      const removedId = active.id;
+      setItems((prev) => prev.filter((i) => i.id !== removedId));
+      setExpanded((e) => (e === removedId ? null : e));
       setActive(null);
-      await load();
+      sonnerToast.success(
+        status === 'Approved'
+          ? 'Gold-standard answer sent to the student and flagged for Knowledge Base integration.'
+          : 'Decision recorded. The student will be notified per your review outcome.',
+        { duration: 6000 },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -160,8 +164,14 @@ export default function ExpertReviewsPage() {
         keyImagingFindings: item.report.keyImagingFindings ?? null,
         reflectiveQuestions: item.report.reflectiveQuestions ?? null,
       });
-      toast.success('Approved for the public reference library.');
-      await load();
+      const rid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== rid));
+      setExpanded((e) => (e === rid ? null : e));
+      if (active?.id === rid) setActive(null);
+      sonnerToast.success(
+        'Answer approved and delivered to the student. Flagged for Knowledge Base integration.',
+        { duration: 6000 },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -180,8 +190,14 @@ export default function ExpertReviewsPage() {
         keyImagingFindings: item.report.keyImagingFindings ?? null,
         reflectiveQuestions: item.report.reflectiveQuestions ?? null,
       });
-      toast.info('Answer flagged as invalid.');
-      await load();
+      const jid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== jid));
+      setExpanded((e) => (e === jid ? null : e));
+      if (active?.id === jid) setActive(null);
+      sonnerToast.message('Review recorded', {
+        description: 'The student will be notified. This item is removed from your pending queue.',
+        duration: 5000,
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
