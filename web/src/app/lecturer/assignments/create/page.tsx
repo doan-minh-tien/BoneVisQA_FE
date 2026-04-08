@@ -29,9 +29,26 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
-import { assignCasesToClass, assignQuizToClass, isValidGuidString } from '@/lib/api/lecturer';
+import {
+  assignCasesToClass,
+  assignQuizToClass,
+  getLecturerCases,
+  isValidGuidString,
+} from '@/lib/api/lecturer';
+import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
 import type { ClassItem } from '@/lib/api/types';
+
+type CasePickItem = { id: string; title: string };
+type QuizPickItem = { quizId: string; label: string };
+
+function normalizeCaseRow(row: unknown): CasePickItem | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const title = String(r.title ?? r.Title ?? 'Untitled case').trim() || 'Untitled case';
+  return { id, title };
+}
 
 const assignmentTypes = [
   {
@@ -68,7 +85,7 @@ const assignmentTypes = [
   },
 ];
 
-/** Wizard gán bài: quiz/case đã có sẵn trên server — không soạn câu hỏi tại đây. */
+  // /** Wizard for assigning existing quiz/case to a class — no question authoring here. */
 const steps = [
   { label: 'Basic Info', icon: FileText, description: 'Title, type & classes' },
   { label: 'Configuration', icon: Settings2, description: 'Due date & settings' },
@@ -91,13 +108,17 @@ function CreateAssignmentPageContent({
   const [currentStep, setCurrentStep] = useState(0);
   const [availableClasses, setAvailableClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
+  const [assignmentCases, setAssignmentCases] = useState<CasePickItem[]>([]);
+  const [assignmentQuizzes, setAssignmentQuizzes] = useState<QuizPickItem[]>([]);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [caseSearch, setCaseSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: '',
     selectedClasses: preselectedClassId ? [preselectedClassId] : ([] as string[]),
     description: '',
-    caseIdsInput: '',
+    selectedCaseIds: [] as string[],
     quizId: '',
     dueDate: '',
     maxScore: 100,
@@ -146,10 +167,57 @@ function CreateAssignmentPageContent({
     };
   }, [toast]);
 
+  // /** Cases + quizzes picker for the form — no UUID copy required. */
+  useEffect(() => {
+    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    if (!userId) {
+      setLoadingSources(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingSources(true);
+      try {
+        const [casesRaw, quizzesRaw] = await Promise.all([
+          getLecturerCases(),
+          getLecturerQuizzes(userId),
+        ]);
+        if (cancelled) return;
+        const casesList = (Array.isArray(casesRaw) ? casesRaw : [])
+          .map((row) => normalizeCaseRow(row))
+          .filter((c): c is CasePickItem => Boolean(c))
+          .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+
+        const quizMap = new Map<string, string>();
+        for (const row of Array.isArray(quizzesRaw) ? quizzesRaw : []) {
+          const qid = String(row.quizId ?? '').trim();
+          if (!qid || quizMap.has(qid)) continue;
+          const name = [row.quizName, row.topic].filter(Boolean).join(' · ');
+          quizMap.set(qid, name || `${qid.slice(0, 8)}…`);
+        }
+        const quizList = Array.from(quizMap.entries())
+          .map(([quizId, label]) => ({ quizId, label }))
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+        setAssignmentCases(casesList);
+        setAssignmentQuizzes(quizList);
+      } catch {
+        if (!cancelled) {
+          toast.error('Failed to load case/quiz list. Try refreshing or re-logging in.');
+        }
+      } finally {
+        if (!cancelled) setLoadingSources(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
   const lastStep = steps.length - 1;
   const currentStepLabel = steps[currentStep]?.label;
 
-  /** Sau khi bỏ bước Questions, tránh currentStep cũ vượt quá số bước (HMR / phiên bản cũ). */
+  // /** Prevents stale step after Questions step was removed (HMR / stale bundle). */
   useEffect(() => {
     setCurrentStep((s) => Math.min(Math.max(0, s), lastStep));
   }, [lastStep]);
@@ -164,7 +232,14 @@ function CreateAssignmentPageContent({
   };
 
   const canProceed = () => {
-    if (currentStep === 0) return formData.title && formData.type && formData.selectedClasses.length > 0;
+    if (currentStep === 0) {
+      const hasSource = isQuiz
+        ? isValidGuidString(formData.quizId.trim())
+        : formData.selectedCaseIds.length > 0;
+      return Boolean(
+        formData.title && formData.type && formData.selectedClasses.length > 0 && hasSource,
+      );
+    }
     if (currentStep === 1) return !!formData.dueDate;
     return true;
   };
@@ -177,24 +252,30 @@ function CreateAssignmentPageContent({
   );
 
   const selectedType = assignmentTypes.find((t) => t.value === formData.type);
-  const parsedCaseIds = useMemo(
-    () =>
-      formData.caseIdsInput
-        .split(/[,\n]/)
-        .map((value) => value.trim())
-        .filter(Boolean),
-    [formData.caseIdsInput],
-  );
+  const validCaseGuids = useMemo(() => formData.selectedCaseIds, [formData.selectedCaseIds]);
 
-  /** BE chỉ chấp nhận UUID (Guid) — số như "89898" sẽ gây lỗi 400 khi gọi API. */
-  const validCaseGuids = useMemo(
-    () => parsedCaseIds.filter((id) => isValidGuidString(id)),
-    [parsedCaseIds],
-  );
-  const invalidCaseTokens = useMemo(
-    () => parsedCaseIds.filter((id) => !isValidGuidString(id)),
-    [parsedCaseIds],
-  );
+  const filteredCasesForPicker = useMemo(() => {
+    const q = caseSearch.trim().toLowerCase();
+    if (!q) return assignmentCases;
+    return assignmentCases.filter(
+      (c) => c.title.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
+    );
+  }, [assignmentCases, caseSearch]);
+
+  const selectedQuizLabel = useMemo(() => {
+    const id = formData.quizId.trim();
+    if (!id) return '';
+    return assignmentQuizzes.find((q) => q.quizId === id)?.label ?? id;
+  }, [assignmentQuizzes, formData.quizId]);
+
+  const toggleCaseSelected = (caseId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      selectedCaseIds: prev.selectedCaseIds.includes(caseId)
+        ? prev.selectedCaseIds.filter((x) => x !== caseId)
+        : [...prev.selectedCaseIds, caseId],
+    }));
+  };
 
   const validateSubmission = () => {
     if (formData.selectedClasses.length === 0) {
@@ -208,20 +289,12 @@ function CreateAssignmentPageContent({
       }
       if (!isValidGuidString(q)) {
         throw new Error(
-          'Quiz ID phải là UUID (Guid) từ hệ thống, ví dụ: a1b2c3d4-e5f6-7890-abcd-ef1234567890. Mở trang Quizzes để copy ID thật.',
+          'Quiz ID must be a UUID (Guid) from the system, e.g.: a1b2c3d4-e5f6-7890-abcd-ef1234567890. Open the Quizzes page to copy the real ID.'
         );
       }
     } else {
-      if (parsedCaseIds.length === 0) {
-        throw new Error('Enter at least one backend case ID before publishing.');
-      }
-      if (invalidCaseTokens.length > 0) {
-        throw new Error(
-          `Mỗi Case ID phải là UUID (Guid), không phải mã số ngắn. Các dòng không hợp lệ: ${invalidCaseTokens.join(', ')}. Vào Cases / quản lý case để copy ID dạng xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.`,
-        );
-      }
       if (validCaseGuids.length === 0) {
-        throw new Error('Cần ít nhất một Case ID đúng định dạng UUID.');
+        throw new Error('Select at least one case from the list before publishing.');
       }
     }
   };
@@ -481,38 +554,105 @@ function CreateAssignmentPageContent({
                     <span className="text-destructive">*</span>
                   </h2>
                   <p className="text-xs text-muted-foreground mb-3 ml-8">
-                    Gán bài cho <strong className="text-foreground">case/quiz đã có trong hệ thống</strong>. ID phải là{' '}
-                    <strong className="text-foreground">UUID</strong> (dạng xxxxxxxx-xxxx-...), copy từ trang Cases hoặc
-                    Quizzes — không dùng mã số tự đặt như &quot;89898&quot;.
+                    {isQuiz ? (
+                      <>
+                        This is a <strong className="text-foreground">Quiz</strong> assignment — select a quiz from the
+                        list below.
+                      </>
+                    ) : (
+                      <>
+                        Current type is <strong className="text-foreground">{formData.type || '…'}</strong> — assigning{' '}
+                        <strong className="text-foreground">case(s)</strong> to the class. Quiz list only appears when
+                        you select <strong className="text-foreground">Quiz</strong> in{' '}
+                        <span className="text-foreground">step 2</span> above.
+                      </>
+                    )}
                   </p>
+                  {!isQuiz && formData.type ? (
+                    <div className="mb-3 ml-8 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-card-foreground">
+                      <span className="text-muted-foreground">Want to assign a quiz? </span>
+                      Scroll up to <strong>step 2 — Assignment Type</strong> and select{' '}
+                      <strong>Quiz</strong>, then come back here to pick a quiz from the dropdown.
+                    </div>
+                  ) : null}
 
-                  {isQuiz ? (
+                  {loadingSources ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      Loading list…
+                    </div>
+                  ) : isQuiz ? (
                     <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground">Quiz ID</label>
-                      <input
-                        type="text"
-                        value={formData.quizId}
-                        onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
-                        placeholder="UUID quiz — ví dụ: a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                      />
+                      <label className="block text-xs font-medium text-muted-foreground">Quiz</label>
+                      {assignmentQuizzes.length === 0 ? (
+                        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3">
+                          No quizzes available yet. Create one at{' '}
+                          <Link href="/lecturer/quizzes/create" className="font-medium text-primary underline">
+                            Lecturer → Quizzes
+                          </Link>{' '}
+                          and come back here.
+                        </p>
+                      ) : (
+                        <select
+                          value={formData.quizId}
+                          onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
+                          className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
+                        >
+                          <option value="">Select a quiz…</option>
+                          {assignmentQuizzes.map((q) => (
+                            <option key={q.quizId} value={q.quizId}>
+                              {q.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground">Case IDs</label>
-                      <textarea
-                        value={formData.caseIdsInput}
-                        onChange={(e) => setFormData({ ...formData, caseIdsInput: e.target.value })}
-                        placeholder="Mỗi dòng hoặc dấu phẩy: một UUID case từ trang Cases"
-                        rows={4}
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none transition-all"
+                    <div className="space-y-3">
+                      <label className="block text-xs font-medium text-muted-foreground">Cases</label>
+                      <input
+                        type="search"
+                        value={caseSearch}
+                        onChange={(e) => setCaseSearch(e.target.value)}
+                        placeholder="Filter by name or ID…"
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                       />
+                      {assignmentCases.length === 0 ? (
+                        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3">
+                          No cases in the system or failed to load. Check the Cases API.
+                        </p>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto rounded-lg border border-border bg-background divide-y divide-border">
+                          {filteredCasesForPicker.length === 0 ? (
+                            <p className="px-4 py-3 text-sm text-muted-foreground">No matches for the current filter.</p>
+                          ) : (
+                            filteredCasesForPicker.map((c) => {
+                              const checked = formData.selectedCaseIds.includes(c.id);
+                              return (
+                                <label
+                                  key={c.id}
+                                  className={`flex cursor-pointer items-start gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 ${
+                                    checked ? 'bg-primary/5' : ''
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleCaseSelected(c.id)}
+                                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="font-medium text-card-foreground block">{c.title}</span>
+                                    <span className="text-[10px] text-muted-foreground font-mono break-all">{c.id}</span>
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        {parsedCaseIds.length === 0
-                          ? 'Thêm ít nhất một UUID case để có thể publish.'
-                          : invalidCaseTokens.length > 0
-                            ? `${invalidCaseTokens.length} dòng không phải UUID — sửa lại hoặc xóa. ${validCaseGuids.length} UUID hợp lệ.`
-                            : `${validCaseGuids.length} case UUID sẵn sàng gán.`}
+                        {validCaseGuids.length} case{validCaseGuids.length === 1 ? '' : 's'} selected.
                       </p>
                     </div>
                   )}
@@ -716,15 +856,18 @@ function CreateAssignmentPageContent({
 
                     <div className={`grid grid-cols-1 ${!isQuiz ? 'md:grid-cols-2' : ''} gap-3`}>
                       <ReviewItem
-                        label={isQuiz ? 'Quiz ID' : 'Case IDs'}
+                        label={isQuiz ? 'Quiz' : 'Cases'}
                         value={
                           isQuiz
-                            ? formData.quizId || '—'
+                            ? selectedQuizLabel || formData.quizId || '—'
                             : validCaseGuids.length > 0
-                              ? validCaseGuids.join(', ')
-                              : parsedCaseIds.length > 0
-                                ? `${parsedCaseIds.join(', ')} (chưa có UUID hợp lệ)`
-                                : '—'
+                              ? validCaseGuids
+                                  .map(
+                                    (id) =>
+                                      assignmentCases.find((c) => c.id === id)?.title ?? id,
+                                  )
+                                  .join('\n')
+                              : '—'
                         }
                         multiline={!isQuiz}
                       />
@@ -749,10 +892,10 @@ function CreateAssignmentPageContent({
                         icon={<CalendarDays className="w-3.5 h-3.5" />}
                       />
                       <ReviewItem
-                        label={isQuiz ? 'Điểm / câu hỏi' : 'Max Score'}
+                        label={isQuiz ? 'Score from quiz' : 'Max Score'}
                         value={
                           isQuiz
-                            ? 'Lấy từ quiz đã lưu (Quizzes) — không nhập lại ở đây'
+                            ? 'Score comes from the saved quiz — do not re-enter here'
                             : String(formData.maxScore)
                         }
                         icon={<Star className="w-3.5 h-3.5" />}
@@ -780,11 +923,12 @@ function CreateAssignmentPageContent({
 
                     {isQuiz && (
                       <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                        <p className="font-medium text-card-foreground">Nội dung câu hỏi</p>
+                        <p className="font-medium text-card-foreground">Question Content</p>
                         <p className="mt-1 text-xs leading-relaxed">
-                          Bạn đã chọn <strong className="text-foreground">Quiz ID</strong> — toàn bộ câu hỏi nằm trong quiz đó trên
-                          server. Chỉnh sửa câu hỏi tại <strong className="text-foreground">Lecturer → Quizzes</strong> trước khi gán
-                          lớp. Trang này chỉ gắn quiz có sẵn với lớp và hạn nộp.
+                          You have selected <strong className="text-foreground">a quiz</strong> — all questions are in
+                          that quiz on the server. Edit questions at{' '}
+                          <strong className="text-foreground">Lecturer → Quizzes</strong> before assigning to a class.
+                          This page only assigns the existing quiz to the class and sets the deadline.
                         </p>
                       </div>
                     )}
@@ -926,7 +1070,7 @@ function CreateAssignmentPageContent({
                     {isQuiz ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Star className="w-3.5 h-3.5" />
-                        Câu hỏi theo quiz đã chọn
+                        Quiz questions from selected quiz
                       </div>
                     ) : (
                       formData.maxScore > 0 && (
@@ -957,9 +1101,9 @@ function CreateAssignmentPageContent({
                     done={
                       isQuiz
                         ? isValidGuidString(formData.quizId.trim())
-                        : validCaseGuids.length > 0 && invalidCaseTokens.length === 0
+                        : validCaseGuids.length > 0
                     }
-                    label={isQuiz ? 'Quiz ID (UUID) hợp lệ' : 'Case ID (UUID) hợp lệ'}
+                    label={isQuiz ? 'Quiz selected' : 'At least one case selected'}
                   />
                   <ChecklistItem done={!!formData.dueDate} label="Due date set" />
                 </div>
