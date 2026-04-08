@@ -8,7 +8,7 @@ import {
   fetchExpertQuizQuestions,
   updateExpertQuizQuestion,
 } from '@/lib/api/expert-quiz-questions';
-import { fetchExpertCases } from '@/lib/api/expert-cases';
+import { fetchExpertCasesPaged } from '@/lib/api/expert-cases';
 import type { ExpertCase } from '@/lib/api/expert-cases';
 import type { ExpertQuizQuestion } from '@/lib/api/expert-quiz-questions';
 
@@ -77,8 +77,8 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     setIsCasesLoading(true);
     try {
       // Dùng API expert-cases để lấy danh sách cases (có id và case title)
-      const list = await fetchExpertCases();
-      setCases(list);
+      const res = await fetchExpertCasesPaged(1, 100);
+      setCases(res.items);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load cases.';
       toast.error(msg);

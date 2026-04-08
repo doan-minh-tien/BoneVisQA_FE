@@ -10,14 +10,17 @@ import {
   approveExpertCase,
   createExpertCase,
   deleteExpertCase,
-  fetchExpertCases,
+  fetchExpertCasesPaged,
+  fetchExpertCategories,
   updateExpertCase,
   type CaseDifficulty as Difficulty,
   type CaseStatus,
   type ExpertCase as Case,
+  type ExpertCategory,
 } from '@/lib/api/expert-cases';
-import { useToast } from '@/components/ui/toast';
 import { getStoredUserId } from '@/lib/getStoredUserId';
+import { useToast } from '@/components/ui/toast';
+import CaseAssetsDialog from '@/components/expert/cases/CaseAssetsDialog';
 
 const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
   approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
@@ -34,11 +37,17 @@ const difficultyConfig: Record<Difficulty, { color: string }> = {
 export default function ExpertCasesPage() {
   const toast = useToast();
   const [cases, setCases] = useState<Case[]>([]);
+  const [categories, setCategories] = useState<ExpertCategory[]>([]);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 5;
+
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<CaseStatus | 'All'>('All');
   const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'All'>('All');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ c: Case; action: 'approve' | 'delete' } | null>(null);
+  const [assetsDialog, setAssetsDialog] = useState<Case | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,25 +65,21 @@ export default function ExpertCasesPage() {
     keyFindings: '',
   });
 
-  const categoryOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of cases) {
-      const id = c.categoryId?.trim();
-      const name = c.categoryName?.trim();
-      if (id && name && !map.has(id)) map.set(id, name);
-    }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [cases]);
+  const categoryOptions = categories;
 
-  const loadCases = async () => {
+  const loadCases = async (page = pageIndex) => {
     try {
-      const data = await fetchExpertCases();
-      setCases(data);
+      setIsLoading(true);
+      const res = await fetchExpertCasesPaged(page, pageSize);
+      setCases(res.items);
+      setTotalCount(res.totalCount);
       setError(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load cases.';
       setError(msg);
       toast.error(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -82,13 +87,20 @@ export default function ExpertCasesPage() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await fetchExpertCases();
-        if (!cancelled) setCases(data);
+        setIsLoading(true);
+        const [casesRes, cats] = await Promise.all([
+          fetchExpertCasesPaged(pageIndex, pageSize),
+          fetchExpertCategories(),
+        ]);
+        if (!cancelled) {
+          setCases(casesRes.items);
+          setTotalCount(casesRes.totalCount);
+          setCategories(cats);
+        }
       } catch (err) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : 'Failed to load cases.';
+        const msg = err instanceof Error ? err.message : 'Failed to load cases or categories.';
         setError(msg);
-        toast.error(msg);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -96,7 +108,7 @@ export default function ExpertCasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [pageIndex, toast]);
 
   const openCreateForm = () => {
     setEditingCase(null);
@@ -153,12 +165,14 @@ export default function ExpertCasesPage() {
       if (editingCase) {
         await updateExpertCase(editingCase.id, payload);
         toast.success('Case updated successfully.');
+        await loadCases(pageIndex);
       } else {
         await createExpertCase(payload);
         toast.success('Case created successfully.');
+        setPageIndex(1);
+        await loadCases(1);
       }
       setIsFormOpen(false);
-      await loadCases();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed.';
       toast.error(msg);
@@ -278,6 +292,7 @@ export default function ExpertCasesPage() {
                           <p className="text-xs text-muted-foreground">{c.suggestedDiagnosis || '-'}</p>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button disabled={isMutating} onClick={() => setAssetsDialog(c)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 disabled:opacity-50 cursor-pointer transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100">Media & Tags</button>
                           <button disabled={isMutating} onClick={() => openEditForm(c)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"><Edit className="w-3.5 h-3.5" />Edit</button>
                           {c.status !== 'approved' && <button disabled={isMutating} onClick={() => setDialog({ c, action: 'approve' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 disabled:opacity-50 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Approve</button>}
                           <button disabled={isMutating} onClick={() => setDialog({ c, action: 'delete' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
@@ -289,10 +304,33 @@ export default function ExpertCasesPage() {
               })}
             </div>
           )}
+          {totalCount > pageSize && (
+            <div className="flex items-center justify-between p-4 border-t border-border bg-card">
+              <span className="text-sm text-muted-foreground">
+                Showing {(pageIndex - 1) * pageSize + 1} to {Math.min(pageIndex * pageSize, totalCount)} of {totalCount} entries
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={pageIndex === 1 || isLoading}
+                  onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 border border-border rounded text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={pageIndex * pageSize >= totalCount || isLoading}
+                  onClick={() => setPageIndex((p) => p + 1)}
+                  className="px-3 py-1.5 border border-border rounded text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {dialog && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setDialog(null)} />
           <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
             <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">{dialog.action === 'approve' ? 'Approve Case' : 'Delete Case'}</h3>
@@ -303,6 +341,12 @@ export default function ExpertCasesPage() {
             </div>
           </div>
         </div>
+      )}
+      {assetsDialog && (
+        <CaseAssetsDialog
+          caseId={assetsDialog.id}
+          onClose={() => setAssetsDialog(null)}
+        />
       )}
       {isFormOpen && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
@@ -327,7 +371,7 @@ export default function ExpertCasesPage() {
               </select>
               {categoryOptions.length === 0 && (
                 <p className="md:col-span-2 text-xs text-muted-foreground">
-                  No categories available (category options are derived from cases list).
+                  No categories available. Please add categories in the category management section first.
                 </p>
               )}
               <select value={form.difficulty} onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value as 'Easy' | 'Medium' | 'Hard' }))} className="px-3 py-2 rounded-lg border border-border bg-input text-sm">

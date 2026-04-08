@@ -149,19 +149,43 @@ function mapCase(row: unknown): ExpertCase | null {
   };
 }
 
-export async function fetchExpertCases(): Promise<ExpertCase[]> {
+export interface ExpertCasePagedResponse {
+  items: ExpertCase[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
+export async function fetchExpertCasesPaged(pageIndex = 1, pageSize = 5): Promise<ExpertCasePagedResponse> {
   try {
-    const { data } = await http.get<unknown>('/api/expert/cases?pageIndex=1&pageSize=100');
-    const body = data as any;
-    // Một số BE trả trực tiếp array, một số trả { items: [] }, hoặc lồng thêm "data"
-    let list: unknown[] = [];
-    if (Array.isArray(body)) list = body;
-    else if (Array.isArray(body?.items)) list = body.items;
-    else if (Array.isArray(body?.data)) list = body.data;
-    else if (Array.isArray(body?.result)) list = body.result;
-    else if (Array.isArray(body?.data?.items)) list = body.data.items;
-    else if (Array.isArray(body?.items?.items)) list = body.items.items;
-    return list.map(mapCase).filter((item): item is ExpertCase => item !== null);
+    const { data } = await http.get<any>(`/api/expert/cases?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const itemsRaw = data?.items ?? data?.result?.items ?? [];
+    const items = Array.isArray(itemsRaw) ? itemsRaw.map(mapCase).filter((item): item is ExpertCase => item !== null) : [];
+    return {
+      items,
+      totalCount: Number(data?.totalCount ?? data?.result?.totalCount ?? items.length),
+      pageIndex: Number(data?.pageIndex ?? data?.result?.pageIndex ?? pageIndex),
+      pageSize: Number(data?.pageSize ?? data?.result?.pageSize ?? pageSize),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface ExpertCategory {
+  id: string;
+  name: string;
+}
+
+export async function fetchExpertCategories(): Promise<ExpertCategory[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/category?pageIndex=1&pageSize=100`);
+    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const list = Array.isArray(listRaw) ? listRaw : [];
+    return list.map((c: any) => ({
+      id: String(c.id ?? c.Id ?? ''),
+      name: String(c.name ?? c.Name ?? c.categoryName ?? c.CategoryName ?? 'Unknown'),
+    }));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -213,6 +237,77 @@ export async function approveExpertCase(id: string): Promise<ExpertCase> {
 export async function deleteExpertCase(id: string): Promise<void> {
   try {
     await http.delete(`/api/expert/cases/${id}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ==== Image & Annotation & Case Tag APIs ====
+
+export async function createExpertImage(payload: FormData): Promise<{ id: string; imageUrl: string; modality: string; caseTitle: string }> {
+  try {
+    const { data } = await http.post('/api/expert/images', payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return (data as any)?.result || data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function createExpertAnnotation(payload: { imageId: string; label: string; coordinates: string }): Promise<void> {
+  try {
+    await http.post('/api/expert/annotations', payload);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function createExpertCaseTag(payload: { medicalCaseId: string; tagId: string }): Promise<void> {
+  try {
+    await http.post('/api/expert/case-tag', payload);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface ExpertTag {
+  id: string;
+  name: string;
+}
+
+export async function fetchExpertTags(pageIndex = 1, pageSize = 100): Promise<ExpertTag[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/tag?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const list = Array.isArray(listRaw) ? listRaw : [];
+    return list.map((t: any) => ({
+      id: String(t.id ?? t.Id ?? ''),
+      name: String(t.name ?? t.Name ?? t.tagName ?? t.TagName ?? 'Unknown Tag'),
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface ExpertImageDto {
+  id: string;
+  imageUrl: string;
+  fileName: string;
+}
+
+export async function fetchExpertImages(pageIndex = 1, pageSize = 100): Promise<ExpertImageDto[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/image?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const list = Array.isArray(listRaw) ? listRaw : [];
+    return list.map((i: any) => ({
+      id: String(i.id ?? i.Id ?? ''),
+      imageUrl: String(i.imageUrl ?? i.ImageUrl ?? ''),
+      fileName: String(i.fileName ?? i.FileName ?? 'Unknown File'),
+    }));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

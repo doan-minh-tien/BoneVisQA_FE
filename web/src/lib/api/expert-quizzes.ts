@@ -214,11 +214,11 @@ export async function deleteExpertQuiz(id: string): Promise<void> {
 export interface AssignQuizRequest {
   classId: string;
   quizId: string;
-  assignedExpertId: string;
-  openTime: string; // ISO
-  closeTime: string; // ISO
-  passingScore: number;
-  timeLimitMinutes: number;
+  assignedExpertId?: string | null;
+  openTime?: string | null; // ISO
+  closeTime?: string | null; // ISO
+  passingScore?: number | null;
+  timeLimitMinutes?: number | null;
 }
 
 export interface AssignQuizResult {
@@ -295,3 +295,32 @@ export async function calculateAttemptScore(attemptId: string): Promise<Calculat
   }
 }
 
+export async function fetchExpertClassesPaged(pageIndex = 1, pageSize = 100): Promise<{ id: string; className: string }[]> {
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/class?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const body = data as any;
+    const rawList = body?.result?.items ?? body?.result ?? body?.items ?? body;
+    const list = Array.isArray(rawList) ? rawList : [];
+    return list.map((c: any) => ({
+      id: String(c.id ?? c.Id ?? ''),
+      className: String(c.className ?? c.ClassName ?? c.name ?? c.Name ?? 'Unknown Class'),
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchExpertUsersPaged(pageIndex = 1, pageSize = 100): Promise<{ id: string; fullName: string }[]> {
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/expert?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const body = data as any;
+    const rawList = body?.result?.items ?? body?.result ?? body?.items ?? body;
+    const list = Array.isArray(rawList) ? rawList : [];
+    return list.map((u: any) => ({
+      id: String(u.id ?? u.Id ?? u.userId ?? u.UserId ?? ''),
+      fullName: String(u.fullName ?? u.FullName ?? u.name ?? u.Name ?? 'Unknown Expert'),
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

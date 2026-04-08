@@ -1,11 +1,14 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useToast } from '@/components/ui/toast';
 import {
   assignExpertQuiz as assignQuiz,
   calculateAttemptScore as calculator,
+  fetchExpertQuizzesPaged,
+  fetchExpertClassesPaged,
+  fetchExpertUsersPaged,
 } from '@/lib/api/expert-quizzes';
 import { Clock, Calendar, ClipboardList, BadgeCheck } from 'lucide-react';
 
@@ -61,8 +64,28 @@ export default function QuizAssignScorePanel() {
   const [assignedExpertId, setAssignedExpertId] = useState('');
   const [openTime, setOpenTime] = useState('');
   const [closeTime, setCloseTime] = useState('');
-  const [passingScore, setPassingScore] = useState<number>(0);
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(0);
+  const [passingScore, setPassingScore] = useState<number | ''>('');
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number | ''>('');
+
+  const [quizzesList, setQuizzesList] = useState<{ id: string; title: string }[]>([]);
+  const [classesList, setClassesList] = useState<{ id: string; className: string }[]>([]);
+  const [expertsList, setExpertsList] = useState<{ id: string; fullName: string }[]>([]);
+
+  useEffect(() => {
+    if (assignOpen) {
+      fetchExpertQuizzesPaged(1, 1000)
+        .then((res) => setQuizzesList(res.items.map((q) => ({ id: q.id, title: q.title }))))
+        .catch(console.error);
+
+      fetchExpertClassesPaged(1, 1000)
+        .then((res) => setClassesList(res))
+        .catch((e) => console.error('fetchExpertClassesPaged failed:', e));
+
+      fetchExpertUsersPaged(1, 1000)
+        .then((res) => setExpertsList(res))
+        .catch((e) => console.error('fetchExpertUsersPaged failed:', e));
+    }
+  }, [assignOpen]);
 
   const openAssign = () => {
     setAssignResult(null);
@@ -71,28 +94,23 @@ export default function QuizAssignScorePanel() {
     setAssignedExpertId('');
     setOpenTime('');
     setCloseTime('');
-    setPassingScore(0);
-    setTimeLimitMinutes(0);
+    setPassingScore('');
+    setTimeLimitMinutes('');
     setAssignOpen(true);
   };
 
   const canAssign = useMemo(() => {
     return (
       Boolean(quizId.trim()) &&
-      Boolean(classId.trim()) &&
-      Boolean(assignedExpertId.trim()) &&
-      Boolean(openTime) &&
-      Boolean(closeTime) &&
-      Number(passingScore) >= 0 &&
-      Number(timeLimitMinutes) >= 0
+      Boolean(classId.trim())
     );
-  }, [assignedExpertId, classId, closeTime, openTime, passingScore, timeLimitMinutes]);
+  }, [quizId, classId]);
 
   const handleAssign = async () => {
-    const openIso = localInputValueToIso(openTime);
-    const closeIso = localInputValueToIso(closeTime);
-    if (!openIso || !closeIso) return toast.error('Open time and close time are required.');
-    if (Date.parse(openIso) > Date.parse(closeIso)) {
+    const openIso = openTime ? localInputValueToIso(openTime) : null;
+    const closeIso = closeTime ? localInputValueToIso(closeTime) : null;
+
+    if (openIso && closeIso && Date.parse(openIso) > Date.parse(closeIso)) {
       return toast.error('Open time must be before or equal to close time.');
     }
     if (!canAssign) return toast.error('Missing required fields.');
@@ -102,11 +120,11 @@ export default function QuizAssignScorePanel() {
       const res = await assignQuiz({
         classId: classId.trim(),
         quizId: quizId.trim(),
-        assignedExpertId: assignedExpertId.trim(),
+        assignedExpertId: assignedExpertId.trim() || null,
         openTime: openIso,
         closeTime: closeIso,
-        passingScore: Number(passingScore),
-        timeLimitMinutes: Number(timeLimitMinutes),
+        passingScore: passingScore === '' ? null : Number(passingScore),
+        timeLimitMinutes: timeLimitMinutes === '' ? null : Number(timeLimitMinutes),
       });
       setAssignResult(res);
       toast.success('Quiz assigned successfully.');
@@ -239,31 +257,49 @@ export default function QuizAssignScorePanel() {
         <ModalShell title="Assign Expert Quiz" onClose={() => !isAssigning && setAssignOpen(false)}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Quiz ID</label>
-              <input
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Quiz Name</label>
+              <select
                 value={quizId}
                 onChange={(e) => setQuizId(e.target.value)}
-                placeholder="e.g. 767d9661-be38-..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+              >
+                <option value="">Select Quiz...</option>
+                {quizzesList.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.title}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Class ID</label>
-              <input
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Class Name</label>
+              <select
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
-                placeholder="e.g. d07c8498-..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+              >
+                <option value="">Select Class...</option>
+                {classesList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.className}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Assigned Expert ID</label>
-              <input
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Expert Name</label>
+              <select
                 value={assignedExpertId}
                 onChange={(e) => setAssignedExpertId(e.target.value)}
-                placeholder="e.g. 3c97d301-b0ff-..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+              >
+                <option value="">Select Expert...</option>
+                {expertsList.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.fullName}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -286,11 +322,12 @@ export default function QuizAssignScorePanel() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Passing Score (%)</label>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Passing Score</label>
               <input
                 type="number"
                 value={passingScore}
-                onChange={(e) => setPassingScore(Number(e.target.value))}
+                onChange={(e) => setPassingScore(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="Default if empty"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
@@ -299,7 +336,8 @@ export default function QuizAssignScorePanel() {
               <input
                 type="number"
                 value={timeLimitMinutes}
-                onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
+                onChange={(e) => setTimeLimitMinutes(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="Default if empty"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
