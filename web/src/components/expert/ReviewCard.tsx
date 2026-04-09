@@ -1,5 +1,6 @@
-import { MessageSquare, User, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { MessageSquare, User, Clock, Eye } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 
 interface ReviewCardProps {
   id: string;
@@ -12,22 +13,44 @@ interface ReviewCardProps {
   category: string;
 }
 
+// Review status options (expert action)
+const REVIEW_STATUS_OPTIONS = [
+  { value: '', label: '— Review Status —' },
+  { value: 'Approve', label: 'Approve' },
+  { value: 'Reject', label: 'Reject' },
+  { value: 'Edit', label: 'Edit' },
+] as const;
+
+// Case answer action status options
+const ANSWER_STATUS_OPTIONS = [
+  { value: '', label: '— Answer Status —' },
+  { value: 'Pending', label: 'Pending' },
+  { value: 'RequiresLecturerReview', label: 'Requires Lecturer Review' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Edited', label: 'Edited' },
+  { value: 'Rejected', label: 'Rejected' },
+  { value: 'Escalated', label: 'Escalated' },
+  { value: 'EscalatedToExpert', label: 'Escalated to Expert' },
+  { value: 'ExpertApproved', label: 'Expert Approved' },
+  { value: 'Revised', label: 'Revised' },
+] as const;
+
 const priorityConfig = {
   high: {
     color: 'border-destructive/50 bg-destructive/5',
     badge: 'bg-destructive/10 text-destructive',
-    label: 'High Priority'
+    label: 'High Priority',
   },
   normal: {
     color: 'border-border bg-card',
     badge: 'bg-warning/10 text-warning',
-    label: 'Normal'
+    label: 'Normal',
   },
   low: {
     color: 'border-border bg-card',
     badge: 'bg-muted text-muted-foreground',
-    label: 'Low Priority'
-  }
+    label: 'Low Priority',
+  },
 };
 
 export default function ReviewCard({
@@ -41,6 +64,15 @@ export default function ReviewCard({
   category,
 }: ReviewCardProps) {
   const config = priorityConfig[priority];
+  const [reviewStatus, setReviewStatus] = useState('');
+  const [answerStatus, setAnswerStatus] = useState('');
+
+  const reviewSelectColor =
+    reviewStatus === 'Approve'
+      ? 'border-success text-success'
+      : reviewStatus === 'Reject'
+      ? 'border-destructive text-destructive'
+      : 'border-border text-muted-foreground';
 
   return (
     <div className={`rounded-xl border-2 ${config.color} p-5 transition-all duration-200 hover:shadow-md`}>
@@ -84,20 +116,44 @@ export default function ReviewCard({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
-        <Link
-          href={`/expert/reviews/${id}`}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
+      <div className="flex flex-col gap-2">
+        {/* Row 1: Review + Detail */}
+        <div className="flex items-center gap-2">
+          {/* Review Status dropdown */}
+          <select
+            value={reviewStatus}
+            onChange={(e) => setReviewStatus(e.target.value)}
+            className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium bg-card focus:outline-none appearance-none cursor-pointer transition-colors ${reviewSelectColor}`}
+          >
+            {REVIEW_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          {/* View detail */}
+          <Link
+            href={`/expert/reviews/${id}`}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer text-sm font-medium"
+          >
+            <Eye className="w-4 h-4" />
+            Detail
+          </Link>
+        </div>
+
+        {/* Row 2: Answer Status dropdown */}
+        <select
+          value={answerStatus}
+          onChange={(e) => setAnswerStatus(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-card text-muted-foreground focus:outline-none appearance-none cursor-pointer hover:border-primary/50 transition-colors"
         >
-          <Eye className="w-4 h-4" />
-          <span className="text-sm font-medium">Review</span>
-        </Link>
-        <button className="px-4 py-2 border border-success text-success rounded-lg hover:bg-success/10 transition-colors duration-150 cursor-pointer">
-          <CheckCircle className="w-4 h-4" />
-        </button>
-        <button className="px-4 py-2 border border-destructive text-destructive rounded-lg hover:bg-destructive/10 transition-colors duration-150 cursor-pointer">
-          <XCircle className="w-4 h-4" />
-        </button>
+          {ANSWER_STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

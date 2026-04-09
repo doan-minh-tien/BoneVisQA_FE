@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, CheckCircle, Award, AlertTriangle } from 'lucide-react';
+import { Clock, CheckCircle, Award, BarChart2 } from 'lucide-react';
 
 interface ActivityDay {
   day: string;
@@ -16,6 +16,12 @@ export default function ExpertActivityPanel({
   weeklyActivity,
   avgDailyReviews,
 }: ExpertActivityPanelProps) {
+  // Compute the max value across all days for relative bar scaling
+  const maxValue = Math.max(
+    1,
+    ...weeklyActivity.flatMap((d) => [d.reviews, d.cases])
+  );
+
   return (
     <div className="space-y-6">
       {/* This Week Activity */}
@@ -23,26 +29,57 @@ export default function ExpertActivityPanel({
         <h2 className="text-lg font-semibold text-card-foreground mb-4">
           This Week Activity
         </h2>
-        <div className="space-y-3 mb-4">
-          {weeklyActivity.map((day, idx) => (
-            <div key={idx}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-card-foreground">
-                  {day.day}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {day.reviews} reviews
-                </span>
+
+        {weeklyActivity.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No activity data available.</p>
+        ) : (
+          <div className="space-y-3 mb-4">
+            {weeklyActivity.map((day, idx) => (
+              <div key={idx}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-card-foreground w-8">
+                    {day.day}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-primary" />
+                      {day.reviews} reviews
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-accent" />
+                      {day.cases} cases
+                    </span>
+                  </div>
+                </div>
+                {/* Reviews bar */}
+                <div className="h-2 bg-muted rounded-full overflow-hidden mb-1">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    style={{ width: `${(day.reviews / maxValue) * 100}%` }}
+                  />
+                </div>
+                {/* Cases bar */}
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent/70 rounded-full transition-all duration-500"
+                    style={{ width: `${(day.cases / maxValue) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary"
-                  style={{ width: `${(day.reviews / 15) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-2 rounded bg-primary" /> Reviews
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-1.5 rounded bg-accent/70" /> Cases
+          </span>
         </div>
+
         <div className="p-3 bg-primary/10 rounded-lg">
           <p className="text-sm text-primary font-medium">
             Average: {avgDailyReviews} reviews/day
@@ -76,6 +113,17 @@ export default function ExpertActivityPanel({
           </div>
           <div className="flex items-center justify-between">
             <div>
+              <p className="text-sm text-muted-foreground">Weekly Reviews</p>
+              <p className="text-2xl font-bold text-card-foreground">
+                {weeklyActivity.reduce((sum, d) => sum + d.reviews, 0)}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+              <BarChart2 className="w-6 h-6 text-primary" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-sm text-muted-foreground">Quality Score</p>
               <p className="text-2xl font-bold text-card-foreground">4.8/5</p>
             </div>
@@ -84,26 +132,6 @@ export default function ExpertActivityPanel({
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Alerts */}
-      <div className="bg-card rounded-xl border border-destructive/20 p-5">
-        <div className="flex items-start gap-3 mb-3">
-          <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="w-5 h-5 text-destructive" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-card-foreground mb-1">
-              Attention Required
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              5 high-priority reviews pending for more than 24 hours
-            </p>
-          </div>
-        </div>
-        <button className="w-full px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors duration-150 cursor-pointer">
-          <span className="text-sm font-medium">Review Now</span>
-        </button>
       </div>
     </div>
   );

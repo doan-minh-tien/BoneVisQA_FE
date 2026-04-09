@@ -313,3 +313,40 @@ export async function fetchExpertImages(pageIndex = 1, pageSize = 100): Promise<
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+export interface ExpertAnnotationDto {
+  id: string;
+  imageUrl: string;
+  label: string;
+  coordinates: string;
+}
+
+export interface ExpertAnnotationPagedResponse {
+  items: ExpertAnnotationDto[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
+export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10): Promise<ExpertAnnotationPagedResponse> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/annotation?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const itemsRaw = data?.items ?? data?.result?.items ?? [];
+    const items = Array.isArray(itemsRaw)
+      ? itemsRaw.map((a: any) => ({
+          id: String(a.id ?? a.Id ?? ''),
+          imageUrl: String(a.imageUrl ?? a.ImageUrl ?? ''),
+          label: String(a.label ?? a.Label ?? ''),
+          coordinates: String(a.coordinates ?? a.Coordinates ?? '{}'),
+        }))
+      : [];
+    return {
+      items,
+      totalCount: Number(data?.totalCount ?? data?.result?.totalCount ?? items.length),
+      pageIndex: Number(data?.pageIndex ?? data?.result?.pageIndex ?? pageIndex),
+      pageSize: Number(data?.pageSize ?? data?.result?.pageSize ?? pageSize),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
