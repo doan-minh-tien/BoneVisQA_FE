@@ -37,12 +37,17 @@ function ModalShell({
   );
 }
 
+const Q_PAGE_SIZE = 5;
+
 export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const toast = useToast();
 
   const [questions, setQuestions] = useState<ExpertQuizQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Pagination state for questions
+  const [qPage, setQPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [mode, setMode] = useState<QuestionModalMode>('create');
@@ -93,6 +98,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     try {
       const list = await fetchExpertQuizQuestions(quizId);
       setQuestions(list);
+      setQPage(1); // reset về trang 1 khi load lại
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load questions.';
       setError(msg);
@@ -127,19 +133,28 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const openEdit = async (q: ExpertQuizQuestion) => {
     setMode('edit');
     setEditingQuestionId(q.questionId);
+
+    // Đảm bảo load cases xong, dùng giá trị trả về thay vì đọc state (tránh race condition)
+    let resolvedCases = cases;
     if (!cases.length) {
-      // cần caseId để render dropdown đúng
-      await loadCases();
+      setIsCasesLoading(true);
+      try {
+        const res = await fetchExpertCasesPaged(1, 100);
+        resolvedCases = res.items;
+        setCases(res.items);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load cases.';
+        toast.error(msg);
+      } finally {
+        setIsCasesLoading(false);
+      }
     }
 
-    // BE của bạn không cho phép GET `/api/expert/questions/{questionId}` (405),
-    // nên prefill form từ list response `/api/expert/quizzes/{quizId}/questions`.
-    // List response thường chỉ có `caseTitle` (không có `caseId`), nên suy ra `caseId` qua danh sách cases.
     const inferredCaseId =
-      (q.caseTitle ? cases.find((c) => c.title === q.caseTitle)?.id : undefined) ?? '';
+      (q.caseTitle ? resolvedCases.find((c) => c.title === q.caseTitle)?.id : undefined) ?? '';
 
     setForm({
-      caseId: inferredCaseId || cases[0]?.id || '',
+      caseId: inferredCaseId || resolvedCases[0]?.id || '',
       questionText: q.questionText ?? '',
       type: q.type ?? 'selection-choice',
       optionA: q.optionA ?? '',
@@ -152,8 +167,20 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   };
 
   const canSubmit = useMemo(() => {
+    if (mode === 'edit') {
+      // Khi edit: caseId có thể giữ nguyên, chỉ cần questionText và correctAnswer
+      return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
+    }
+    // Khi create: bắt buộc chọn case
     return Boolean(form.caseId && form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
-  }, [form.caseId, form.questionText, form.type, form.correctAnswer]);
+  }, [mode, form.caseId, form.questionText, form.type, form.correctAnswer]);
+
+  // Computed pagination values
+  const qTotalPages = Math.max(1, Math.ceil(questions.length / Q_PAGE_SIZE));
+  const pagedQuestions = useMemo(() => {
+    const start = (qPage - 1) * Q_PAGE_SIZE;
+    return questions.slice(start, start + Q_PAGE_SIZE);
+  }, [questions, qPage]);
 
   const handleSave = async () => {
     if (!canSubmit) {
@@ -264,12 +291,13 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
             <div>
               <label className="block text-sm font-medium text-card-foreground mb-1.5">Type</label>
-              <input
+              <select
                 value={form.type}
                 onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-                placeholder="e.g., selection-choice"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+              >
+                <option value="selection-choice">selection-choice</option>
+              </select>
             </div>
 
             <div>
@@ -282,47 +310,43 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
               />
             </div>
 
-            {/* Options */}
-            {(form.type ?? '').includes('choice') || (form.type ?? '').includes('selection-choice') || form.type === 'selection-choice' ? (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Option A</label>
-                  <input
-                    value={form.optionA}
-                    onChange={(e) => setForm((p) => ({ ...p, optionA: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Option B</label>
-                  <input
-                    value={form.optionB}
-                    onChange={(e) => setForm((p) => ({ ...p, optionB: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Option C</label>
-                  <input
-                    value={form.optionC}
-                    onChange={(e) => setForm((p) => ({ ...p, optionC: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Option D</label>
-                  <input
-                    value={form.optionD}
-                    onChange={(e) => setForm((p) => ({ ...p, optionD: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="md:col-span-2 text-xs text-muted-foreground">
-                Options are optional for this question type.
-              </div>
-            )}
+            {/* Options – always shown */}
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option A</label>
+              <input
+                value={form.optionA}
+                onChange={(e) => setForm((p) => ({ ...p, optionA: e.target.value }))}
+                placeholder="Option A..."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option B</label>
+              <input
+                value={form.optionB}
+                onChange={(e) => setForm((p) => ({ ...p, optionB: e.target.value }))}
+                placeholder="Option B..."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option C</label>
+              <input
+                value={form.optionC}
+                onChange={(e) => setForm((p) => ({ ...p, optionC: e.target.value }))}
+                placeholder="Option C..."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option D</label>
+              <input
+                value={form.optionD}
+                onChange={(e) => setForm((p) => ({ ...p, optionD: e.target.value }))}
+                placeholder="Option D..."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 mt-5">
@@ -373,7 +397,14 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-card-foreground">Questions</div>
+        <div className="text-sm font-semibold text-card-foreground">
+          Questions
+          {questions.length > 0 && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              ({questions.length} total)
+            </span>
+          )}
+        </div>
         <button
           disabled={isSaving}
           onClick={openCreate}
@@ -388,51 +419,80 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       ) : questions.length === 0 ? (
         <div className="text-sm text-muted-foreground">No questions yet.</div>
       ) : (
-        <div className="space-y-2">
-          {questions.map((q) => (
-            <div key={q.questionId} className="p-3 rounded-lg border border-border bg-input/20">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs text-muted-foreground">
-                    Case: <span className="text-card-foreground font-medium">{q.caseTitle ?? '-'}</span>
-                  </div>
-                  <div className="text-sm font-medium text-card-foreground mt-1">{q.questionText}</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Type: <span className="text-card-foreground font-medium">{q.type}</span>
-                  </div>
-                  {q.optionA || q.optionB || q.optionC || q.optionD ? (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {q.optionA ? <div>A: {q.optionA}</div> : null}
-                      {q.optionB ? <div>B: {q.optionB}</div> : null}
-                      {q.optionC ? <div>C: {q.optionC}</div> : null}
-                      {q.optionD ? <div>D: {q.optionD}</div> : null}
+        <>
+          <div className="space-y-2">
+            {pagedQuestions.map((q, idx) => {
+              const globalIdx = (qPage - 1) * Q_PAGE_SIZE + idx + 1;
+              return (
+                <div key={q.questionId} className="p-3 rounded-lg border border-border bg-input/20">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs text-muted-foreground mb-0.5">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary font-bold text-[10px] mr-1.5">{globalIdx}</span>
+                        Case: <span className="text-card-foreground font-medium">{q.caseTitle ?? '-'}</span>
+                      </div>
+                      <div className="text-sm font-medium text-card-foreground mt-1">{q.questionText}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Type: <span className="text-card-foreground font-medium">{q.type}</span>
+                      </div>
+                      {q.optionA || q.optionB || q.optionC || q.optionD ? (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {q.optionA ? <div>A: {q.optionA}</div> : null}
+                          {q.optionB ? <div>B: {q.optionB}</div> : null}
+                          {q.optionC ? <div>C: {q.optionC}</div> : null}
+                          {q.optionD ? <div>D: {q.optionD}</div> : null}
+                        </div>
+                      ) : null}
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Correct: <span className="text-card-foreground font-medium">{q.correctAnswer}</span>
+                      </div>
                     </div>
-                  ) : null}
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Correct: <span className="text-card-foreground font-medium">{q.correctAnswer}</span>
+
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        disabled={isSaving}
+                        onClick={() => openEdit(q)}
+                        className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        disabled={isSaving}
+                        onClick={() => handleDelete(q.questionId)}
+                        className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    disabled={isSaving}
-                    onClick={() => openEdit(q)}
-                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    disabled={isSaving}
-                    onClick={() => handleDelete(q.questionId)}
-                    className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+          {/* Question Pagination */}
+          {qTotalPages > 1 && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+              <button
+                disabled={qPage <= 1}
+                onClick={() => setQPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                ← Prev
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page <span className="text-card-foreground font-semibold">{qPage}</span> / {qTotalPages}
+              </span>
+              <button
+                disabled={qPage >= qTotalPages}
+                onClick={() => setQPage((p) => Math.min(qTotalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                Next →
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
       </div>
     </>

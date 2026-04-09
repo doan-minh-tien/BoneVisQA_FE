@@ -259,6 +259,76 @@ export async function assignExpertQuiz(payload: AssignQuizRequest): Promise<Assi
   }
 }
 
+// ========== Attempt lookup ==========
+
+export interface QuizAttempt {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  startedAt: string;
+  completedAt: string | null;
+  score: number | null;
+}
+
+export async function fetchAttemptsByQuizId(quizId: string): Promise<QuizAttempt[]> {
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/attempts/${quizId}`);
+    const body = data as any;
+    const rawList = body?.result ?? body?.Result ?? body;
+    const list = Array.isArray(rawList) ? rawList : [];
+    return list.map((a: any): QuizAttempt => ({
+      attemptId: String(a.attemptId ?? a.AttemptId ?? ''),
+      quizId: String(a.quizId ?? a.QuizId ?? quizId),
+      quizTitle: String(a.quizTitle ?? a.QuizTitle ?? ''),
+      studentId: String(a.studentId ?? a.StudentId ?? ''),
+      studentName: String(a.studentName ?? a.StudentName ?? 'Unknown'),
+      startedAt: String(a.startedAt ?? a.StartedAt ?? ''),
+      completedAt: a.completedAt ?? a.CompletedAt ?? null,
+      score: a.score != null ? Number(a.score) : a.Score != null ? Number(a.Score) : null,
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Assigned Quizzes list ==========
+
+export interface AssignedQuizRecord {
+  classId: string;
+  className: string;
+  quizId: string;
+  quizName: string;
+  assignedAt: string;
+  openTime: string;
+  closeTime: string;
+  passingScore: number;
+  timeLimitMinutes: number;
+}
+
+export async function fetchAssignedQuizzes(pageIndex = 1, pageSize = 50): Promise<AssignedQuizRecord[]> {
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/assign?pageIndex=${pageIndex}&pageSize=${pageSize}`);
+    const body = data as any;
+    const rawList = body?.result?.items ?? body?.result ?? body?.items ?? body;
+    const list = Array.isArray(rawList) ? rawList : [];
+    return list.map((r: any): AssignedQuizRecord => ({
+      classId: String(r.classId ?? r.ClassId ?? ''),
+      className: String(r.className ?? r.ClassName ?? ''),
+      quizId: String(r.quizId ?? r.QuizId ?? ''),
+      quizName: String(r.quizName ?? r.QuizName ?? ''),
+      assignedAt: String(r.assignedAt ?? r.AssignedAt ?? ''),
+      openTime: String(r.openTime ?? r.OpenTime ?? ''),
+      closeTime: String(r.closeTime ?? r.CloseTime ?? ''),
+      passingScore: Number(r.passingScore ?? r.PassingScore ?? 0),
+      timeLimitMinutes: Number(r.timeLimitMinutes ?? r.TimeLimitMinutes ?? 0),
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export interface CalculateAttemptScoreResult {
   attemptId: string;
   studentId: string;

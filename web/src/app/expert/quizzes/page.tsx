@@ -406,6 +406,20 @@ export default function ExpertQuizzesPage() {
 
         {/* Quizzes List */}
         <div className="bg-card rounded-xl border border-border overflow-hidden">
+          {/* Section header */}
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold text-card-foreground">Quiz Management</span>
+              {!isLoading && <span className="text-xs text-muted-foreground font-normal">({totalCount} total)</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={openCreateForm} className="flex items-center gap-2 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-xs font-medium">
+                <Plus className="w-3.5 h-3.5" />Create Quiz
+              </button>
+            </div>
+          </div>
+
           {isLoading ? (
             <div className="p-12 text-center">
               <Loader2 className="w-12 h-12 text-primary mx-auto mb-3 animate-spin" />

@@ -58,7 +58,7 @@ export default function ExpertCasesPage() {
     categoryId: '',
     description: '',
     difficulty: 'Easy' as 'Easy' | 'Medium' | 'Hard',
-    isApproved: false,
+    isApproved: true,
     isActive: true,
     suggestedDiagnosis: '',
     reflectiveQuestions: '',
@@ -117,7 +117,7 @@ export default function ExpertCasesPage() {
       categoryId: '',
       description: '',
       difficulty: 'Easy',
-      isApproved: false,
+      isApproved: true,
       isActive: true,
       suggestedDiagnosis: '',
       reflectiveQuestions: '',
@@ -155,8 +155,8 @@ export default function ExpertCasesPage() {
         createdByExpertId,
         description: form.description.trim(),
         difficulty: form.difficulty,
-        isApproved: form.isApproved,
-        isActive: form.isActive,
+        isApproved: editingCase ? form.isApproved : true,
+        isActive: editingCase ? form.isActive : true,
         categoryId: form.categoryId.trim(),
         suggestedDiagnosis: form.suggestedDiagnosis.trim(),
         reflectiveQuestions: form.reflectiveQuestions.trim(),
@@ -379,15 +379,31 @@ export default function ExpertCasesPage() {
                 <option value="Medium">Medium</option>
                 <option value="Hard">Hard</option>
               </select>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.isApproved} onChange={(e) => setForm((p) => ({ ...p, isApproved: e.target.checked }))} />
-                Approved
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} />
-                Active
-              </label>
+
+              {/* isApproved & isActive — chỉ hiện khi Edit */}
+              {editingCase && (
+                <>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.isApproved}
+                      onChange={(e) => setForm((p) => ({ ...p, isApproved: e.target.checked }))}
+                    />
+                    Approved
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.isActive}
+                      onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
+                    />
+                    Active
+                  </label>
+                </>
+              )}
+
               <textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} placeholder="Description" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
+
               <textarea value={form.keyFindings} onChange={(e) => setForm((p) => ({ ...p, keyFindings: e.target.value }))} placeholder="Key findings" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
               <textarea value={form.suggestedDiagnosis} onChange={(e) => setForm((p) => ({ ...p, suggestedDiagnosis: e.target.value }))} placeholder="Suggested diagnosis" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />
               <textarea value={form.reflectiveQuestions} onChange={(e) => setForm((p) => ({ ...p, reflectiveQuestions: e.target.value }))} placeholder="Reflective questions" className="md:col-span-2 px-3 py-2 rounded-lg border border-border bg-input text-sm min-h-20" />

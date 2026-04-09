@@ -29,7 +29,8 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
   // Annotation form
   const [annotImageId, setAnnotImageId] = useState('');
   const [label, setLabel] = useState('');
-  const [coordinates, setCoordinates] = useState('{}');
+  const [coordinates, setCoordinates] = useState('[]');
+  const [polyPoints, setPolyPoints] = useState<{x: number, y: number}[]>([]);
 
   // Tag form
   const [tagId, setTagId] = useState('');
@@ -85,7 +86,8 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
       });
       toast.success('Annotation added successfully!');
       setLabel('');
-      setCoordinates('{}');
+      setCoordinates('[]');
+      setPolyPoints([]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to add annotation');
     } finally {
@@ -110,6 +112,18 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
     }
   };
 
+  const selectedImageUrl = imagesList.find((img) => img.id === annotImageId)?.imageUrl;
+
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Number(((e.clientX - rect.left) / rect.width).toFixed(4));
+    const y = Number(((e.clientY - rect.top) / rect.height).toFixed(4));
+    
+    const newPoints = [...polyPoints, { x, y }];
+    setPolyPoints(newPoints);
+    setCoordinates(JSON.stringify(newPoints));
+  };
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -127,13 +141,17 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
                 onChange={(e) => setImageFile(e.target.files?.[0] || null)}
                 className="px-3 py-2 text-sm bg-card border border-border rounded-lg"
               />
-              <input
-                type="text"
-                placeholder="Modality (e.g. MRI, X-Ray)"
+              <select
                 value={modality}
                 onChange={(e) => setModality(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none"
-              />
+                className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none appearance-none cursor-pointer"
+              >
+                <option value="X-Ray">X-Ray</option>
+                <option value="CT">CT</option>
+                <option value="MRI">MRI</option>
+                <option value="Ultrasound">Ultrasound</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <button
               disabled={isMutating || !imageFile}
@@ -155,7 +173,11 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
               <select
                 value={annotImageId}
-                onChange={(e) => setAnnotImageId(e.target.value)}
+                onChange={(e) => {
+                  setAnnotImageId(e.target.value);
+                  setPolyPoints([]);
+                  setCoordinates('[]');
+                }}
                 className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none appearance-none cursor-pointer"
               >
                 <option value="">Select Image...</option>
@@ -177,9 +199,58 @@ export default function CaseAssetsDialog({ caseId, onClose }: CaseAssetsDialogPr
                 placeholder="Coordinates (JSON)"
                 value={coordinates}
                 onChange={(e) => setCoordinates(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none"
+                className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none font-mono text-[10px]"
+                readOnly
               />
             </div>
+
+            {/* Polygon Preview & Drawing Area */}
+            {selectedImageUrl && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">Click on the image to draw a polygon selection</span>
+                  <button
+                    disabled={isMutating || polyPoints.length === 0}
+                    onClick={() => {
+                      setPolyPoints([]);
+                      setCoordinates('[]');
+                    }}
+                    className="px-2 py-1 text-xs rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                  >
+                    Clear Points
+                  </button>
+                </div>
+                <div 
+                  className="relative rounded-lg overflow-hidden border border-border cursor-crosshair bg-black/5 shadow-inner select-none"
+                  onClick={handleImageClick}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={selectedImageUrl} alt="Target" className="w-full h-auto block pointer-events-none" />
+                  
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                    {polyPoints.length > 0 && (
+                      <polygon 
+                        points={polyPoints.map(p => `${p.x * 100},${p.y * 100}`).join(' ')} 
+                        fill="rgba(59, 130, 246, 0.25)" 
+                        stroke="#3b82f6" 
+                        strokeWidth="0.5" 
+                        vectorEffect="non-scaling-stroke"
+                        strokeDasharray={polyPoints.length >= 3 ? "none" : "2,2"}
+                      />
+                    )}
+                  </svg>
+                  
+                  {polyPoints.map((p, i) => (
+                    <div 
+                      key={i} 
+                      className="absolute w-2 h-2 bg-blue-500 border border-white rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none shadow"
+                      style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button
               disabled={isMutating || !annotImageId || !label}
               onClick={handleAddAnnotation}

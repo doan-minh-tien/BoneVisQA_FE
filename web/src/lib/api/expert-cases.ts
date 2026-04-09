@@ -214,8 +214,9 @@ export async function createExpertCase(input: SaveExpertCaseInput): Promise<void
 
 export async function updateExpertCase(id: string, input: SaveExpertCaseInput): Promise<void> {
   try {
-    await http.patch(`/api/expert/cases/${id}`, {
+    await http.put(`/api/expert/cases/${id}`, {
       ...input,
+      id,
       updatedAt: new Date().toISOString(),
     });
   } catch (e) {
