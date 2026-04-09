@@ -81,7 +81,7 @@ export async function fetchEscalatedReviews(): Promise<EscalatedReview[]> {
   try {
     const { data } = await http.get<unknown>('/api/expert/reviews/escalated');
     const list = Array.isArray(data) ? data : Array.isArray((data as any)?.items) ? (data as any).items : [];
-    return list.map(mapEscalated).filter((x): x is EscalatedReview => x !== null);
+    return list.map(mapEscalated).filter((x: EscalatedReview | null): x is EscalatedReview => x !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -161,9 +161,9 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
   const customCoordinates = parsePercentageBoundingBox(
     r.customCoordinates ??
-      r.annotationCoordinates ??
-      r.questionCoordinates ??
-      r.coordinates,
+    r.annotationCoordinates ??
+    r.questionCoordinates ??
+    r.coordinates,
   );
   const citationSource = Array.isArray(r.citations)
     ? r.citations

@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   HelpCircle,
   LogOut,
-  Plus,
   ScanSearch,
   Stethoscope,
   UserCog,
@@ -23,7 +22,6 @@ import {
   Megaphone,
   Settings,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
 
 type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
@@ -58,6 +56,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Quiz', href: '/expert/quizzes', icon: FileQuestion },
     { label: 'Reviews', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Medical case', href: '/expert/cases', icon: BookOpen },
+    // { label: 'Settings', href: '/expert/settings', icon: Settings },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
@@ -127,7 +126,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
   }
 
   return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text shadow-[8px_0_40px_rgba(15,23,42,0.18)]">
+    <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text shadow-[8px_0_40px_rgba(15,23,42,0.18)]">
       <div className="border-b border-white/10 px-5 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
@@ -154,11 +153,10 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${
-                    isActive
-                      ? 'bg-white/14 text-white shadow-[0_12px_24px_rgba(0,0,0,0.16)]'
-                      : 'text-slate-300 hover:bg-white/8 hover:text-white'
-                  }`}
+                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${isActive
+                    ? 'bg-white/14 text-white shadow-[0_12px_24px_rgba(0,0,0,0.16)]'
+                    : 'text-slate-300 hover:bg-white/8 hover:text-white'
+                    }`}
                 >
                   <Icon className="h-4.5 w-4.5" />
                   <span>{item.label}</span>
@@ -170,15 +168,10 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
       </nav>
 
       <div className="border-t border-white/10 px-4 py-4">
-        <Link href={meta.actionHref} className="block">
-          <Button
-            className="w-full justify-center border-0 bg-gradient-to-br from-[#007BFF] to-[#005eb8] text-white shadow-lg hover:from-[#0068e6] hover:to-[#004a9e]"
-          >
-            <Plus className="h-4 w-4" />
-            New Analysis
-          </Button>
-        </Link>
-        <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/6 px-3 py-3">
+        <Link
+          href={resolvedRole ? `/${resolvedRole}/settings` : '#'}
+          className="mt-0 flex items-center gap-3 rounded-xl border border-white/10 bg-white/6 px-3 py-3 transition-colors hover:bg-white/10"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#007BFF] text-sm font-semibold text-white">
             {profileName
               .split(' ')
@@ -192,7 +185,7 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
             <p className="truncate text-xs text-slate-300">{profileRole}</p>
           </div>
           <UserCog className="h-4 w-4 text-slate-300" />
-        </div>
+        </Link>
         <button
           onClick={logout}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"

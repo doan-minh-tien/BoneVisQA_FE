@@ -523,3 +523,29 @@ export interface LecturerAnswer {
   status: string;
   updatedAt: string;
 }
+
+// ========== Expert Profile Types ==========
+
+export interface ExpertProfile {
+  id: string;
+  fullName: string;
+  email: string;
+  specialty: string | null;
+  avatarUrl: string | null;
+  dateOfBirth: string | null;
+  phoneNumber: string | null;
+  gender: string | null;
+  address: string | null;
+  bio?: string | null;
+}
+
+export interface ExpertProfileUpdatePayload {
+  fullName: string;
+  specialty?: string;
+  avatarUrl?: string;
+  dateOfBirth?: string;
+  phoneNumber?: string;
+  gender?: string;
+  address?: string;
+  bio?: string;
+}
