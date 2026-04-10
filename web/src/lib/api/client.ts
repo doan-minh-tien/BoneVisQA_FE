@@ -35,7 +35,7 @@ const baseURL = normalizeApiBaseUrl(
 
 export const http = axios.create({
   baseURL: baseURL || undefined,
-  timeout: 180_000,
+  timeout: 60_000,
   headers: {
     Accept: 'application/json',
   },

@@ -33,6 +33,7 @@ export interface TagOption {
 }
 
 export interface DocumentUploadResponse {
+  documentId?: string;
   indexingStatus?: string;
   message?: string;
 }

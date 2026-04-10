@@ -60,7 +60,7 @@ export async function uploadAdminDocument(
   params.tagIds.forEach((id) => form.append('TagIds', id));
 
   try {
-    const { data } = await http.post<DocumentUploadResponse>(
+    const { data } = await http.post<Record<string, unknown>>(
       `${ADMIN_DOCUMENTS}/upload`,
       form,
       {
@@ -73,7 +73,16 @@ export async function uploadAdminDocument(
         },
       },
     );
-    return data;
+    return {
+      documentId:
+        typeof data.documentId === 'string'
+          ? data.documentId
+          : typeof data.id === 'string'
+            ? data.id
+            : undefined,
+      indexingStatus: typeof data.indexingStatus === 'string' ? data.indexingStatus : undefined,
+      message: typeof data.message === 'string' ? data.message : undefined,
+    };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
