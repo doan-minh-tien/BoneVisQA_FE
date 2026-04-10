@@ -198,7 +198,7 @@ export default function StudentDashboardPage() {
     progressLoading && topicLoading && activityLoading && !progress && topicStats.length === 0 && recentActivity.length === 0;
 
   return (
-    <div className="min-h-screen bg-background text-slate-900">
+    <div className="min-h-screen bg-background text-foreground">
       <Header
         title="Student dashboard"
         subtitle="Track progress, browse cases, and continue your radiology learning path."
@@ -211,10 +211,10 @@ export default function StudentDashboardPage() {
           <>
             <section className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
               <div>
-                <h2 className="font-headline text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+                <h2 className="font-headline text-3xl font-bold tracking-tight text-foreground md:text-4xl">
                   Welcome back, {firstName}
                 </h2>
-                <p className="mt-2 max-w-xl text-base text-slate-600">
+                <p className="mt-2 max-w-xl text-base text-muted-foreground">
                   {progress?.quizAccuracyRate != null && !Number.isNaN(progress.quizAccuracyRate) ? (
                     <>
                       You&apos;ve completed {Math.min(100, Math.round(progress.quizAccuracyRate))}% of your weekly
@@ -236,7 +236,7 @@ export default function StudentDashboardPage() {
                 </Link>
                 <Link
                   href="/student/quiz"
-                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-slate-800 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
                 >
                   Practice quiz
                 </Link>
@@ -245,9 +245,9 @@ export default function StudentDashboardPage() {
 
             {!progress && !progressLoading ? (
               <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-8 text-center shadow-sm">
-                <BookOpen className="mx-auto h-8 w-8 text-slate-400" />
-                <h3 className="mt-3 text-base font-semibold text-slate-900">Progress widget unavailable</h3>
-                <p className="mt-1 text-sm text-slate-600">
+                <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h3 className="mt-3 text-base font-semibold text-foreground">Progress widget unavailable</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   {(progressError instanceof Error ? progressError.message : progressError) ??
                     'Progress analytics are temporarily unavailable, but other widgets still load.'}
                 </p>
@@ -260,12 +260,12 @@ export default function StudentDashboardPage() {
                   <BookOpen className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
+                  <span className="font-headline text-3xl font-bold tracking-tight text-foreground">
                     {progress?.totalCasesViewed ?? 0}
                   </span>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cases viewed</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cases viewed</p>
                 </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
                     style={{ width: `${Math.min(100, (progress?.totalCasesViewed ?? 0) * 5)}%` }}
@@ -278,12 +278,12 @@ export default function StudentDashboardPage() {
                   <Trophy className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-3xl font-bold tracking-tight text-slate-900">
+                  <span className="font-headline text-3xl font-bold tracking-tight text-foreground">
                     {formatQuizPercent(progress?.avgQuizScore)}
                   </span>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Avg. quiz score</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Avg. quiz score</p>
                 </div>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-muted-foreground">
                   {progress?.completedQuizzes ?? 0} completed · {progress?.totalQuizAttempts ?? 0} attempts
                 </p>
               </div>
@@ -293,10 +293,10 @@ export default function StudentDashboardPage() {
                   <Target className="h-6 w-6" />
                 </div>
                 <div>
-                  <span className="font-headline text-lg font-bold text-slate-900">Study focus</span>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current goal</p>
+                  <span className="font-headline text-lg font-bold text-foreground">Study focus</span>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current goal</p>
                 </div>
-                <p className="text-sm text-slate-600">Topic spotlight: {goalTopic}</p>
+                <p className="text-sm text-muted-foreground">Topic spotlight: {goalTopic}</p>
               </div>
             </div>
 
@@ -310,9 +310,9 @@ export default function StudentDashboardPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm text-slate-600">{stat.title}</p>
-                        <p className="font-headline text-2xl font-bold text-slate-900">{stat.value}</p>
-                        {stat.change ? <p className="mt-1 text-xs text-slate-500">{stat.change}</p> : null}
+                        <p className="text-sm text-muted-foreground">{stat.title}</p>
+                        <p className="font-headline text-2xl font-bold text-foreground">{stat.value}</p>
+                        {stat.change ? <p className="mt-1 text-xs text-muted-foreground">{stat.change}</p> : null}
                       </div>
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.iconColor}`}>
                         <Icon className="h-5 w-5" />
@@ -327,8 +327,8 @@ export default function StudentDashboardPage() {
               <div className="space-y-6">
                 <SectionCard>
                   <div className="mb-5">
-                    <h2 className="font-headline text-xl font-bold tracking-tight text-slate-900">Quick actions</h2>
-                    <p className="mt-1 text-sm text-slate-600">
+                    <h2 className="font-headline text-xl font-bold tracking-tight text-foreground">Quick actions</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
                       Shortcuts to live workflows backed by the BoneVisQA API.
                     </p>
                   </div>
@@ -349,11 +349,11 @@ export default function StudentDashboardPage() {
                       <div className="h-20 animate-pulse rounded-xl bg-muted/60" />
                     </div>
                   ) : topicError ? (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
                       {topicError instanceof Error ? topicError.message : topicError}
                     </div>
                   ) : topicStats.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
                       No topic analytics available yet.
                     </div>
                   ) : (
@@ -365,10 +365,10 @@ export default function StudentDashboardPage() {
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-slate-900">
+                              <p className="text-sm font-semibold text-foreground">
                                 {topic.topicName?.trim() || 'Unnamed topic'}
                               </p>
-                              <p className="text-xs text-slate-600">
+                              <p className="text-xs text-muted-foreground">
                                 {typeof topic.quizAttempts === 'number' && Number.isFinite(topic.quizAttempts)
                                   ? topic.quizAttempts
                                   : 0}{' '}
@@ -381,7 +381,7 @@ export default function StudentDashboardPage() {
                                 : '—'}
                             </span>
                           </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
                             <div
                               className="h-full rounded-full bg-primary transition-all"
                               style={{
@@ -406,15 +406,15 @@ export default function StudentDashboardPage() {
 
               <div className="space-y-6">
                 <SectionCard>
-                  <h2 className="mb-4 text-lg font-semibold text-slate-900">Overall progress</h2>
+                  <h2 className="mb-4 text-lg font-semibold text-foreground">Overall progress</h2>
                   <div className="flex flex-col items-center">
                     <ProgressRing progress={clampPercent(progress?.quizAccuracyRate)} size={140} strokeWidth={10} />
                     <div className="mt-4 text-center">
-                      <p className="text-sm text-slate-600">
+                      <p className="text-sm text-muted-foreground">
                         Latest quiz score:{' '}
-                        <span className="font-medium text-slate-900">{formatQuizPercent(progress?.latestQuizScore)}</span>
+                        <span className="font-medium text-foreground">{formatQuizPercent(progress?.latestQuizScore)}</span>
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {progress?.completedQuizzes ?? 0} completed quizzes across {progress?.totalQuizAttempts ?? 0} attempts
                       </p>
                     </div>
@@ -426,15 +426,15 @@ export default function StudentDashboardPage() {
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                       <Clock className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">{progress?.totalQuizAttempts ?? 0}</p>
-                    <p className="text-sm text-slate-600">Quiz attempts</p>
+                    <p className="text-2xl font-bold text-foreground">{progress?.totalQuizAttempts ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Quiz attempts</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-4 text-center shadow-sm">
                     <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-accent/10">
                       <MessageSquare className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold text-slate-900">{progress?.escalatedAnswers ?? 0}</p>
-                    <p className="text-sm text-slate-600">Escalated answers</p>
+                    <p className="text-2xl font-bold text-foreground">{progress?.escalatedAnswers ?? 0}</p>
+                    <p className="text-sm text-muted-foreground">Escalated answers</p>
                   </div>
                 </div>
 
@@ -464,11 +464,11 @@ export default function StudentDashboardPage() {
                       ))}
                     </div>
                   ) : activityError ? (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
                       {activityError instanceof Error ? activityError.message : activityError}
                     </div>
                   ) : recentActivity.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-slate-600">
+                    <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
                       No recent activity has been recorded yet.
                     </div>
                   ) : (
@@ -495,19 +495,19 @@ export default function StudentDashboardPage() {
                         return (
                           <li
                             key={activity.id?.trim() || `activity-${actIdx}`}
-                            className="rounded-xl border border-border bg-card p-4 transition hover:border-primary/30 hover:bg-blue-50/30"
+                            className="rounded-xl border border-border bg-card p-4 transition hover:border-primary/30 hover:bg-primary/5"
                           >
                             <Link href={activityHref} className="block">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-slate-900">
+                                  <p className="text-sm font-semibold text-foreground">
                                     {activity.title?.trim() || 'Activity'}
                                   </p>
                                   {activity.description?.trim() ? (
-                                    <p className="mt-1 text-sm text-slate-600">{activity.description}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">{activity.description}</p>
                                   ) : null}
                                 </div>
-                                <span className="shrink-0 text-xs text-slate-500">
+                                <span className="shrink-0 text-xs text-muted-foreground">
                                   {activity.occurredAt?.trim() || '—'}
                                 </span>
                               </div>

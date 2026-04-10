@@ -11,7 +11,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#f7f9fb",
+        background: "#f8fafc",
         surface: "#ffffff",
         sidebar: "#0F1F35",
         primary: {
@@ -29,9 +29,9 @@ const config: Config = {
         },
         "primary-hover": "#1d4ed8",
         "cyan-accent": "#00E5FF",
-        "text-main": "#191c1e",
-        "text-muted": "#424752",
-        "border-color": "#D9E5F2",
+        "text-main": "#0f172a",
+        "text-muted": "#475569",
+        "border-color": "#dbe3ee",
         danger: "#EF4444",
         warning: "#F59E0B",
         success: "#10B981",

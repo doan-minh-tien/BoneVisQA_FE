@@ -11,7 +11,7 @@
   color-scheme: light;
 
   /* App canvas + typography (Material-style light shell) */
-  --background: #f7f9fb;
+  --background: #f8fafc;
   --surface: #ffffff;
   /* Sidebar: deep navy-earth — keep in sync with AppSidebar bg-[#0F1F35]; do not swap for MD3 surface tokens */
   --sidebar: #0f1f35;
@@ -19,21 +19,21 @@
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --cyan-accent: #00e5ff;
-  --text-main: #191c1e;
-  --text-muted: #424752;
-  --border-color: #d9e5f2;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --border-color: #dbe3ee;
   --danger: #EF4444;
   --warning: #F59E0B;
   --success: #10B981;
 
   /* Aliases for existing component classes */
   --foreground: var(--text-main);
-  --muted: #E5EEF7;
+  --muted: #eef2f7;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: #F8FBFE;
+  --input: #f8fafc;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
@@ -48,26 +48,26 @@
 .dark {
   color-scheme: dark;
 
-  --background: #0B1320;
-  --surface: #132238;
-  --sidebar: #0D192B;
+  --background: #0f172a;
+  --surface: #1e293b;
+  --sidebar: #111b2f;
   --primary: #3b82f6;
   --primary-hover: #2563eb;
   --cyan-accent: #00E5FF;
-  --text-main: #FFFFFF;
-  --text-muted: #8BA0B2;
-  --border-color: #1E334D;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
   --danger: #EF4444;
   --warning: #F59E0B;
   --success: #10B981;
 
   --foreground: var(--text-main);
-  --muted: var(--surface);
+  --muted: #263244;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: var(--surface);
+  --input: #223046;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
