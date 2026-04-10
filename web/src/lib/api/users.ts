@@ -110,8 +110,10 @@ export async function uploadMyAvatar(file: File): Promise<{ avatarUrl: string }>
 }
 
 export async function searchGlobal(query: string): Promise<SearchResultItem[]> {
+  const q = query.trim();
+  if (!q) return [];
   try {
-    const { data } = await http.get<unknown>('/api/search', { params: { q: query } });
+    const { data } = await http.get<unknown>('/api/search', { params: { q } });
     let list: unknown[] = [];
     if (Array.isArray(data)) {
       list = data;

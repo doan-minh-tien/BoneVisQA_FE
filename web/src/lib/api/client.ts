@@ -41,6 +41,17 @@ export const http = axios.create({
   },
 });
 
+type ProblemDetailsPayload = {
+  title?: unknown;
+  detail?: unknown;
+  status?: unknown;
+  type?: unknown;
+  instance?: unknown;
+  message?: unknown;
+  error?: unknown;
+  errors?: unknown;
+};
+
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
@@ -72,8 +83,8 @@ export function getApiErrorMessage(err: unknown): string {
     const data = err.response?.data as unknown;
     if (typeof data === 'string' && data.trim()) return data;
     if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      // ASP.NET Core validation: { title, errors: { "field": ["msg"] } }
+      const o = data as ProblemDetailsPayload;
+      // ASP.NET Core / .NET 8 validation: RFC 7807 + `errors` map.
       const errMap = o.errors;
       if (errMap && typeof errMap === 'object' && !Array.isArray(errMap)) {
         const lines: string[] = [];
@@ -90,8 +101,14 @@ export function getApiErrorMessage(err: unknown): string {
           return lines.join(' ');
         }
       }
-      const msg = o.message ?? o.title ?? o.detail ?? o.error;
-      if (typeof msg === 'string') return msg;
+
+      // ProblemDetails priority: detail (specific) -> title (summary).
+      if (typeof o.detail === 'string' && o.detail.trim()) return o.detail.trim();
+      if (typeof o.title === 'string' && o.title.trim()) return o.title.trim();
+
+      // Backward compatibility for legacy API shapes.
+      if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
+      if (typeof o.error === 'string' && o.error.trim()) return o.error.trim();
       if (Array.isArray(o.errors) && o.errors[0]) return String(o.errors[0]);
     }
     if (err.message) return err.message;
