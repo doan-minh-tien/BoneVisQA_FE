@@ -44,6 +44,8 @@ export interface ClassItem {
   className: string;
   semester: string;
   lecturerId: string;
+  expertId?: string | null;
+  expertName?: string | null;
   createdAt: string;
 }
 
@@ -525,6 +527,13 @@ export interface UpdateClassRequest {
   className: string;
   semester: string;
   expertId?: string;
+}
+
+/** Expert option displayed in the Expert Assignment dropdown */
+export interface ExpertOption {
+  id: string;
+  fullName: string;
+  email?: string | null;
 }
 
 export interface ClassStudentProgress {

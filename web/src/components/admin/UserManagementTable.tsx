@@ -35,6 +35,7 @@ export function UserManagementTable({
   onEdit,
   onDelete,
   onManageClasses,
+  hideRoleButton,
 }: {
   users: UiUser[];
   onToggleStatus: (user: UiUser) => void;
@@ -43,6 +44,8 @@ export function UserManagementTable({
   onDelete: (user: UiUser) => void;
   /** Only Lecturers & Students show the Manage button; others get undefined */
   onManageClasses: (user: UiUser) => void;
+  /** Hide role/assign buttons for Pending users — they're handled in Medical Verifications page */
+  hideRoleButton?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -177,19 +180,21 @@ export function UserManagementTable({
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex flex-col items-end justify-end gap-2 sm:flex-row sm:items-center">
-                    {/* Role button */}
-                    <button
-                      type="button"
-                      onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
-                    >
-                      {pendingQueue ? (
-                        <UserCheck className="h-4 w-4" />
-                      ) : (
-                        <Pencil className="h-4 w-4" />
-                      )}
-                      {pendingQueue ? 'Assign role' : 'Change role'}
-                    </button>
+                    {/* Role button — hidden for Pending users (handled by Medical Verifications page) */}
+                    {!hideRoleButton && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+                      >
+                        {pendingQueue ? (
+                          <UserCheck className="h-4 w-4" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                        {pendingQueue ? 'Assign role' : 'Change role'}
+                      </button>
+                    )}
 
                     {/* Edit button */}
                     <button

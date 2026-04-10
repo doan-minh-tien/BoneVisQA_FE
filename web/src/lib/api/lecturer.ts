@@ -13,6 +13,7 @@ import type {
   StudentQuizAttemptDto,
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
+  ExpertOption,
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -176,6 +177,25 @@ export async function assignQuizToClass(
       shuffleQuestions: payload.shuffleQuestions,
       allowRetake: payload.allowRetake,
     });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Lấy danh sách Expert để gán vào lớp học. */
+export async function getExperts(): Promise<ExpertOption[]> {
+  try {
+    const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
+export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
+  try {
+    await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

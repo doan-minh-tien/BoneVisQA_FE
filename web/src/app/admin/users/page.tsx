@@ -340,6 +340,7 @@ export default function AdminUsersPage() {
               onEdit={(user) => setEditTarget(user)}
               onDelete={(user) => setDeleteTarget(user)}
               onManageClasses={(user) => setManageClassesTarget(user)}
+              hideRoleButton={activeTab === 'Pending'}
             />
           )}
         </div>

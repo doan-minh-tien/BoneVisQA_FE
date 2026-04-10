@@ -32,6 +32,8 @@ import {
   Clock,
   Megaphone,
   ClipboardList,
+  UserCog,
+  XCircle,
 } from 'lucide-react';
 import {
   getClassById,
@@ -44,10 +46,12 @@ import {
   deleteClass,
   getClassAnnouncements,
   getClassAssignments,
+  getExperts,
+  assignExpertToClass,
 } from '@/lib/api/lecturer';
 import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
 import { getApiErrorMessage } from '@/lib/api/client';
-import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement, ClassAssignment } from '@/lib/api/types';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement, ClassAssignment, ExpertOption } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 
 const tabs = ['Students', 'Assignments', 'Announcements', 'Settings'] as const;
@@ -102,6 +106,12 @@ export default function ClassDetailPage({
   const [editSemester, setEditSemester] = useState('');
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // Expert assignment
+  const [expertList, setExpertList] = useState<ExpertOption[]>([]);
+  const [expertsLoading, setExpertsLoading] = useState(false);
+  const [assigningExpert, setAssigningExpert] = useState(false);
+  const [expertAssignError, setExpertAssignError] = useState('');
 
   // Delete class dialog
   const [showDelete, setShowDelete] = useState(false);
@@ -256,6 +266,41 @@ export default function ClassDetailPage({
     } catch (e) {
       alert(getApiErrorMessage(e) || 'Delete failed.');
       setDeleting(false);
+    }
+  };
+
+  const handleAssignExpert = async (expertId: string | null) => {
+    setAssigningExpert(true);
+    setExpertAssignError('');
+    try {
+      await assignExpertToClass(classId, expertId);
+      setClassData((prev) =>
+        prev
+          ? {
+              ...prev,
+              expertId: expertId ?? null,
+              expertName: expertList.find((e) => e.id === expertId)?.fullName ?? null,
+            }
+          : prev,
+      );
+      setExpertList([]);
+    } catch (e) {
+      setExpertAssignError(getApiErrorMessage(e) || 'Failed to assign expert.');
+    } finally {
+      setAssigningExpert(false);
+    }
+  };
+
+  const openExpertAssignment = async () => {
+    if (expertList.length > 0) return;
+    setExpertsLoading(true);
+    try {
+      const data = await getExperts();
+      setExpertList(data);
+    } catch {
+      setExpertList([]);
+    } finally {
+      setExpertsLoading(false);
     }
   };
 
@@ -781,6 +826,130 @@ export default function ClassDetailPage({
 
             {activeTab === 'Settings' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Expert Assignment */}
+                <div className="bg-card rounded-xl border border-border p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                      <UserCog className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-card-foreground">Expert Assignment</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Assign an expert radiologist to assist with escalated student questions in this class.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex-1">
+                      {classData?.expertId ? (
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-success/10 border border-success/20">
+                          <div className="h-8 w-8 rounded-full bg-success/20 flex items-center justify-center text-xs font-bold text-success">
+                            {(classData.expertName || 'E')
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-success">{classData.expertName}</p>
+                            <p className="text-xs text-success/70">Assigned expert</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-muted border border-border">
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">No expert assigned</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {expertAssignError && (
+                    <p className="mb-3 text-sm text-destructive">{expertAssignError}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={openExpertAssignment}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-60"
+                    disabled={assigningExpert}
+                  >
+                    {expertsLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading experts…
+                      </>
+                    ) : (
+                      <>
+                        <UserCog className="h-4 w-4" />
+                        {classData?.expertId ? 'Enroll Expert' : 'Enroll Expert'}
+                      </>
+                    )}
+                  </button>
+
+                  {/* Expert dropdown */}
+                  {expertList.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {expertList.map((expert) => (
+                        <button
+                          key={expert.id}
+                          type="button"
+                          onClick={() => handleAssignExpert(expert.id)}
+                          disabled={assigningExpert}
+                          className={`w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                            classData?.expertId === expert.id
+                              ? 'border-secondary/40 bg-secondary/5'
+                              : 'border-transparent bg-muted/30 hover:border-border'
+                          }`}
+                        >
+                          <div className="h-9 w-9 rounded-full bg-secondary/10 flex items-center justify-center text-xs font-bold text-secondary">
+                            {(expert.fullName || '?')
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-card-foreground truncate">
+                              {expert.fullName}
+                            </p>
+                            {expert.email && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {expert.email}
+                              </p>
+                            )}
+                          </div>
+                          {classData?.expertId === expert.id && (
+                            <span className="shrink-0 rounded-full bg-secondary/20 px-2 py-0.5 text-xs font-bold text-secondary">
+                              Current
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                      {classData?.expertId && (
+                        <button
+                          type="button"
+                          onClick={() => handleAssignExpert(null)}
+                          disabled={assigningExpert}
+                          className="w-full flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-left hover:border-destructive/40 transition-colors"
+                        >
+                          <div className="h-9 w-9 rounded-full bg-destructive/10 flex items-center justify-center">
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-destructive">Remove Expert</p>
+                            <p className="text-xs text-destructive/70">Unassign the current expert</p>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Class Information */}
                 <div className="bg-card rounded-xl border border-border p-6">
                   <h3 className="text-lg font-semibold text-card-foreground mb-4">Class Information</h3>
                   <div className="space-y-4">
@@ -810,6 +979,8 @@ export default function ClassDetailPage({
                     </div>
                   </div>
                 </div>
+
+                {/* Danger Zone */}
                 <div className="bg-card rounded-xl border border-border p-6">
                   <h3 className="text-lg font-semibold text-card-foreground mb-4">Danger Zone</h3>
                   <p className="text-sm text-muted-foreground mb-4">

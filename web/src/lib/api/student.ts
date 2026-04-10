@@ -73,7 +73,8 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
 
 export async function fetchStudentProfile(): Promise<StudentProfile> {
   try {
-    const { data } = await http.get<StudentProfile>('/api/student/profile');
+    // BE: UsersController — GET /api/users/me (không dùng /api/student/profile)
+    const { data } = await http.get<StudentProfile>('/api/users/me');
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -109,7 +110,7 @@ export async function updateStudentProfile(
   payload: StudentProfileUpdatePayload,
 ): Promise<StudentProfile> {
   try {
-    const { data } = await http.put<StudentProfile>('/api/student/profile', payload);
+    const { data } = await http.put<StudentProfile>('/api/users/me', payload);
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

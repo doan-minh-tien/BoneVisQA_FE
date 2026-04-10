@@ -51,7 +51,7 @@ export default function MedicalVerificationsPage() {
         isApproved: true,
         notes: notes || undefined,
       });
-      toast.success(`Verification approved for ${selectedUser.fullName}.`);
+      toast.success(`${selectedUser.fullName} approved. Student role assigned, account activated.`);
       setVerifications((prev) => prev.filter((v) => v.userId !== selectedUser.userId));
       closeDialog();
     } catch (err) {
@@ -119,8 +119,8 @@ export default function MedicalVerificationsPage() {
             </h3>
             <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
               Users who register as medical students will appear here for verification.
-              Once approved, they will receive an email notification and can login immediately.
-              Approved accounts are automatically activated.
+              Once approved, they will automatically receive the <strong>Student</strong> role,
+              their account will be activated, and a welcome email will be sent — in a single step.
             </p>
           </div>
         </div>
@@ -314,8 +314,9 @@ export default function MedicalVerificationsPage() {
             {actionType === 'approve' ? (
               <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
                 <p className="text-sm text-emerald-800 dark:text-emerald-200">
-                  <strong>Note:</strong> Upon approval, the user&apos;s account will be automatically
-                  activated and they will receive an email notification.
+                  <strong>Auto-assign:</strong> Upon approval, the user will be automatically assigned
+                  the <strong>Student</strong> role, account activated, and receive a welcome email
+                  with login credentials.
                 </p>
               </div>
             ) : (

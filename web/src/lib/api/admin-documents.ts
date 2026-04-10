@@ -54,6 +54,8 @@ export async function uploadAdminDocument(
 
   try {
     const { data } = await http.post<DocumentUploadResponse>(
+      //==================================================
+      // `${ADMIN_DOCUMENTS}/document-upload`,
       `${ADMIN_DOCUMENTS}/upload`,
       form,
       {
