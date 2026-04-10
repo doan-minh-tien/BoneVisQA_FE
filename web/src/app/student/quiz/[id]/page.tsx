@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useRef, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -84,7 +84,7 @@ export default function QuizSessionPage({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
-  const timeExpiredToastSent = useRef(false);
+  const timeUpAutoSubmitTriggered = useRef(false);
 
   const questions: QuizModeQuestion[] = session?.questions ?? [];
   const currentQ = questions[currentIndex];
@@ -124,25 +124,52 @@ export default function QuizSessionPage({
     }
     const total = timeLimitMinutes * 60;
     setSecondsLeft(total);
-    timeExpiredToastSent.current = false;
+    timeUpAutoSubmitTriggered.current = false;
     const tick = setInterval(() => {
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
   }, [session?.attemptId, timeLimitMinutes, submitted, session]);
 
+  const handleSubmit = useCallback(async () => {
+    if (!session) return;
+    setSubmitting(true);
+    try {
+      const payload: StudentSubmitQuestionDto[] = Object.entries(answers).map(
+        ([questionId, studentAnswer]) => ({ questionId, studentAnswer }),
+      );
+      const result = await submitQuizSession(session.attemptId, payload);
+      setQuizResult(result);
+      setSubmitted(true);
+      try {
+        const review = await fetchQuizAttemptReview(session.attemptId);
+        setQuizReview(review);
+      } catch {
+        // Review load failure is non-critical
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to submit: ${msg}`);
+      console.error('Submit failed', e);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [session, answers, toast]);
+
   useEffect(() => {
     if (
-      secondsLeft === 0 &&
-      !submitted &&
-      timeLimitMinutes != null &&
-      session &&
-      !timeExpiredToastSent.current
+      secondsLeft !== 0 ||
+      submitted ||
+      submitting ||
+      timeLimitMinutes == null ||
+      !session ||
+      timeUpAutoSubmitTriggered.current
     ) {
-      timeExpiredToastSent.current = true;
-      toast.error('Time is up. Please submit your answers now.');
+      return;
     }
-  }, [secondsLeft, submitted, timeLimitMinutes, session, toast]);
+    timeUpAutoSubmitTriggered.current = true;
+    void handleSubmit();
+  }, [secondsLeft, submitted, submitting, timeLimitMinutes, session, handleSubmit]);
 
   const handleStart = async () => {
     setLoadingSession(true);
@@ -202,34 +229,12 @@ export default function QuizSessionPage({
     setShowFeedback(true);
   };
 
-  const handleSubmit = async () => {
-    if (!session) return;
-    setSubmitting(true);
-    try {
-      const payload: StudentSubmitQuestionDto[] = Object.entries(answers).map(
-        ([questionId, studentAnswer]) => ({ questionId, studentAnswer }),
-      );
-      const result = await submitQuizSession(session.attemptId, payload);
-      setQuizResult(result);
-      setSubmitted(true);
-      try {
-        const review = await fetchQuizAttemptReview(session.attemptId);
-        setQuizReview(review);
-      } catch {
-        // Review load failure is non-critical
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Failed to submit: ${msg}`);
-      console.error('Submit failed', e);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const currentAnswer = currentQ ? answers[currentQ.questionId] : null;
   const currentState = currentQ ? (answerStates[currentQ.questionId] ?? 'unanswered') : 'unanswered';
   const allAnswered = answeredCount === totalQ;
+
+  // Whether to show the submit button; always enabled so student can submit even partial answers
+  const canSubmit = !submitting && !submitted;
 
   if (loadingInfo) {
     return (
@@ -770,7 +775,7 @@ export default function QuizSessionPage({
                 <button
                   type="button"
                   onClick={() => void handleSubmit()}
-                  disabled={submitting || !allAnswered}
+                  disabled={!canSubmit}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/25 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {submitting ? (
@@ -778,10 +783,8 @@ export default function QuizSessionPage({
                       <Loader2 className="h-5 w-5 animate-spin" />
                       Submitting…
                     </>
-                  ) : allAnswered ? (
-                    'Submit'
                   ) : (
-                    `Submit (${answeredCount}/${totalQ} answered)`
+                    `Submit${answeredCount < totalQ ? ` (${answeredCount}/${totalQ} answered)` : ''}`
                   )}
                 </button>
               </div>
