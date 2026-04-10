@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/toast';
 const RECENT_USERS_PAGE_SIZE = 8;
 
 export default function AdminDashboardPage() {
+  const toast = useToast();
   const { t } = useTranslation();
   const recentListReady = useRef(false);
   const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
