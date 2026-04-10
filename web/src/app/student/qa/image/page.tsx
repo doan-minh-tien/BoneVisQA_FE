@@ -74,6 +74,8 @@ const EMPTY_DRAFT: VisualQaDraft = {
   imageType: null,
 };
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
 export default function StudentVisualQaImagePage() {
   const toast = useToast();
   const searchParams = useSearchParams();
@@ -89,6 +91,8 @@ export default function StudentVisualQaImagePage() {
   const [aiOverload, setAiOverload] = useState(false);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [customPolygon, setCustomPolygon] = useState<NormalizedPolygonPoint[] | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [questionError, setQuestionError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [hydratingDraft, setHydratingDraft] = useState(true);
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
@@ -179,6 +183,13 @@ export default function StudentVisualQaImagePage() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const f = e.target.files?.[0];
       if (!f) return;
+      if (f.size > MAX_IMAGE_SIZE_BYTES) {
+        setFile(null);
+        setImageError('Image must be smaller than 5MB.');
+        return;
+      }
+      setImageError(null);
+      setQuestionError(null);
       setReport(null);
       setLastSubmittedQuestion(null);
       setAiOverload(false);
@@ -196,10 +207,17 @@ export default function StudentVisualQaImagePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !question.trim()) {
-      toast.error('Please attach an image and enter your question or observations.');
+      if (!file) setImageError('Please attach an image before submitting.');
+      if (!question.trim()) setQuestionError('Please enter your question or observations.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setImageError('Image must be smaller than 5MB.');
       return;
     }
     const q = question.trim();
+    setImageError(null);
+    setQuestionError(null);
     setNetworkWarning(null);
     setAiOverload(false);
     setLoading(true);
@@ -368,6 +386,7 @@ export default function StudentVisualQaImagePage() {
                 onChange={onFileChange}
                 className="block w-full rounded-xl border border-border-color bg-background/70 px-3 py-3 text-sm text-text-main file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
               />
+              {imageError ? <p className="mt-2 text-xs text-destructive">{imageError}</p> : null}
               {file ? (
                 <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
                   <UploadCloud className="h-4 w-4 text-cyan-accent" />
@@ -402,6 +421,7 @@ export default function StudentVisualQaImagePage() {
                 placeholder="e.g. Describe suspected pathology and differential diagnoses for this radiograph."
                 className="mt-1.5 w-full rounded-xl border border-border-color bg-background/70 px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
               />
+              {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
             </div>
             {question.trim() ? (
               <div className="rounded-xl border border-border-color bg-background/55 p-4">
