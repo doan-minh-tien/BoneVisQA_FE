@@ -13,6 +13,7 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
@@ -34,7 +35,7 @@ import { useToast } from '@/components/ui/toast';
 const RECENT_USERS_PAGE_SIZE = 8;
 
 export default function AdminDashboardPage() {
-  const toast = useToast();
+  const { t } = useTranslation();
   const recentListReady = useRef(false);
   const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
   const [activityStats, setActivityStats] = useState<AdminActivityStat | null>(null);
@@ -124,7 +125,7 @@ export default function AdminDashboardPage() {
 
   const currentStats = [
     {
-      title: 'Total Users',
+      title: t('dashboard.totalUsers', 'Total Users'),
       value: totalUsers.toString(),
       change: `+${newUsers} this month`,
       changeType: 'positive' as const,
@@ -132,7 +133,7 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-primary/10 text-primary',
     },
     {
-      title: 'Students',
+      title: t('users.roles.student', 'Students'),
       value: students.toString(),
       change: 'active members',
       changeType: 'positive' as const,
@@ -140,7 +141,7 @@ export default function AdminDashboardPage() {
       iconColor: 'bg-accent/10 text-accent',
     },
     {
-      title: 'Lecturers',
+      title: t('users.roles.lecturer', 'Lecturers'),
       value: lecturers.toString(),
       change: 'active teaching',
       changeType: 'positive' as const,
@@ -159,7 +160,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Admin Dashboard" subtitle="System overview and management" />
+      <Header title={t('nav.dashboard', 'Dashboard')} subtitle={t('dashboard.systemHealth', 'System overview and management')} />
 
       <div className="p-6 max-w-[1600px] mx-auto">
         {isLoading ? (

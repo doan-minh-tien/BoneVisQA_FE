@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import { AppProviders } from "@/components/providers";
+import type { Metadata } from 'next';
+import './globals.css';
+import { AppProviders } from '@/components/providers';
+import I18nProvider from '@/components/providers/I18nProvider';
 
 export const metadata: Metadata = {
   title: "BoneVisQA - Radiology Education",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="light">
       <body suppressHydrationWarning className="font-sans antialiased">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <I18nProvider>{children}</I18nProvider>
+        </AppProviders>
       </body>
     </html>
   );

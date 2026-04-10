@@ -6,11 +6,18 @@ const ADMIN_USERS = '/api/admin/users';
 // ── Normalizers ─────────────────────────────────────────────────────────────
 
 function normalizeUsersResponse(data: unknown): AdminUser[] {
+  console.log('RAW API RESPONSE DATA:', data);
   const rawList =
     Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'result' in data
         ? (data as { result?: unknown }).result
+      : data && typeof data === 'object' && 'data' in data
+        ? (data as { data?: unknown }).data
+      : data && typeof data === 'object' && 'users' in data
+        ? (data as { users?: unknown }).users
+      : data && typeof data === 'object' && 'items' in data
+        ? (data as { items?: unknown }).items
         : data;
 
   const list = Array.isArray(rawList) ? rawList : [];
@@ -50,8 +57,32 @@ function normalizeUsersResponse(data: unknown): AdminUser[] {
 
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   try {
-    const { data } = await http.get<unknown>(ADMIN_USERS);
-    return normalizeUsersResponse(data);
+    const rolesToFetch = ['Student', 'Lecturer', 'Expert', 'Admin', 'Pending'];
+    const responses = await Promise.all(
+      rolesToFetch.map(async (r) => {
+        try {
+          const res = await http.get<unknown>(`/api/Admin/role/${r}`);
+          return { role: r, data: res.data };
+        } catch {
+          return { role: r, data: [] }; // gracefully handle missing/empty roles
+        }
+      })
+    );
+
+    let allUsers: AdminUser[] = [];
+    for (const res of responses) {
+      const normalized = normalizeUsersResponse(res.data);
+      // Ensure the role is set so the UI tabs work correctly
+      for (const u of normalized) {
+        if (!u.roles || u.roles.length === 0) {
+          u.roles = [res.role];
+        } else if (u.roles[0] === 'Unassigned') {
+          u.roles = [res.role];
+        }
+      }
+      allUsers = allUsers.concat(normalized);
+    }
+    return allUsers;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
