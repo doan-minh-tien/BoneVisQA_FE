@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, ChevronDown, LogOut, Settings, User } from 'lucide-react';
+import { ArrowLeft, Bell, ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
 import { useLogout } from '@/lib/useLogout';
@@ -34,18 +34,22 @@ function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey 
   return null;
 }
 
-function settingsHrefForRole(role: RoleKey): string {
+function settingsHrefForRole(_role: RoleKey): string {
+  return '/settings';
+}
+
+function dashboardHrefForRole(role: RoleKey): string {
   switch (role) {
     case 'admin':
-      return '/admin/settings';
+      return '/admin/dashboard';
     case 'lecturer':
-      return '/lecturer/settings';
+      return '/lecturer/dashboard';
     case 'expert':
-      return '/expert/settings';
+      return '/expert/dashboard';
     case 'student':
-      return '/profile';
+      return '/student/dashboard';
     default:
-      return '/profile';
+      return '/dashboard';
   }
 }
 
@@ -141,6 +145,18 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
       router.push(item.route);
       setOpenNotifications(false);
     }
+  };
+
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    if (resolvedRole) {
+      router.push(dashboardHrefForRole(resolvedRole));
+      return;
+    }
+    router.push('/dashboard');
   };
 
   return (
@@ -270,8 +286,20 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
         </div>
       </div>
       <div className="px-6 pb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-text-main">{title}</h1>
-        {subtitle ? <p className="mt-1 text-sm text-text-muted">{subtitle}</p> : null}
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border-color bg-surface text-text-muted hover:bg-muted/40 hover:text-text-main"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight text-text-main">{title}</h1>
+            {subtitle ? <p className="mt-1 text-sm text-text-muted">{subtitle}</p> : null}
+          </div>
+        </div>
       </div>
     </header>
   );

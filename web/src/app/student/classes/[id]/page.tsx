@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { StudentAppChrome } from '@/components/student/StudentAppChrome';
+import Header from '@/components/Header';
 import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import { useToast } from '@/components/ui/toast';
@@ -83,9 +83,9 @@ export default function StudentClassDetailPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <StudentAppChrome breadcrumb="Classes" />
+      <Header title={title} subtitle="Class roster, case assignments, quizzes, and announcements." />
 
-      <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6">
+      <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Link href="/student/classes" className="hover:text-foreground">
             Classes

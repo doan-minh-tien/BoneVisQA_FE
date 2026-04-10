@@ -86,7 +86,9 @@ export function AppShell({
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
         style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
       >
-        <main className="scrollbar-hide min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="scrollbar-hide min-h-0 min-w-0 flex-1 overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {children}
+        </main>
       </div>
     </div>
   );
