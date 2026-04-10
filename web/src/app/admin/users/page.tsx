@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Header from '@/components/Header';
+import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import Header from "@/components/Header";
 import {
   UiUser,
   UserManagementTable,
@@ -32,6 +33,7 @@ import type { AdminUser } from '@/lib/api/types';
 import { ChevronDown, Filter, Loader2, Plus, Search, Users } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
+const allRoles = assignableRoles;
 
 type RoleTab = UserRole | 'Pending' | 'Unassigned';
 
@@ -64,6 +66,7 @@ function normalizeUser(user: AdminUser): UiUser {
 
 export default function AdminUsersPage() {
   const toast = useToast();
+  const { t } = useTranslation();
   const [users, setUsers] = useState<UiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -71,7 +74,6 @@ export default function AdminUsersPage() {
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [submitting, setSubmitting] = useState(false);
 
-  // Dialog states
   const [statusTarget, setStatusTarget] = useState<UiUser | null>(null);
   const [assignRoleDialog, setAssignRoleDialog] = useState<{
     user: UiUser;
@@ -81,16 +83,6 @@ export default function AdminUsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
   const [manageClassesTarget, setManageClassesTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-
-  // ── Load users ─────────────────────────────────────────────────────────────
-  const loadUsers = async () => {
-    try {
-      const data = await fetchAdminUsers();
-      setUsers(data.map(normalizeUser));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load users.');
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +99,6 @@ export default function AdminUsersPage() {
     return () => { cancelled = true; };
   }, [toast]);
 
-  // ── Filter ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return users.filter((u) => {
       if (activeTab === 'Pending' && u.role !== 'Pending') return false;
@@ -140,7 +131,6 @@ export default function AdminUsersPage() {
     [users],
   );
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleToggleStatus = async () => {
     if (!statusTarget) return;
     setSubmitting(true);
@@ -189,7 +179,8 @@ export default function AdminUsersPage() {
       await createAdminUser(payload);
       toast.success(`User "${payload.fullName}" created successfully.`);
       setCreateOpen(false);
-      await loadUsers();
+      const data = await fetchAdminUsers();
+      setUsers(data.map(normalizeUser));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create user.');
       setSubmitting(false);
@@ -241,16 +232,15 @@ export default function AdminUsersPage() {
   return (
     <div className="min-h-screen bg-background pb-12">
       <Header
-        title="User Management"
+        title={t('users.title', 'User Management')}
         subtitle={`${users.length} accounts loaded from the platform directory`}
       />
 
       <div className="mx-auto max-w-[1600px] space-y-8 p-6">
-        {/* Header row: Tabs + Create button */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
             <TabButton
-              label="Pending"
+              label={t('users.pendingRequests', 'Pending')}
               count={countsByTab.Pending}
               active={activeTab === 'Pending'}
               onClick={() => setActiveTab('Pending')}
@@ -262,7 +252,7 @@ export default function AdminUsersPage() {
               active={activeTab === 'Unassigned'}
               onClick={() => setActiveTab('Unassigned')}
             />
-            {assignableRoles.map((role) => (
+            {allRoles.map((role) => (
               <TabButton
                 key={role}
                 label={role}
@@ -283,14 +273,13 @@ export default function AdminUsersPage() {
           </button>
         </div>
 
-        {/* Search + Filter */}
         <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row">
           <ToolbarField>
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search by name, email, or cohort..."
+                placeholder={t('users.searchPlaceholder', 'Search by name, email, or class...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-12 w-full rounded-xl border border-border bg-input pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
@@ -314,7 +303,6 @@ export default function AdminUsersPage() {
           </ToolbarField>
         </div>
 
-        {/* Table */}
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {loading ? (
             <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
@@ -346,9 +334,6 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
-
-      {/* Create User */}
       {createOpen ? (
         <CreateUserDialog
           onCancel={() => { setCreateOpen(false); setSubmitting(false); }}
@@ -356,7 +341,6 @@ export default function AdminUsersPage() {
         />
       ) : null}
 
-      {/* Edit User */}
       {editTarget ? (
         <EditUserDialog
           userId={editTarget.id}
@@ -367,7 +351,6 @@ export default function AdminUsersPage() {
         />
       ) : null}
 
-      {/* Delete Confirmation */}
       {deleteTarget ? (
         <DeleteConfirmDialog
           userId={deleteTarget.id}
@@ -377,7 +360,6 @@ export default function AdminUsersPage() {
         />
       ) : null}
 
-      {/* Role Assignment */}
       {assignRoleDialog ? (
         <UserRoleDialog
           user={assignRoleDialog.user}
@@ -388,7 +370,6 @@ export default function AdminUsersPage() {
         />
       ) : null}
 
-      {/* Status Toggle */}
       {statusTarget ? (
         <UserStatusDialog
           user={statusTarget}
@@ -398,7 +379,6 @@ export default function AdminUsersPage() {
         />
       ) : null}
 
-      {/* Manage Classes */}
       {manageClassesTarget ? (
         <ManageClassesDialog
           user={manageClassesTarget}
