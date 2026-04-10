@@ -380,11 +380,11 @@ export default function CreateQuizPage() {
 
   const handleAIAutoGenerate = async () => {
     if (!formData.title.trim()) {
-      setError('Vui lòng nhập tiêu đề quiz trước');
+      setError('Please enter a quiz title first');
       return;
     }
     if (!formData.topic) {
-      setError('Vui lòng chọn topic trước');
+      setError('Please select a topic first');
       return;
     }
 
@@ -405,10 +405,10 @@ export default function CreateQuizPage() {
         setTempQuestions([]);
         setActiveStep(2);
       } else {
-        setError(result.message || 'Không thể tạo câu hỏi từ AI');
+        setError(result.message || 'Cannot create questions from AI');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi khi tạo quiz');
+      setError(err instanceof Error ? err.message : 'An error occurred while creating the quiz');
     } finally {
       setAiGenerating(false);
     }
@@ -416,7 +416,7 @@ export default function CreateQuizPage() {
 
   const handleAISuggestFromCases = async () => {
     if (referenceCaseIds.length === 0) {
-      setError('Vui lòng chọn ít nhất 1 case trước');
+      setError('Please select at least 1 case first');
       return;
     }
 
@@ -444,10 +444,10 @@ export default function CreateQuizPage() {
         setTempQuestions([]);
         setActiveStep(2);
       } else {
-        setError(result.message || 'Không thể gợi ý câu hỏi từ AI');
+        setError(result.message || 'Cannot suggest questions from AI');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi khi gợi ý');
+      setError(err instanceof Error ? err.message : 'An error occurred while suggesting');
     } finally {
       setAiSuggesting(false);
     }
@@ -516,7 +516,7 @@ export default function CreateQuizPage() {
       toast.success('Quiz created and AI questions added.');
       router.push(`/lecturer/quizzes/${quiz.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Đã xảy ra lỗi');
+      setError(err instanceof Error ? err.message : 'An error occurred');
       toast.error(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setLoading(false);
@@ -946,22 +946,22 @@ export default function CreateQuizPage() {
                   </span>
                 </div>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Sử dụng AI để tạo quiz tự động hoặc gợi ý câu hỏi từ cases đã chọn.
+                Use AI to automatically create quizzes or suggest questions from selected cases.
                 </p>
 
                 <div className="space-y-3">
                   {/* Question Count */}
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">Số câu hỏi:</label>
+                    <label className="text-xs text-muted-foreground">Number of questions:</label>
                     <select
                       value={questionCount}
                       onChange={(e) => setQuestionCount(parseInt(e.target.value))}
                       className="rounded-md border border-border bg-card px-2 py-1 text-xs"
                     >
-                      <option value={3}>3 câu</option>
-                      <option value={5}>5 câu</option>
-                      <option value={10}>10 câu</option>
-                      <option value={15}>15 câu</option>
+                      <option value={3}>3 questions</option>
+                      <option value={5}>5 questions</option>
+                      <option value={10}>10 questions</option>
+                      <option value={15}>15 questions</option>
                     </select>
                   </div>
 
@@ -978,7 +978,7 @@ export default function CreateQuizPage() {
                       {aiGenerating ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang tạo...
+                          Creating...
                         </>
                       ) : (
                         <>
@@ -999,12 +999,12 @@ export default function CreateQuizPage() {
                       {aiSuggesting ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang gợi ý...
+                          Suggesting...
                         </>
                       ) : (
                         <>
                           <Lightbulb className="mr-2 h-4 w-4" />
-                          AI Gợi ý từ Cases
+                          AI Suggest from Cases
                         </>
                       )}
                     </Button>
@@ -1012,12 +1012,12 @@ export default function CreateQuizPage() {
 
                   {!formData.topic && (
                     <p className="text-xs text-orange-600 dark:text-orange-400">
-                      Vui lòng chọn Topic để sử dụng AI Auto-Generate
+                      Please select a Topic to use AI Auto-Generate
                     </p>
                   )}
                   {referenceCaseIds.length === 0 && (
                     <p className="text-xs text-orange-600 dark:text-orange-400">
-                      Chọn Cases để sử dụng AI Gợi ý
+                      Select Cases to use AI Suggest
                     </p>
                   )}
                 </div>
@@ -1119,7 +1119,7 @@ export default function CreateQuizPage() {
                           onClick={handleAddAIQuestionsToQuiz}
                           className="h-8 text-xs"
                         >
-                          Thêm vào Quiz
+                          Add to Quiz
                         </Button>
                         <Button
                           size="sm"
@@ -1127,7 +1127,7 @@ export default function CreateQuizPage() {
                           onClick={handleCreateAndAddAIQuestions}
                           className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
                         >
-                          Tạo Quiz ngay
+                          Create Quiz now
                         </Button>
                       </div>
                     </div>
@@ -1147,7 +1147,7 @@ export default function CreateQuizPage() {
                             <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
                           </div>
                           <div className="ml-7 mt-2">
-                            <span className="text-xs text-green-600">Đáp án đúng: {q.correctAnswer}</span>
+                            <span className="text-xs text-green-600">Correct answer: {q.correctAnswer}</span>
                             {q.caseTitle && (
                               <span className="ml-2 text-xs text-muted-foreground">Case: {q.caseTitle}</span>
                             )}

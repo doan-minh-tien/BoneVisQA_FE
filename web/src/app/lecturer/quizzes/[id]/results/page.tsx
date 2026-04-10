@@ -15,13 +15,15 @@ import {
   Award,
   Users,
   FileText,
-  X,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import { getQuiz } from '@/lib/api/lecturer-quiz';
-import { getClassQuizAttempts, getQuizAttemptDetail } from '@/lib/api/lecturer';
+import { getClassQuizAttempts, getQuizAttemptDetail, allowRetakeForAttempt, allowRetakeAll } from '@/lib/api/lecturer';
 import { getApiErrorMessage } from '@/lib/api/client';
 import type { QuizDto, StudentQuizAttemptDto, QuizAttemptDetailDto, QuestionWithAnswerDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 
 type SortKey = 'studentName' | 'score' | 'submittedAt';
@@ -197,8 +199,56 @@ export default function QuizResultsPage({
   const [attemptDetail, setAttemptDetail] = useState<QuizAttemptDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [retakingId, setRetakingId] = useState<string | null>(null);
+  const [retakingAll, setRetakingAll] = useState(false);
+  /** In-app confirmation instead of window.confirm */
+  const [retakeDialog, setRetakeDialog] = useState<
+    null | { kind: 'single'; attempt: StudentQuizAttemptDto } | { kind: 'all'; count: number }
+  >(null);
 
   const classId = quiz?.classId ?? '';
+
+  function openRetakeSingleDialog(attempt: StudentQuizAttemptDto) {
+    setRetakeDialog({ kind: 'single', attempt });
+  }
+
+  function openRetakeAllDialog() {
+    const count = attempts.filter((a) => a.completedAt).length;
+    if (count === 0) return;
+    setRetakeDialog({ kind: 'all', count });
+  }
+
+  async function confirmRetakeDialog() {
+    if (!classId || !retakeDialog) return;
+    if (retakeDialog.kind === 'single') {
+      const attempt = retakeDialog.attempt;
+      setRetakingId(attempt.attemptId);
+      try {
+        await allowRetakeForAttempt(classId, quizId, attempt.attemptId);
+        toast.success(`Retake enabled for ${attempt.studentName}.`);
+        const data = await getClassQuizAttempts(classId, quizId);
+        setAttempts(data);
+        setRetakeDialog(null);
+      } catch (e) {
+        toast.error(getApiErrorMessage(e));
+      } finally {
+        setRetakingId(null);
+      }
+      return;
+    }
+    setRetakingAll(true);
+    try {
+      await allowRetakeAll(classId, quizId);
+      toast.success('Retake enabled for all submitted students.');
+      const data = await getClassQuizAttempts(classId, quizId);
+      setAttempts(data);
+      setRetakeDialog(null);
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setRetakingAll(false);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -356,6 +406,35 @@ export default function QuizResultsPage({
         </div>
       </div>
 
+      {/* Retake management */}
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <RotateCcw className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-card-foreground">Retake management</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {attempts.filter((a) => a.completedAt).length} student(s) have submitted. You can reset attempts so they can take the quiz again.
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={openRetakeAllDialog}
+          disabled={retakingAll || attempts.filter((a) => a.completedAt).length === 0}
+          className="shrink-0 border-primary/30 bg-primary/5 font-semibold text-primary hover:bg-primary/10"
+        >
+          {retakingAll ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="mr-2 h-4 w-4" />
+          )}
+          Allow all to retake
+        </Button>
+      </div>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -446,6 +525,22 @@ export default function QuizResultsPage({
                       {formatDate(a.completedAt ?? a.startedAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {a.completedAt && (
+                        <button
+                          type="button"
+                          onClick={() => openRetakeSingleDialog(a)}
+                          disabled={retakingId === a.attemptId}
+                          title="Allow this student to retake the quiz"
+                          className="mr-2 inline-flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {retakingId === a.attemptId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          )}
+                          Retake
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openAttemptDetail(a)}
@@ -474,6 +569,87 @@ export default function QuizResultsPage({
           }}
         />
       )}
+
+      <Modal
+        open={retakeDialog !== null}
+        onClose={() => {
+          if (retakingId || retakingAll) return;
+          setRetakeDialog(null);
+        }}
+        title={
+          retakeDialog?.kind === 'all'
+            ? 'Allow retake for everyone?'
+            : retakeDialog?.kind === 'single'
+              ? 'Allow student to retake?'
+              : ''
+        }
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!!retakingId || retakingAll}
+              onClick={() => setRetakeDialog(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!!retakingId || retakingAll}
+              onClick={() => void confirmRetakeDialog()}
+              className="bg-primary font-semibold"
+            >
+              {retakingId || retakingAll ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Applying…
+                </>
+              ) : retakeDialog?.kind === 'all' ? (
+                <>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Allow all retakes
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Allow retake
+                </>
+              )}
+            </Button>
+          </div>
+        }
+      >
+        {retakeDialog?.kind === 'single' ? (
+          <div className="flex gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-2 text-sm text-muted-foreground">
+              <p>
+                <span className="font-semibold text-card-foreground">{retakeDialog.attempt.studentName}</span> will be
+                able to start this quiz again. Their current submitted attempt will be reset for retake purposes.
+              </p>
+              <p className="text-xs">Use this when a student needs another attempt after technical issues or as decided by your course policy.</p>
+            </div>
+          </div>
+        ) : retakeDialog?.kind === 'all' ? (
+          <div className="flex gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-2 text-sm text-muted-foreground">
+              <p>
+                Allow all{' '}
+                <span className="font-semibold text-card-foreground">{retakeDialog.count}</span> student
+                {retakeDialog.count === 1 ? '' : 's'} who submitted to retake this quiz?
+              </p>
+              <p className="text-xs">
+                Each will receive a fresh attempt. This applies to everyone who has already completed a submission for this quiz in this class.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

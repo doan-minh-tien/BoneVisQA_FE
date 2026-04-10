@@ -196,7 +196,7 @@ export default function ExpertSettingsPage() {
             <h2 className="text-xl font-semibold text-card-foreground">{displayName}</h2>
             <p className="text-sm text-muted-foreground">{displayEmail}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Ảnh đã tải sẽ lưu sau khi bạn bấm <span className="font-medium text-foreground">Save Changes</span>.
+              Uploaded images will be saved after you click <span className="font-medium text-foreground">Save Changes</span>.
             </p>
             <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
               <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">

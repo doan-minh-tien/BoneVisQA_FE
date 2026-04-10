@@ -225,12 +225,12 @@ export default function QuestionEditorDialog({
 
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
     if (!validTypes.includes(file.type)) {
-      setError('Chỉ hỗ trợ file ảnh: JPG, PNG, GIF, WEBP, SVG.');
+      setError('Only image files are supported: JPG, PNG, GIF, WEBP, SVG.');
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      setError('Kích thước file không được vượt quá 10MB.');
+      setError('File size must not exceed 10MB.');
       return;
     }
 
@@ -241,7 +241,7 @@ export default function QuestionEditorDialog({
       const url = await uploadImage(file);
       setImageUrl(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload ảnh thất bại.');
+      setError(err instanceof Error ? err.message : 'Image upload failed.');
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -372,7 +372,7 @@ export default function QuestionEditorDialog({
                 )}
                 <div className="rounded-2xl border border-[#c2c6d4]/10 bg-[#eceef0] p-4">
                   <p className="text-xs leading-relaxed text-[#424752]">
-                    <span className="font-bold text-[#00478d]">Tip:</span> Dùng ảnh X-ray, scan bone để minh họa cho câu hỏi nhận diện.
+                    <span className="font-bold text-[#00478d]">Tip:</span> Use X-ray or bone scan images to illustrate identification questions.
                   </p>
                 </div>
               </div>

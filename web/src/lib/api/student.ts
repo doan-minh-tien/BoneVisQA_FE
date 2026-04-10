@@ -174,7 +174,8 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
 
 export async function fetchStudentProfile(): Promise<StudentProfile> {
   try {
-    const { data } = await http.get<StudentProfile>('/api/student/profile');
+    // BE: UsersController — GET /api/users/me (không dùng /api/student/profile)
+    const { data } = await http.get<StudentProfile>('/api/users/me');
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -210,7 +211,7 @@ export async function updateStudentProfile(
   payload: StudentProfileUpdatePayload,
 ): Promise<StudentProfile> {
   try {
-    const { data } = await http.put<StudentProfile>('/api/student/profile', payload);
+    const { data } = await http.put<StudentProfile>('/api/users/me', payload);
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -394,11 +395,18 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
   const o = raw as Record<string, unknown>;
   const rawQs = o.questions ?? o.Questions;
   const list = Array.isArray(rawQs) ? rawQs : [];
+  const rawTl = o.timeLimit ?? o.TimeLimit;
+  let timeLimit: number | null = null;
+  if (rawTl != null && rawTl !== '') {
+    const n = typeof rawTl === 'number' ? rawTl : Number(rawTl);
+    if (Number.isFinite(n) && n > 0) timeLimit = Math.round(n);
+  }
   return {
     attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
     quizId: String(o.quizId ?? o.QuizId ?? ''),
     title: String(o.title ?? o.Title ?? ''),
     topic: pickStr(o, 'topic', 'Topic'),
+    timeLimit,
     questions: list.map(normalizeStudentSessionQuestion),
   };
 }
@@ -411,6 +419,20 @@ export async function startQuizSession(quizId: string): Promise<QuizSessionDto> 
   try {
     const { data } = await http.post<unknown>(`/api/student/quizzes/${quizId}/start`);
     return normalizeQuizSessionPayload(data);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Student requests retake: POST /api/student/quizzes/{quizId}/request-retake
+ * Sends notification + email to the lecturer.
+ */
+export async function requestRetake(quizId: string): Promise<{ message: string }> {
+  try {
+    const { data } = await http.post<unknown>(`/api/student/quizzes/${quizId}/request-retake`);
+    const o = (data && typeof data === 'object') ? (data as Record<string, unknown>) : {};
+    return { message: String(o.message ?? 'Request sent.') };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -172,7 +172,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         localStorage.setItem("userId", data.userId ?? "");
         localStorage.setItem("fullName", data.fullName ?? "");
         localStorage.setItem("email", data.email ?? "");
-        toast.success(data.message || "Vui lòng xác nhận thông tin y khoa để hoàn tất đăng ký.");
+        toast.success(data.message || "Please confirm your medical information to complete registration.");
         router.push("/auth/medical-verification");
       } else {
         const message = data.message || "Google login failed.";

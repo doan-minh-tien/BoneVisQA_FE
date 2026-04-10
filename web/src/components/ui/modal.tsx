@@ -25,8 +25,7 @@ export function Modal({ open, title, children, onClose, footer, size = 'md' }: M
 
   if (!open) return null;
 
-  const maxW =
-    size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-md';
+  const maxW = size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-md';
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">

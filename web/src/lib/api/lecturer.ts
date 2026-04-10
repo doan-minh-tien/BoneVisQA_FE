@@ -13,6 +13,7 @@ import type {
   StudentQuizAttemptDto,
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
+  ExpertOption,
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -162,6 +163,8 @@ export async function assignQuizToClass(
     closeTime?: string;
     timeLimitMinutes?: number;
     passingScore?: number;
+    shuffleQuestions?: boolean;
+    allowRetake?: boolean;
   },
 ): Promise<void> {
   try {
@@ -171,7 +174,28 @@ export async function assignQuizToClass(
       closeTime: payload.closeTime,
       timeLimitMinutes: payload.timeLimitMinutes,
       passingScore: payload.passingScore,
+      shuffleQuestions: payload.shuffleQuestions,
+      allowRetake: payload.allowRetake,
     });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Lấy danh sách Expert để gán vào lớp học. */
+export async function getExperts(): Promise<ExpertOption[]> {
+  try {
+    const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
+export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
+  try {
+    await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -539,6 +563,38 @@ export async function updateQuizAttempt(
       body,
     );
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cho phép một sinh viên làm lại quiz (reset attempt).
+ */
+export async function allowRetakeForAttempt(
+  classId: string,
+  quizId: string,
+  attemptId: string,
+): Promise<void> {
+  try {
+    await http.post(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/attempts/${attemptId}/retake`,
+      {},
+    );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cho phép TẤT CẢ sinh viên trong lớp đã nộp quiz được làm lại.
+ */
+export async function allowRetakeAll(classId: string, quizId: string): Promise<void> {
+  try {
+    await http.post(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
+      {},
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

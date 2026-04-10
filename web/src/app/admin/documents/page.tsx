@@ -127,7 +127,7 @@ export default function AdminDocumentsPage() {
       for (const r of rejections) {
         for (const err of r.errors) {
           if (err.code === 'file-too-large') {
-            toast.error('File tải lên vượt quá giới hạn 50MB. Vui lòng chọn tệp nhỏ hơn.');
+            toast.error('Uploaded file exceeds the 50MB limit. Please choose a smaller file.');
             return;
           }
         }

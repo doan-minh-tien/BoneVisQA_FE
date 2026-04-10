@@ -1,8 +1,7 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast';
 import {
   Loader2,
@@ -21,10 +20,12 @@ import {
   UserRound,
   Contrast,
   Ruler,
+  Mail,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAssignedQuizzes, startQuizSession, submitQuizSession } from '@/lib/api/student';
-import { resolveApiAssetUrl } from '@/lib/api/client';
+import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview, requestRetake } from '@/lib/api/student';
+import type { QuizAttemptReview } from '@/lib/api/student';
+import { resolveApiAssetUrl, getApiErrorMessage } from '@/lib/api/client';
 import type { StudentQuizResultDto } from '@/lib/api/types';
 import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
 
@@ -73,12 +74,17 @@ export default function QuizSessionPage({
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<StudentQuizResultDto | null>(null);
+  const [quizReview, setQuizReview] = useState<QuizAttemptReview | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [requestingRetake, setRequestingRetake] = useState(false);
+  const [retakeSent, setRetakeSent] = useState(false);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
+  const timeUpAutoSubmitTriggered = useRef(false);
 
   const questions: QuizModeQuestion[] = session?.questions ?? [];
   const currentQ = questions[currentIndex];
@@ -86,6 +92,11 @@ export default function QuizSessionPage({
   const answeredCount = Object.keys(answers).length;
   const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
   const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
+  const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
+  const timeLimitMinutes =
+    rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
+  const timerDisplaySeconds =
+    !submitted && timeLimitMinutes != null ? (secondsLeft ?? timeLimitMinutes * 60) : null;
 
   useEffect(() => {
     (async () => {
@@ -107,30 +118,81 @@ export default function QuizSessionPage({
       setSecondsLeft(null);
       return;
     }
-    const limitMin = quizInfo?.timeLimit;
-    if (limitMin == null || limitMin <= 0) {
+    if (timeLimitMinutes == null) {
       setSecondsLeft(null);
       return;
     }
-    const total = Math.round(limitMin * 60);
+    const total = timeLimitMinutes * 60;
     setSecondsLeft(total);
+    timeUpAutoSubmitTriggered.current = false;
     const tick = setInterval(() => {
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
-  }, [session?.attemptId, quizInfo?.timeLimit, submitted, session]);
+  }, [session?.attemptId, timeLimitMinutes, submitted, session]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!session) return;
+    setSubmitting(true);
+    try {
+      const payload: StudentSubmitQuestionDto[] = Object.entries(answers).map(
+        ([questionId, studentAnswer]) => ({ questionId, studentAnswer }),
+      );
+      const result = await submitQuizSession(session.attemptId, payload);
+      setQuizResult(result);
+      setSubmitted(true);
+      try {
+        const review = await fetchQuizAttemptReview(session.attemptId);
+        setQuizReview(review);
+      } catch {
+        // Review load failure is non-critical
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Failed to submit: ${msg}`);
+      console.error('Submit failed', e);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [session, answers, toast]);
+
+  useEffect(() => {
+    if (
+      secondsLeft !== 0 ||
+      submitted ||
+      submitting ||
+      timeLimitMinutes == null ||
+      !session ||
+      timeUpAutoSubmitTriggered.current
+    ) {
+      return;
+    }
+    timeUpAutoSubmitTriggered.current = true;
+    void handleSubmit();
+  }, [secondsLeft, submitted, submitting, timeLimitMinutes, session, handleSubmit]);
 
   const handleStart = async () => {
     setLoadingSession(true);
+    setStartError(null);
     try {
       const data = await startQuizSession(quizId);
       setSession(data);
       if (!data.questions || data.questions.length === 0) {
-        toast.error('Quiz này không có câu hỏi nào. Vui lòng liên hệ giảng viên.');
+        toast.error('This quiz has no questions. Please contact your lecturer.');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Không thể bắt đầu quiz: ${msg}`);
+      if (
+        msg.includes('already submitted') ||
+        msg.includes('cannot retake') ||
+        msg.includes('nộp bài') ||
+        msg.includes('làm lại') ||
+        msg.includes('đã nộp')
+      ) {
+        setStartError(msg);
+      } else {
+        toast.error(`Cannot start quiz: ${msg}`);
+      }
       console.error('[QuizSession] start error:', e);
     } finally {
       setLoadingSession(false);
@@ -167,29 +229,13 @@ export default function QuizSessionPage({
     setShowFeedback(true);
   };
 
-  const handleSubmit = async () => {
-    if (!session) return;
-    setSubmitting(true);
-    try {
-      const payload: StudentSubmitQuestionDto[] = Object.entries(answers).map(
-        ([questionId, studentAnswer]) => ({ questionId, studentAnswer }),
-      );
-      const result = await submitQuizSession(session.attemptId, payload);
-      setQuizResult(result);
-      setSubmitted(true);
-    } catch (e) {
-      console.error('Submit failed', e);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const currentAnswer = currentQ ? answers[currentQ.questionId] : null;
   const currentState = currentQ ? (answerStates[currentQ.questionId] ?? 'unanswered') : 'unanswered';
-  const isLast = currentIndex === totalQ - 1;
   const allAnswered = answeredCount === totalQ;
 
-  // ---------- Loading quiz info ----------
+  // Whether to show the submit button; always enabled so student can submit even partial answers
+  const canSubmit = !submitting && !submitted;
+
   if (loadingInfo) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -211,10 +257,81 @@ export default function QuizSessionPage({
     );
   }
 
-  // ---------- Pre-start screen ----------
+  // Pre-start screen
   if (!session) {
+    if (startError) {
+      const retakeHint =
+        /nộp bài|làm lại|đã nộp|retake|submitted/i.test(startError) ||
+        startError.toLowerCase().includes('lecturer');
+      return (
+        <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
+          <div className="w-full max-w-md space-y-5 rounded-2xl border border-destructive/30 bg-surface-container-low p-8 text-center shadow-lg">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-7 w-7 text-destructive" />
+            </div>
+            <div>
+              <h2 className="font-headline text-lg font-bold text-on-surface">
+                {retakeHint ? 'Quiz already submitted' : 'Cannot start quiz'}
+              </h2>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-muted/50 px-4 py-3 text-left">
+              <p className="text-sm leading-relaxed text-on-surface break-words">{startError}</p>
+            </div>
+            {retakeHint ? (
+              <>
+                {retakeSent ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-success">Request sent!</p>
+                      <p className="text-xs text-on-surface-variant">
+                        Your lecturer has been notified. You can retake the quiz once retake is enabled.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setRequestingRetake(true);
+                      try {
+                        await requestRetake(quizId);
+                        setRetakeSent(true);
+                        toast.success('Retake request sent to your lecturer.');
+                      } catch (e) {
+                        toast.error(getApiErrorMessage(e));
+                      } finally {
+                        setRequestingRetake(false);
+                      }
+                    }}
+                    disabled={requestingRetake}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {requestingRetake ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    {requestingRetake ? 'Sending…' : 'Request retake'}
+                  </button>
+                )}
+              </>
+            ) : null}
+            <Link href="/student/quiz">
+              <Button variant="outline" className="h-11 w-full rounded-xl font-bold">
+                Back to quiz list
+              </Button>
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center gap-8 px-4 py-10">
+      <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
         <div className="w-full max-w-lg space-y-6 rounded-2xl border border-outline-variant/20 bg-surface-container-low p-10 text-center shadow-lg shadow-primary/5">
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-container text-white shadow-md shadow-primary/25">
             <PlayCircle className="h-8 w-8" />
@@ -224,9 +341,9 @@ export default function QuizSessionPage({
             <h1 className="font-headline text-2xl font-extrabold tracking-tight text-on-surface">
               {quizInfo?.quizName ?? 'Clinical Quiz'}
             </h1>
-            {quizInfo?.className ? (
+            {quizInfo?.className && (
               <p className="mt-2 text-sm text-on-surface-variant">{quizInfo.className}</p>
-            ) : null}
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4 rounded-xl border border-outline-variant/15 bg-surface-container-lowest/80 p-4">
             <div className="text-center">
@@ -264,7 +381,7 @@ export default function QuizSessionPage({
     );
   }
 
-  // ---------- Quiz Mode ----------
+  // Quiz Mode: no questions
   if (!currentQ || totalQ === 0) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
@@ -301,10 +418,25 @@ export default function QuizSessionPage({
           )}
         </div>
         <div className="flex items-center gap-3 sm:gap-6">
-          {secondsLeft != null && !submitted ? (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 font-headline text-sm font-bold tabular-nums text-primary dark:bg-slate-800 dark:text-blue-400">
+          {!submitted && timeLimitMinutes != null ? (
+            <div
+              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-headline text-sm font-bold tabular-nums sm:px-4 ${
+                timerDisplaySeconds === 0
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                  : 'bg-slate-100 text-primary dark:bg-slate-800 dark:text-blue-400'
+              }`}
+              title="Time remaining"
+            >
               <Timer className="h-4 w-4 shrink-0" />
-              {formatMmSs(secondsLeft)}
+              {formatMmSs(timerDisplaySeconds ?? 0)}
+            </div>
+          ) : !submitted ? (
+            <div
+              className="flex max-w-[9rem] items-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-low px-2 py-1.5 text-[10px] font-semibold leading-tight text-on-surface-variant sm:max-w-none sm:gap-2 sm:px-3 sm:text-xs"
+              title="Quiz has no time limit"
+            >
+              <Timer className="h-3.5 w-3.5 shrink-0 opacity-70 sm:h-4 sm:w-4" />
+              No time limit
             </div>
           ) : null}
           <button
@@ -353,13 +485,41 @@ export default function QuizSessionPage({
           </div>
         </div>
 
+        {!submitted && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-primary px-2.5 py-1 font-headline text-sm font-extrabold text-white">
+                Q{currentIndex + 1} / {totalQ}
+              </span>
+              <span className="hidden text-sm text-on-surface-variant sm:inline">
+                Question {currentIndex + 1} of {totalQ}
+              </span>
+            </div>
+            {timeLimitMinutes != null ? (
+              <div
+                className={`flex items-center gap-2 font-headline text-base font-bold tabular-nums sm:text-lg ${
+                  timerDisplaySeconds === 0 ? 'text-destructive' : 'text-primary'
+                }`}
+              >
+                <Timer className="h-5 w-5 shrink-0" />
+                {formatMmSs(timerDisplaySeconds ?? 0)}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant">
+                <Timer className="h-4 w-4 shrink-0" />
+                No time limit
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-          {/* Left: image (template: 7 cols) */}
+          {/* Left: image panel */}
           <div className="lg:col-span-7">
             <div className="lg:sticky lg:top-28 space-y-6">
-              <div className="group relative flex aspect-[4/5] items-center justify-center overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:aspect-square">
+              <div className="group relative w-full min-h-[52vh] overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:min-h-[58vh] lg:min-h-[60vh]">
                 <div
-                  className={`flex h-full w-full origin-center items-center justify-center overflow-hidden transition-transform duration-300 ${
+                  className={`flex min-h-[52vh] w-full origin-center items-center justify-center overflow-auto p-2 transition-transform duration-300 sm:p-4 md:min-h-[58vh] lg:min-h-[60vh] ${
                     highContrastImg ? 'contrast-125 saturate-125' : ''
                   }`}
                   style={{
@@ -371,7 +531,8 @@ export default function QuizSessionPage({
                     <img
                       src={resolveApiAssetUrl(currentQ.imageUrl)}
                       alt={currentQ.caseTitle ?? 'Case image'}
-                      className="max-h-full max-w-full object-contain opacity-90 transition-opacity group-hover:opacity-100"
+                      className="h-auto w-full max-w-full object-contain opacity-95 transition-opacity group-hover:opacity-100"
+                      style={{ maxHeight: 'min(78vh, 920px)' }}
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center px-6">
@@ -384,7 +545,7 @@ export default function QuizSessionPage({
                     </div>
                   )}
 
-                  {currentQ.imageUrl ? (
+                  {currentQ.imageUrl && (
                     <>
                       <svg
                         className="pointer-events-none absolute inset-0 h-full w-full"
@@ -408,7 +569,7 @@ export default function QuizSessionPage({
                         </div>
                       </div>
                     </>
-                  ) : null}
+                  )}
                 </div>
 
                 <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
@@ -456,28 +617,28 @@ export default function QuizSessionPage({
                     className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
                     title="Reset zoom"
                   >
-                    {ZOOM_LEVELS[zoomIndex]}×
+                    {ZOOM_LEVELS[zoomIndex]}x
                   </button>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {currentQ.caseId ? (
+                {currentQ.caseId && (
                   <span className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-xs font-semibold text-on-surface-variant">
                     <span className="font-bold text-on-surface">ID:</span> {currentQ.caseId.slice(0, 8)}
                   </span>
-                ) : null}
-                {currentQ.caseTitle ? (
+                )}
+                {currentQ.caseTitle && (
                   <span className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-xs font-semibold text-on-surface-variant">
                     <BookOpen className="h-4 w-4 shrink-0" />
                     {currentQ.caseTitle}
                   </span>
-                ) : null}
-                {currentQ.type ? (
+                )}
+                {currentQ.type && (
                   <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
                     {currentQ.type}
                   </span>
-                ) : null}
+                )}
               </div>
 
               <div>
@@ -506,12 +667,17 @@ export default function QuizSessionPage({
             </div>
           </div>
 
-          {/* Right: question + answers (template: 5 cols) */}
+          {/* Right: question + answers */}
           <div className="flex flex-col gap-8 lg:col-span-5">
             <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-low p-6 sm:p-8">
-              <span className="mb-4 inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
-                {questionTag}
-              </span>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-lg bg-primary px-2.5 py-1 font-headline text-xs font-extrabold text-white sm:text-sm">
+                  Q{currentIndex + 1} / {totalQ}
+                </span>
+                <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
+                  {questionTag}
+                </span>
+              </div>
               <p className="font-headline text-lg font-bold leading-snug text-on-surface sm:text-xl">
                 {currentQ.questionText}
               </p>
@@ -559,26 +725,24 @@ export default function QuizSessionPage({
                     >
                       {key}
                     </span>
-                    <span
-                      className={`flex-1 font-semibold text-on-surface ${isSelected && state === 'unanswered' ? 'font-bold' : ''}`}
-                    >
+                    <span className="flex-1 font-semibold text-on-surface">
                       {text}
                     </span>
-                    {state === 'unanswered' && isSelected ? (
+                    {state === 'unanswered' && isSelected && (
                       <CheckCircle2 className="ml-2 h-6 w-6 shrink-0 text-primary" />
-                    ) : null}
-                    {state !== 'unanswered' && isCorrect ? (
+                    )}
+                    {state !== 'unanswered' && isCorrect && (
                       <CheckCircle2 className="ml-2 h-6 w-6 shrink-0 text-success" />
-                    ) : null}
-                    {state === 'incorrect' && isSelected && !isCorrect ? (
+                    )}
+                    {state === 'incorrect' && isSelected && !isCorrect && (
                       <XCircle className="ml-2 h-6 w-6 shrink-0 text-destructive" />
-                    ) : null}
+                    )}
                   </button>
                 );
               })}
             </div>
 
-            {!submitted ? (
+            {!submitted && (
               <div className="flex flex-col gap-4">
                 <button
                   type="button"
@@ -598,36 +762,35 @@ export default function QuizSessionPage({
                     <ArrowLeft className="h-5 w-5" />
                     Previous
                   </button>
-                  {isLast ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleSubmit()}
-                      disabled={submitting || !allAnswered}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                    >
-                      {submitting ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : allAnswered ? (
-                        'Submit quiz'
-                      ) : (
-                        `${answeredCount}/${totalQ} answered`
-                      )}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleNext}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Next question
-                      <ArrowRight className="h-5 w-5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={currentIndex >= totalQ - 1}
+                    className="flex flex-[2] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
+                  >
+                    Next
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSubmit()}
+                  disabled={!canSubmit}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/25 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Submitting…
+                    </>
+                  ) : (
+                    `Submit${answeredCount < totalQ ? ` (${answeredCount}/${totalQ} answered)` : ''}`
+                  )}
+                </button>
               </div>
-            ) : null}
+            )}
 
-            {showFeedback ? (
+            {showFeedback && (
               <div
                 className={`rounded-2xl border p-6 sm:p-8 ${
                   currentState === 'correct'
@@ -652,10 +815,10 @@ export default function QuizSessionPage({
                     </>
                   )}
                 </div>
-                {currentQ.explanation ? (
+                {currentQ.explanation && (
                   <p className="text-sm leading-relaxed text-on-surface-variant">{currentQ.explanation}</p>
-                ) : null}
-                {currentState === 'incorrect' && currentQ.correctAnswer ? (
+                )}
+                {currentState === 'incorrect' && currentQ.correctAnswer && (
                   <p className="mt-3 text-sm font-semibold text-on-surface">
                     Correct answer:{' '}
                     <span className="text-success">
@@ -663,7 +826,7 @@ export default function QuizSessionPage({
                       {String(currentQ[`option${currentQ.correctAnswer}` as keyof QuizModeQuestion] ?? '')}
                     </span>
                   </p>
-                ) : null}
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -681,9 +844,9 @@ export default function QuizSessionPage({
                   )}
                 </button>
               </div>
-            ) : null}
+            )}
 
-            {submitted && quizResult ? (
+            {submitted && quizResult && (
               <div className="space-y-6 rounded-2xl border border-primary/25 bg-primary/5 p-8">
                 <div>
                   <p className="text-center font-headline text-lg font-bold text-on-surface">Quiz submitted</p>
@@ -715,29 +878,140 @@ export default function QuizSessionPage({
                       Back to quizzes
                     </Button>
                   </Link>
-                  <Link href="/student/history">
-                    <Button className="rounded-xl font-bold">View history</Button>
+                  <Link href="/student/quiz/history">
+                    <Button className="rounded-xl font-bold">Quiz history</Button>
                   </Link>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
+        {/* Review answers */}
+        {submitted && quizReview && quizReview.questions.length > 0 && (
+          <div>
+            <div className="mb-6 flex items-center gap-3">
+              <span className="h-1 w-6 rounded-full bg-primary" />
+              <h4 className="font-headline text-base font-bold text-on-surface">
+                Review answers
+              </h4>
+              <span className="ml-auto text-xs text-on-surface-variant">
+                {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
+              </span>
+            </div>
+            <div className="space-y-3">
+              {quizReview.questions.map((q, i) => {
+                const studentChoice = q.studentAnswer?.toUpperCase();
+                const correctChoice = q.correctAnswer?.toUpperCase();
+                const isCorrect = q.isCorrect;
+
+                return (
+                  <div
+                    key={q.questionId}
+                    className={`rounded-2xl border-2 p-5 transition-all ${
+                      isCorrect
+                        ? 'border-emerald-400/50 bg-emerald-50 dark:border-emerald-600/40 dark:bg-emerald-950/25'
+                        : 'border-destructive/40 bg-destructive/5 dark:border-destructive/30 dark:bg-destructive/10'
+                    }`}
+                  >
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-headline text-sm font-extrabold text-white ${
+                            isCorrect ? 'bg-emerald-500' : 'bg-destructive'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <p className="font-semibold text-on-surface-variant">
+                          {isCorrect ? 'Correct' : 'Incorrect'}
+                        </p>
+                      </div>
+                      {q.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={resolveApiAssetUrl(q.imageUrl)}
+                          alt="case"
+                          className="h-14 w-14 rounded-xl border border-outline-variant/20 object-cover"
+                        />
+                      )}
+                    </div>
+
+                    <p className="mb-4 text-sm font-semibold text-on-surface leading-snug">
+                      {q.questionText}
+                    </p>
+
+                    <div className="space-y-2">
+                      {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                        const text = q[`option${key}` as keyof typeof q];
+                        if (!text) return null;
+                        const isStudent = studentChoice === key;
+                        const isCorrectKey = correctChoice === key;
+
+                        let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
+                        if (isCorrectKey) {
+                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800 dark:border-emerald-500/50 dark:bg-emerald-950/40 dark:text-emerald-100';
+                        } else if (isStudent && !isCorrect) {
+                          cls = 'border-destructive/50 bg-destructive/10 text-destructive';
+                        }
+
+                        return (
+                          <div
+                            key={key}
+                            className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${cls}`}
+                          >
+                            <span
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                                isCorrectKey
+                                  ? 'bg-emerald-500 text-white'
+                                  : isStudent
+                                    ? 'bg-destructive text-white'
+                                    : 'bg-surface-container text-on-surface-variant'
+                              }`}
+                            >
+                              {key}
+                            </span>
+                            <span className="flex-1">{text}</span>
+                            {isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                            {isStudent && !isCorrectKey && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
+                            {isStudent && isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Question navigation */}
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
           <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
             <span className="h-1 w-6 rounded-full bg-primary" />
-            Question navigator
+            Question navigation
           </h4>
           <div className="flex flex-wrap gap-2">
             {questions.map((q, i) => {
               const state = answerStates[q.questionId];
               const isCurrent = i === currentIndex;
+              const reviewQ = quizReview?.questions.find(rq => rq.questionId === q.questionId);
               let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
-              if (state === 'correct') cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
-              else if (state === 'incorrect') cls = 'border-destructive/40 bg-destructive/10 text-destructive';
-              else if (answers[q.questionId]) cls = 'border-primary/40 bg-primary/10 text-primary';
-              if (isCurrent) cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+              if (reviewQ) {
+                cls = reviewQ.isCorrect
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (state === 'correct') {
+                cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
+              } else if (state === 'incorrect') {
+                cls = 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (answers[q.questionId]) {
+                cls = 'border-primary/40 bg-primary/10 text-primary';
+              }
+              if (isCurrent) {
+                cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+              }
               return (
                 <button
                   key={q.questionId}
@@ -765,8 +1039,8 @@ export default function QuizSessionPage({
           <Link href="/student/quiz" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Back to quizzes
           </Link>
-          <Link href="/student/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
-            History
+          <Link href="/student/quiz/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
+            Quiz history
           </Link>
         </div>
       </footer>

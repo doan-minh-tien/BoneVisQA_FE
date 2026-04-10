@@ -1,9 +1,6 @@
 import { Calendar, Mail, Pencil, Trash2, UserCheck, BookOpen } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
-/** Roles that can be assigned in the admin UI */
 export type UserRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
-/** Display includes system states from the API */
 export type DisplayRole = UserRole | 'Pending' | 'Unassigned';
 export type UserStatus = 'Active' | 'Inactive';
 
@@ -14,9 +11,7 @@ export type UiUser = {
   role: DisplayRole;
   status: UserStatus;
   joinedAt: string;
-  /** Raw cohort string from user profile */
   className?: string;
-  /** Display-ready class list (up to 2 shown, rest in dialog) */
   classList?: Array<{ id: string; className: string; relationType: string }>;
 };
 
@@ -36,38 +31,27 @@ export function UserManagementTable({
   onEdit,
   onDelete,
   onManageClasses,
+  hideRoleButton,
 }: {
   users: UiUser[];
   onToggleStatus: (user: UiUser) => void;
   onOpenAssignRole: (user: UiUser, mode: 'assign' | 'change') => void;
   onEdit: (user: UiUser) => void;
   onDelete: (user: UiUser) => void;
-  /** Only Lecturers & Students show the Manage button; others get undefined */
   onManageClasses: (user: UiUser) => void;
+  hideRoleButton?: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-slate-200/60 bg-slate-50/60">
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-              User Profile
-            </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-              Classes
-            </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-              Contact Info
-            </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-              Status
-            </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
-              Joined Date
-            </th>
-            <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">
-              Actions
-            </th>
+          <tr className="border-b border-slate-200/60 bg-slate-50/50">
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">User Profile</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Classes</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Contact Info</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Status</th>
+            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Joined Date</th>
+            <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -76,19 +60,11 @@ export function UserManagementTable({
             const isActive = user.status === 'Active';
             const pendingQueue = needsRoleAssignment(user.role);
             return (
-              <tr
-                key={user.id}
-                className="group even:bg-slate-50/55 transition-colors duration-200 hover:bg-blue-50/70"
-              >
+              <tr key={user.id} className="group even:bg-slate-50/55 transition-colors duration-200 hover:bg-blue-50/70">
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-blue-200/50 bg-gradient-to-br from-blue-100 to-slate-100 text-sm font-bold text-blue-700 shadow-sm transition-transform duration-300 group-hover:scale-105">
-                      {user.name
-                        .split(' ')
-                        .map((w) => w[0])
-                        .join('')
-                        .slice(0, 2)
-                        .toUpperCase()}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-indigo-200/50 bg-gradient-to-br from-indigo-100 to-purple-100 text-sm font-bold text-indigo-700 shadow-sm transition-transform duration-300 group-hover:scale-105">
+                      {user.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
                     </div>
                     <div>
                       <span className="block text-sm font-semibold text-slate-900">{user.name}</span>
@@ -107,45 +83,26 @@ export function UserManagementTable({
                     {user.classList && user.classList.length > 0 ? (
                       <>
                         {user.classList.slice(0, 2).map((cls) => (
-                          <span
-                            key={cls.id}
-                            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
-                          >
+                          <span key={cls.id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                             <BookOpen className="h-3 w-3" />
                             {cls.className}
-                            {cls.relationType === 'Lecturer' && (
-                              <span className="ml-0.5 text-[10px] text-blue-400">(GV)</span>
-                            )}
+                            {cls.relationType === 'Lecturer' && <span className="ml-0.5 text-[10px] text-blue-400">(GV)</span>}
                           </span>
                         ))}
                         {user.classList.length > 2 && (
-                          <span className="text-[10px] text-slate-400">
-                            +{user.classList.length - 2} more
-                          </span>
+                          <span className="text-[10px] text-slate-400">+{user.classList.length - 2} more</span>
                         )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onManageClasses(user)}
-                          className="mt-1 !h-auto !px-0 !py-0 text-xs !text-blue-600 underline underline-offset-2 hover:!text-blue-800"
-                        >
+                        <button type="button" onClick={() => onManageClasses(user)} className="mt-1 w-fit text-xs font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-800">
                           Manage
-                        </Button>
+                        </button>
                       </>
                     ) : (
                       <>
                         <span className="text-xs text-slate-400">No class assigned</span>
                         {(user.role === 'Lecturer' || user.role === 'Student') && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onManageClasses(user)}
-                            className="mt-1 !h-auto !px-0 !py-0 text-xs !text-blue-600 hover:!text-blue-800"
-                          >
+                          <button type="button" onClick={() => onManageClasses(user)} className="mt-1 w-fit text-xs font-semibold text-blue-600 hover:text-blue-800">
                             + Assign class
-                          </Button>
+                          </button>
                         )}
                       </>
                     )}
@@ -153,25 +110,19 @@ export function UserManagementTable({
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <div className="rounded-md bg-slate-100 p-1.5 text-slate-400">
-                      <Mail className="h-3.5 w-3.5" />
-                    </div>
+                    <div className="rounded-md bg-slate-100 p-1.5 text-slate-400"><Mail className="h-3.5 w-3.5" /></div>
                     {user.email}
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex flex-col gap-1">
-                    <span
-                      className={`inline-flex w-fit items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-bold ${status.bg} ${status.text}`}
-                    >
+                    <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-bold ${status.bg} ${status.text}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
                       {user.status}
                     </span>
-                    {user.role === 'Pending' && user.status === 'Inactive' ? (
-                      <span className="text-[10px] font-medium text-amber-600/90">
-                        Account inactive until a role is assigned
-                      </span>
-                    ) : null}
+                    {user.role === 'Pending' && user.status === 'Inactive' && (
+                      <span className="text-[10px] font-medium text-amber-600/90">Account inactive until a role is assigned</span>
+                    )}
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
@@ -182,74 +133,28 @@ export function UserManagementTable({
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="flex flex-col items-end justify-end gap-2 sm:flex-row sm:items-center">
-                    {/* Role button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
-                      className="text-xs"
-                    >
-                      {pendingQueue ? (
-                        <UserCheck className="h-4 w-4" />
-                      ) : (
-                        <Pencil className="h-4 w-4" />
-                      )}
-                      {pendingQueue ? 'Assign role' : 'Change role'}
-                    </Button>
-
-                    {/* Edit button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEdit(user)}
-                      title="Edit user details"
-                      className="text-xs"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit
-                    </Button>
-
-                    {/* Delete button */}
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => onDelete(user)}
-                      title="Delete user"
-                      className="text-xs"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </Button>
-
-                    {/* Status toggle */}
-                    <button
-                      type="button"
-                      onClick={() => onToggleStatus(user)}
-                      className="group/btn flex cursor-pointer items-center gap-2"
-                      title={isActive ? 'Deactivate user' : 'Activate user'}
-                    >
-                      <span
-                        className={`text-xs font-bold transition-colors ${
-                          isActive
-                            ? 'text-slate-400 group-hover/btn:text-emerald-600'
-                            : 'text-slate-400 group-hover/btn:text-slate-600'
-                        }`}
+                    {!hideRoleButton && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAssignRole(user, pendingQueue ? 'assign' : 'change')}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
                       >
+                        {pendingQueue ? <UserCheck className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                        {pendingQueue ? 'Assign role' : 'Change role'}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => onEdit(user)} className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 active:scale-95">
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </button>
+                    <button type="button" onClick={() => onDelete(user)} className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-100 bg-white px-3 py-2 text-xs font-bold text-red-600 shadow-sm transition-all hover:border-red-300 hover:bg-red-50 active:scale-95">
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
+                    </button>
+                    <button type="button" onClick={() => onToggleStatus(user)} className="group/btn flex cursor-pointer items-center gap-2" title={isActive ? 'Deactivate user' : 'Activate user'}>
+                      <span className={`text-xs font-bold transition-colors ${isActive ? 'text-slate-400 group-hover/btn:text-emerald-600' : 'text-slate-400 group-hover/btn:text-slate-600'}`}>
                         {isActive ? 'Active' : 'Inactive'}
                       </span>
-                      <div
-                        className={`relative h-6 w-11 rounded-full shadow-inner transition-all duration-300 ${
-                          isActive ? 'bg-emerald-500' : 'bg-slate-200'
-                        }`}
-                      >
-                        <div
-                          className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-300 ${
-                            isActive ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
+                      <div className={`relative h-6 w-11 rounded-full shadow-inner transition-all duration-300 ${isActive ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                        <div className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-300 ${isActive ? 'translate-x-5' : 'translate-x-0'}`} />
                       </div>
                     </button>
                   </div>
