@@ -33,7 +33,7 @@ export default function ExpertDashboardPage() {
   const [pendingReviews, setPendingReviews] = useState<ExpertPendingReview[]>([]);
   const [recentCases, setRecentCases] = useState<ExpertRecentCase[]>([]);
   const [activity, setActivity] = useState<ExpertActivity | null>(null);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +111,7 @@ export default function ExpertDashboardPage() {
       </div>
 
       <div className="max-w-[1600px] mx-auto px-6 lg:px-8 grid grid-cols-1 xl:grid-cols-2 gap-8">
-        
+
         {/* BLOCK 1: STATS */}
         <div className="bg-white rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 transition-all hover:shadow-[0_8px_40px_rgb(0,0,0,0.08)]">
           <div className="flex items-center gap-4 mb-8">
@@ -120,17 +120,13 @@ export default function ExpertDashboardPage() {
             </div>
             <h2 className="text-2xl font-extrabold text-slate-800">Overview Statistics</h2>
           </div>
-          
+
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <StatBox label="Total Cases" value={stats?.totalCases} icon={<FileText className="w-5 h-5" />} theme="blue" />
             <StatBox label="Total Reviews" value={stats?.totalReviews} icon={<ClipboardList className="w-5 h-5" />} theme="purple" />
             <StatBox label="Pending Reviews" value={stats?.pendingReviews} icon={<Clock className="w-5 h-5" />} theme="amber" />
             <StatBox label="Approved Month" value={stats?.approvedThisMonth} icon={<CheckCircle2 className="w-5 h-5" />} theme="emerald" />
             <StatBox label="Student Int." value={stats?.studentInteractions} icon={<Users className="w-5 h-5" />} theme="rose" />
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col justify-center items-center gap-2 group cursor-pointer hover:bg-slate-100 transition-colors">
-               <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-400 group-hover:text-slate-600 transition-colors">+</div>
-               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">More KPI</p>
-            </div>
           </div>
         </div>
 
@@ -163,12 +159,12 @@ export default function ExpertDashboardPage() {
                       <span className="text-purple-300">{day.reviews} Revs</span>
                       <span className="text-blue-300">{day.cases} Cases</span>
                     </div>
-                    <div 
-                      className="w-1/3 max-w-[20px] bg-gradient-to-t from-purple-600 to-purple-400 rounded-lg transition-all duration-500 hover:brightness-110 shadow-sm" 
+                    <div
+                      className="w-1/3 max-w-[20px] bg-gradient-to-t from-purple-600 to-purple-400 rounded-lg transition-all duration-500 hover:brightness-110 shadow-sm"
                       style={{ height: reviewHeight === '0%' ? '6px' : reviewHeight }}
                     />
-                    <div 
-                      className="w-1/3 max-w-[20px] bg-gradient-to-t from-blue-600 to-cyan-400 rounded-lg transition-all duration-500 hover:brightness-110 shadow-sm" 
+                    <div
+                      className="w-1/3 max-w-[20px] bg-gradient-to-t from-blue-600 to-cyan-400 rounded-lg transition-all duration-500 hover:brightness-110 shadow-sm"
                       style={{ height: caseHeight === '0%' ? '6px' : caseHeight }}
                     />
                   </div>
@@ -196,14 +192,14 @@ export default function ExpertDashboardPage() {
               <ClipboardList className="w-6 h-6" />
             </div>
             <div>
-               <h2 className="text-2xl font-extrabold text-slate-800">Pending Reviews</h2>
-               <p className="text-sm font-medium text-slate-500">Items requiring your attention</p>
+              <h2 className="text-2xl font-extrabold text-slate-800">Pending Reviews</h2>
+              <p className="text-sm font-medium text-slate-500">Items requiring your attention</p>
             </div>
             <div className="ml-auto bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black px-4 py-1.5 rounded-full shadow-md">
               {pendingReviews.length}
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto pr-3 space-y-4 custom-scrollbar">
             {pendingReviews.length === 0 ? (
               <EmptyState icon={<CheckCircle2 className="w-12 h-12 mb-2 text-emerald-400 opacity-60" />} title="All caught up!" message="No pending reviews require your attention right now." />
@@ -212,16 +208,16 @@ export default function ExpertDashboardPage() {
                 <div key={r.id} className="p-5 rounded-3xl bg-slate-50/50 border border-slate-100/80 hover:bg-white hover:border-rose-200 hover:shadow-xl hover:shadow-rose-500/5 transition-all duration-300 group">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center font-bold text-indigo-700 shadow-sm">
-                          {r.studentName.charAt(0).toUpperCase()}
-                       </div>
-                       <div>
-                         <h3 className="font-extrabold text-slate-800 flex items-center gap-2">
-                           {r.studentName}
-                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 uppercase tracking-wider">{r.priority}</span>
-                         </h3>
-                         <p className="text-xs font-bold text-slate-400 mt-0.5 truncate max-w-[200px]">{r.caseTitle}</p>
-                       </div>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200 flex items-center justify-center font-bold text-indigo-700 shadow-sm">
+                        {r.studentName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-slate-800 flex items-center gap-2">
+                          {r.studentName}
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 uppercase tracking-wider">{r.priority}</span>
+                        </h3>
+                        <p className="text-xs font-bold text-slate-400 mt-0.5 truncate max-w-[200px]">{r.caseTitle}</p>
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span className="text-xs font-black px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm">
@@ -230,14 +226,14 @@ export default function ExpertDashboardPage() {
                       <p className="text-[11px] font-bold text-slate-400 mt-2">{formatDate(r.submittedAt)}</p>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-3 mt-4">
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-100/60 shadow-sm">
-                      <p className="text-[10px] font-black text-rose-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><FileQuestion className="w-3.5 h-3.5"/> Question Snippet</p>
+                      <p className="text-[10px] font-black text-rose-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><FileQuestion className="w-3.5 h-3.5" /> Question Snippet</p>
                       <p className="text-sm font-medium text-slate-700 italic line-clamp-2 leading-relaxed">"{r.questionSnippet}"</p>
                     </div>
                     <div className="bg-white p-3.5 rounded-2xl border border-slate-100/60 shadow-sm border-l-4 border-l-purple-400">
-                      <p className="text-[10px] font-black text-purple-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Info className="w-3.5 h-3.5"/> AI Answer Snippet</p>
+                      <p className="text-[10px] font-black text-purple-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> AI Answer Snippet</p>
                       <p className="text-sm font-medium text-slate-700 line-clamp-2 leading-relaxed">{r.aiAnswerSnippet}</p>
                     </div>
                   </div>
@@ -254,8 +250,8 @@ export default function ExpertDashboardPage() {
               <FolderClock className="w-6 h-6" />
             </div>
             <div>
-               <h2 className="text-2xl font-extrabold text-slate-800">Recent Cases</h2>
-               <p className="text-sm font-medium text-slate-500">Newly added clinical records</p>
+              <h2 className="text-2xl font-extrabold text-slate-800">Recent Cases</h2>
+              <p className="text-sm font-medium text-slate-500">Newly added clinical records</p>
             </div>
             <div className="ml-auto bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black px-4 py-1.5 rounded-full shadow-md">
               {recentCases.length}
@@ -270,31 +266,31 @@ export default function ExpertDashboardPage() {
                 <div key={c.id} className="p-5 flex flex-col justify-between rounded-3xl bg-slate-50/50 border border-slate-100/80 hover:bg-white hover:border-emerald-200 hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-300 gap-4">
                   <div className="flex justify-between items-start gap-4">
                     <div>
-                       <h3 className="font-extrabold text-slate-800 text-lg leading-tight line-clamp-2">{c.title}</h3>
-                       <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1.5">
-                          Added by <span className="text-slate-600 bg-slate-200/50 px-2 py-0.5 rounded-md">{c.addedBy}</span>
-                       </p>
+                      <h3 className="font-extrabold text-slate-800 text-lg leading-tight line-clamp-2">{c.title}</h3>
+                      <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1.5">
+                        Added by <span className="text-slate-600 bg-slate-200/50 px-2 py-0.5 rounded-md">{c.addedBy}</span>
+                      </p>
                     </div>
                     <StatusBadge status={c.status} />
                   </div>
-                  
+
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <DetailItem label="Location" value={c.boneLocation} />
                     <DetailItem label="Lesion" value={c.lesionType} />
                     <DetailItem label="Difficulty" value={c.difficulty} />
                   </div>
-                  
+
                   <div className="flex items-center justify-between pt-4 border-t border-slate-200/60 mt-1">
                     <span className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">
                       {formatDate(c.addedDate)}
                     </span>
                     <div className="flex items-center gap-3 text-xs font-black text-slate-500">
                       <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        <span className="opacity-70">👁️</span> 
+                        <span className="opacity-70">👁️</span>
                         <span className="text-slate-700">{c.viewCount}</span>
                       </div>
                       <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        <span className="opacity-70">⚡</span> 
+                        <span className="opacity-70">⚡</span>
                         <span className="text-slate-700">{c.usageCount}</span>
                       </div>
                     </div>
@@ -308,7 +304,8 @@ export default function ExpertDashboardPage() {
       </div>
 
       {/* Embedded Styles for Scrollbar */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
         }
@@ -365,11 +362,11 @@ function DetailItem({ label, value }: { label: string, value: string }) {
 function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   let color = 'bg-slate-100 text-slate-600 border-slate-200';
-  
+
   if (s === 'approved') color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
   else if (s === 'pending') color = 'bg-amber-50 text-amber-700 border-amber-200';
   else if (s === 'rejected') color = 'bg-rose-50 text-rose-700 border-rose-200';
-  
+
   return (
     <span className={`text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest border shadow-sm ${color}`}>
       {status}

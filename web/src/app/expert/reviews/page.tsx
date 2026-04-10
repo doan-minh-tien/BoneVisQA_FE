@@ -36,8 +36,6 @@ import {
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: typeof Clock }> = {
   pending: { label: 'Pending', cls: 'bg-warning/15 text-warning', icon: Clock },
   escalated: { label: 'Escalated', cls: 'bg-orange-500/15 text-orange-400', icon: AlertCircle },
-  approve: { label: 'Approve', cls: 'bg-success/15 text-success', icon: CheckCircle },
-  approved: { label: 'Approved', cls: 'bg-success/15 text-success', icon: CheckCircle },
   expertapproved: { label: 'Approved', cls: 'bg-success/15 text-success', icon: CheckCircle },
 
 };
@@ -149,13 +147,13 @@ function ResolveModal({
 }) {
   const toast = useToast();
   const [note, setNote] = useState('');
-  const [status, setStatus] = useState('Approve');
+  const [status, setStatus] = useState('Approved');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNote(review?.reviewNote ?? '');
-      setStatus('Approve');
+      setStatus('Approved');
     }
   }, [open, review]);
 
@@ -177,14 +175,13 @@ function ResolveModal({
       setSaving(false);
     }
   };
-  const answerStatuses = ['Approved', 'Pending'];
+  const answerStatuses = ['Approve'];
 
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl">
         <h3 className="text-lg font-semibold text-card-foreground mb-1">Resolve Review</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          <strong>{review.studentName}</strong> — {review.caseTitle}
         </p>
 
         <div className="space-y-4">
@@ -454,8 +451,6 @@ function ReviewDetailPanel({
       {/* Action bar */}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/80 p-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertCircle className="h-4 w-4 text-primary" />
-          Updated {formatDate(review.escalatedAt)}
           {review.reviewNote && (
             <span className="ml-2 italic text-xs">· "{review.reviewNote}"</span>
           )}
