@@ -87,6 +87,17 @@ export async function fetchEscalatedReviews(): Promise<EscalatedReview[]> {
   }
 }
 
+/** GET /api/expert/reviews/case-answer */
+export async function fetchAllCaseAnswers(): Promise<EscalatedReview[]> {
+  try {
+    const { data } = await http.get<unknown>('/api/expert/reviews/case-answer');
+    const list = Array.isArray(data) ? data : Array.isArray((data as any)?.items) ? (data as any).items : [];
+    return list.map(mapEscalated).filter((x: EscalatedReview | null): x is EscalatedReview => x !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export interface ResolveReviewPayload {
   reviewNote?: string;
   status?: string;

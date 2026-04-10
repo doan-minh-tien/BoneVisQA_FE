@@ -5,7 +5,7 @@ import ExpertHeader from '@/components/expert/ExpertHeader';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
-  fetchEscalatedReviews,
+  fetchAllCaseAnswers,
   resolveEscalatedReview,
   flagRagChunk,
   type EscalatedReview,
@@ -36,12 +36,10 @@ import {
 const STATUS_CONFIG: Record<string, { label: string; cls: string; icon: typeof Clock }> = {
   pending: { label: 'Pending', cls: 'bg-warning/15 text-warning', icon: Clock },
   escalated: { label: 'Escalated', cls: 'bg-orange-500/15 text-orange-400', icon: AlertCircle },
-  escalatedtoexpert: { label: 'Escalated to Expert', cls: 'bg-purple-500/15 text-purple-400', icon: AlertCircle },
-  expertapproved: { label: 'Expert Approved', cls: 'bg-success/15 text-success', icon: CheckCircle },
+  approve: { label: 'Approve', cls: 'bg-success/15 text-success', icon: CheckCircle },
   approved: { label: 'Approved', cls: 'bg-success/15 text-success', icon: CheckCircle },
-  rejected: { label: 'Rejected', cls: 'bg-destructive/15 text-destructive', icon: XCircle },
-  revised: { label: 'Revised', cls: 'bg-blue-500/15 text-blue-400', icon: FileText },
-  requireslecturerreview: { label: 'Requires Lecturer Review', cls: 'bg-accent/15 text-accent', icon: BookOpen },
+  expertapproved: { label: 'Approved', cls: 'bg-success/15 text-success', icon: CheckCircle },
+
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -89,9 +87,8 @@ function CitationCard({
   const isFlagged = flaggedIds.has(citation.chunkId);
   return (
     <article
-      className={`rounded-xl border p-4 transition-colors ${
-        isFlagged ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-card/60'
-      }`}
+      className={`rounded-xl border p-4 transition-colors ${isFlagged ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-card/60'
+        }`}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -108,11 +105,10 @@ function CitationCard({
         <button
           onClick={() => onFlag(citation.chunkId)}
           disabled={isFlagged}
-          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-            isFlagged
-              ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
-              : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-          }`}
+          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${isFlagged
+            ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-60'
+            : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+            }`}
         >
           <Flag className="h-3 w-3" />
           {isFlagged ? 'Flagged' : 'Flag Issue'}
@@ -153,13 +149,13 @@ function ResolveModal({
 }) {
   const toast = useToast();
   const [note, setNote] = useState('');
-  const [status, setStatus] = useState('ExpertApproved');
+  const [status, setStatus] = useState('Approve');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNote(review?.reviewNote ?? '');
-      setStatus('ExpertApproved');
+      setStatus('Approve');
     }
   }, [open, review]);
 
@@ -181,11 +177,7 @@ function ResolveModal({
       setSaving(false);
     }
   };
-
-  const answerStatuses = [
-    'ExpertApproved', 'Approved', 'Rejected', 'Revised',
-    'Escalated', 'EscalatedToExpert', 'RequiresLecturerReview', 'Pending', 'Edited',
-  ];
+  const answerStatuses = ['Approved', 'Pending'];
 
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 px-4">
@@ -401,9 +393,8 @@ function ReviewDetailPanel({
               </div>
               <div className="h-2.5 rounded-full bg-muted overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${
-                    confidence >= 80 ? 'bg-success' : confidence >= 50 ? 'bg-warning' : 'bg-destructive'
-                  }`}
+                  className={`h-full rounded-full transition-all ${confidence >= 80 ? 'bg-success' : confidence >= 50 ? 'bg-warning' : 'bg-destructive'
+                    }`}
                   style={{ width: `${Math.min(100, confidence)}%` }}
                 />
               </div>
@@ -464,7 +455,7 @@ function ReviewDetailPanel({
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/80 p-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 text-primary" />
-          Escalated {formatDate(review.escalatedAt)}
+          Updated {formatDate(review.escalatedAt)}
           {review.reviewNote && (
             <span className="ml-2 italic text-xs">· "{review.reviewNote}"</span>
           )}
@@ -502,10 +493,10 @@ export default function ExpertReviewsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchEscalatedReviews();
+      const data = await fetchAllCaseAnswers();
       setReviews(data);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load escalated reviews');
+      toast.error(e instanceof Error ? e.message : 'Failed to load reviews');
     } finally {
       setLoading(false);
     }
@@ -513,11 +504,18 @@ export default function ExpertReviewsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const allStatuses = ['All', ...Array.from(new Set(reviews.map((r) => r.status)))];
+  const allStatuses = ['All', 'Approved', 'Escalated'];
 
   const filtered = statusFilter === 'All'
     ? reviews
-    : reviews.filter((r) => r.status === statusFilter);
+    : reviews.filter((r) => {
+      const s = r.status.toLowerCase();
+      const filter = statusFilter.toLowerCase();
+      if (filter === 'approved') {
+        return s === 'approved' || s === 'expertapproved';
+      }
+      return s === filter;
+    });
 
   const handleFlagged = (chunkId: string) => {
     setFlaggedIds((prev) => new Set([...prev, chunkId]));
@@ -532,8 +530,8 @@ export default function ExpertReviewsPage() {
   return (
     <div className="min-h-screen">
       <ExpertHeader
-        title="Escalated Reviews"
-        subtitle={`${filtered.length} review${filtered.length !== 1 ? 's' : ''} awaiting expert decision`}
+        title="Student Case Answers"
+        subtitle={`${filtered.length} review${filtered.length !== 1 ? 's' : ''} total`}
       />
 
       <div className="mx-auto max-w-[1400px] p-6">
@@ -554,7 +552,7 @@ export default function ExpertReviewsPage() {
 
           <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="w-2 h-2 rounded-full bg-warning inline-block" /> Pending
+              <span className="w-2 h-2 rounded-full bg-warning inline-block" /> Escalated
               <span className="w-2 h-2 rounded-full bg-success inline-block ml-2" /> Resolved
               <span className="w-2 h-2 rounded-full bg-destructive inline-block ml-2" /> Rejected
             </div>
@@ -574,14 +572,14 @@ export default function ExpertReviewsPage() {
           <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border bg-card">
             <div className="flex flex-col items-center gap-3 text-muted-foreground">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm">Loading escalated reviews...</p>
+              <p className="text-sm">Loading reviews...</p>
             </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-8 py-16 text-center">
             <ShieldCheck className="h-12 w-12 text-success mx-auto mb-3 opacity-60" />
-            <p className="text-lg font-semibold text-card-foreground mb-1">All clear!</p>
-            <p className="text-sm text-muted-foreground">No escalated reviews matching the selected filter.</p>
+            <p className="text-lg font-semibold text-card-foreground mb-1">No reviews found</p>
+            <p className="text-sm text-muted-foreground">No reviews matching the selected filter.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -641,9 +639,8 @@ export default function ExpertReviewsPage() {
                             </div>
                             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${
-                                  confidence >= 80 ? 'bg-success' : confidence >= 50 ? 'bg-warning' : 'bg-destructive'
-                                }`}
+                                className={`h-full rounded-full ${confidence >= 80 ? 'bg-success' : confidence >= 50 ? 'bg-warning' : 'bg-destructive'
+                                  }`}
                                 style={{ width: `${Math.min(100, confidence)}%` }}
                               />
                             </div>

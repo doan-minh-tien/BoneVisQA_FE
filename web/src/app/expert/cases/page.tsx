@@ -22,9 +22,9 @@ import { getStoredUserId } from '@/lib/getStoredUserId';
 import { useToast } from '@/components/ui/toast';
 import CaseAssetsDialog from '@/components/expert/cases/CaseAssetsDialog';
 
-const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
+const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle | null; color: string; bg: string; label: string }> = {
   approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
-  pending: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10', label: 'Pending' },
+  pending: { icon: null, color: 'text-warning', bg: 'bg-warning/10', label: 'Pending' },
   rejected: { icon: Edit, color: 'text-muted-foreground', bg: 'bg-muted', label: 'Rejected' },
 };
 
@@ -272,8 +272,10 @@ export default function ExpertCasesPage() {
                         </div>
                       </button>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><Eye className="w-3.5 h-3.5" />-</span>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}><StIcon className="w-3.5 h-3.5" />{st.label}</span>
+                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'tags' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-purple-600 bg-purple-50 hover:bg-purple-100">Tags</button>
+                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'annotation' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100">Image &amp; Annotation</button>
+                        
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}>{StIcon && <StIcon className="w-3.5 h-3.5" />}{st.label}</span>
                       </div>
                     </div>
                     {isExp && (
@@ -292,15 +294,11 @@ export default function ExpertCasesPage() {
                           <p className="text-xs text-muted-foreground">{c.suggestedDiagnosis || '-'}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button disabled={isMutating} onClick={() => setAssetsDialog({ c, mode: 'tags' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-purple-600 bg-purple-50 hover:bg-purple-100">Tags</button>
-                          <button disabled={isMutating} onClick={() => setAssetsDialog({ c, mode: 'annotation' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100">Image &amp; Annotation</button>
                           <button disabled={isMutating} onClick={() => openEditForm(c)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"><Edit className="w-3.5 h-3.5" />Edit</button>
-                          {c.status !== 'approved' && <button disabled={isMutating} onClick={() => setDialog({ c, action: 'approve' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 disabled:opacity-50 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Approve</button>}
                           <button disabled={isMutating} onClick={() => setDialog({ c, action: 'delete' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
                         </div>
                       </div>
-                    )}
-                  </div>
+                    )}                  </div>
                 );
               })}
             </div>

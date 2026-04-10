@@ -1,5 +1,15 @@
 import { http, getApiErrorMessage } from './client';
 
+// ── Stats ──────────────────────────────────────────────────────────────────
+
+export interface ExpertStats {
+  totalCases: number;
+  totalReviews: number;
+  pendingReviews: number;
+  approvedThisMonth: number;
+  studentInteractions: number;
+}
+
 // ── Pending Reviews ──────────────────────────────────────────────────────────
 
 export interface ExpertPendingReview {
@@ -133,9 +143,19 @@ export async function fetchExpertActivity(): Promise<ExpertActivity> {
     return {
       weeklyActivity: rawActivity
         .map(mapDailyActivity)
-        .filter((a): a is ExpertDailyActivity => a !== null),
+        .filter((a: ExpertDailyActivity | null): a is ExpertDailyActivity => a !== null),
       avgDailyReviews: Number(data?.avgDailyReviews ?? 0),
     };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** GET /api/expert/dashboard/stats */
+export async function fetchExpertStats(): Promise<ExpertStats> {
+  try {
+    const { data } = await http.get<ExpertStats>('/api/expert/dashboard/stats');
+    return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
