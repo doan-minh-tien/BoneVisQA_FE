@@ -55,13 +55,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="fixed left-1/2 top-6 z-[200] flex w-full max-w-xl -translate-x-1/2 flex-col gap-3 px-4 pointer-events-none"
+        className="fixed left-1/2 top-6 z-[200] flex w-full max-w-2xl -translate-x-1/2 flex-col gap-3 px-4 pointer-events-none"
         aria-live="polite"
       >
         {items.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto rounded-2xl border px-5 py-4 text-sm backdrop-blur ${kindStyles[t.kind]}`}
+            className={`pointer-events-auto rounded-2xl border px-6 py-5 text-base font-semibold leading-snug shadow-lg backdrop-blur sm:text-lg ${kindStyles[t.kind]}`}
           >
             {t.message}
           </div>

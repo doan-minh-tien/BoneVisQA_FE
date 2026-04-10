@@ -1,25 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
-import {
-  Bell,
-  Plus,
-  Send,
-  Calendar,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  BookOpen,
-} from 'lucide-react';
+import { LecturerAnnouncementRow } from '@/components/lecturer/LecturerAnnouncementRow';
+import { useToast } from '@/components/ui/toast';
+import { Bell, Plus, Send, Loader2 } from 'lucide-react';
 import {
   getLecturerClasses,
   getClassAnnouncements,
   createAnnouncement,
+  isValidGuidString,
 } from '@/lib/api/lecturer';
 import type { ClassItem, Announcement } from '@/lib/api/types';
 
-export default function LecturerAnnouncementsPage() {
+function LecturerAnnouncementsContent() {
+  const toast = useToast();
+  const searchParams = useSearchParams();
+  const classIdFromUrl = searchParams.get('classId');
+  const openNewFromUrl = searchParams.get('new') === '1';
+
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,11 +29,9 @@ export default function LecturerAnnouncementsPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
+  const [sendEmail, setSendEmail] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
-
-  // Expand
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Filter
   const [filterClass, setFilterClass] = useState('all');
@@ -50,7 +48,9 @@ export default function LecturerAnnouncementsPage() {
           classList.map((c) => getClassAnnouncements(c.id).catch(() => [] as Announcement[])),
         );
         // Flatten and deduplicate by id
-        const flat = allAnnouncements.flat();
+        const flat = allAnnouncements.flat().filter(
+          (a) => isValidGuidString(a.id) && isValidGuidString(a.classId),
+        );
         const unique = Array.from(new Map(flat.map((a) => [a.id, a])).values());
         // Sort by createdAt desc
         unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -64,6 +64,16 @@ export default function LecturerAnnouncementsPage() {
     fetchAll();
   }, []);
 
+  // Deep link from class detail: ?classId=...&new=1
+  useEffect(() => {
+    if (loading || classes.length === 0 || !classIdFromUrl) return;
+    const exists = classes.some((c) => c.id === classIdFromUrl);
+    if (!exists) return;
+    setFilterClass(classIdFromUrl);
+    setSelectedClassId(classIdFromUrl);
+    if (openNewFromUrl) setShowCreate(true);
+  }, [loading, classes, classIdFromUrl, openNewFromUrl]);
+
   const handleSend = async () => {
     if (!newTitle.trim() || !newContent.trim() || !selectedClassId) {
       setCreateError('Please fill in all fields and select a class.');
@@ -75,12 +85,19 @@ export default function LecturerAnnouncementsPage() {
       const created = await createAnnouncement(selectedClassId, {
         title: newTitle.trim(),
         content: newContent.trim(),
+        sendEmail,
       });
       setAnnouncements((prev) => [created, ...prev]);
       setShowCreate(false);
       setNewTitle('');
       setNewContent('');
-      setSelectedClassId('');
+      setSendEmail(true);
+      // Keep class selected when filtering one class (e.g. from class page)
+      if (filterClass === 'all') {
+        setSelectedClassId('');
+      } else {
+        setSelectedClassId(filterClass);
+      }
     } catch {
       setCreateError('Failed to send announcement. Please try again.');
     } finally {
@@ -93,9 +110,14 @@ export default function LecturerAnnouncementsPage() {
       ? announcements
       : announcements.filter((a) => a.classId === filterClass);
 
+  const subtitle =
+    filterClass === 'all'
+      ? `${filtered.length} total`
+      : `${filtered.length} in this class · ${announcements.length} total`;
+
   return (
     <div className="min-h-screen">
-      <Header title="Announcements" subtitle={`${announcements.length} total`} />
+      <Header title="Announcements" subtitle={subtitle} />
 
       <div className="p-6 max-w-4xl mx-auto">
         {/* Top bar */}
@@ -187,6 +209,27 @@ export default function LecturerAnnouncementsPage() {
                   className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-card-foreground">Send email notification</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Students enrolled in this class will receive an email with the announcement.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSendEmail(!sendEmail)}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
+                    sendEmail ? 'bg-success' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      sendEmail ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2 mt-5">
@@ -208,7 +251,9 @@ export default function LecturerAnnouncementsPage() {
                   setCreateError('');
                   setNewTitle('');
                   setNewContent('');
-                  setSelectedClassId('');
+                  setSendEmail(true);
+                  if (filterClass === 'all') setSelectedClassId('');
+                  else setSelectedClassId(filterClass);
                 }}
                 className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
               >
@@ -236,62 +281,46 @@ export default function LecturerAnnouncementsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((a) => {
-              const isExp = expandedId === a.id;
-              return (
-                <div
-                  key={a.id}
-                  className="bg-card rounded-xl border border-border overflow-hidden"
-                >
-                  <div className="px-5 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <button
-                        onClick={() => setExpandedId(isExp ? null : a.id)}
-                        className="flex items-start gap-2 text-left cursor-pointer flex-1 min-w-0"
-                      >
-                        {isExp ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-card-foreground">{a.title}</p>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(a.createdAt).toLocaleDateString('vi-VN', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                            {a.className && (
-                              <span className="flex items-center gap-1">
-                                <BookOpen className="w-3 h-3" />
-                                {a.className}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-
-                    {isExp && (
-                      <div className="mt-3 ml-6">
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {a.content}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filtered.map((a) => (
+              <LecturerAnnouncementRow
+                key={a.id}
+                announcement={a}
+                showClassName={filterClass === 'all'}
+                onUpdated={(updated) =>
+                  setAnnouncements((prev) =>
+                    prev.map((x) =>
+                      x.id === updated.id
+                        ? { ...x, ...updated, className: x.className || updated.className }
+                        : x,
+                    ),
+                  )
+                }
+                onDeleted={(id) => setAnnouncements((prev) => prev.filter((x) => x.id !== id))}
+                onError={(msg) => toast.error(msg)}
+              />
+            ))}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function AnnouncementsFallback() {
+  return (
+    <div className="min-h-screen">
+      <Header title="Announcements" subtitle="Loading…" />
+      <div className="flex justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    </div>
+  );
+}
+
+export default function LecturerAnnouncementsPage() {
+  return (
+    <Suspense fallback={<AnnouncementsFallback />}>
+      <LecturerAnnouncementsContent />
+    </Suspense>
   );
 }

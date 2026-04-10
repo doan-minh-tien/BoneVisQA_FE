@@ -14,9 +14,6 @@ import {
   Eye,
   Save,
   Send,
-  Plus,
-  Trash2,
-  HelpCircle,
   Clock,
   CalendarDays,
   BookOpen,
@@ -30,11 +27,29 @@ import {
   Microscope,
   Stethoscope,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
-import { assignCasesToClass, assignQuizToClass } from '@/lib/api/lecturer';
+import {
+  assignCasesToClass,
+  assignQuizToClass,
+  getLecturerCases,
+  isValidGuidString,
+} from '@/lib/api/lecturer';
+import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
 import type { ClassItem } from '@/lib/api/types';
+
+type CasePickItem = { id: string; title: string };
+type QuizPickItem = { quizId: string; label: string };
+
+function normalizeCaseRow(row: unknown): CasePickItem | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const title = String(r.title ?? r.Title ?? 'Untitled case').trim() || 'Untitled case';
+  return { id, title };
+}
 
 const assignmentTypes = [
   {
@@ -71,26 +86,10 @@ const assignmentTypes = [
   },
 ];
 
-interface Question {
-  id: string;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-  points: number;
-}
-
-const createEmptyQuestion = (): Question => ({
-  id: Date.now().toString(),
-  question: '',
-  options: ['', '', '', ''],
-  correctAnswer: 0,
-  points: 10,
-});
-
+  // /** Wizard for assigning existing quiz/case to a class — no question authoring here. */
 const steps = [
   { label: 'Basic Info', icon: FileText, description: 'Title, type & classes' },
   { label: 'Configuration', icon: Settings2, description: 'Due date & settings' },
-  { label: 'Questions', icon: HelpCircle, description: 'Quiz questions' },
   { label: 'Review', icon: Eye, description: 'Review & publish' },
 ];
 
@@ -110,24 +109,28 @@ function CreateAssignmentPageContent({
   const [currentStep, setCurrentStep] = useState(0);
   const [availableClasses, setAvailableClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
+  const [assignmentCases, setAssignmentCases] = useState<CasePickItem[]>([]);
+  const [assignmentQuizzes, setAssignmentQuizzes] = useState<QuizPickItem[]>([]);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [caseSearch, setCaseSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: '',
     selectedClasses: preselectedClassId ? [preselectedClassId] : ([] as string[]),
     description: '',
-    caseIdsInput: '',
+    selectedCaseIds: [] as string[],
     quizId: '',
     dueDate: '',
     maxScore: 100,
     allowLate: false,
     isMandatory: true,
     instructions: '',
-    questions: [createEmptyQuestion()] as Question[],
     timeLimitMinutes: 60,
     passingScore: 70,
     shuffleQuestions: false,
     showResults: true,
+    allowRetake: false,
   });
 
   const isQuiz = formData.type === 'Quiz';
@@ -166,12 +169,60 @@ function CreateAssignmentPageContent({
     };
   }, [toast]);
 
-  const visibleSteps = isQuiz
-    ? steps
-    : steps.filter((s) => s.label !== 'Questions');
+  // /** Cases + quizzes picker for the form — no UUID copy required. */
+  useEffect(() => {
+    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    if (!userId) {
+      setLoadingSources(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingSources(true);
+      try {
+        const [casesRaw, quizzesRaw] = await Promise.all([
+          getLecturerCases(),
+          getLecturerQuizzes(userId),
+        ]);
+        if (cancelled) return;
+        const casesList = (Array.isArray(casesRaw) ? casesRaw : [])
+          .map((row) => normalizeCaseRow(row))
+          .filter((c): c is CasePickItem => Boolean(c))
+          .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 
-  const lastStep = visibleSteps.length - 1;
-  const currentStepLabel = visibleSteps[currentStep]?.label;
+        const quizMap = new Map<string, string>();
+        for (const row of Array.isArray(quizzesRaw) ? quizzesRaw : []) {
+          const qid = String(row.quizId ?? '').trim();
+          if (!qid || quizMap.has(qid)) continue;
+          const name = [row.quizName, row.topic].filter(Boolean).join(' · ');
+          quizMap.set(qid, name || `${qid.slice(0, 8)}…`);
+        }
+        const quizList = Array.from(quizMap.entries())
+          .map(([quizId, label]) => ({ quizId, label }))
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+        setAssignmentCases(casesList);
+        setAssignmentQuizzes(quizList);
+      } catch {
+        if (!cancelled) {
+          toast.error('Failed to load case/quiz list. Try refreshing or re-logging in.');
+        }
+      } finally {
+        if (!cancelled) setLoadingSources(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  const lastStep = steps.length - 1;
+  const currentStepLabel = steps[currentStep]?.label;
+
+  // /** Prevents stale step after Questions step was removed (HMR / stale bundle). */
+  useEffect(() => {
+    setCurrentStep((s) => Math.min(Math.max(0, s), lastStep));
+  }, [lastStep]);
 
   const toggleClass = (classId: string) => {
     setFormData((prev) => ({
@@ -182,50 +233,18 @@ function CreateAssignmentPageContent({
     }));
   };
 
-  const addQuestion = () => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: [...prev.questions, createEmptyQuestion()],
-    }));
-  };
-
-  const removeQuestion = (id: string) => {
-    if (formData.questions.length <= 1) return;
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.filter((q) => q.id !== id),
-    }));
-  };
-
-  const updateQuestion = (id: string, field: keyof Question, value: string | number | string[]) => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)),
-    }));
-  };
-
-  const updateOption = (questionId: string, optionIndex: number, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      questions: prev.questions.map((q) => {
-        if (q.id !== questionId) return q;
-        const newOptions = [...q.options];
-        newOptions[optionIndex] = value;
-        return { ...q, options: newOptions };
-      }),
-    }));
-  };
-
   const canProceed = () => {
-    if (currentStep === 0) return formData.title && formData.type && formData.selectedClasses.length > 0;
-    if (currentStep === 1) return !!formData.dueDate;
-    if (isQuiz && currentStepLabel === 'Questions') {
-      return formData.questions.every((q) => q.question && q.options.every((o) => o) && q.points > 0);
+    if (currentStep === 0) {
+      const hasSource = isQuiz
+        ? isValidGuidString(formData.quizId.trim())
+        : formData.selectedCaseIds.length > 0;
+      return Boolean(
+        formData.title && formData.type && formData.selectedClasses.length > 0 && hasSource,
+      );
     }
+    if (currentStep === 1) return !!formData.dueDate;
     return true;
   };
-
-  const totalQuizPoints = formData.questions.reduce((sum, q) => sum + q.points, 0);
   const selectedClassData = useMemo(
     () =>
       formData.selectedClasses
@@ -235,26 +254,50 @@ function CreateAssignmentPageContent({
   );
 
   const selectedType = assignmentTypes.find((t) => t.value === formData.type);
-  const parsedCaseIds = useMemo(
-    () =>
-      formData.caseIdsInput
-        .split(/[,\n]/)
-        .map((value) => value.trim())
-        .filter(Boolean),
-    [formData.caseIdsInput],
-  );
+  const validCaseGuids = useMemo(() => formData.selectedCaseIds, [formData.selectedCaseIds]);
+
+  const filteredCasesForPicker = useMemo(() => {
+    const q = caseSearch.trim().toLowerCase();
+    if (!q) return assignmentCases;
+    return assignmentCases.filter(
+      (c) => c.title.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
+    );
+  }, [assignmentCases, caseSearch]);
+
+  const selectedQuizLabel = useMemo(() => {
+    const id = formData.quizId.trim();
+    if (!id) return '';
+    return assignmentQuizzes.find((q) => q.quizId === id)?.label ?? id;
+  }, [assignmentQuizzes, formData.quizId]);
+
+  const toggleCaseSelected = (caseId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      selectedCaseIds: prev.selectedCaseIds.includes(caseId)
+        ? prev.selectedCaseIds.filter((x) => x !== caseId)
+        : [...prev.selectedCaseIds, caseId],
+    }));
+  };
 
   const validateSubmission = () => {
     if (formData.selectedClasses.length === 0) {
       throw new Error('Select at least one class before publishing.');
     }
 
-    if (isQuiz && !formData.quizId.trim()) {
-      throw new Error('Enter the backend quiz ID before publishing.');
-    }
-
-    if (!isQuiz && parsedCaseIds.length === 0) {
-      throw new Error('Enter at least one backend case ID before publishing.');
+    if (isQuiz) {
+      const q = formData.quizId.trim();
+      if (!q) {
+        throw new Error('Enter the backend quiz ID before publishing.');
+      }
+      if (!isValidGuidString(q)) {
+        throw new Error(
+          'Quiz ID must be a UUID (Guid) from the system, e.g.: a1b2c3d4-e5f6-7890-abcd-ef1234567890. Open the Quizzes page to copy the real ID.'
+        );
+      }
+    } else {
+      if (validCaseGuids.length === 0) {
+        throw new Error('Select at least one case from the list before publishing.');
+      }
     }
   };
 
@@ -276,9 +319,11 @@ function CreateAssignmentPageContent({
                 closeTime: formData.dueDate || undefined,
                 timeLimitMinutes: formData.timeLimitMinutes || undefined,
                 passingScore: formData.passingScore || undefined,
+                shuffleQuestions: formData.shuffleQuestions,
+                allowRetake: formData.allowRetake,
               })
             : assignCasesToClass(classId, {
-                caseIds: parsedCaseIds,
+                caseIds: validCaseGuids,
                 dueDate: formData.dueDate || undefined,
                 isMandatory: formData.isMandatory,
               }),
@@ -318,7 +363,7 @@ function CreateAssignmentPageContent({
 
           {/* Step progress in header */}
           <div className="hidden md:flex items-center gap-1">
-            {visibleSteps.map((step, idx) => {
+            {steps.map((step, idx) => {
               const StepIcon = step.icon;
               const isActive = idx === currentStep;
               const isCompleted = idx < currentStep;
@@ -340,7 +385,7 @@ function CreateAssignmentPageContent({
                     )}
                     {step.label}
                   </div>
-                  {idx < visibleSteps.length - 1 && (
+                  {idx < steps.length - 1 && (
                     <ChevronRight className={`w-3 h-3 ${isCompleted ? 'text-success' : 'text-border'}`} />
                   )}
                 </div>
@@ -513,34 +558,105 @@ function CreateAssignmentPageContent({
                     <span className="text-destructive">*</span>
                   </h2>
                   <p className="text-xs text-muted-foreground mb-3 ml-8">
-                    Point this assignment to the existing backend resource students should receive.
+                    {isQuiz ? (
+                      <>
+                        This is a <strong className="text-foreground">Quiz</strong> assignment — select a quiz from the
+                        list below.
+                      </>
+                    ) : (
+                      <>
+                        Current type is <strong className="text-foreground">{formData.type || '…'}</strong> — assigning{' '}
+                        <strong className="text-foreground">case(s)</strong> to the class. Quiz list only appears when
+                        you select <strong className="text-foreground">Quiz</strong> in{' '}
+                        <span className="text-foreground">step 2</span> above.
+                      </>
+                    )}
                   </p>
+                  {!isQuiz && formData.type ? (
+                    <div className="mb-3 ml-8 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-card-foreground">
+                      <span className="text-muted-foreground">Want to assign a quiz? </span>
+                      Scroll up to <strong>step 2 — Assignment Type</strong> and select{' '}
+                      <strong>Quiz</strong>, then come back here to pick a quiz from the dropdown.
+                    </div>
+                  ) : null}
 
-                  {isQuiz ? (
+                  {loadingSources ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      Loading list…
+                    </div>
+                  ) : isQuiz ? (
                     <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground">Quiz ID</label>
-                      <input
-                        type="text"
-                        value={formData.quizId}
-                        onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
-                        placeholder="Enter the persisted quiz ID from the backend"
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                      />
+                      <label className="block text-xs font-medium text-muted-foreground">Quiz</label>
+                      {assignmentQuizzes.length === 0 ? (
+                        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3">
+                          No quizzes available yet. Create one at{' '}
+                          <Link href="/lecturer/quizzes/create" className="font-medium text-primary underline">
+                            Lecturer → Quizzes
+                          </Link>{' '}
+                          and come back here.
+                        </p>
+                      ) : (
+                        <select
+                          value={formData.quizId}
+                          onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
+                          className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
+                        >
+                          <option value="">Select a quiz…</option>
+                          {assignmentQuizzes.map((q) => (
+                            <option key={q.quizId} value={q.quizId}>
+                              {q.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <label className="block text-xs font-medium text-muted-foreground">Case IDs</label>
-                      <textarea
-                        value={formData.caseIdsInput}
-                        onChange={(e) => setFormData({ ...formData, caseIdsInput: e.target.value })}
-                        placeholder="Paste one or more backend case IDs separated by commas or new lines"
-                        rows={4}
-                        className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none transition-all"
+                    <div className="space-y-3">
+                      <label className="block text-xs font-medium text-muted-foreground">Cases</label>
+                      <input
+                        type="search"
+                        value={caseSearch}
+                        onChange={(e) => setCaseSearch(e.target.value)}
+                        placeholder="Filter by name or ID…"
+                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                       />
+                      {assignmentCases.length === 0 ? (
+                        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-4 py-3">
+                          No cases in the system or failed to load. Check the Cases API.
+                        </p>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto rounded-lg border border-border bg-background divide-y divide-border">
+                          {filteredCasesForPicker.length === 0 ? (
+                            <p className="px-4 py-3 text-sm text-muted-foreground">No matches for the current filter.</p>
+                          ) : (
+                            filteredCasesForPicker.map((c) => {
+                              const checked = formData.selectedCaseIds.includes(c.id);
+                              return (
+                                <label
+                                  key={c.id}
+                                  className={`flex cursor-pointer items-start gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 ${
+                                    checked ? 'bg-primary/5' : ''
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleCaseSelected(c.id)}
+                                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="font-medium text-card-foreground block">{c.title}</span>
+                                    <span className="text-[10px] text-muted-foreground font-mono break-all">{c.id}</span>
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        {parsedCaseIds.length > 0
-                          ? `${parsedCaseIds.length} case ID${parsedCaseIds.length === 1 ? '' : 's'} ready for assignment.`
-                          : 'Add at least one case ID to enable publishing.'}
+                        {validCaseGuids.length} case{validCaseGuids.length === 1 ? '' : 's'} selected.
                       </p>
                     </div>
                   )}
@@ -676,6 +792,13 @@ function CreateAssignmentPageContent({
                           onChange={() => setFormData({ ...formData, showResults: !formData.showResults })}
                           icon={<BarChart2 className="w-4 h-4 text-success" />}
                         />
+                        <ToggleRow
+                          title="Allow Retake"
+                          description="Students can redo the quiz after submitting (you can also retake per student)"
+                          value={formData.allowRetake}
+                          onChange={() => setFormData({ ...formData, allowRetake: !formData.allowRetake })}
+                          icon={<RotateCcw className="w-4 h-4 text-accent" />}
+                        />
                       </>
                     )}
                   </div>
@@ -704,151 +827,7 @@ function CreateAssignmentPageContent({
               </div>
             )}
 
-            {/* Step 3: Questions */}
-            {currentStepLabel === 'Questions' && (
-              <div className="space-y-4">
-                {/* Stats bar */}
-                <div className="bg-card rounded-xl border border-border p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <HelpCircle className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{formData.questions.length}</p>
-                        <p className="text-xs text-muted-foreground">Questions</p>
-                      </div>
-                    </div>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
-                        <Star className="w-4 h-4 text-success" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{totalQuizPoints}</p>
-                        <p className="text-xs text-muted-foreground">Total pts</p>
-                      </div>
-                    </div>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                        <Clock className="w-4 h-4 text-accent" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-card-foreground leading-none">{formData.timeLimitMinutes}</p>
-                        <p className="text-xs text-muted-foreground">Min limit</p>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={addQuestion}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Question
-                  </button>
-                </div>
-
-                {/* Questions list */}
-                {formData.questions.map((q, qIdx) => (
-                  <div key={q.id} className="bg-card rounded-xl border border-border overflow-hidden">
-                    {/* Question header */}
-                    <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <span className="text-xs font-bold text-primary">{qIdx + 1}</span>
-                        </div>
-                        <span className="text-sm font-medium text-card-foreground">Question {qIdx + 1}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <Star className="w-3.5 h-3.5 text-muted-foreground" />
-                          <input
-                            type="number"
-                            value={q.points}
-                            onChange={(e) => updateQuestion(q.id, 'points', Number(e.target.value))}
-                            min={1}
-                            className="w-14 px-2 py-1 bg-background border border-border rounded text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary/50"
-                          />
-                          <span className="text-xs text-muted-foreground">pts</span>
-                        </div>
-                        {formData.questions.length > 1 && (
-                          <button
-                            onClick={() => removeQuestion(q.id)}
-                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-5 space-y-4">
-                      {/* Question text */}
-                      <input
-                        type="text"
-                        value={q.question}
-                        onChange={(e) => updateQuestion(q.id, 'question', e.target.value)}
-                        placeholder="Enter your question here..."
-                        className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                      />
-
-                      {/* Options */}
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Answer Options — click a letter to mark as correct</p>
-                        {q.options.map((option, optIdx) => {
-                          const isCorrect = q.correctAnswer === optIdx;
-                          const letter = String.fromCharCode(65 + optIdx);
-                          return (
-                            <div key={optIdx} className="flex items-center gap-2.5">
-                              <button
-                                onClick={() => updateQuestion(q.id, 'correctAnswer', optIdx)}
-                                title={isCorrect ? 'Correct answer' : 'Mark as correct'}
-                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
-                                  isCorrect
-                                    ? 'bg-success border-success text-white shadow-sm shadow-success/30'
-                                    : 'border-border text-muted-foreground hover:border-success/50 hover:text-success'
-                                }`}
-                              >
-                                {letter}
-                              </button>
-                              <input
-                                type="text"
-                                value={option}
-                                onChange={(e) => updateOption(q.id, optIdx, e.target.value)}
-                                placeholder={`Option ${letter}...`}
-                                className={`flex-1 px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 transition-all ${
-                                  isCorrect
-                                    ? 'bg-success/5 border-success/40 focus:ring-success/30'
-                                    : 'bg-background border-border focus:ring-primary/40'
-                                }`}
-                              />
-                              {isCorrect && (
-                                <span className="text-xs text-success font-medium flex items-center gap-1 flex-shrink-0">
-                                  <Check className="w-3.5 h-3.5" />
-                                  Correct
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Add question button */}
-                <button
-                  onClick={addQuestion}
-                  className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-all cursor-pointer"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="text-sm font-medium">Add Another Question</span>
-                </button>
-              </div>
-            )}
-
-            {/* Step 4: Review */}
+            {/* Step 3: Review */}
             {currentStepLabel === 'Review' && (
               <div className="space-y-4">
                 <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -888,12 +867,17 @@ function CreateAssignmentPageContent({
 
                     <div className={`grid grid-cols-1 ${!isQuiz ? 'md:grid-cols-2' : ''} gap-3`}>
                       <ReviewItem
-                        label={isQuiz ? 'Quiz ID' : 'Case IDs'}
+                        label={isQuiz ? 'Quiz' : 'Cases'}
                         value={
                           isQuiz
-                            ? formData.quizId || '—'
-                            : parsedCaseIds.length > 0
-                              ? parsedCaseIds.join(', ')
+                            ? selectedQuizLabel || formData.quizId || '—'
+                            : validCaseGuids.length > 0
+                              ? validCaseGuids
+                                  .map(
+                                    (id) =>
+                                      assignmentCases.find((c) => c.id === id)?.title ?? id,
+                                  )
+                                  .join('\n')
                               : '—'
                         }
                         multiline={!isQuiz}
@@ -919,8 +903,12 @@ function CreateAssignmentPageContent({
                         icon={<CalendarDays className="w-3.5 h-3.5" />}
                       />
                       <ReviewItem
-                        label={isQuiz ? 'Total Points' : 'Max Score'}
-                        value={String(isQuiz ? totalQuizPoints : formData.maxScore)}
+                        label={isQuiz ? 'Score from quiz' : 'Max Score'}
+                        value={
+                          isQuiz
+                            ? 'Score comes from the saved quiz — do not re-enter here'
+                            : String(formData.maxScore)
+                        }
                         icon={<Star className="w-3.5 h-3.5" />}
                       />
                       <ReviewItem
@@ -945,28 +933,14 @@ function CreateAssignmentPageContent({
                     </div>
 
                     {isQuiz && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Quiz Questions ({formData.questions.length})
+                      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-card-foreground">Question Content</p>
+                        <p className="mt-1 text-xs leading-relaxed">
+                          You have selected <strong className="text-foreground">a quiz</strong> — all questions are in
+                          that quiz on the server. Edit questions at{' '}
+                          <strong className="text-foreground">Lecturer → Quizzes</strong> before assigning to a class.
+                          This page only assigns the existing quiz to the class and sets the deadline.
                         </p>
-                        <div className="space-y-2">
-                          {formData.questions.map((q, idx) => (
-                            <div key={q.id} className="flex items-start gap-3 p-3 bg-background rounded-lg border border-border">
-                              <span className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0 mt-0.5">
-                                {idx + 1}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-card-foreground">{q.question || 'Untitled question'}</p>
-                                <div className="flex items-center gap-3 mt-1">
-                                  <span className="text-xs text-muted-foreground">{q.points} pts</span>
-                                  <span className="text-xs text-success font-medium">
-                                    Answer: {String.fromCharCode(65 + q.correctAnswer)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     )}
 
@@ -1107,7 +1081,7 @@ function CreateAssignmentPageContent({
                     {isQuiz ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Star className="w-3.5 h-3.5" />
-                        {totalQuizPoints} points · {formData.questions.length} questions
+                        Quiz questions from selected quiz
                       </div>
                     ) : (
                       formData.maxScore > 0 && (
@@ -1135,16 +1109,14 @@ function CreateAssignmentPageContent({
                   <ChecklistItem done={!!formData.type} label="Assignment type" />
                   <ChecklistItem done={formData.selectedClasses.length > 0} label="At least one class" />
                   <ChecklistItem
-                    done={isQuiz ? !!formData.quizId.trim() : parsedCaseIds.length > 0}
-                    label={isQuiz ? 'Quiz target selected' : 'Case targets selected'}
+                    done={
+                      isQuiz
+                        ? isValidGuidString(formData.quizId.trim())
+                        : validCaseGuids.length > 0
+                    }
+                    label={isQuiz ? 'Quiz selected' : 'At least one case selected'}
                   />
                   <ChecklistItem done={!!formData.dueDate} label="Due date set" />
-                  {isQuiz && (
-                    <ChecklistItem
-                      done={formData.questions.length > 0 && formData.questions.every((q) => q.question)}
-                      label="Questions complete"
-                    />
-                  )}
                 </div>
               </div>
             </div>

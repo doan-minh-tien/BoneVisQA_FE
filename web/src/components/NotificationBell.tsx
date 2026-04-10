@@ -1,0 +1,245 @@
+'use client';
+
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import Link from 'next/link';
+import { Bell, Check } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
+
+interface NotificationItem {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  targetUrl?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+const PANEL_WIDTH = 320;
+const PANEL_GAP = 8;
+
+export type NotificationBellVariant = 'sidebar' | 'header';
+
+export function NotificationBell({ variant = 'sidebar' }: { variant?: NotificationBellVariant }) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const lastFetch = useRef<number>(0);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  async function fetchNotifs(silent = false) {
+    if (!silent) setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${base}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: NotificationItem[] = await res.json();
+        setNotifications(data);
+        lastFetch.current = Date.now();
+        if (!silent && data.some((n) => !n.isRead)) {
+          if (!open) {
+            const newNotif = data.find((n) => !n.isRead);
+            if (newNotif) {
+              toast.info(`${newNotif.title}: ${newNotif.message}`);
+            }
+          }
+        }
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void fetchNotifs(true);
+    const interval = setInterval(() => void fetchNotifs(true), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) return;
+
+    function updatePosition() {
+      const el = buttonRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      let left = rect.right - PANEL_WIDTH;
+      left = Math.max(
+        PANEL_GAP,
+        Math.min(left, window.innerWidth - PANEL_WIDTH - PANEL_GAP),
+      );
+      const top = rect.bottom + PANEL_GAP;
+      const maxTop = window.innerHeight - PANEL_GAP - 320;
+      setPanelPos({ top: Math.min(top, Math.max(PANEL_GAP, maxTop)), left });
+    }
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      const t = e.target as Node;
+      if (buttonRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  async function markRead(id: string) {
+    try {
+      const token = localStorage.getItem('token');
+      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      await fetch(`${base}/api/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
+      );
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function timeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 60_000) return 'Just now';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`;
+    return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  }
+
+  const isHeader = variant === 'header';
+  const buttonClass = isHeader
+    ? 'relative flex h-11 w-11 items-center justify-center rounded-xl border border-border-color bg-surface text-text-muted transition-colors hover:text-text-main focus:outline-none focus:ring-2 focus:ring-cyan-accent/70'
+    : 'relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-accent/40';
+
+  const panelClass = isHeader
+    ? 'fixed z-[200] max-h-[min(24rem,calc(100vh-2rem))] w-80 overflow-hidden rounded-xl border border-border-color bg-surface shadow-2xl shadow-black/15'
+    : 'fixed z-[200] max-h-[min(24rem,calc(100vh-2rem))] w-80 overflow-hidden rounded-xl border border-white/15 bg-[#0F1F35] shadow-2xl shadow-black/50';
+
+  const headerRowClass = isHeader
+    ? 'flex items-center justify-between border-b border-border-color px-4 py-3'
+    : 'flex items-center justify-between border-b border-white/10 px-4 py-3';
+
+  const titleClass = isHeader ? 'text-sm font-semibold text-text-main' : 'text-sm font-semibold text-white';
+  const mutedClass = isHeader ? 'text-xs text-text-muted' : 'text-xs text-slate-400';
+  const emptyClass = isHeader ? 'px-4 py-8 text-center text-sm text-text-muted' : 'px-4 py-8 text-center text-sm text-slate-400';
+  const itemBorder = isHeader ? 'border-b border-border-color/60' : 'border-b border-white/5';
+  const itemHover = isHeader ? 'hover:bg-muted/50' : 'hover:bg-white/8';
+  const unreadBg = isHeader ? 'bg-primary/5' : 'bg-white/5';
+  const textMain = isHeader ? 'text-text-main' : 'text-white';
+  const textSecondary = isHeader ? 'text-text-muted' : 'text-slate-300';
+  const msgClass = isHeader ? 'mt-0.5 line-clamp-2 text-xs text-text-muted' : 'mt-0.5 line-clamp-2 text-xs text-slate-400';
+  const timeClass = isHeader ? 'mt-1 text-[10px] text-text-muted/80' : 'mt-1 text-[10px] text-slate-500';
+  const footerBorder = isHeader ? 'border-t border-border-color' : 'border-t border-white/10';
+  const linkClass = isHeader
+    ? 'text-xs font-medium text-primary hover:underline'
+    : 'text-xs font-medium text-cyan-400 hover:text-cyan-300';
+
+  const panel = open && mounted && (
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label="Notifications"
+      className={panelClass}
+      style={{ top: panelPos.top, left: panelPos.left }}
+    >
+      <div className={headerRowClass}>
+        <span className={titleClass}>Notifications</span>
+        {loading ? <span className={mutedClass}>Loading…</span> : null}
+      </div>
+
+      <div className="max-h-80 overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className={emptyClass}>No notifications yet</div>
+        ) : (
+          notifications.slice(0, 20).map((n) => (
+            <div
+              key={n.id}
+              className={`group flex gap-3 ${itemBorder} px-4 py-3 transition-colors ${!n.isRead ? unreadBg : ''} ${itemHover}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className={`text-sm ${!n.isRead ? `font-semibold ${textMain}` : textSecondary}`}>
+                    {n.title}
+                  </p>
+                  {!n.isRead && (
+                    <button
+                      type="button"
+                      onClick={() => void markRead(n.id)}
+                      className={`shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${isHeader ? 'text-text-muted hover:text-text-main' : 'text-slate-400 hover:text-white'}`}
+                      title="Mark as read"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <p className={msgClass}>{n.message}</p>
+                <p className={timeClass}>{timeAgo(n.createdAt)}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {notifications.length > 0 && (
+        <div className={`${footerBorder} px-4 py-2 text-center`}>
+          <Link href="/notifications" className={linkClass} onClick={() => setOpen(false)}>
+            View all notifications
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!open) void fetchNotifs();
+        }}
+        className={buttonClass}
+        title="Notifications"
+        aria-expanded={open}
+      >
+        <Bell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span
+            className={`absolute ${isHeader ? 'right-2 top-2' : 'right-0.5 top-0.5'} flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white`}
+          >
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {mounted && panel && createPortal(panel, document.body)}
+    </>
+  );
+}

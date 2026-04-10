@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
+import { useToast } from '@/components/ui/toast';
+import { getAllLecturerAssignments } from '@/lib/api/lecturer';
+import type { ClassAssignment } from '@/lib/api/types';
 import {
   ClipboardList,
   AlertCircle,
@@ -14,137 +17,111 @@ import {
   Search,
 } from 'lucide-react';
 
-const allAssignments = [
-  {
-    id: '1',
-    title: 'Case Analysis: Complex Tibial Fractures',
-    className: 'ORTH-301',
-    dueDate: 'Today, 11:59 PM',
-    totalStudents: 68,
-    submitted: 52,
-    graded: 28,
-    status: 'active' as const,
-  },
-  {
-    id: '2',
-    title: 'Quiz: Knee Osteoarthritis Classification',
-    className: 'RAD-205',
-    dueDate: 'Tomorrow, 11:59 PM',
-    totalStudents: 72,
-    submitted: 45,
-    graded: 45,
-    status: 'active' as const,
-  },
-  {
-    id: '3',
-    title: 'Practical Exam: X-ray Interpretation',
-    className: 'CLIN-401',
-    dueDate: 'Jan 25, 2026',
-    totalStudents: 44,
-    submitted: 8,
-    graded: 2,
-    status: 'overdue' as const,
-  },
-  {
-    id: '4',
-    title: 'Quiz: Bone Density Assessment',
-    className: 'ORTH-301',
-    dueDate: 'Mar 15, 2026',
-    totalStudents: 68,
-    submitted: 0,
-    graded: 0,
-    status: 'active' as const,
-  },
-  {
-    id: '5',
-    title: 'Lab Report: MRI Analysis of Joint Diseases',
-    className: 'RAD-205',
-    dueDate: 'Mar 20, 2026',
-    totalStudents: 72,
-    submitted: 12,
-    graded: 0,
-    status: 'active' as const,
-  },
-  {
-    id: '6',
-    title: 'Case Study: Pediatric Bone Fractures',
-    className: 'CLIN-401',
-    dueDate: 'Feb 10, 2026',
-    totalStudents: 44,
-    submitted: 44,
-    graded: 44,
-    status: 'completed' as const,
-  },
-  {
-    id: '7',
-    title: 'Midterm: Orthopedic Imaging Fundamentals',
-    className: 'ORTH-301',
-    dueDate: 'Feb 14, 2026',
-    totalStudents: 68,
-    submitted: 67,
-    graded: 67,
-    status: 'completed' as const,
-  },
-  {
-    id: '8',
-    title: 'Lab Report: X-ray Interpretation Basics',
-    className: 'RAD-205',
-    dueDate: 'Feb 28, 2026',
-    totalStudents: 72,
-    submitted: 72,
-    graded: 72,
-    status: 'completed' as const,
-  },
-];
-
-const assignmentStats = [
-  {
-    title: 'Total Assignments',
-    value: '8',
-    change: 'This semester',
-    changeType: 'neutral' as const,
-    icon: ClipboardList,
-    iconColor: 'bg-primary/10 text-primary',
-  },
-  {
-    title: 'Active',
-    value: '4',
-    change: 'Require attention',
-    changeType: 'neutral' as const,
-    icon: Clock,
-    iconColor: 'bg-accent/10 text-accent',
-  },
-  {
-    title: 'Overdue',
-    value: '1',
-    change: 'Needs follow-up',
-    changeType: 'negative' as const,
-    icon: AlertCircle,
-    iconColor: 'bg-destructive/10 text-destructive',
-  },
-  {
-    title: 'Completed',
-    value: '3',
-    change: 'All graded',
-    changeType: 'positive' as const,
-    icon: CheckCircle,
-    iconColor: 'bg-success/10 text-success',
-  },
-];
-
 const statusFilters = ['all', 'active', 'overdue', 'completed'] as const;
+type StatusFilter = (typeof statusFilters)[number];
+
+function computeStatus(
+  dueDate: string | null | undefined,
+  submitted: number,
+  total: number,
+): 'active' | 'overdue' | 'completed' {
+  if (submitted > 0 && submitted >= total && total > 0) return 'completed';
+  if (dueDate && new Date(dueDate) < new Date()) return 'overdue';
+  return 'active';
+}
 
 export default function LecturerAssignmentsPage() {
-  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const toast = useToast();
+  const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredAssignments = allAssignments.filter((a) => {
-    const matchesFilter = activeFilter === 'all' || a.status === activeFilter;
-    const matchesSearch =
-      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.className.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  useEffect(() => {
+    let cancelled = false;
+    const userId =
+      typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const data = await getAllLecturerAssignments(userId);
+        if (!cancelled) setAssignments(data);
+      } catch (e) {
+        if (!cancelled) toast.error(e instanceof Error ? e.message : 'Failed to load assignments.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  const stats = useMemo(() => {
+    const active = assignments.filter(
+      (a) => computeStatus(a.dueDate, a.submittedCount, a.totalStudents) === 'active',
+    ).length;
+    const overdue = assignments.filter(
+      (a) => computeStatus(a.dueDate, a.submittedCount, a.totalStudents) === 'overdue',
+    ).length;
+    const completed = assignments.filter(
+      (a) => computeStatus(a.dueDate, a.submittedCount, a.totalStudents) === 'completed',
+    ).length;
+    return [
+      {
+        title: 'Total Assignments',
+        value: String(assignments.length),
+        change: 'This semester',
+        changeType: 'neutral' as const,
+        icon: ClipboardList,
+        iconColor: 'bg-primary/10 text-primary',
+      },
+      {
+        title: 'Active',
+        value: String(active),
+        change: active > 0 ? 'Require attention' : 'No active assignments',
+        changeType: 'neutral' as const,
+        icon: Clock,
+        iconColor: 'bg-accent/10 text-accent',
+      },
+      {
+        title: 'Overdue',
+        value: String(overdue),
+        change: overdue > 0 ? 'Needs follow-up' : 'No overdue',
+        changeType: overdue > 0 ? ('negative' as const) : ('positive' as const),
+        icon: AlertCircle,
+        iconColor: 'bg-destructive/10 text-destructive',
+      },
+      {
+        title: 'Completed',
+        value: String(completed),
+        change: completed > 0 ? 'All graded' : 'No completed yet',
+        changeType: 'positive' as const,
+        icon: CheckCircle,
+        iconColor: 'bg-success/10 text-success',
+      },
+    ];
+  }, [assignments]);
+
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((a) => {
+      const status = computeStatus(a.dueDate, a.submittedCount, a.totalStudents);
+      const matchesFilter = activeFilter === 'all' || status === activeFilter;
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        !q ||
+        a.title.toLowerCase().includes(q) ||
+        a.className.toLowerCase().includes(q) ||
+        (a.type ?? '').toLowerCase().includes(q);
+      return matchesFilter && matchesSearch;
+    });
+  }, [assignments, activeFilter, searchQuery]);
 
   return (
     <div className="min-h-screen">
@@ -156,9 +133,20 @@ export default function LecturerAssignmentsPage() {
       <div className="p-6 max-w-[1600px] mx-auto">
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {assignmentStats.map((stat) => (
-            <StatCard key={stat.title} {...stat} />
-          ))}
+          {loading
+            ? stats.map((s) => (
+                <div
+                  key={s.title}
+                  className="bg-card rounded-xl border border-border p-4 flex items-center gap-3"
+                >
+                  <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-16 bg-muted rounded animate-pulse" />
+                    <div className="h-6 w-8 bg-muted rounded animate-pulse" />
+                  </div>
+                </div>
+              ))
+            : stats.map((s) => <StatCard key={s.title} {...s} />)}
         </div>
 
         {/* Filter & Search */}
@@ -192,7 +180,7 @@ export default function LecturerAssignmentsPage() {
             </div>
             <Link
               href="/lecturer/assignments/create"
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span className="font-medium text-sm">New Assignment</span>
@@ -201,21 +189,34 @@ export default function LecturerAssignmentsPage() {
         </div>
 
         {/* Assignments Grid */}
-        {filteredAssignments.length > 0 ? (
+        {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredAssignments.map((assignment) => (
-              <AssignmentCard key={assignment.id} {...assignment} />
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-card rounded-xl border border-border p-5 h-40 animate-pulse" />
             ))}
           </div>
-        ) : (
+        ) : filteredAssignments.length === 0 ? (
           <div className="text-center py-16 bg-card rounded-xl border border-border">
             <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-card-foreground mb-1">
-              No assignments found
+              {assignments.length === 0 ? 'No assignments yet' : 'No assignments match your filter'}
             </h3>
             <p className="text-sm text-muted-foreground">
-              Try adjusting your search or filter criteria
+              {assignments.length === 0
+                ? 'Create a new assignment from a class detail page.'
+                : 'Try adjusting your search or filter criteria.'}
             </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredAssignments.map((a) => (
+              <AssignmentCard
+                key={a.id}
+                {...a}
+                submitted={a.submittedCount}
+                graded={a.gradedCount}
+              />
+            ))}
           </div>
         )}
       </div>

@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
+import { NotificationBell } from '@/components/NotificationBell';
 
 interface HeaderProps {
   title: string;
@@ -44,10 +45,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
           />
         </div>
         <div className="flex items-center gap-3">
-          <button className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-border-color bg-surface text-text-muted hover:text-text-main">
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-cyan-accent shadow-[0_0_8px_rgba(0,229,255,0.8)]"></span>
-          </button>
+          <NotificationBell variant="header" />
           <div className="flex items-center gap-3 rounded-xl border border-border-color bg-surface px-3 py-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
               {initials || 'BV'}

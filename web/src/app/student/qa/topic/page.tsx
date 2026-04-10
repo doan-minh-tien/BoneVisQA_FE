@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import Header from '@/components/Header';
+import { useEffect, useState } from 'react';
+import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import Link from 'next/link';
 import {
   Hand,
@@ -60,6 +60,14 @@ const categoryIcons: Record<string, typeof Bone> = {
 export default function TopicSelectionPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    const pre = sessionStorage.getItem('studentQaPrefill');
+    if (pre?.trim()) {
+      setSearchQuery(pre.trim());
+      sessionStorage.removeItem('studentQaPrefill');
+    }
+  }, []);
+
   const filteredCategories = topicCategories.map((cat) => ({
     ...cat,
     topics: cat.topics.filter(
@@ -71,7 +79,11 @@ export default function TopicSelectionPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Q&A by Topic" subtitle="Select a bone or joint topic to start chatting" />
+      <StudentAppChrome
+        breadcrumb="AI Q&A"
+        title="Q&A by Topic"
+        subtitle="Select a bone or joint topic to start chatting"
+      />
 
       <div className="p-6 max-w-4xl mx-auto">
         {/* Back + Search */}

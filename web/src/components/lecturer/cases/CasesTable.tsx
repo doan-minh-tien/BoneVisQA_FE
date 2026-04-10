@@ -1,5 +1,5 @@
-import React from 'react';
-import { ShieldCheck, ShieldOff, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
 import type { CaseDto } from '@/lib/api/types';
 
 const difficultyColors: Record<string, string> = {
@@ -28,6 +28,15 @@ export default function CasesTable({
   onToggleApprove,
   togglingIds,
 }: CasesTableProps) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopy = (id: string) => {
+    navigator.clipboard.writeText(id).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <table className="w-full">
@@ -46,6 +55,9 @@ export default function CasesTable({
                 }}
                 className="w-4 h-4 accent-primary cursor-pointer"
               />
+            </th>
+            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+              ID
             </th>
             <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
               Title
@@ -82,6 +94,24 @@ export default function CasesTable({
                     onChange={() => onSelect(c.id)}
                     className="w-4 h-4 accent-primary cursor-pointer"
                   />
+                </td>
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                      {c.id.slice(0, 8)}
+                    </code>
+                    <button
+                      onClick={() => handleCopy(c.id)}
+                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      title="Copy UUID"
+                    >
+                      {copiedId === c.id ? (
+                        <Check className="w-3.5 h-3.5 text-success" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </td>
                 <td className="px-5 py-3">
                   <p className="text-sm font-medium text-card-foreground">

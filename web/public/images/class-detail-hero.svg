@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#061a30"/>
+      <stop offset="0.45" stop-color="#0d3a6b"/>
+      <stop offset="1" stop-color="#1a5f9e"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="400" y1="100" x2="400" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#97f2ef" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#97f2ef" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <ellipse cx="400" cy="320" rx="280" ry="200" fill="url(#glow)"/>
+  <g stroke="#7ad6d3" stroke-opacity="0.35" stroke-width="1.2">
+    <path d="M120 480 L680 120 M80 400 L720 200 M200 560 L600 80"/>
+  </g>
+  <g stroke="#c8daff" stroke-opacity="0.2" stroke-width="0.8">
+    <line x1="0" y1="150" x2="800" y2="150"/>
+    <line x1="0" y1="300" x2="800" y2="300"/>
+    <line x1="0" y1="450" x2="800" y2="450"/>
+    <line x1="200" y1="0" x2="200" y2="600"/>
+    <line x1="400" y1="0" x2="400" y2="600"/>
+    <line x1="600" y1="0" x2="600" y2="600"/>
+  </g>
+  <path d="M280 380 Q400 220 520 380 Q400 440 280 380" stroke="#94efec" stroke-width="2.5" stroke-opacity="0.55" fill="none"/>
+  <path d="M340 360 L400 300 L460 360" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.35" fill="none"/>
+  <text x="48" y="540" fill="#ffffff" fill-opacity="0.22" font-family="system-ui,sans-serif" font-size="13" font-weight="600" letter-spacing="0.2em">BONEVISQA · CLINICAL MODULE</text>
+</svg>

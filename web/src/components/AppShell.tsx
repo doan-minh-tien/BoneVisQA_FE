@@ -16,18 +16,21 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    setToken(localStorage.getItem('token'));
+  }, []);
+
+  useEffect(() => {
+    if (token === null) return;
     if (!token) {
       const redirect = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
-      router.replace(`/login${redirect}`);
+      router.replace(`/auth/sign-in${redirect}`);
     }
   }, [pathname, router, token]);
 
-  if (!mounted || !token) {
+  if (token === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-text-muted">
         Checking session...
@@ -35,10 +38,27 @@ export function AppShell({
     );
   }
 
+  if (!token) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-text-muted">
+        Checking session...
+      </div>
+    );
+  }
+
+  // Sidebar cố định 260px — dùng padding-left inline để luôn lệch phải, tránh chồng chữ lên sidebar (Tailwind ml-[260px] đôi khi không áp dụng).
+  const sidebarPx = 260;
+  const gutterPx = 24;
+
   return (
     <div className="min-h-screen bg-background text-text-main">
       <AppSidebar role={role} />
-      <main className="ml-[260px] min-h-screen bg-background">{children}</main>
+      <div
+        className="min-h-screen min-w-0 bg-background py-6 pr-6"
+        style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
+      >
+        <main className="min-h-screen min-w-0">{children}</main>
+      </div>
     </div>
   );
 }

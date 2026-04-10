@@ -10,7 +10,7 @@ export interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   footer?: ReactNode;
-  size?: 'md' | 'lg';
+  size?: 'md' | 'lg' | 'xl';
 }
 
 export function Modal({ open, title, children, onClose, footer, size = 'md' }: ModalProps) {
@@ -25,7 +25,7 @@ export function Modal({ open, title, children, onClose, footer, size = 'md' }: M
 
   if (!open) return null;
 
-  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-md';
+  const maxW = size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-md';
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">

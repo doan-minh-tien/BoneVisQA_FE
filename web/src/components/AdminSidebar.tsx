@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useLogout } from '@/lib/useLogout';
+import { getStoredUserInfo } from '@/lib/getStoredUserInfo';
 import LanguageSwitcher from '@/components/common/LanguageSwitcher';
 import {
   LayoutDashboard,
@@ -17,11 +18,22 @@ import {
   Database,
 } from 'lucide-react';
 
-
 export default function AdminSidebar() {
   const pathname = usePathname();
   const logout = useLogout();
   const { t } = useTranslation();
+
+  const stored = getStoredUserInfo();
+  const initials = stored.fullName
+    ? stored.fullName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase())
+        .join('')
+    : 'AD';
+  const displayName = stored.fullName || 'Admin';
+  const displayEmail = stored.email || '';
 
   const adminMenuItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard'), href: '/admin/dashboard' },
@@ -60,17 +72,15 @@ export default function AdminSidebar() {
                 <Link
                   href={item.href}
                   className={`
-                    flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer
-                    transition-colors duration-150
-                    ${
-                      isActive
-                        ? 'bg-sidebar-active text-sidebar-bg font-medium'
-                        : 'hover:bg-sidebar-hover'
+                    group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200
+                    ${isActive
+                      ? 'bg-white/15 text-white shadow-sm'
+                      : 'text-white/60 hover:bg-white/10 hover:text-white'
                     }
                   `}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <Icon className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-white/60 group-hover:text-white'}`} />
+                  {item.label}
                 </Link>
               </li>
             );
@@ -78,31 +88,33 @@ export default function AdminSidebar() {
         </ul>
       </nav>
 
-      {/* User & Logout */}
-      <div className="px-3 py-4 border-t border-white/10 space-y-4">
-        <div className="flex justify-center border-b border-white/10 pb-4">
-          <div className="bg-white rounded-lg p-0.5 shadow-sm overflow-hidden">
-            <LanguageSwitcher />
+      {/* User profile */}
+      {stored.fullName && (
+        <div className="border-t border-white/10 px-3 py-4">
+          <div className="flex justify-center border-b border-white/10 pb-4 mb-4">
+            <div className="bg-white rounded-lg p-0.5 shadow-sm overflow-hidden">
+              <LanguageSwitcher />
+            </div>
           </div>
+          <div className="flex items-center gap-3 rounded-xl px-3 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold text-white">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white">{displayName}</p>
+              <p className="truncate text-xs text-white/50">{displayEmail || 'Admin'}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={logout}
+            className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {t('nav.signOut', 'Sign Out')}
+          </button>
         </div>
-        
-        <Link
-          href="/admin/settings"
-          className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover transition-colors duration-150"
-        >
-          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-sm font-medium">
-            AD
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Admin User</p>
-            <p className="text-xs opacity-70 truncate">admin@bonevisqa.com</p>
-          </div>
-        </Link>
-        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-colors duration-150">
-          <LogOut className="w-5 h-5" />
-          <span>{t('nav.logout', 'Logout')}</span>
-        </button>
-      </div>
+      )}
     </aside>
   );
 }
