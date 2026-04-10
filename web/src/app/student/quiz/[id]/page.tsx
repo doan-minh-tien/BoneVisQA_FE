@@ -20,11 +20,12 @@ import {
   UserRound,
   Contrast,
   Ruler,
+  Mail,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview } from '@/lib/api/student';
+import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview, requestRetake } from '@/lib/api/student';
 import type { QuizAttemptReview } from '@/lib/api/student';
-import { resolveApiAssetUrl } from '@/lib/api/client';
+import { resolveApiAssetUrl, getApiErrorMessage } from '@/lib/api/client';
 import type { StudentQuizResultDto } from '@/lib/api/types';
 import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
 
@@ -75,6 +76,8 @@ export default function QuizSessionPage({
   const [quizResult, setQuizResult] = useState<StudentQuizResultDto | null>(null);
   const [quizReview, setQuizReview] = useState<QuizAttemptReview | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  const [requestingRetake, setRequestingRetake] = useState(false);
+  const [retakeSent, setRetakeSent] = useState(false);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -263,23 +266,58 @@ export default function QuizSessionPage({
             </div>
             <div>
               <h2 className="font-headline text-lg font-bold text-on-surface">
-                {retakeHint ? 'Quiz đã nộp / chưa được làm lại' : 'Không thể bắt đầu quiz'}
+                {retakeHint ? 'Quiz already submitted' : 'Cannot start quiz'}
               </h2>
               <p className="mt-1 text-xs text-on-surface-variant">
-                {retakeHint ? 'Quiz already submitted or retake not enabled yet' : 'Unable to open this quiz'}
+                {retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
               </p>
             </div>
             <div className="rounded-xl bg-muted/50 px-4 py-3 text-left">
               <p className="text-sm leading-relaxed text-on-surface break-words">{startError}</p>
             </div>
             {retakeHint ? (
-              <p className="text-xs leading-relaxed text-on-surface-variant">
-                Nếu cần làm lại, hãy nhắn giảng viên bật retake trong lớp. Nếu đã bật, thử tải lại trang sau vài giây.
-              </p>
+              <>
+                {retakeSent ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-success">Request sent!</p>
+                      <p className="text-xs text-on-surface-variant">
+                        Your lecturer has been notified. You can retake the quiz once retake is enabled.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setRequestingRetake(true);
+                      try {
+                        await requestRetake(quizId);
+                        setRetakeSent(true);
+                        toast.success('Retake request sent to your lecturer.');
+                      } catch (e) {
+                        toast.error(getApiErrorMessage(e));
+                      } finally {
+                        setRequestingRetake(false);
+                      }
+                    }}
+                    disabled={requestingRetake}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {requestingRetake ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
+                    {requestingRetake ? 'Sending…' : 'Request retake'}
+                  </button>
+                )}
+              </>
             ) : null}
             <Link href="/student/quiz">
               <Button variant="outline" className="h-11 w-full rounded-xl font-bold">
-                Quay lại danh sách quiz
+                Back to quiz list
               </Button>
             </Link>
           </div>

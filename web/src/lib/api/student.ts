@@ -322,6 +322,20 @@ export async function startQuizSession(quizId: string): Promise<QuizSessionDto> 
   }
 }
 
+/**
+ * Student requests retake: POST /api/student/quizzes/{quizId}/request-retake
+ * Sends notification + email to the lecturer.
+ */
+export async function requestRetake(quizId: string): Promise<{ message: string }> {
+  try {
+    const { data } = await http.post<unknown>(`/api/student/quizzes/${quizId}/request-retake`);
+    const o = (data && typeof data === 'object') ? (data as Record<string, unknown>) : {};
+    return { message: String(o.message ?? 'Request sent.') };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 function mapSubmitQuizResult(raw: unknown): StudentQuizResultDto {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const scoreRaw = r.score ?? r.Score;

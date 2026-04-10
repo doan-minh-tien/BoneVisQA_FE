@@ -80,6 +80,7 @@ export function normalizeQuizDto(raw: unknown): QuizDto {
   return {
     id,
     classId,
+    className: (r.className ?? r.ClassName ?? null) as string | null,
     title: String(r.title ?? r.Title ?? ''),
     topic: (r.topic ?? r.Topic ?? null) as string | null,
     isAiGenerated: Boolean(r.isAiGenerated ?? r.IsAiGenerated ?? false),
@@ -90,6 +91,8 @@ export function normalizeQuizDto(raw: unknown): QuizDto {
     timeLimit: (r.timeLimit ?? r.TimeLimit ?? null) as number | null,
     passingScore: (r.passingScore ?? r.PassingScore ?? null) as number | null,
     createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
+    questionCount: (r.questionCount ?? r.QuestionCount ?? undefined) as number | undefined,
+    quizName: (r.quizName ?? r.QuizName ?? null) as string | null,
   };
 }
 

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
+import { NotificationBell } from '@/components/NotificationBell';
 import {
   BookOpen,
   BotMessageSquare,
@@ -140,16 +141,19 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
   return (
       <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text shadow-[8px_0_40px_rgba(15,23,42,0.18)]">
       <div className="border-b border-white/10 px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
-            <Stethoscope className="h-5 w-5 text-cyan-accent" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
+              <Stethoscope className="h-5 w-5 text-cyan-accent" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold tracking-wide text-white">
+                BoneVisQA
+              </h1>
+              <p className="truncate text-xs text-slate-300">{meta.label}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold tracking-wide text-white">
-              BoneVisQA
-            </h1>
-            <p className="truncate text-xs text-slate-300">{meta.label}</p>
-          </div>
+          <NotificationBell />
         </div>
       </div>
 

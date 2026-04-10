@@ -369,6 +369,7 @@ export interface ExpertReviewCitation {
 export interface QuizDto {
   id: string;
   classId: string;
+  className?: string | null;
   title: string;
   topic: string | null;
   isAiGenerated: boolean;
@@ -379,6 +380,8 @@ export interface QuizDto {
   timeLimit: number | null;
   passingScore: number | null;
   createdAt: string | null;
+  questionCount?: number;
+  quizName?: string | null;
 }
 
 export interface ClassQuizDto {
