@@ -8,6 +8,7 @@ import ClassManagementWorkbench from '@/components/lecturer/classes/ClassManagem
 import { LecturerAnnouncementRow } from '@/components/lecturer/LecturerAnnouncementRow';
 import AssignmentCard from '@/components/lecturer/AssignmentCard';
 import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
+import CollapsibleSection from '@/components/shared/CollapsibleSection';
 import {
   Users,
   Award,
@@ -15,6 +16,7 @@ import {
   Settings,
   Plus,
   ChevronRight,
+  ChevronDown,
   Search,
   Loader2,
   Mail,
@@ -34,6 +36,7 @@ import {
   ClipboardList,
   UserCog,
   XCircle,
+  BarChart2,
 } from 'lucide-react';
 import {
   getClassById,
@@ -455,28 +458,26 @@ export default function ClassDetailPage({
           {/* Main Left Column */}
           <div className="col-span-12 space-y-8 lg:col-span-8">
 
-            <ClassManagementWorkbench
-              classId={classId}
-              enrolledCount={students.length}
-              caseActivityCount={classStats?.totalCasesViewed ?? 0}
-              enrolledCapacity={students.length}
-              onRosterChanged={refreshClassRosterAndStats}
-            />
+            <CollapsibleSection
+              title="Class Workbench"
+              icon={<ClipboardList className="h-5 w-5" />}
+              defaultOpen={true}
+            >
+              <ClassManagementWorkbench
+                classId={classId}
+                enrolledCount={students.length}
+                caseActivityCount={classStats?.totalCasesViewed ?? 0}
+                enrolledCapacity={students.length}
+                onRosterChanged={refreshClassRosterAndStats}
+              />
+            </CollapsibleSection>
 
-            {/* Class announcements (same data as /lecturer/announcements, scoped to this class) */}
-            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Megaphone className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-foreground">Class announcements</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Students enrolled in this class see these updates. Manage all announcements from the menu or create a new one for this class.
-                    </p>
-                  </div>
-                </div>
+            <CollapsibleSection
+              title="Class announcements"
+              description="Students enrolled in this class see these updates."
+              icon={<Megaphone className="h-5 w-5" />}
+              defaultOpen={true}
+              headerActions={
                 <div className="flex flex-wrap gap-2 shrink-0">
                   <button
                     type="button"
@@ -500,9 +501,9 @@ export default function ClassDetailPage({
                     New announcement
                   </button>
                 </div>
-              </div>
-
-              <div className="mt-6 border-t border-border pt-6">
+              }
+            >
+              <div className="border-t border-border pt-6">
                 {announcementsLoading ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -544,11 +545,23 @@ export default function ClassDetailPage({
                   </div>
                 )}
               </div>
-            </section>
+            </CollapsibleSection>
 
-            {/* Active Assignments */}
-            <div>
-              <h4 className="mb-4 text-xl font-bold text-foreground">Active assignments</h4>
+            <CollapsibleSection
+              title="Active assignments"
+              description={`${classAssignments.length} assignment${classAssignments.length === 1 ? '' : 's'} assigned to this class`}
+              icon={<ClipboardList className="h-5 w-5" />}
+              defaultOpen={true}
+              headerActions={
+                <Link
+                  href={`/lecturer/assignments/create?classId=${classId}`}
+                  className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Assignment
+                </Link>
+              }
+            >
               {assignmentsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -571,14 +584,19 @@ export default function ClassDetailPage({
                   ))}
                 </div>
               )}
-            </div>
+            </CollapsibleSection>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {stats.map((stat) => (
-                <StatCard key={stat.title} {...stat} />
-              ))}
-            </div>
+            <CollapsibleSection
+              title="Class Statistics"
+              icon={<BarChart2 className="h-5 w-5" />}
+              defaultOpen={true}
+            >
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {stats.map((stat) => (
+                  <StatCard key={stat.title} {...stat} />
+                ))}
+              </div>
+            </CollapsibleSection>
 
             {/* Tabs */}
             <div className="flex items-center gap-1 border-b border-border">
@@ -884,7 +902,7 @@ export default function ClassDetailPage({
                     ) : (
                       <>
                         <UserCog className="h-4 w-4" />
-                        {classData?.expertId ? 'Enroll Expert' : 'Enroll Expert'}
+                        {classData?.expertId ? 'Change Expert' : 'Assign Expert'}
                       </>
                     )}
                   </button>
@@ -1000,20 +1018,20 @@ export default function ClassDetailPage({
 
           {/* Right Sidebar */}
           <aside className="col-span-12 space-y-8 lg:col-span-4">
-            {/* Quizzes for this class — sidebar only (main column stays for workbench + assignments) */}
-            <div className="overflow-hidden rounded-2xl bg-slate-900 p-8 text-white shadow-xl">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <h4 className="flex items-center gap-2 text-xl font-bold">
-                  <FolderOpen className="h-5 w-5 text-secondary" />
-                  Quizzes in this class
-                </h4>
+            <CollapsibleSection
+              title="Quizzes in this class"
+              icon={<FolderOpen className="h-5 w-5" />}
+              defaultOpen={true}
+              headerActions={
                 <Link
                   href="/lecturer/quizzes"
                   className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
                 >
                   Quiz Library
                 </Link>
-              </div>
+              }
+              className="!bg-slate-900 !border-slate-700"
+            >
               <p className="mb-4 text-xs text-slate-400">
                 Quizzes are already assigned to this class. To assign more, open the quiz in the library and select this class.
               </p>
@@ -1024,7 +1042,7 @@ export default function ClassDetailPage({
                   value={quizRepoSearch}
                   onChange={(e) => setQuizRepoSearch(e.target.value)}
                   placeholder="Search by name or topic..."
-                  className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-secondary/50 placeholder:text-slate-500"
+                  className="w-full rounded-lg border-0 bg-white/10 py-2 pl-9 pr-4 text-sm text-white placeholder:text-slate-500 focus:ring-1 focus:ring-secondary/50"
                 />
               </div>
               <div className="max-h-[min(360px,50vh)] space-y-3 overflow-y-auto">
@@ -1077,13 +1095,13 @@ export default function ClassDetailPage({
                 <BarChart3 className="h-4 w-4" />
                 Quiz Library
               </Link>
-            </div>
+            </CollapsibleSection>
 
-            {/* Class Overview */}
-            <div className="rounded-2xl border border-border bg-card p-6">
-              <h5 className="mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                Class overview
-              </h5>
+            <CollapsibleSection
+              title="Class overview"
+              icon={<BarChart2 className="h-5 w-5" />}
+              defaultOpen={true}
+            >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total enrolled</span>
@@ -1100,7 +1118,7 @@ export default function ClassDetailPage({
                   <span className="font-bold">{classQuizzes.length}</span>
                 </div>
               </div>
-            </div>
+            </CollapsibleSection>
           </aside>
         </div>
       </div>
