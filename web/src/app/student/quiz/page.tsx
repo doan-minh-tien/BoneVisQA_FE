@@ -242,6 +242,7 @@ export default function StudentQuizPage() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [currentReview, setCurrentReview] = useState<QuizAttemptReview | null>(null);
   const [reviewActive, setReviewActive] = useState(false);
+  const [reviewAttemptId, setReviewAttemptId] = useState<string | null>(null);
 
   // ── Pagination (assigned quiz questions) ─────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
@@ -384,6 +385,7 @@ export default function StudentQuizPage() {
   };
 
   const openReview = async (attemptId: string) => {
+    setReviewAttemptId(attemptId);
     setReviewLoading(true);
     try {
       const data = await fetchQuizAttemptReview(attemptId);
@@ -1151,17 +1153,22 @@ export default function StudentQuizPage() {
               </>
             )}
 
-            {/* Review Answers Panel — outside the map, shown when active */}
+            {/* Review Answers Modal — shown when active, overlaid on the quiz card */}
             {reviewActive && currentReview && (
-              <ReviewAnswersPanel
-                review={currentReview}
-                onClose={() => setReviewActive(false)}
-                onRetake={() => {
-                  setGenTopic(currentReview.quizTitle.includes('AI Quiz') ? currentReview.quizTitle.replace('AI Quiz: ', '').replace(/( \(.+\)$)/, '') : currentReview.quizTitle);
-                  setReviewActive(false);
-                  goToAIPractice();
-                }}
-              />
+              <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+                {/* Modal container */}
+                <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl mt-4 md:mt-8 mb-4">
+                  <ReviewAnswersPanel
+                    review={currentReview}
+                    onClose={() => setReviewActive(false)}
+                    onRetake={() => {
+                      setGenTopic(currentReview.quizTitle.includes('AI Quiz') ? currentReview.quizTitle.replace('AI Quiz: ', '').replace(/( \(.+\)$)/, '') : currentReview.quizTitle);
+                      setReviewActive(false);
+                      goToAIPractice();
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </>
         )}
