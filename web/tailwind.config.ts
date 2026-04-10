@@ -1,6 +1,5 @@
 import type { Config } from "tailwindcss";
 
-/** Sidebar fill #0F1F35 is fixed in AppSidebar (bg-[#0F1F35]) — do not replace with MD3 surface colors. */
 const config: Config = {
   darkMode: 'class',
   content: [
@@ -12,6 +11,10 @@ const config: Config = {
     extend: {
       colors: {
         background: "#f8fafc",
+        foreground: "#0f172a",
+        card: "#ffffff",
+        muted: "#eef2f7",
+        border: "#dbe3ee",
         surface: "#ffffff",
         sidebar: "#0F1F35",
         primary: {

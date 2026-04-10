@@ -37,7 +37,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header title="Settings" subtitle="Application preferences and accessibility controls." />
-      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-card-foreground">Appearance</h2>
           <p className="mt-1 text-sm text-muted-foreground">Choose how the interface looks and behaves.</p>

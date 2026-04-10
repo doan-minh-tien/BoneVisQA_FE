@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Bell, ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
@@ -60,6 +60,7 @@ export interface TopHeaderProps {
 
 export default function TopHeader({ title, subtitle }: TopHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
   const { user } = useAuth();
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -159,9 +160,14 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
     router.push('/dashboard');
   };
 
+  const showBackButton = useMemo(() => {
+    if (!pathname) return true;
+    return !/\/dashboard\/?$/.test(pathname);
+  }, [pathname]);
+
   return (
     <header className="sticky top-0 z-40 border-b border-border-color bg-background/95 backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-4 px-6 py-4">
+      <div className="flex items-center justify-between gap-3 px-6 py-2.5">
         <div className="min-w-0 flex-1" />
         <div className="relative flex shrink-0 items-center gap-2 md:gap-3">
           <ThemeToggle />
@@ -169,7 +175,7 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
           <button
             type="button"
             onClick={() => setOpenNotifications((prev) => !prev)}
-            className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-border-color bg-surface text-text-muted hover:text-text-main"
+            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border-color bg-surface text-text-muted hover:text-text-main"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
@@ -285,19 +291,21 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
           </div>
         </div>
       </div>
-      <div className="px-6 pb-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border-color bg-surface text-text-muted hover:bg-muted/40 hover:text-text-main"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+      <div className="px-6 pb-2">
+        <div className="flex items-start gap-2.5">
+          {showBackButton ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-color bg-surface text-text-muted hover:bg-muted/40 hover:text-text-main"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          ) : null}
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-text-main">{title}</h1>
-            {subtitle ? <p className="mt-1 text-sm text-text-muted">{subtitle}</p> : null}
+            <h1 className="text-xl font-semibold tracking-tight text-text-main">{title}</h1>
+            {subtitle ? <p className="mt-0.5 text-sm text-text-muted">{subtitle}</p> : null}
           </div>
         </div>
       </div>

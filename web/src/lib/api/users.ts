@@ -58,10 +58,10 @@ function mapSearchItem(row: unknown, idx: number): SearchResultItem | null {
   };
 }
 
-/** Canonical current user — `GET /api/users/me`. Alias for clarity with `useAuth` / profile flows. */
+/** Canonical current user profile — `GET /api/profile`. */
 export async function fetchMyProfile(): Promise<UserProfileDto> {
   try {
-    const { data } = await http.get<UserProfileDto>('/api/users/me');
+    const { data } = await http.get<UserProfileDto>('/api/profile');
     return data ?? {};
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -70,7 +70,7 @@ export async function fetchMyProfile(): Promise<UserProfileDto> {
 
 export const fetchCurrentUser = fetchMyProfile;
 
-/** Payload for `PUT /api/users/me` — include only fields the user may edit. */
+/** Payload for `PUT /api/profile` — include only fields the user may edit. */
 export type UpdateUserMePayload = {
   fullName?: string;
   schoolCohort?: string | null;
@@ -81,7 +81,7 @@ export type UpdateUserMePayload = {
 
 export async function updateMyProfile(payload: UpdateUserMePayload): Promise<UserProfileDto> {
   try {
-    const { data } = await http.put<UserProfileDto>('/api/users/me', payload);
+    const { data } = await http.put<UserProfileDto>('/api/profile', payload);
     return data ?? {};
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -92,7 +92,7 @@ export async function uploadMyAvatar(file: File): Promise<{ avatarUrl: string }>
   try {
     const form = new FormData();
     form.append('file', file);
-    const { data } = await http.post<unknown>('/api/users/me/avatar', form, {
+    const { data } = await http.post<unknown>('/api/profile/avatar', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     const payload = data as Record<string, unknown> | undefined;

@@ -110,7 +110,7 @@ export function AppSidebar({
   }, [resolvedRole]);
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;
 
-  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-background text-foreground shadow-sm transition-[width] duration-200 ease-out ${
+  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-sidebar-active/30 bg-sidebar-bg text-sidebar-text shadow-sm transition-[width] duration-200 ease-out ${
     collapsed ? 'w-[72px]' : 'w-[260px]'
   }`;
 
@@ -123,33 +123,33 @@ export function AppSidebar({
           }`}
         >
           <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-muted/60">
-              <Stethoscope className="h-5 w-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-sidebar-active/30 bg-sidebar-hover">
+              <Stethoscope className="h-5 w-5 text-sidebar-text" />
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold text-foreground">BoneVisQA</h1>
-                <p className="truncate text-[11px] text-muted-foreground">Radiology Education</p>
+                <h1 className="truncate text-sm font-semibold text-sidebar-text">BoneVisQA</h1>
+                <p className="truncate text-[11px] text-sidebar-text/70">Radiology Education</p>
               </div>
             ) : null}
           </div>
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/70 hover:bg-sidebar-hover hover:text-sidebar-text"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </button>
         </div>
-        <div className="flex-1 px-2 py-4 text-center text-xs text-muted-foreground">
+        <div className="flex-1 px-2 py-4 text-center text-xs text-sidebar-text/70">
           {!collapsed ? 'No role-based navigation available.' : '—'}
         </div>
         <div className="border-t border-border p-2">
           <Button
             onClick={logout}
             variant="outline"
-            className="w-full justify-center border-border bg-muted/40 text-foreground hover:bg-muted"
+            className="w-full justify-center border-sidebar-active/30 bg-sidebar-hover text-sidebar-text hover:bg-sidebar-active/30"
           >
             <LogOut className="h-4 w-4" />
             {!collapsed ? <span className="ml-2">Logout</span> : null}
@@ -167,20 +167,20 @@ export function AppSidebar({
         }`}
       >
         <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/60">
-            <Stethoscope className="h-5 w-5 text-primary" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-sidebar-active/30 bg-sidebar-hover">
+            <Stethoscope className="h-5 w-5 text-sidebar-text" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold tracking-wide text-foreground">BoneVisQA</h1>
-              <p className="truncate text-[11px] text-muted-foreground">{meta.label}</p>
+              <h1 className="truncate text-sm font-semibold tracking-wide text-sidebar-text">BoneVisQA</h1>
+              <p className="truncate text-[11px] text-sidebar-text/70">{meta.label}</p>
             </div>
           ) : null}
         </div>
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sidebar-text/70 hover:bg-sidebar-hover hover:text-sidebar-text"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -198,8 +198,8 @@ export function AppSidebar({
                   collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                 } ${
                   pathname === dashboardItem.href
-                    ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    ? 'bg-sidebar-active text-sidebar-text'
+                    : 'text-sidebar-text/80 hover:bg-sidebar-hover hover:text-sidebar-text'
                 }`}
               >
                 <dashboardItem.icon className="h-5 w-5 shrink-0" />
@@ -227,8 +227,8 @@ export function AppSidebar({
                     collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                   } ${
                     isActive
-                      ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      ? 'bg-sidebar-active text-sidebar-text'
+                      : 'text-sidebar-text/80 hover:bg-sidebar-hover hover:text-sidebar-text'
                   }`}
                 >
                   <Icon className="h-5 w-5 shrink-0" />

@@ -153,7 +153,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background text-text-main">
       <Header title="My Profile" subtitle="Manage your account details and avatar." />
-      <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {loading ? (
           <ProfileFormSkeleton />
         ) : (
@@ -255,9 +255,6 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-8 flex flex-wrap justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => router.back()} disabled={saving}>
-                Back
-              </Button>
               <Button type="submit" isLoading={saving} disabled={uploading}>
                 <Save className="h-4 w-4" />
                 Save profile
