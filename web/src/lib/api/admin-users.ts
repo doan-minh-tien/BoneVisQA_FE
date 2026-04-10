@@ -61,7 +61,7 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
     const responses = await Promise.all(
       rolesToFetch.map(async (r) => {
         try {
-          const res = await http.get<unknown>(`/api/Admin/role/${r}`);
+          const res = await http.get<unknown>(`/api/admin/users/roles/${r}`);
           return { role: r, data: res.data };
         } catch {
           return { role: r, data: [] }; // gracefully handle missing/empty roles

@@ -40,21 +40,22 @@ import {
 } from 'lucide-react';
 import {
   getClassById,
-  getClassStudents,
-  getAvailableStudents,
-  enrollStudent,
-  removeStudent,
+  getClassStudents,             // ✅ Lấy danh sách sinh viên (chỉ xem, không CRUD)
+  // getAvailableStudents,       // DISABLED: Lecturer không thêm student
+  // enrollStudent,              // DISABLED: Lecturer không thêm student
+  // removeStudent,             // DISABLED: Lecturer không xóa student
   getClassStats,
-  updateClass,
-  deleteClass,
+  // updateClass,              // DISABLED: Lecturer chỉ xem thông tin class
+  // deleteClass,              // DISABLED: Lecturer chỉ xem thông tin class
   getClassAnnouncements,
   getClassAssignments,
-  getExperts,
-  assignExpertToClass,
+  // getExperts,              // DISABLED: Expert assignment
+  // assignExpertToClass,     // DISABLED: Expert assignment
 } from '@/lib/api/lecturer';
 import { getClassQuizzes } from '@/lib/api/lecturer-quiz';
 import { getApiErrorMessage } from '@/lib/api/client';
-import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement, ClassAssignment, ExpertOption } from '@/lib/api/types';
+import type { ClassItem, StudentEnrollment, ClassStats, QuizDto, Announcement, ClassAssignment } from '@/lib/api/types';
+// import type { ExpertOption } from '@/lib/api/types'; // DISABLED: Expert assignment
 import { useToast } from '@/components/ui/toast';
 
 const tabs = ['Students', 'Assignments', 'Announcements', 'Settings'] as const;
@@ -67,7 +68,7 @@ export default function ClassDetailPage({
   const { id: classId } = use(params);
   const router = useRouter();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<string>('Students');
+  const [activeTab, setActiveTab] = useState<string>('Assignments');
 
   // Class data
   const [classData, setClassData] = useState<ClassItem | null>(null);
@@ -77,22 +78,22 @@ export default function ClassDetailPage({
   // Stats state
   const [classStats, setClassStats] = useState<ClassStats | null>(null);
 
-  // Students state
+  // ✅ Students state — chỉ xem, không CRUD
   const [students, setStudents] = useState<StudentEnrollment[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [studentSearch, setStudentSearch] = useState('');
 
-  // Enroll dialog
-  const [showEnroll, setShowEnroll] = useState(false);
-  const [availableStudents, setAvailableStudents] = useState<StudentEnrollment[]>([]);
-  const [availableLoading, setAvailableLoading] = useState(false);
-  const [availableSearch, setAvailableSearch] = useState('');
-  const [enrollingIds, setEnrollingIds] = useState<Set<string>>(new Set());
+  // DISABLED: Enroll dialog — Lecturer không thêm student
+  // const [showEnroll, setShowEnroll] = useState(false);
+  // const [availableStudents, setAvailableStudents] = useState<StudentEnrollment[]>([]);
+  // const [availableLoading, setAvailableLoading] = useState(false);
+  // const [availableSearch, setAvailableSearch] = useState('');
+  // const [enrollingIds, setEnrollingIds] = useState<Set<string>>(new Set());
 
-  // Remove dialog
-  const [removeTarget, setRemoveTarget] = useState<StudentEnrollment | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
+  // DISABLED: Remove dialog — Lecturer không xóa student
+  // const [removeTarget, setRemoveTarget] = useState<StudentEnrollment | null>(null);
+  // const [removing, setRemoving] = useState(false);
+  // const [importPreviewOpen, setImportPreviewOpen] = useState(false);
 
   const [classQuizzes, setClassQuizzes] = useState<QuizDto[]>([]);
   const [classQuizzesLoading, setClassQuizzesLoading] = useState(true);
@@ -103,22 +104,22 @@ export default function ClassDetailPage({
   const [classAssignments, setClassAssignments] = useState<ClassAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
 
-  // Edit class dialog
-  const [showEdit, setShowEdit] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editSemester, setEditSemester] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editError, setEditError] = useState('');
+  // DISABLED: Edit class dialog state — Lecturer chỉ xem thông tin class, không sửa
+  // const [showEdit, setShowEdit] = useState(false);
+  // const [editName, setEditName] = useState('');
+  // const [editSemester, setEditSemester] = useState('');
+  // const [editing, setEditing] = useState(false);
+  // const [editError, setEditError] = useState('');
 
-  // Expert assignment
-  const [expertList, setExpertList] = useState<ExpertOption[]>([]);
-  const [expertsLoading, setExpertsLoading] = useState(false);
-  const [assigningExpert, setAssigningExpert] = useState(false);
-  const [expertAssignError, setExpertAssignError] = useState('');
+  // DISABLED: Expert assignment state — Lecturer không gán expert
+  // const [expertList, setExpertList] = useState<ExpertOption[]>([]);
+  // const [expertsLoading, setExpertsLoading] = useState(false);
+  // const [assigningExpert, setAssigningExpert] = useState(false);
+  // const [expertAssignError, setExpertAssignError] = useState('');
 
-  // Delete class dialog
-  const [showDelete, setShowDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // DISABLED: Delete class dialog state — Lecturer chỉ xem thông tin class, không xóa
+  // const [showDelete, setShowDelete] = useState(false);
+  // const [deleting, setDeleting] = useState(false);
 
   // Load class detail
   useEffect(() => {
@@ -127,8 +128,8 @@ export default function ClassDetailPage({
       try {
         const data = await getClassById(classId);
         setClassData(data);
-        setEditName(data.className);
-        setEditSemester(data.semester);
+        // setEditName(data.className); // DISABLED: Lecturer chỉ xem thông tin class
+        // setEditSemester(data.semester); // DISABLED: Lecturer chỉ xem thông tin class
       } catch (e) {
         setClassError(getApiErrorMessage(e) || 'Failed to load class.');
       } finally {
@@ -137,7 +138,8 @@ export default function ClassDetailPage({
     })();
   }, [classId]);
 
-  const refreshClassRosterAndStats = useCallback(async () => {
+  // ✅ Load students — chỉ xem, không CRUD
+  const refreshStudentsAndStats = useCallback(async () => {
     try {
       const [s, st] = await Promise.all([getClassStudents(classId), getClassStats(classId)]);
       setStudents(s);
@@ -191,133 +193,128 @@ export default function ClassDetailPage({
     };
   }, [classId]);
 
-  const handleOpenEnroll = async () => {
-    setShowEnroll(true);
-    setAvailableLoading(true);
-    setAvailableSearch('');
-    try {
-      const data = await getAvailableStudents(classId);
-      setAvailableStudents(data);
-    } catch {
-      setAvailableStudents([]);
-    } finally {
-      setAvailableLoading(false);
-    }
-  };
+  // DISABLED: handleOpenEnroll — Lecturer không CRUD student trong lớp
+  // const handleOpenEnroll = async () => {
+  //   setShowEnroll(true);
+  //   setAvailableLoading(true);
+  //   setAvailableSearch('');
+  //   try {
+  //     const data = await getAvailableStudents(classId);
+  //     setAvailableStudents(data);
+  //   } catch {
+  //     setAvailableStudents([]);
+  //   } finally {
+  //     setAvailableLoading(false);
+  //   }
+  // };
 
-  const handleEnroll = async (studentId: string) => {
-    setEnrollingIds((prev) => new Set(prev).add(studentId));
-    try {
-      await enrollStudent(classId, studentId);
-      // Move from available to enrolled
-      const enrolled = availableStudents.find((s) => s.studentId === studentId);
-      if (enrolled) {
-        setStudents((prev) => [...prev, enrolled]);
-        setAvailableStudents((prev) => prev.filter((s) => s.studentId !== studentId));
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setEnrollingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(studentId);
-        return next;
-      });
-    }
-  };
+  // DISABLED: handleEnroll — Lecturer không CRUD student trong lớp
+  // const handleEnroll = async (studentId: string) => {
+  //   setEnrollingIds((prev) => new Set(prev).add(studentId));
+  //   try {
+  //     await enrollStudent(classId, studentId);
+  //     const enrolled = availableStudents.find((s) => s.studentId === studentId);
+  //     if (enrolled) {
+  //       setStudents((prev) => [...prev, enrolled]);
+  //       setAvailableStudents((prev) => prev.filter((s) => s.studentId !== studentId));
+  //     }
+  //   } catch {
+  //   } finally {
+  //     setEnrollingIds((prev) => {
+  //       const next = new Set(prev);
+  //       next.delete(studentId);
+  //       return next;
+  //     });
+  //   }
+  // };
 
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    setRemoving(true);
-    try {
-      await removeStudent(classId, removeTarget.studentId);
-      setStudents((prev) => prev.filter((s) => s.studentId !== removeTarget.studentId));
-    } catch {
-      // silently fail
-    } finally {
-      setRemoving(false);
-      setRemoveTarget(null);
-    }
-  };
+  // DISABLED: handleRemove — Lecturer không CRUD student trong lớp
+  // const handleRemove = async () => {
+  //   if (!removeTarget) return;
+  //   setRemoving(true);
+  //   try {
+  //     await removeStudent(classId, removeTarget.studentId);
+  //     setStudents((prev) => prev.filter((s) => s.studentId !== removeTarget.studentId));
+  //   } catch {
+  //   } finally {
+  //     setRemoving(false);
+  //     setRemoveTarget(null);
+  //   }
+  // };
 
-  const handleEditClass = async () => {
-    if (!editName.trim() || !editSemester.trim()) {
-      setEditError('Please fill in all required fields.');
-      return;
-    }
-    setEditing(true);
-    setEditError('');
-    try {
-      const updated = await updateClass(classId, {
-        className: editName.trim(),
-        semester: editSemester.trim(),
-      });
-      setClassData(updated);
-      setShowEdit(false);
-    } catch (e) {
-      setEditError(getApiErrorMessage(e) || 'Update failed.');
-    } finally {
-      setEditing(false);
-    }
-  };
+  // DISABLED: handleEditClass — Lecturer chỉ xem thông tin class, không sửa
+  // const handleEditClass = async () => {
+  //   if (!editName.trim() || !editSemester.trim()) {
+  //     setEditError('Please fill in all required fields.');
+  //     return;
+  //   }
+  //   setEditing(true);
+  //   setEditError('');
+  //   try {
+  //     const updated = await updateClass(classId, {
+  //       className: editName.trim(),
+  //       semester: editSemester.trim(),
+  //     });
+  //     setClassData(updated);
+  //     setShowEdit(false);
+  //   } catch (e) {
+  //     setEditError(getApiErrorMessage(e) || 'Update failed.');
+  //   } finally {
+  //     setEditing(false);
+  //   }
+  // };
 
-  const handleDeleteClass = async () => {
-    setDeleting(true);
-    try {
-      await deleteClass(classId);
-      router.push('/lecturer/classes');
-    } catch (e) {
-      alert(getApiErrorMessage(e) || 'Delete failed.');
-      setDeleting(false);
-    }
-  };
+  // DISABLED: handleDeleteClass — Lecturer chỉ xem thông tin class, không xóa
+  // const handleDeleteClass = async () => {
+  //   setDeleting(true);
+  //   try {
+  //     await deleteClass(classId);
+  //     router.push('/lecturer/classes');
+  //   } catch (e) {
+  //     alert(getApiErrorMessage(e) || 'Delete failed.');
+  //     setDeleting(false);
+  //   }
+  // };
 
-  const handleAssignExpert = async (expertId: string | null) => {
-    setAssigningExpert(true);
-    setExpertAssignError('');
-    try {
-      await assignExpertToClass(classId, expertId);
-      setClassData((prev) =>
-        prev
-          ? {
-              ...prev,
-              expertId: expertId ?? null,
-              expertName: expertList.find((e) => e.id === expertId)?.fullName ?? null,
-            }
-          : prev,
-      );
-      setExpertList([]);
-    } catch (e) {
-      setExpertAssignError(getApiErrorMessage(e) || 'Failed to assign expert.');
-    } finally {
-      setAssigningExpert(false);
-    }
-  };
+  // DISABLED: handleAssignExpert — Lecturer không gán expert
+  // const handleAssignExpert = async (expertId: string | null) => {
+  //   setAssigningExpert(true);
+  //   setExpertAssignError('');
+  //   try {
+  //     await assignExpertToClass(classId, expertId);
+  //     setClassData((prev) =>
+  //       prev
+  //         ? {
+  //             ...prev,
+  //             expertId: expertId ?? null,
+  //             expertName: expertList.find((e) => e.id === expertId)?.fullName ?? null,
+  //           }
+  //         : prev,
+  //     );
+  //     setExpertList([]);
+  //   } catch (e) {
+  //     setExpertAssignError(getApiErrorMessage(e) || 'Failed to assign expert.');
+  //   } finally {
+  //     setAssigningExpert(false);
+  //   }
+  // };
 
-  const openExpertAssignment = async () => {
-    if (expertList.length > 0) return;
-    setExpertsLoading(true);
-    try {
-      const data = await getExperts();
-      setExpertList(data);
-    } catch {
-      setExpertList([]);
-    } finally {
-      setExpertsLoading(false);
-    }
-  };
+  // DISABLED: openExpertAssignment — Lecturer không gán expert
+  // const openExpertAssignment = async () => {
+  //   if (expertList.length > 0) return;
+  //   setExpertsLoading(true);
+  //   try {
+  //     const data = await getExperts();
+  //     setExpertList(data);
+  //   } catch {
+  //     setExpertList([]);
+  //   } finally {
+  //     setExpertsLoading(false);
+  //   }
+  // };
 
   const filteredStudents = students.filter((s) => {
     const q = studentSearch.toLowerCase();
-    return (
-      (s.studentName?.toLowerCase().includes(q) ?? false) ||
-      (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
-      (s.studentCode?.toLowerCase().includes(q) ?? false)
-    );
-  });
-
-  const filteredAvailable = availableStudents.filter((s) => {
-    const q = availableSearch.toLowerCase();
     return (
       (s.studentName?.toLowerCase().includes(q) ?? false) ||
       (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
@@ -391,13 +388,14 @@ export default function ClassDetailPage({
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <button
+            {/* DISABLED: Excel Import — Lecturer không import student */}
+            {/* <button
               onClick={() => setImportPreviewOpen(true)}
               className="flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <Upload className="h-4 w-4" />
               Excel Import
-            </button>
+            </button> */}
             <Link
               href="/lecturer/quizzes/create"
               className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary/90 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-95"
@@ -436,7 +434,10 @@ export default function ClassDetailPage({
               Manage surgical rotations, import student rosters, and assign diagnostic assessments.
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/*
+            DISABLED: Edit & Delete buttons — Lecturer chỉ xem thông tin class, không sửa/xóa class
+          */}
+          {/* <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setShowEdit(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-input transition-colors cursor-pointer"
@@ -451,7 +452,7 @@ export default function ClassDetailPage({
               <Trash2 className="h-4 w-4" />
               Delete
             </button>
-          </div>
+          </div> */}
         </div>
 
         <div className="grid grid-cols-12 gap-8 items-start">
@@ -465,10 +466,9 @@ export default function ClassDetailPage({
             >
               <ClassManagementWorkbench
                 classId={classId}
-                enrolledCount={students.length}
+                enrolledCount={classStats?.totalStudents ?? 0}
                 caseActivityCount={classStats?.totalCasesViewed ?? 0}
-                enrolledCapacity={students.length}
-                onRosterChanged={refreshClassRosterAndStats}
+                enrolledCapacity={classStats?.totalStudents ?? 0}
               />
             </CollapsibleSection>
 
@@ -615,7 +615,7 @@ export default function ClassDetailPage({
               ))}
             </div>
 
-            {/* Tab Content */}
+            {/* ✅ Students tab — chỉ xem danh sách, không CRUD */}
             {activeTab === 'Students' && (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -632,13 +632,7 @@ export default function ClassDetailPage({
                       />
                     </div>
                   </div>
-                  <button
-                    onClick={handleOpenEnroll}
-                    className="flex items-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 text-sm cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Student
-                  </button>
+                  {/* Chỉ xem - không có nút Add/Remove */}
                 </div>
 
                 {studentsLoading ? (
@@ -653,7 +647,7 @@ export default function ClassDetailPage({
                       {students.length === 0 ? 'No students enrolled' : 'No students match your search'}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {students.length === 0 ? 'Click "Add Student" to enroll students into this class.' : 'Try a different search term.'}
+                      Student enrollment is managed by the Administrator.
                     </p>
                   </div>
                 ) : (
@@ -665,7 +659,6 @@ export default function ClassDetailPage({
                           <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Code</th>
                           <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Email</th>
                           <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Enrolled At</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -703,15 +696,6 @@ export default function ClassDetailPage({
                                     year: 'numeric',
                                   })
                                 : '—'}
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              <button
-                                onClick={() => setRemoveTarget(student)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 cursor-pointer transition-colors"
-                              >
-                                <UserMinus className="w-3.5 h-3.5" />
-                                Remove
-                              </button>
                             </td>
                           </tr>
                         ))}
@@ -844,8 +828,8 @@ export default function ClassDetailPage({
 
             {activeTab === 'Settings' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Expert Assignment */}
-                <div className="bg-card rounded-xl border border-border p-6">
+                {/* DISABLED: Expert Assignment — Lecturer không gán expert */}
+                {/* <div className="bg-card rounded-xl border border-border p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
                       <UserCog className="h-5 w-5" />
@@ -907,7 +891,6 @@ export default function ClassDetailPage({
                     )}
                   </button>
 
-                  {/* Expert dropdown */}
                   {expertList.length > 0 && (
                     <div className="mt-4 space-y-2">
                       {expertList.map((expert) => (
@@ -965,7 +948,7 @@ export default function ClassDetailPage({
                       )}
                     </div>
                   )}
-                </div>
+                </div> */}
 
                 {/* Class Information */}
                 <div className="bg-card rounded-xl border border-border p-6">
@@ -998,8 +981,8 @@ export default function ClassDetailPage({
                   </div>
                 </div>
 
-                {/* Danger Zone */}
-                <div className="bg-card rounded-xl border border-border p-6">
+                {/* DISABLED: Danger Zone — Lecturer chỉ xem thông tin class, không xóa class */}
+                {/* <div className="bg-card rounded-xl border border-border p-6">
                   <h3 className="text-lg font-semibold text-card-foreground mb-4">Danger Zone</h3>
                   <p className="text-sm text-muted-foreground mb-4">
                     Deleting a class will permanently remove it and all its enrollments. This action cannot be undone.
@@ -1011,7 +994,7 @@ export default function ClassDetailPage({
                     <Trash2 className="h-4 w-4" />
                     Delete this class
                   </button>
-                </div>
+                </div> */}
               </div>
             )}
           </div>
@@ -1070,7 +1053,7 @@ export default function ClassDetailPage({
                         href={`/lecturer/quizzes/${q.id}`}
                         className="block rounded-xl border border-white/5 bg-white/5 p-4 transition-all hover:bg-white/10"
                       >
-                        <h6 className="font-bold text-sm leading-snug">{q.title || 'Untitled'}</h6>
+                        <h6 className="font-bold text-sm leading-snug text-white">{q.title || 'Untitled'}</h6>
                         {meta.length > 0 ? (
                           <p className="mt-1 text-xs text-slate-400">
                             {q.timeLimit != null ? (
@@ -1123,8 +1106,8 @@ export default function ClassDetailPage({
         </div>
       </div>
 
-      {/* Enroll Dialog */}
-      {showEnroll && (
+      {/* DISABLED: Enroll Dialog — Lecturer không CRUD student trong lớp */}
+      {/* {showEnroll && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowEnroll(false)} />
           <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg mx-4 p-6 max-h-[80vh] flex flex-col">
@@ -1210,10 +1193,10 @@ export default function ClassDetailPage({
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
-      {/* Remove Confirm Dialog */}
-      {removeTarget && (
+      {/* DISABLED: Remove Confirm Dialog — Lecturer không CRUD student trong lớp */}
+      {/* {removeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setRemoveTarget(null)} />
           <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
@@ -1241,10 +1224,10 @@ export default function ClassDetailPage({
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
-      {/* Import Preview Dialog */}
-      {importPreviewOpen && (
+      {/* DISABLED: Import Preview Dialog — Lecturer không CRUD student trong lớp */}
+      {/* {importPreviewOpen && (
         <ImportPreviewDialog
           open={true}
           classId={classId}
@@ -1254,10 +1237,10 @@ export default function ClassDetailPage({
             refreshClassRosterAndStats();
           }}
         />
-      )}
+      )} */}
 
-      {/* Edit Class Dialog */}
-      {showEdit && (
+      {/* DISABLED: Edit Class Dialog — Lecturer chỉ xem thông tin class */}
+      {/* {showEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowEdit(false)} />
           <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
@@ -1311,10 +1294,10 @@ export default function ClassDetailPage({
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
-      {/* Delete Class Dialog */}
-      {showDelete && (
+      {/* DISABLED: Delete Class Dialog — Lecturer chỉ xem thông tin class, không xóa class */}
+      {/* {showDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowDelete(false)} />
           <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
@@ -1342,7 +1325,7 @@ export default function ClassDetailPage({
             </div>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

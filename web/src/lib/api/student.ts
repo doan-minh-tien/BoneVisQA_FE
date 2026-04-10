@@ -299,12 +299,16 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
     const n = typeof rawTl === 'number' ? rawTl : Number(rawTl);
     if (Number.isFinite(n) && n > 0) timeLimit = Math.round(n);
   }
+  // Handle closeTime from BE
+  const closeTime = o.closeTime ?? o.CloseTime;
+  const closeTimeStr = typeof closeTime === 'string' ? closeTime : (closeTime instanceof Date ? closeTime.toISOString() : null);
   return {
     attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
     quizId: String(o.quizId ?? o.QuizId ?? ''),
     title: String(o.title ?? o.Title ?? ''),
     topic: pickStr(o, 'topic', 'Topic'),
     timeLimit,
+    closeTime: closeTimeStr,
     questions: list.map(normalizeStudentSessionQuestion),
   };
 }

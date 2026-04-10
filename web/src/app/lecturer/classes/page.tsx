@@ -210,13 +210,14 @@ export default function LecturerClassesPage() {
                 className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary w-64"
               />
             </div>
-            <button
+            {/* DISABLED: Create Class — Admin tạo class, không phải Lecturer */}
+            {/* <button
               onClick={() => setShowCreate(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
               <span className="font-medium text-sm">Create Class</span>
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -305,8 +306,8 @@ export default function LecturerClassesPage() {
                         </Link>
                       </div>
 
-                      {/* Edit/Delete */}
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* DISABLED: Edit/Delete — Admin quản lý class, Lecturer chỉ xem */}
+                      {/* <div className="flex items-center gap-1 flex-shrink-0">
                         <button
                           onClick={(e) => { e.preventDefault(); router.push(`/lecturer/classes/${cls.id}?edit=1`); }}
                           className="p-1.5 rounded-lg hover:bg-input transition-colors cursor-pointer"
@@ -319,9 +320,9 @@ export default function LecturerClassesPage() {
                           className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors cursor-pointer"
                           title="Delete class"
                         >
-                          <Trash2 className="w-4 h-4 text-destructive" />
+                          <Trash2 className="w-4 w-4 text-destructive" />
                         </button>
-                      </div>
+                      </div> */}
                     </div>
 
                     <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">

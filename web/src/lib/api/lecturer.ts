@@ -13,7 +13,7 @@ import type {
   StudentQuizAttemptDto,
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
-  ExpertOption,
+  // ExpertOption, // DISABLED: Expert assignment
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,6 +127,7 @@ export async function removeStudent(classId: string, studentId: string): Promise
   }
 }
 
+
 export async function getLecturerCases(): Promise<CaseDto[]> {
   try {
     const { data } = await http.get<CaseDto[]>('/api/lecturer/cases');
@@ -182,24 +183,26 @@ export async function assignQuizToClass(
   }
 }
 
-/** Lấy danh sách Expert để gán vào lớp học. */
-export async function getExperts(): Promise<ExpertOption[]> {
-  try {
-    const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// DISABLED: getExperts — Lecturer không gán expert
+// /** Lấy danh sách Expert để gán vào lớp học. */
+// export async function getExperts(): Promise<ExpertOption[]> {
+//   try {
+//     const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
+//     return Array.isArray(data) ? data : [];
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
-/** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
-export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
-  try {
-    await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// DISABLED: assignExpertToClass — Lecturer không gán expert
+// /** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
+// export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
+//   try {
+//     await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
 export async function approveCase(caseId: string, isApproved: boolean): Promise<void> {
   try {
@@ -336,9 +339,6 @@ export async function getStudentQuestions(
   }
 }
 
-/**
- * Import students from Excel file
- */
 export async function importStudentsFromExcel(
   classId: string,
   file: File,
@@ -362,9 +362,6 @@ export async function importStudentsFromExcel(
   }
 }
 
-/**
- * Bulk enroll students from list
- */
 export async function enrollManyStudents(
   classId: string,
   studentIds: string[],

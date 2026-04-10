@@ -86,17 +86,16 @@ export default function QuizSessionPage({
   const [straightenActive, setStraightenActive] = useState(false);
   const timeUpAutoSubmitTriggered = useRef(false);
 
-  const questions: QuizModeQuestion[] = session?.questions ?? [];
-  const currentQ = questions[currentIndex];
-  const totalQ = questions.length;
-  const answeredCount = Object.keys(answers).length;
-  const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
-  const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
-  const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
-  const timeLimitMinutes =
-    rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
-  const timerDisplaySeconds =
-    !submitted && timeLimitMinutes != null ? (secondsLeft ?? timeLimitMinutes * 60) : null;
+  // Reload quiz info from server to get updated status (isCompleted, score)
+  const reloadQuizInfo = useCallback(async () => {
+    try {
+      const list = await getAssignedQuizzes();
+      const found = list.find((q) => q.quizId === quizId);
+      setQuizInfo(found ?? null);
+    } catch {
+      setQuizInfo(null);
+    }
+  }, [quizId]);
 
   useEffect(() => {
     (async () => {
@@ -113,6 +112,45 @@ export default function QuizSessionPage({
     })();
   }, [quizId]);
 
+  // Reload quiz info after submit to reflect updated isCompleted/score status
+  useEffect(() => {
+    if (submitted) {
+      void reloadQuizInfo();
+    }
+  }, [submitted, reloadQuizInfo]);
+
+  const questions: QuizModeQuestion[] = session?.questions ?? [];
+  const currentQ = questions[currentIndex];
+  const totalQ = questions.length;
+  const answeredCount = Object.keys(answers).length;
+  const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
+  const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
+  const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
+  const timeLimitMinutes =
+    rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
+
+  // Calculate seconds remaining - use whichever comes first: TimeLimit or CloseTime
+  const sessionCloseTime = session?.closeTime ? new Date(session.closeTime).getTime() : null;
+  const getSecondsRemaining = (): number | null => {
+    if (submitted || timeLimitMinutes == null) return null;
+
+    // Calculate based on TimeLimit (time limit for this attempt)
+    const timeLimitSeconds = timeLimitMinutes * 60;
+
+    // Calculate based on CloseTime (quiz closing time)
+    if (sessionCloseTime != null) {
+      const now = Date.now();
+      const closeTimeSeconds = Math.max(0, Math.floor((sessionCloseTime - now) / 1000));
+      // Use whichever is smaller: TimeLimit countdown or CloseTime countdown
+      return Math.min(timeLimitSeconds, closeTimeSeconds);
+    }
+
+    return timeLimitSeconds;
+  };
+
+  const timerDisplaySeconds =
+    !submitted && timeLimitMinutes != null ? (secondsLeft ?? getSecondsRemaining()) : null;
+
   useEffect(() => {
     if (!session || submitted) {
       setSecondsLeft(null);
@@ -122,14 +160,14 @@ export default function QuizSessionPage({
       setSecondsLeft(null);
       return;
     }
-    const total = timeLimitMinutes * 60;
-    setSecondsLeft(total);
+    const initialSeconds = getSecondsRemaining() ?? timeLimitMinutes * 60;
+    setSecondsLeft(initialSeconds);
     timeUpAutoSubmitTriggered.current = false;
     const tick = setInterval(() => {
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
-  }, [session?.attemptId, timeLimitMinutes, submitted, session]);
+  }, [session?.attemptId, timeLimitMinutes, submitted, session, sessionCloseTime]);
 
   const handleSubmit = useCallback(async () => {
     if (!session) return;

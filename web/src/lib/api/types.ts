@@ -273,6 +273,8 @@ export interface QuizSessionDto {
   topic: string | null;
   /** Phút — từ BE khi start quiz; ưu tiên hơn danh sách quiz để đồng hồ đếm ngược đúng. */
   timeLimit?: number | null;
+  /** Thời gian đóng quiz (ISO string) - dùng để auto submit khi đến giờ */
+  closeTime?: string | null;
   questions: StudentSessionQuestion[];
 }
 
