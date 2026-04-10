@@ -59,16 +59,16 @@ export default function CaseManagementCard({
   const StatusIcon = statusInfo.icon;
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-all duration-200">
+    <div className="bg-card rounded-2xl border border-border p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
-            <span className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${statusInfo.color}`}>
+            <span className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${statusInfo.color}`}>
               <StatusIcon className="w-3 h-3" />
               {statusInfo.label}
             </span>
-            <span className={`px-2 py-1 rounded text-xs font-medium ${difficultyConfig[difficulty]}`}>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${difficultyConfig[difficulty]}`}>
               {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
             </span>
           </div>
@@ -78,16 +78,16 @@ export default function CaseManagementCard({
 
       {/* Tags */}
       <div className="flex flex-wrap gap-2 mb-3">
-        <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
           {boneLocation}
         </span>
-        <span className="px-2 py-1 bg-accent/10 text-accent text-xs rounded">
+        <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
           {lesionType}
         </span>
       </div>
 
       {/* Meta Info */}
-      <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-muted/30 rounded-lg">
+      <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
         <div>
           <p className="text-xs text-muted-foreground">Added by</p>
           <p className="text-sm font-medium text-card-foreground">{addedBy}</p>

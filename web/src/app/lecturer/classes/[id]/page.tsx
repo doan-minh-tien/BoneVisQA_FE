@@ -6,6 +6,10 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   BookOpen,
+  Calendar,
+  ChevronRight,
+  ClipboardList,
+  GraduationCap,
   Loader2,
   Megaphone,
   Plus,
@@ -13,6 +17,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
+import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +43,13 @@ import {
 } from '@/lib/api/lecturer-classes';
 
 type DetailTab = 'students' | 'cases' | 'quizzes' | 'announcements';
+
+function initials(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (p.length === 0) return '?';
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
+}
 
 export default function LecturerClassDetailPage({
   params,
@@ -235,39 +247,49 @@ export default function LecturerClassDetailPage({
     }
   };
 
+  const displayTitle = classInfo?.className ?? 'Class workbench';
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       <Header
-        title={classInfo?.className ?? 'Class Workbench'}
+        title={displayTitle}
         subtitle={classInfo ? `Semester ${classInfo.semester}` : 'Manage students, cases, and quizzes.'}
       />
 
-      <section className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6">
+        <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/lecturer/classes" className="transition-colors hover:text-foreground">
+            Classes
+          </Link>
+          <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
+          <span className="truncate text-foreground">{displayTitle}</span>
+        </nav>
+
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Link
             href="/lecturer/classes"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-all hover:border-primary/30 hover:text-foreground"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4 shrink-0" />
             Back to classes
           </Link>
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/lecturer/announcements?classId=${encodeURIComponent(classId)}`}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition-all hover:bg-muted/60"
             >
               <Megaphone className="h-4 w-4" />
               Announcements
             </Link>
             <Link
               href={`/lecturer/assignments/create?classId=${encodeURIComponent(classId)}`}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition-all hover:bg-muted/60"
             >
               Assignments
             </Link>
             <Link
               href="/lecturer/quizzes/create"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-slate-50"
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition-all hover:bg-muted/60"
             >
               New quiz
             </Link>
@@ -275,8 +297,8 @@ export default function LecturerClassDetailPage({
         </div>
 
         {loading ? (
-          <div className="rounded-xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
-            Loading class management workbench...
+          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-16 text-sm text-muted-foreground animate-pulse">
+            Loading class workbench…
           </div>
         ) : forbidden ? (
           <EmptyState
@@ -287,52 +309,89 @@ export default function LecturerClassDetailPage({
         ) : error ? (
           <EmptyState title="Unable to load class workbench" description={error} />
         ) : (
-          <>
-            <div className="rounded-xl border border-border bg-card p-2">
-              <div className="flex flex-wrap gap-2">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {classInfo ? (
+              <header className="mb-8 grid gap-6 lg:grid-cols-[1fr_280px]">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary">
+                    {classInfo.semester || 'Curriculum'}
+                  </p>
+                  <h1 className="mt-1 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight sm:text-4xl">
+                    {classInfo.className}
+                  </h1>
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Users className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Enrollment</p>
+                        <p className="text-sm font-semibold text-foreground">{students.length} students</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-primary">
+                        <Calendar className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Created</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {new Date(classInfo.createdAt).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-border shadow-md">
+                  <ClassDetailCover variant="hero" className="min-h-[12rem]" />
+                </div>
+              </header>
+            ) : null}
+
+            <div
+              className="mb-6 flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1"
+              role="tablist"
+              aria-label="Class sections"
+            >
+              {(
+                [
+                  ['students', 'Students', Users, students.length],
+                  ['cases', 'Cases', GraduationCap, assignedCases.length],
+                  ['quizzes', 'Quizzes', ClipboardList, assignedQuizzes.length],
+                  ['announcements', 'Announcements', Megaphone, classAnnouncements.length],
+                ] as const
+              ).map(([id, label, Icon, count]) => (
                 <button
+                  key={id}
                   type="button"
-                  onClick={() => setActiveTab('students')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                    activeTab === 'students' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  className={`flex min-w-[calc(50%-4px)] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors sm:min-w-0 ${
+                    activeTab === id
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
                   }`}
+                  onClick={() => setActiveTab(id)}
                 >
-                  Students ({students.length})
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {label} ({count})
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('cases')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                    activeTab === 'cases' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  Cases ({assignedCases.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('quizzes')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                    activeTab === 'quizzes' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  Quizzes ({assignedQuizzes.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('announcements')}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                    activeTab === 'announcements' ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  Announcements ({classAnnouncements.length})
-                </button>
-              </div>
+              ))}
             </div>
 
             {activeTab === 'students' ? (
-              <div className="rounded-xl border border-border bg-card p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-card-foreground">Enrolled Students</h2>
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Class roster</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Learners enrolled in this cohort.</p>
+                  </div>
                   <Button onClick={onOpenEnrollModal}>
                     <UserPlus className="h-4 w-4" />
                     Enroll Students
@@ -340,29 +399,42 @@ export default function LecturerClassDetailPage({
                 </div>
                 {students.length === 0 ? (
                   <EmptyState
-                    icon={<Users className="h-6 w-6" />}
-                    title="No enrolled students"
-                    description="Use Enroll Students to add learners to this class."
+                    icon={<Users className="h-7 w-7 opacity-90" />}
+                    title="No enrolled students yet"
+                    description="Invite learners from your roster or add them to get started with assignments and quizzes."
+                    action={
+                      <Button type="button" onClick={onOpenEnrollModal}>
+                        <UserPlus className="h-4 w-4" />
+                        Enroll students
+                      </Button>
+                    }
                   />
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border">
+                  <div className="overflow-x-auto rounded-xl border border-border">
                     <table className="w-full min-w-[640px]">
-                      <thead className="bg-slate-50/60 text-left text-xs uppercase tracking-wider text-slate-500">
+                      <thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                         <tr>
-                          <th className="px-4 py-3">Name</th>
-                          <th className="px-4 py-3">Student Code</th>
+                          <th className="px-4 py-3">Student</th>
+                          <th className="px-4 py-3">Code</th>
                           <th className="px-4 py-3">Email</th>
                           <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {students.map((student, index) => (
+                      <tbody className="divide-y divide-border">
+                        {students.map((student) => (
                           <tr
-                            key={student.enrollmentId}
-                            className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/45'} hover:bg-slate-50/80`}
+                            key={student.studentId}
+                            className="transition-colors hover:bg-muted/40"
                           >
-                            <td className="px-4 py-3 text-sm text-card-foreground">
-                              {student.studentName || 'Unknown student'}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-primary">
+                                  {initials(student.studentName || '?')}
+                                </div>
+                                <span className="text-sm font-medium text-card-foreground">
+                                  {student.studentName || 'Unknown student'}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentCode || '—'}</td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentEmail || '—'}</td>
@@ -377,61 +449,88 @@ export default function LecturerClassDetailPage({
                     </table>
                   </div>
                 )}
-              </div>
+              </section>
             ) : null}
 
             {activeTab === 'cases' ? (
-              <div className="rounded-xl border border-border bg-card p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-card-foreground">Assigned Cases</h2>
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Assigned cases</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Cases linked to this class for guided practice.</p>
+                  </div>
                   <Button onClick={onOpenAssignCases}>Assign Cases</Button>
                 </div>
                 {assignedCases.length === 0 ? (
                   <EmptyState
-                    icon={<BookOpen className="h-6 w-6" />}
-                    title="No assigned cases"
-                    description="Assign case sets to this class for guided practice."
+                    icon={<BookOpen className="h-7 w-7 opacity-90" />}
+                    title="No cases assigned"
+                    description="Pull cases from your library so students see them in this class."
+                    action={<Button onClick={onOpenAssignCases}>Assign cases</Button>}
                   />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="mt-6 space-y-3">
                     {assignedCases.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-border bg-background p-4">
-                        <p className="font-medium text-card-foreground">{item.title || 'Untitled case'}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">{item.description || 'No description available.'}</p>
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-2 rounded-xl border border-border bg-background px-4 py-3 transition-shadow hover:shadow-sm sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground">{item.title || 'Untitled case'}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {item.description || 'No description available.'}
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
             ) : null}
 
             {activeTab === 'quizzes' ? (
-              <div className="rounded-xl border border-border bg-card p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-card-foreground">Assigned Quizzes</h2>
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Class quizzes</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Micro quizzes tied to this class.</p>
+                  </div>
                   <Button onClick={onOpenAssignQuiz}>Assign Quiz</Button>
                 </div>
                 {assignedQuizzes.length === 0 ? (
-                  <EmptyState title="No assigned quizzes" description="Assign a quiz session to this class." />
+                  <EmptyState
+                    icon={<ClipboardList className="h-7 w-7 opacity-90" />}
+                    title="No quizzes assigned"
+                    description="Assign a quiz from your library to schedule practice and assessment."
+                    action={<Button onClick={onOpenAssignQuiz}>Assign quiz</Button>}
+                  />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="mt-6 space-y-3">
                     {assignedQuizzes.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-border bg-background p-4">
-                        <p className="font-medium text-card-foreground">{item.title || 'Untitled quiz'}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {item.topic || 'General topic'} — Pass score {item.passingScore ?? 70}%
-                        </p>
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-2 rounded-xl border border-border bg-background px-4 py-3 transition-shadow hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground">{item.title || 'Untitled quiz'}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {item.topic || 'General topic'} — Pass score {item.passingScore ?? 70}%
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
             ) : null}
 
             {activeTab === 'announcements' ? (
-              <div className="rounded-xl border border-border bg-card p-5">
+              <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <h2 className="text-lg font-semibold text-card-foreground">Class announcements</h2>
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Announcements</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Updates visible to students in this class.</p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
@@ -461,11 +560,25 @@ export default function LecturerClassDetailPage({
                     Loading announcements…
                   </div>
                 ) : classAnnouncements.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No announcements yet. Use <strong className="text-foreground">New announcement</strong> to create one.
-                  </p>
+                  <EmptyState
+                    icon={<Megaphone className="h-7 w-7 opacity-90" />}
+                    title="No announcements yet"
+                    description="Post updates, deadlines, or reminders for everyone enrolled in this class."
+                    action={
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          router.push(`/lecturer/announcements?classId=${encodeURIComponent(classId)}&new=1`)
+                        }
+                      >
+                        <Plus className="h-4 w-4" />
+                        Create announcement
+                      </Button>
+                    }
+                  />
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {classAnnouncements.map((a) => (
                       <LecturerAnnouncementRow
                         key={a.id}
@@ -485,11 +598,11 @@ export default function LecturerClassDetailPage({
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
             ) : null}
-          </>
+          </div>
         )}
-      </section>
+      </div>
 
       <Modal
         open={enrollModalOpen}

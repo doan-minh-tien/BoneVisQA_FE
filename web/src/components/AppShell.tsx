@@ -76,17 +76,17 @@ export function AppShell({
   const gutterPx = 24;
 
   return (
-    <div className="min-h-screen bg-background text-text-main">
+    <div className="flex h-screen overflow-hidden bg-background text-text-main">
       <AppSidebar
         role={role}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
       />
       <div
-        className="min-h-screen min-w-0 bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
         style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
       >
-        <main className="min-h-screen min-w-0">{children}</main>
+        <main className="scrollbar-hide min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

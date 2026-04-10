@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
@@ -8,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
+import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -18,9 +20,36 @@ import {
   Sparkles,
   UploadCloud,
 } from 'lucide-react';
-import {
-  MedicalImageViewer,
-} from '@/components/student/MedicalImageViewer';
+
+const MedicalImageViewer = dynamic(
+  () =>
+    import('@/components/student/MedicalImageViewer').then((m) => ({
+      default: m.MedicalImageViewer,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <PageLoadingSkeleton className="flex min-h-[520px] flex-col bg-black">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8" aria-busy="true">
+          <SkeletonBlock className="h-12 w-12 rounded-full opacity-40" />
+          <SkeletonBlock className="h-4 w-48 max-w-[80%]" />
+          <SkeletonBlock className="h-3 w-64 max-w-[90%] opacity-70" />
+          <div className="mt-6 w-full max-w-md space-y-2 px-4">
+            <SkeletonBlock className="h-40 w-full rounded-lg" />
+            <div className="flex justify-center gap-2 pt-4">
+              <SkeletonBlock className="h-9 w-9 rounded-full" />
+              <SkeletonBlock className="h-9 w-9 rounded-full" />
+              <SkeletonBlock className="h-9 w-9 rounded-full" />
+            </div>
+          </div>
+          <p className="text-center text-[10px] uppercase tracking-widest text-text-muted">
+            Loading radiograph viewer…
+          </p>
+        </div>
+      </PageLoadingSkeleton>
+    ),
+  },
+);
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';

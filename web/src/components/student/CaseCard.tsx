@@ -1,5 +1,7 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { BookOpen, CheckCircle2, Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
+import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
 
 interface CaseCardProps {
   title: string;
@@ -68,10 +70,16 @@ export default function CaseCard({
   const article = (
     <article className="group block overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-lg">
       {/* Thumbnail */}
-      <div className="relative h-48 bg-muted overflow-hidden">
+      <div className="relative h-48 overflow-hidden bg-muted">
         {thumbnail ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumbnail} alt={title} className="h-full w-full object-cover" />
+          <Image
+            src={thumbnail}
+            alt={title}
+            fill
+            sizes="(max-width: 768px) 100vw, 320px"
+            className="object-cover"
+            unoptimized={!isNextImageRemoteOptimized(thumbnail)}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
             <BookOpen className="h-16 w-16 text-muted-foreground opacity-30" />

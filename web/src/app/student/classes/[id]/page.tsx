@@ -2,16 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
-import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
+import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import { useToast } from '@/components/ui/toast';
 import {
   fetchStudentClassDetail,
   fetchStudentClasses,
-  leaveStudentClass,
   type StudentClassDetail,
   type StudentClassItem,
 } from '@/lib/api/student';
@@ -19,10 +17,8 @@ import {
   ChevronRight,
   ClipboardList,
   GraduationCap,
-  Loader2,
   Megaphone,
   Stethoscope,
-  UserMinus,
   Users,
 } from 'lucide-react';
 
@@ -44,7 +40,6 @@ function formatWhen(iso?: string | null) {
 
 export default function StudentClassDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const toast = useToast();
   const classId = String(params?.id ?? '');
 
@@ -52,8 +47,6 @@ export default function StudentClassDetailPage() {
   const [detail, setDetail] = useState<StudentClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ClassTab>('roster');
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -88,21 +81,6 @@ export default function StudentClassDetailPage() {
     return detail.students;
   }, [detail]);
 
-  const handleLeave = async () => {
-    if (!classId) return;
-    setLeaveLoading(true);
-    try {
-      await leaveStudentClass(classId);
-      toast.success(`You left “${title}”.`);
-      router.push('/student/classes');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not leave this class.');
-    } finally {
-      setLeaveLoading(false);
-      setLeaveOpen(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <StudentAppChrome breadcrumb="Classes" />
@@ -117,10 +95,35 @@ export default function StudentClassDetailPage() {
         </nav>
 
         {loading ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-border bg-card">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="mt-2 text-sm text-muted-foreground">Loading class…</p>
-          </div>
+          <PageLoadingSkeleton>
+            <div className="mb-8 grid gap-6 lg:grid-cols-[1fr_280px]">
+              <div className="space-y-4">
+                <SkeletonBlock className="h-4 w-36" />
+                <SkeletonBlock className="h-10 w-4/5 max-w-lg sm:h-12" />
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <SkeletonBlock className="h-[4.75rem] w-56 max-w-full rounded-2xl" />
+                  <SkeletonBlock className="h-[4.75rem] w-56 max-w-full rounded-2xl" />
+                </div>
+              </div>
+              <SkeletonBlock className="min-h-[12rem] rounded-2xl border border-border shadow-md" />
+            </div>
+            <SkeletonBlock className="mb-6 h-[3.25rem] w-full max-w-4xl rounded-xl" />
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <SkeletonBlock className="mb-1 h-7 w-44" />
+              <SkeletonBlock className="h-4 w-full max-w-md" />
+              <div className="mt-6 divide-y divide-border">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 py-3">
+                    <SkeletonBlock className="h-10 w-10 shrink-0 rounded-full" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <SkeletonBlock className="h-4 w-48 max-w-full" />
+                      <SkeletonBlock className="h-3 w-28 max-w-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PageLoadingSkeleton>
         ) : !detail ? (
           <div className="rounded-2xl border border-dashed border-border px-6 py-16 text-center">
             <GraduationCap className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -166,12 +169,6 @@ export default function StudentClassDetailPage() {
                       ) : null}
                     </div>
                   </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button type="button" variant="destructive" size="sm" onClick={() => setLeaveOpen(true)}>
-                    <UserMinus className="mr-2 h-4 w-4" />
-                    Leave class
-                  </Button>
                 </div>
               </div>
               <div className="overflow-hidden rounded-2xl border border-border shadow-md">
@@ -329,26 +326,6 @@ export default function StudentClassDetailPage() {
           </>
         )}
       </div>
-
-      <Modal
-        open={leaveOpen}
-        title="Leave this class?"
-        onClose={() => { if (!leaveLoading) setLeaveOpen(false); }}
-        footer={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" disabled={leaveLoading} onClick={() => setLeaveOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" variant="destructive" isLoading={leaveLoading} onClick={() => void handleLeave()}>
-              Leave class
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-muted-foreground">
-          You will lose access to this class&apos;s quizzes and announcements until a lecturer adds you again.
-        </p>
-      </Modal>
     </div>
   );
 }

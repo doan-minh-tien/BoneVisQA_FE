@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -11,6 +12,7 @@ import { useToast } from '@/components/ui/toast';
 import { fetchCaseCatalogDetail } from '@/lib/api/student';
 import type { StudentCaseCatalogDetail } from '@/lib/api/types';
 import { AlertCircle, BookOpen, ChevronRight } from 'lucide-react';
+import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
 
 export default function StudentCaseDetailPage() {
   const toast = useToast();
@@ -90,10 +92,18 @@ export default function StudentCaseDetailPage() {
                 <BookOpen className="h-4 w-4 text-primary" />
                 Medical image
               </div>
-              <div className="overflow-hidden rounded-lg border border-border bg-muted">
+              <div className="flex w-full justify-center overflow-hidden rounded-lg border border-border bg-muted p-2">
                 {item.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.imageUrl} alt={item.title} className="max-h-[600px] w-full object-contain" />
+                  <Image
+                    src={item.imageUrl}
+                    alt={item.title}
+                    width={1600}
+                    height={1200}
+                    sizes="(max-width: 1024px) 100vw, 55vw"
+                    className="h-auto max-h-[600px] w-full object-contain"
+                    priority
+                    unoptimized={!isNextImageRemoteOptimized(item.imageUrl)}
+                  />
                 ) : (
                   <div className="flex min-h-[280px] items-center justify-center text-sm text-muted-foreground">
                     No case image available.

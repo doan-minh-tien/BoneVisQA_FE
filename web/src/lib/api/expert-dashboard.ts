@@ -152,3 +152,21 @@ export async function fetchExpertActivity(): Promise<ExpertActivity> {
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+/** Single bundle for SWR — one cache key, parallel requests, shared loading/error. */
+export type ExpertDashboardBundle = {
+  stats: ExpertDashboardStats;
+  pendingReviews: ExpertPendingReview[];
+  recentCases: ExpertRecentCase[];
+  activity: ExpertActivity;
+};
+
+export async function fetchExpertDashboardBundle(): Promise<ExpertDashboardBundle> {
+  const [stats, pendingReviews, recentCases, activity] = await Promise.all([
+    fetchExpertDashboardStats(),
+    fetchExpertPendingReviews(),
+    fetchExpertRecentCases(),
+    fetchExpertActivity(),
+  ]);
+  return { stats, pendingReviews, recentCases, activity };
+}

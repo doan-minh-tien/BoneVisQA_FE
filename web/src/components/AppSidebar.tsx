@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useMemo } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
-import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   BookOpen,
   CheckSquare,
@@ -15,8 +15,6 @@ import {
   Plus,
   ScanSearch,
   Stethoscope,
-  UserCog,
-  UserCircle,
   ClipboardList,
   Users,
   ShieldCheck,
@@ -26,6 +24,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -70,7 +69,6 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
     { label: 'Classes', href: '/student/classes', icon: Users },
-    { label: 'Profile', href: '/profile', icon: UserCircle },
   ],
 };
 
@@ -81,8 +79,19 @@ const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel
   student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
 
-function profileHrefForRole(_role: RoleKey): string {
-  return '/profile';
+function dashboardHrefForRole(role: RoleKey): string {
+  switch (role) {
+    case 'admin':
+      return '/admin/dashboard';
+    case 'lecturer':
+      return '/lecturer/dashboard';
+    case 'expert':
+      return '/expert/dashboard';
+    case 'student':
+      return '/student/dashboard';
+    default:
+      return '/student/dashboard';
+  }
 }
 
 function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey | null {
@@ -103,25 +112,26 @@ export function AppSidebar({
   onToggleCollapsed: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const logout = useLogout();
   const { user } = useAuth();
   const resolvedRole = mapBackendRoleToRoleKey(user?.activeRole) ?? role ?? null;
-  const items = resolvedRole ? navByRole[resolvedRole] ?? [] : [];
+  const items = useMemo(() => {
+    if (!resolvedRole) return [];
+    const base = navByRole[resolvedRole] ?? [];
+    return [...base].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, [resolvedRole]);
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;
 
-  const profileName = user?.fullName?.trim() || user?.email?.trim() || 'Authenticated User';
-  const profileRole = user?.activeRole || 'Member';
-  const avatarResolved = user?.avatarUrl?.trim()
-    ? resolveApiAssetUrl(user.avatarUrl.trim())
-    : '';
-
-  const initials =
-    profileName
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join('') || 'BV';
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else if (resolvedRole) {
+      router.push(dashboardHrefForRole(resolvedRole));
+    } else {
+      router.push('/student/dashboard');
+    }
+  };
 
   const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-border bg-background text-foreground shadow-sm transition-[width] duration-200 ease-out ${
     collapsed ? 'w-[72px]' : 'w-[260px]'
@@ -200,7 +210,17 @@ export function AppSidebar({
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+      <nav className="scrollbar-hide flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={goBack}
+          className={`mb-3 w-full justify-center border-border bg-muted/40 text-foreground hover:bg-muted ${collapsed ? 'px-2' : ''}`}
+          title={collapsed ? 'Go back' : undefined}
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          {!collapsed ? <span className="ml-2">Go back</span> : null}
+        </Button>
         <ul className="space-y-1">
           {items.map((item) => {
             const isActive =
@@ -237,47 +257,6 @@ export function AppSidebar({
             {!collapsed ? <span className="ml-2">{meta.actionLabel}</span> : null}
           </Button>
         </Link>
-        <Link
-          href={profileHrefForRole(resolvedRole)}
-          className={`mt-2 flex items-center rounded-lg border border-border bg-muted/40 hover:bg-muted ${
-            collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2.5'
-          }`}
-          title="Account & profile"
-        >
-          {avatarResolved ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarResolved}
-              alt=""
-              className={`shrink-0 rounded-full border border-border object-cover ${collapsed ? 'h-9 w-9' : 'h-10 w-10'}`}
-            />
-          ) : (
-            <div
-              className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary ${
-                collapsed ? 'h-9 w-9' : 'h-10 w-10'
-              }`}
-            >
-              {initials}
-            </div>
-          )}
-          {!collapsed ? (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{profileName}</p>
-                <p className="truncate text-xs text-muted-foreground">{profileRole}</p>
-              </div>
-              <UserCog className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            </>
-          ) : null}
-        </Link>
-        <Button
-          onClick={logout}
-          variant="outline"
-          className="mt-2 w-full justify-center border-border bg-muted/40 text-foreground hover:bg-muted"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {!collapsed ? <span className="ml-2">Logout</span> : null}
-        </Button>
       </div>
     </aside>
   );

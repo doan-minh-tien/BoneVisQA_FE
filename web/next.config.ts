@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'jshryhplbayoymtthqpu.supabase.co',
+        pathname: '/**',
+      },
+    ],
+  },
   async redirects() {
     return [
       { source: "/login", destination: "/auth/sign-in", permanent: false },

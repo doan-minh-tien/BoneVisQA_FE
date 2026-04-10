@@ -39,10 +39,10 @@ export default function CasesTable({
   };
 
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-border bg-slate-50/60">
+          <tr className="border-b border-border bg-muted/30">
             <th className="w-10 px-4 py-3">
               <input
                 type="checkbox"
@@ -87,7 +87,7 @@ export default function CasesTable({
           {cases.map((c) => {
             const isToggling = togglingIds.has(c.id);
             return (
-              <tr key={c.id} className="transition-colors even:bg-slate-50/40 hover:bg-slate-50/80">
+              <tr key={c.id} className="transition-colors hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <input
                     type="checkbox"
@@ -126,7 +126,7 @@ export default function CasesTable({
                 </td>
                 <td className="px-5 py-3">
                   {c.categoryName ? (
-                    <span className="px-2.5 py-1 bg-primary/10 text-primary text-xs rounded font-medium">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                       {c.categoryName}
                     </span>
                   ) : (
@@ -136,7 +136,7 @@ export default function CasesTable({
                 <td className="px-5 py-3 text-center">
                   {c.difficulty ? (
                     <span
-                      className={`px-2.5 py-1 text-xs rounded font-medium ${
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                         difficultyColors[c.difficulty.toLowerCase()] ?? 'bg-muted text-muted-foreground'
                       }`}
                     >
