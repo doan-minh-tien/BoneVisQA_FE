@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bell, MessageCircle } from 'lucide-react';
+import { Bell, MessageCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchStudentProfile, fetchStudentAnnouncements } from '@/lib/api/student';
@@ -85,12 +85,19 @@ export function StudentAppChrome({
   return (
     <>
       <header className="sticky top-0 z-30 flex w-full items-center justify-between border-b border-slate-200/80 bg-slate-50/80 px-6 py-4 backdrop-blur-md md:px-10 md:py-5 dark:border-white/10 dark:bg-slate-900/80">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-3">
           <h1 className="truncate font-['Manrope',sans-serif] text-lg font-extrabold tracking-tight text-[#00478d] dark:text-blue-300 md:text-xl">
             BoneVisQA
           </h1>
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" aria-hidden />
           <span className="truncate text-sm font-medium text-[#424752] dark:text-slate-400">{breadcrumb}</span>
+          <Link
+            href="/student/ai-quiz"
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-4 py-1.5 text-xs font-bold text-white shadow-md transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 active:scale-95"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Quiz
+          </Link>
         </div>
         <div className="flex shrink-0 items-center gap-4 md:gap-6">
           <div className="relative" ref={panelRef}>

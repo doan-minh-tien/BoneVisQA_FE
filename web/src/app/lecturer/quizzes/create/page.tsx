@@ -363,6 +363,14 @@ export default function CreateQuizPage() {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const toUTC = (local: string) => {
+    const t = local.trim();
+    if (!t) return undefined;
+    const d = new Date(t);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return d.toISOString();
+  };
+
   const buildCreatePayload = () => ({
     title: formData.title,
     topic: formData.topic || undefined,
@@ -370,8 +378,8 @@ export default function CreateQuizPage() {
     classification: classification,
     isAiGenerated: false,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
-    openTime: formData.openTime || undefined,
-    closeTime: formData.closeTime || undefined,
+    openTime: toUTC(formData.openTime),
+    closeTime: toUTC(formData.closeTime),
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
   });
@@ -494,8 +502,8 @@ export default function CreateQuizPage() {
         classification: classification,
         isAiGenerated: true,
         classId: formData.classId || '00000000-0000-0000-0000-000000000000',
-        openTime: formData.openTime || undefined,
-        closeTime: formData.closeTime || undefined,
+        openTime: toUTC(formData.openTime),
+        closeTime: toUTC(formData.closeTime),
         timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
         passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
       });
@@ -975,12 +983,12 @@ export default function CreateQuizPage() {
                       disabled={aiGenerating || !formData.topic}
                       className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300"
                     >
-                      {aiGenerating ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
+                 {aiGenerating ? (
+  <span className="flex items-center">   {/* hoặc <div> */}
+    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+    Creating...
+  </span>
+) : (
                         <>
                           <Sparkles className="mr-2 h-4 w-4" />
                           AI Auto-Generate

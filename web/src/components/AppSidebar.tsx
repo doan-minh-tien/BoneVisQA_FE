@@ -25,6 +25,7 @@ import {
   BarChart3,
   Megaphone,
   Settings,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -68,6 +69,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
+    { label: 'AI Quiz', href: '/student/ai-quiz', icon: Sparkles },
     { label: 'AI Q&A', href: '/student/qa', icon: BotMessageSquare },
     { label: 'Classes', href: '/student/classes', icon: Users },
     { label: 'Profile', href: '/student/profile', icon: UserCircle },

@@ -1020,8 +1020,9 @@ function CreateAssignmentPageContent({
                       isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-success/90 cursor-pointer'
                     }`}
                   >
-                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    {isSubmitting ? 'Publishing...' : 'Publish Assignment'}
+                    <span className={isSubmitting ? 'hidden' : ''}><Send className="w-4 h-4" /></span>
+                    <span className={isSubmitting ? '' : 'hidden'}><Loader2 className="w-4 h-4 animate-spin" /></span>
+                    <span>{isSubmitting ? 'Publishing\u2026' : 'Publish Assignment'}</span>
                   </button>
                 )}
               </div>

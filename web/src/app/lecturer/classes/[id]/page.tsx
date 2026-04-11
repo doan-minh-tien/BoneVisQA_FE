@@ -49,6 +49,7 @@ import {
   // deleteClass,              // DISABLED: Lecturer chỉ xem thông tin class
   getClassAnnouncements,
   getClassAssignments,
+  deleteAssignment,             // ✅ Xóa assignment
   // getExperts,              // DISABLED: Expert assignment
   // assignExpertToClass,     // DISABLED: Expert assignment
 } from '@/lib/api/lecturer';
@@ -104,6 +105,11 @@ export default function ClassDetailPage({
   const [classAssignments, setClassAssignments] = useState<ClassAssignment[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
 
+  // Bulk selection for assignments
+  const [selectedAssignments, setSelectedAssignments] = useState<Set<string>>(new Set());
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   // DISABLED: Edit class dialog state — Lecturer chỉ xem thông tin class, không sửa
   // const [showEdit, setShowEdit] = useState(false);
   // const [editName, setEditName] = useState('');
@@ -148,6 +154,40 @@ export default function ClassDetailPage({
       // silently fail
     }
   }, [classId]);
+
+  // Bulk assignment selection handlers
+  const handleAssignmentSelect = (id: string, selected: boolean) => {
+    setSelectedAssignments((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllAssignments = () => {
+    if (selectedAssignments.size === classAssignments.length) {
+      setSelectedAssignments(new Set());
+    } else {
+      setSelectedAssignments(new Set(classAssignments.map((a) => a.id)));
+    }
+  };
+
+  const handleBulkDeleteAssignments = async () => {
+    setBulkDeleting(true);
+    try {
+      const ids = [...selectedAssignments];
+      await Promise.allSettled(ids.map((id) => deleteAssignment(id)));
+      setClassAssignments((prev) => prev.filter((a) => !selectedAssignments.has(a.id)));
+      setSelectedAssignments(new Set());
+      setShowBulkDelete(false);
+      toast.success(`${ids.length} assignment(s) deleted successfully.`);
+    } catch {
+      toast.error('Failed to delete some assignments.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -722,6 +762,40 @@ export default function ClassDetailPage({
                     New Assignment
                   </Link>
                 </div>
+
+                {/* Bulk action bar */}
+                {selectedAssignments.size > 0 && (
+                  <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-xl px-5 py-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-primary">
+                        {selectedAssignments.size} selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAssignments(new Set())}
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                      >
+                        Clear selection
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSelectAllAssignments}
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                      >
+                        {selectedAssignments.size === classAssignments.length ? 'Deselect all' : 'Select all'}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDelete(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-destructive text-white rounded-lg hover:bg-destructive/90 transition-colors duration-150 cursor-pointer text-sm font-medium"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete selected ({selectedAssignments.size})
+                    </button>
+                  </div>
+                )}
+
                 {assignmentsLoading ? (
                   <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -743,6 +817,9 @@ export default function ClassDetailPage({
                       className={a.className}
                       submitted={a.submittedCount}
                       graded={a.gradedCount}
+                      selectable={true}
+                      selected={selectedAssignments.has(a.id)}
+                      onSelect={handleAssignmentSelect}
                     />
                   ))}
                   </div>
@@ -1326,6 +1403,54 @@ export default function ClassDetailPage({
           </div>
         </div>
       )} */}
+
+      {/* Bulk Delete Assignments Confirmation Dialog */}
+      {showBulkDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => !bulkDeleting && setShowBulkDelete(false)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">
+              Delete {selectedAssignments.size} Assignment{selectedAssignments.size > 1 ? 's' : ''}?
+            </h3>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/50 p-3 mb-4">
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {[...selectedAssignments].map((id) => {
+                  const assignment = classAssignments.find((a) => a.id === id);
+                  return (
+                    <li key={id} className="truncate">
+                      • {assignment?.title ?? id}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p className="text-xs text-destructive text-center mb-4">
+              This action cannot be undone. All submissions and attempts will be removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkDelete(false)}
+                disabled={bulkDeleting}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDeleteAssignments}
+                disabled={bulkDeleting}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/90 cursor-pointer disabled:opacity-60 transition-colors"
+              >
+                {bulkDeleting ? 'Deleting...' : `Delete ${selectedAssignments.size} Assignment${selectedAssignments.size > 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

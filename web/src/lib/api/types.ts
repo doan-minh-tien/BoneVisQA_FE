@@ -113,6 +113,63 @@ export interface ClassAssignment {
   gradedCount: number;
 }
 
+// ========== Assignment Types ==========
+
+export interface AssignmentDetail {
+  id: string;
+  classId: string;
+  className: string;
+  classCode?: string | null;
+  /** "case" hoặc "quiz" */
+  type: string;
+  title: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate: string | null;
+  openDate?: string | null;
+  isMandatory: boolean;
+  assignedAt: string | null;
+  totalStudents: number;
+  submittedCount: number;
+  gradedCount: number;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate: boolean;
+  avgScore?: number | null;
+  createdAt: string;
+}
+
+export interface AssignmentSubmission {
+  studentId: string;
+  studentName: string;
+  studentCode: string | null;
+  submittedAt: string | null;
+  score: number | null;
+  status: 'graded' | 'pending' | 'not-submitted';
+}
+
+export interface UpdateAssignmentRequest {
+  title?: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate?: string | null;
+  openDate?: string | null;
+  isMandatory?: boolean;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate?: boolean;
+  allowRetake?: boolean;
+}
+
+export interface AssignmentSubmissionUpdate {
+  studentId: string;
+  score: number | null;
+}
+
+export interface UpdateAssignmentSubmissionRequest {
+  submissions: AssignmentSubmissionUpdate[];
+}
+
 export interface ClassStats {
   classId: string;
   totalStudents: number;

@@ -13,6 +13,10 @@ import type {
   StudentQuizAttemptDto,
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
+  AssignmentDetail,
+  AssignmentSubmission,
+  UpdateAssignmentRequest,
+  UpdateAssignmentSubmissionRequest,
   // ExpertOption, // DISABLED: Expert assignment
 } from './types';
 
@@ -299,9 +303,16 @@ export async function getAllLecturerAssignments(lecturerId: string): Promise<Cla
       `/api/lecturer/assignments?lecturerId=${encodeURIComponent(lid)}`,
     );
     const list = Array.isArray(data) ? data : [];
-    return list
+    const normalized = list
       .map(normalizeAssignment)
       .filter((a): a is ClassAssignment => a !== null);
+    // Deduplicate by id (defensive: guard against backend returning duplicates)
+    const seen = new Set<string>();
+    return normalized.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -515,6 +526,136 @@ export async function allowRetakeAll(classId: string, quizId: string): Promise<v
       `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
       {},
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Assignment CRUD API ==========
+
+/** Normalize assignment detail row from BE (camelCase or PascalCase). */
+function normalizeAssignmentDetail(row: unknown): AssignmentDetail | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id || !GUID_RE.test(id)) return null;
+  return {
+    id,
+    classId: String(r.classId ?? r.ClassId ?? '') || '',
+    className: String(r.className ?? r.ClassName ?? '') || '',
+    classCode: (r.classCode ?? r.ClassCode ?? null) as string | null,
+    type: String(r.type ?? r.Type ?? '') || '',
+    title: String(r.title ?? r.Title ?? '') || '',
+    description: (r.description ?? r.Description ?? null) as string | null,
+    instructions: (r.instructions ?? r.Instructions ?? null) as string | null,
+    dueDate: (r.dueDate ?? r.DueDate ?? null) as string | null,
+    openDate: (r.openDate ?? r.OpenDate ?? r.openTime ?? r.OpenTime ?? null) as string | null,
+    isMandatory: Boolean(r.isMandatory ?? r.IsMandatory ?? false),
+    assignedAt: (r.assignedAt ?? r.AssignedAt ?? null) as string | null,
+    totalStudents: Number(r.totalStudents ?? r.TotalStudents ?? 0) || 0,
+    submittedCount: Number(r.submittedCount ?? r.SubmittedCount ?? 0) || 0,
+    gradedCount: Number(r.gradedCount ?? r.GradedCount ?? 0) || 0,
+    maxScore: r.maxScore != null ? Number(r.maxScore) : null,
+    passingScore: r.passingScore != null ? Number(r.passingScore) : null,
+    allowLate: Boolean(r.allowLate ?? r.AllowLate ?? false),
+    avgScore: r.avgScore != null ? Number(r.avgScore) : null,
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+  };
+}
+
+/** Normalize submission row from BE (camelCase or PascalCase). */
+function normalizeSubmission(row: unknown): AssignmentSubmission | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const studentId = String(r.studentId ?? r.StudentId ?? '').trim();
+  if (!studentId) return null;
+  return {
+    studentId,
+    studentName: String(r.studentName ?? r.StudentName ?? 'Unknown') || 'Unknown',
+    studentCode: (r.studentCode ?? r.StudentCode ?? null) as string | null,
+    submittedAt: (r.submittedAt ?? r.SubmittedAt ?? r.submittedAt ?? null) as string | null,
+    score: r.score != null ? Number(r.score) : null,
+    status: String(r.status ?? r.Status ?? 'not-submitted') as AssignmentSubmission['status'],
+  };
+}
+
+/**
+ * Lấy chi tiết của một assignment cụ thể.
+ */
+export async function getAssignmentById(assignmentId: string): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown>(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cập nhật thông tin assignment.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  body: UpdateAssignmentRequest,
+): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}`,
+      body,
+    );
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Xóa một assignment.
+ */
+export async function deleteAssignment(assignmentId: string): Promise<void> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    await http.delete(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Lấy danh sách submissions của một assignment.
+ */
+export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cập nhật điểm cho một hoặc nhiều submissions.
+ */
+export async function updateAssignmentSubmissions(
+  assignmentId: string,
+  body: UpdateAssignmentSubmissionRequest,
+): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+      body,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

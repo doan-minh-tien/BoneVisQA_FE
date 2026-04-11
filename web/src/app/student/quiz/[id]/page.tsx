@@ -129,22 +129,19 @@ export default function QuizSessionPage({
   const timeLimitMinutes =
     rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
 
-  // Calculate seconds remaining - use whichever comes first: TimeLimit or CloseTime
-  const sessionCloseTime = session?.closeTime ? new Date(session.closeTime).getTime() : null;
+  // Close time in ms (null if no close time)
+  const sessionCloseTimeMs = session?.closeTime ? new Date(session.closeTime).getTime() : null;
+
+  // Countdown: always counts down from timeLimit; clamped by closeTime so it never exceeds remaining time before quiz closes
   const getSecondsRemaining = (): number | null => {
     if (submitted || timeLimitMinutes == null) return null;
-
-    // Calculate based on TimeLimit (time limit for this attempt)
     const timeLimitSeconds = timeLimitMinutes * 60;
-
-    // Calculate based on CloseTime (quiz closing time)
-    if (sessionCloseTime != null) {
+    if (sessionCloseTimeMs != null) {
       const now = Date.now();
-      const closeTimeSeconds = Math.max(0, Math.floor((sessionCloseTime - now) / 1000));
-      // Use whichever is smaller: TimeLimit countdown or CloseTime countdown
+      const closeTimeSeconds = Math.max(0, Math.floor((sessionCloseTimeMs - now) / 1000));
+      // Clamp: cannot exceed timeLimit, cannot go below 0
       return Math.min(timeLimitSeconds, closeTimeSeconds);
     }
-
     return timeLimitSeconds;
   };
 
@@ -167,7 +164,19 @@ export default function QuizSessionPage({
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
-  }, [session?.attemptId, timeLimitMinutes, submitted, session, sessionCloseTime]);
+    // Intentionally track session?.closeTime — closeTime may be absent at start but arrive mid-session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.attemptId, timeLimitMinutes, submitted, session?.closeTime]);
+
+  // Dedicated auto-submit: fires when either time limit or close time runs out
+  useEffect(() => {
+    if (secondsLeft !== 0) return;
+    if (submitted || submitting || timeLimitMinutes == null || !session) return;
+    if (timeUpAutoSubmitTriggered.current) return;
+    timeUpAutoSubmitTriggered.current = true;
+    void handleSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft, submitted, submitting, session?.closeTime]);
 
   const handleSubmit = useCallback(async () => {
     if (!session) return;
@@ -193,21 +202,6 @@ export default function QuizSessionPage({
       setSubmitting(false);
     }
   }, [session, answers, toast]);
-
-  useEffect(() => {
-    if (
-      secondsLeft !== 0 ||
-      submitted ||
-      submitting ||
-      timeLimitMinutes == null ||
-      !session ||
-      timeUpAutoSubmitTriggered.current
-    ) {
-      return;
-    }
-    timeUpAutoSubmitTriggered.current = true;
-    void handleSubmit();
-  }, [secondsLeft, submitted, submitting, timeLimitMinutes, session, handleSubmit]);
 
   const handleStart = async () => {
     setLoadingSession(true);
@@ -271,7 +265,7 @@ export default function QuizSessionPage({
   const currentState = currentQ ? (answerStates[currentQ.questionId] ?? 'unanswered') : 'unanswered';
   const allAnswered = answeredCount === totalQ;
 
-  // Whether to show the submit button; always enabled so student can submit even partial answers
+  // Whether to show the submit button; allow submission even if not all questions are answered
   const canSubmit = !submitting && !submitted;
 
   if (loadingInfo) {
@@ -441,9 +435,14 @@ export default function QuizSessionPage({
       <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 bg-slate-50/95 px-4 py-4 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-900/95 sm:px-8 sm:py-5">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0">
-            <h1 className="truncate font-headline text-lg font-extrabold tracking-tight text-primary sm:text-xl">
-              Clinical Curator
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="truncate font-headline text-lg font-extrabold tracking-tight text-primary sm:text-xl">
+                BoneVisQA
+              </h1>
+              <span className="rounded-full bg-secondary-container px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-on-secondary-container sm:text-xs">
+                AI PRACTICE
+              </span>
+            </div>
             <p className="truncate text-xs font-medium text-on-surface-variant sm:text-sm">
               {quizInfo?.quizName ?? session.title}
             </p>
@@ -456,6 +455,20 @@ export default function QuizSessionPage({
           )}
         </div>
         <div className="flex items-center gap-3 sm:gap-6">
+          {!submitted && (
+            <div className="flex items-center gap-4 rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-2 shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">quiz</span>
+                <span className="text-sm font-bold text-on-surface">
+                  {currentIndex + 1} <span className="text-on-surface-variant">/</span> {totalQ}
+                </span>
+              </div>
+              <div className="h-6 w-px bg-outline-variant/30" />
+              <span className="text-xs text-on-surface-variant">
+                {answeredCount} <span className="font-semibold text-primary">answered</span>
+              </span>
+            </div>
+          )}
           {!submitted && timeLimitMinutes != null ? (
             <div
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-headline text-sm font-bold tabular-nums sm:px-4 ${
@@ -812,17 +825,37 @@ export default function QuizSessionPage({
                 </div>
                 <button
                   type="button"
-                  onClick={() => void handleSubmit()}
+                  onClick={() => {
+                    if (answeredCount === 0) {
+                      toast.error('Please answer at least one question before submitting.');
+                      return;
+                    }
+                    void handleSubmit();
+                  }}
                   disabled={!canSubmit}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary/40 bg-gradient-to-br from-primary to-primary-container py-4 font-bold text-white shadow-lg shadow-primary/25 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                  className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 py-4 font-bold shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
+                    answeredCount > 0
+                      ? 'border-primary/40 bg-gradient-to-br from-primary to-primary-container text-white shadow-primary/25'
+                      : 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant cursor-not-allowed'
+                  }`}
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Submitting…
+                      Submitting\u2026
+                    </>
+                  ) : answeredCount === totalQ ? (
+                    <>
+                      <CheckCircle2 className="h-5 w-5" />
+                      Submit Quiz ({answeredCount}/{totalQ})
                     </>
                   ) : (
-                    `Submit${answeredCount < totalQ ? ` (${answeredCount}/${totalQ} answered)` : ''}`
+                    <>
+                      <span className="h-5 w-5 rounded-full border-2 border-current text-xs font-bold">
+                        !
+                      </span>
+                      Submit ({answeredCount}/{totalQ})
+                    </>
                   )}
                 </button>
               </div>
