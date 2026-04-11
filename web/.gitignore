@@ -30,7 +30,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# Environment — never commit machine-specific values (ports, secrets).
+# Use `.env.local` for overrides; keep `.env.example` as the shared baseline only.
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+.env*.local
+# Other env files (opt-in un-ignore below)
 .env*
 !.env.example
 

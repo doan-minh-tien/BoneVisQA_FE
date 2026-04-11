@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { HubConnectionState, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { toast } from 'sonner';
-import { normalizeApiBaseUrl } from '@/lib/api/client';
+import { getPublicApiOrigin } from '@/lib/api/client';
 import type { NotificationDto } from '@/lib/api/types';
 import { useAuth } from '@/lib/useAuth';
 
@@ -88,7 +88,7 @@ export function useSignalR() {
       return;
     }
 
-    const base = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
+    const base = getPublicApiOrigin();
     if (!base) {
       setConnectionStatus('disconnected');
       return;

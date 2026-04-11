@@ -14,6 +14,7 @@ import {
   type ExpertImageDto,
   type ExpertAnnotationDto,
 } from '@/lib/api/expert-cases';
+import { getPublicApiOrigin } from '@/lib/api/client';
 
 interface CaseAssetsDialogProps {
   caseId: string;
@@ -79,7 +80,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
   const resolvedImageUrl = selectedImageUrl
     ? selectedImageUrl.startsWith('http')
       ? selectedImageUrl
-      : `http://localhost:5046${selectedImageUrl}`
+      : `${getPublicApiOrigin()}${selectedImageUrl.startsWith('/') ? '' : '/'}${selectedImageUrl}`
     : null;
 
   useEffect(() => {
