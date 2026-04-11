@@ -33,6 +33,9 @@ const baseURL = normalizeApiBaseUrl(
     : process.env.NEXT_PUBLIC_API_URL || '',
 );
 
+/** Base URL của BE để dùng trực tiếp, ví dụ: axios đến /api/... */
+export const API_BASE_URL = baseURL || '';
+
 export const http = axios.create({
   baseURL: baseURL || undefined,
   timeout: 180_000,

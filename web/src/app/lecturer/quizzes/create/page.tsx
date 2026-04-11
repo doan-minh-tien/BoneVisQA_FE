@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import axios from 'axios';
+import { API_BASE_URL } from '@/lib/api/client';
 import {
   Loader2,
   PlusCircle,
@@ -24,6 +26,8 @@ import {
   ArrowLeft,
   Sparkles,
   UploadCloud,
+  Image as ImageIcon,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -259,6 +263,9 @@ export default function CreateQuizPage() {
   const [randomizeQuestions, setRandomizeQuestions] = useState(true);
   const [allowRetakes, setAllowRetakes] = useState(false);
   const [immediateResults, setImmediateResults] = useState(true);
+  const [isVerifiedCurriculum, setIsVerifiedCurriculum] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string } | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
   const [casePickerOpen, setCasePickerOpen] = useState(false);
@@ -377,6 +384,7 @@ export default function CreateQuizPage() {
     difficulty: formData.difficulty || undefined,
     classification: classification,
     isAiGenerated: false,
+    isVerifiedCurriculum: isVerifiedCurriculum,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
     openTime: toUTC(formData.openTime),
     closeTime: toUTC(formData.closeTime),
@@ -584,6 +592,38 @@ export default function CreateQuizPage() {
     setEditingQuestion(null);
     setEditingTempIndex(null);
     setEditorOpen(true);
+  };
+
+  const handleDicomUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post<{ url: string }>(
+        `${API_BASE_URL}/api/upload/dicom`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (response.data.url) {
+        setAttachedImage({ file, preview: response.data.url });
+        toast.success('DICOM image uploaded successfully');
+      }
+    } catch (err) {
+      const message = axios.isAxiosError(err) ? err.response?.data?.message : 'Upload failed';
+      toast.error(message || 'Failed to upload DICOM image');
+    } finally {
+      setIsUploadingImage(false);
+      e.target.value = '';
+    }
   };
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
@@ -831,17 +871,51 @@ export default function CreateQuizPage() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border transition-colors hover:bg-muted/50">
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                  <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
-                  <input type="file" accept=".dcm,.jpg,.jpeg,.png" className="hidden" disabled />
+                  {attachedImage ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <Check className="h-6 w-6 text-green-500" />
+                      <span className="text-[10px] font-bold text-green-500">Uploaded</span>
+                    </div>
+                  ) : isUploadingImage ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 text-muted-foreground" />
+                      <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept=".dcm,.dicom,.jpg,.jpeg,.png"
+                    className="hidden"
+                    disabled={isUploadingImage}
+                    onChange={handleDicomUpload}
+                  />
                 </label>
                 <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4 dark:bg-secondary/10">
-                  <div className="rounded-lg bg-secondary p-2 text-white">
-                    <ShieldCheck className="h-5 w-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                    <ShieldCheck className="h-5 w-5 text-white" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-secondary">Verified curriculum</h3>
-                    <p className="text-xs text-muted-foreground">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-secondary">Verified curriculum</h3>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isVerifiedCurriculum}
+                        onClick={() => setIsVerifiedCurriculum(!isVerifiedCurriculum)}
+                        className={`relative h-6 w-12 rounded-full transition-colors ${
+                          isVerifiedCurriculum ? 'bg-cyan-500' : 'bg-muted'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 h-4 w-4 rounded-full border border-border bg-white shadow-sm transition-all ${
+                            isVerifiedCurriculum ? 'right-1' : 'left-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       Aligns with standard radiology board learning objectives for this track.
                     </p>
                   </div>

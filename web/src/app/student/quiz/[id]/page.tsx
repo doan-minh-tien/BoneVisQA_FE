@@ -219,7 +219,10 @@ export default function QuizSessionPage({
         msg.includes('cannot retake') ||
         msg.includes('nộp bài') ||
         msg.includes('làm lại') ||
-        msg.includes('đã nộp')
+        msg.includes('đã nộp') ||
+        msg.includes('chưa mở') ||
+        msg.includes('thời gian mở') ||
+        msg.includes('đã đóng')
       ) {
         setStartError(msg);
       } else {
@@ -295,6 +298,8 @@ export default function QuizSessionPage({
       const retakeHint =
         /nộp bài|làm lại|đã nộp|retake|submitted/i.test(startError) ||
         startError.toLowerCase().includes('lecturer');
+      const notOpenHint = startError.includes('chưa mở') || startError.includes('thời gian mở');
+      const closedHint = startError.includes('đã đóng');
       return (
         <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
           <div className="w-full max-w-md space-y-5 rounded-2xl border border-destructive/30 bg-surface-container-low p-8 text-center shadow-lg">
@@ -303,15 +308,22 @@ export default function QuizSessionPage({
             </div>
             <div>
               <h2 className="font-headline text-lg font-bold text-on-surface">
-                {retakeHint ? 'Quiz already submitted' : 'Cannot start quiz'}
+                {notOpenHint ? 'Quiz chưa mở' : closedHint ? 'Quiz đã đóng' : retakeHint ? 'Quiz đã nộp' : 'Cannot start quiz'}
               </h2>
               <p className="mt-1 text-xs text-on-surface-variant">
-                {retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
+                {notOpenHint ? 'Quiz sẽ tự động mở khi đến giờ.' : closedHint ? 'Quiz đã hết thời gian làm bài.' : retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
               </p>
             </div>
             <div className="rounded-xl bg-muted/50 px-4 py-3 text-left">
               <p className="text-sm leading-relaxed text-on-surface break-words">{startError}</p>
             </div>
+            {(notOpenHint || closedHint) && (
+              <Link href="/student/quiz" className="w-full">
+                <Button variant="outline" className="w-full mt-2 h-11 rounded-xl font-bold">
+                  Quay lại danh sách quiz
+                </Button>
+              </Link>
+            )}
             {retakeHint ? (
               <>
                 {retakeSent ? (
@@ -842,7 +854,7 @@ export default function QuizSessionPage({
                   {submitting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Submitting\u2026
+                      Submitting…
                     </>
                   ) : answeredCount === totalQ ? (
                     <>

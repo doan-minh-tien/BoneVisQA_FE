@@ -432,6 +432,7 @@ export interface QuizDto {
   title: string;
   topic: string | null;
   isAiGenerated: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty: string | null;
   classification: string | null;
   openTime: string | null;
@@ -460,6 +461,7 @@ export interface CreateQuizRequest {
   title: string;
   topic?: string;
   isAiGenerated?: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty?: string;
   classification?: string;
   openTime?: string;

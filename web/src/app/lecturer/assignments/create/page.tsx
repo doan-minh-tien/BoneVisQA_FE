@@ -896,7 +896,7 @@ function CreateAssignmentPageContent({
                     )}
 
                     {/* Config grid */}
-                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
+                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-3' : 'md:grid-cols-3'} gap-3`}>
                       <ReviewItem
                         label="Due Date"
                         value={formData.dueDate ? new Date(formData.dueDate).toLocaleString() : '—'}
@@ -928,6 +928,27 @@ function CreateAssignmentPageContent({
                           label="Passing Score"
                           value={`${formData.passingScore}%`}
                           icon={<Star className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Shuffle Questions"
+                          value={formData.shuffleQuestions ? 'Yes' : 'No'}
+                          icon={<Shuffle className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Show Results"
+                          value={formData.showResults ? 'Yes' : 'No'}
+                          icon={<BarChart2 className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Allow Retake"
+                          value={formData.allowRetake ? 'Yes' : 'No'}
+                          icon={<RotateCcw className="w-3.5 h-3.5" />}
                         />
                       )}
                     </div>
@@ -1022,7 +1043,7 @@ function CreateAssignmentPageContent({
                   >
                     <span className={isSubmitting ? 'hidden' : ''}><Send className="w-4 h-4" /></span>
                     <span className={isSubmitting ? '' : 'hidden'}><Loader2 className="w-4 h-4 animate-spin" /></span>
-                    <span>{isSubmitting ? 'Publishing\u2026' : 'Publish Assignment'}</span>
+                    <span>{isSubmitting ? 'Publishing…' : 'Publish Assignment'}</span>
                   </button>
                 )}
               </div>
@@ -1080,10 +1101,24 @@ function CreateAssignmentPageContent({
                       </div>
                     )}
                     {isQuiz ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Star className="w-3.5 h-3.5" />
-                        Quiz questions from selected quiz
-                      </div>
+                      <>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Star className="w-3.5 h-3.5" />
+                          Quiz questions from selected quiz
+                        </div>
+                        {formData.allowRetake && (
+                          <div className="flex items-center gap-2 text-xs text-accent">
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Retakes allowed
+                          </div>
+                        )}
+                        {formData.shuffleQuestions && (
+                          <div className="flex items-center gap-2 text-xs text-accent">
+                            <Shuffle className="w-3.5 h-3.5" />
+                            Questions shuffled
+                          </div>
+                        )}
+                      </>
                     ) : (
                       formData.maxScore > 0 && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
