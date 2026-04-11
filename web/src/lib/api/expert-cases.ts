@@ -177,10 +177,23 @@ export interface ExpertCategory {
   name: string;
 }
 
+async function getExpertListPayload(primaryPath: string, fallbackPath: string): Promise<unknown> {
+  try {
+    const { data } = await http.get<any>(primaryPath);
+    return data;
+  } catch {
+    const { data } = await http.get<any>(fallbackPath);
+    return data;
+  }
+}
+
 export async function fetchExpertCategories(): Promise<ExpertCategory[]> {
   try {
-    const { data } = await http.get<any>(`/api/expert/category?pageIndex=1&pageSize=100`);
-    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const data = await getExpertListPayload(
+      `/api/expert/categories?pageIndex=1&pageSize=100`,
+      `/api/expert/category?pageIndex=1&pageSize=100`,
+    );
+    const listRaw = (data as any)?.items ?? (data as any)?.result?.items ?? data;
     const list = Array.isArray(listRaw) ? listRaw : [];
     return list.map((c: any) => ({
       id: String(c.id ?? c.Id ?? ''),
@@ -204,9 +217,18 @@ export interface SaveExpertCaseInput {
   keyFindings: string;
 }
 
-export async function createExpertCase(input: SaveExpertCaseInput): Promise<void> {
+export async function createExpertCase(input: SaveExpertCaseInput): Promise<string | undefined> {
   try {
-    await http.post('/api/expert/cases', input);
+    const { data } = await http.post<unknown>('/api/expert/cases', input);
+    const row = data as Record<string, unknown> | null | undefined;
+    const nested = row?.result as Record<string, unknown> | undefined;
+    const id =
+      row?.id ??
+      row?.Id ??
+      nested?.id ??
+      nested?.Id ??
+      (typeof data === 'string' ? data : undefined);
+    return id != null && String(id).trim() ? String(id) : undefined;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -281,8 +303,11 @@ export interface ExpertTag {
 
 export async function fetchExpertTags(pageIndex = 1, pageSize = 100): Promise<ExpertTag[]> {
   try {
-    const { data } = await http.get<any>(`/api/expert/tag?pageIndex=${pageIndex}&pageSize=${pageSize}`);
-    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const data = await getExpertListPayload(
+      `/api/expert/tags?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+      `/api/expert/tag?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+    );
+    const listRaw = (data as any)?.items ?? (data as any)?.result?.items ?? data;
     const list = Array.isArray(listRaw) ? listRaw : [];
     return list.map((t: any) => ({
       id: String(t.id ?? t.Id ?? ''),
@@ -301,8 +326,11 @@ export interface ExpertImageDto {
 
 export async function fetchExpertImages(pageIndex = 1, pageSize = 100): Promise<ExpertImageDto[]> {
   try {
-    const { data } = await http.get<any>(`/api/expert/image?pageIndex=${pageIndex}&pageSize=${pageSize}`);
-    const listRaw = data?.items ?? data?.result?.items ?? data;
+    const data = await getExpertListPayload(
+      `/api/expert/images?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+      `/api/expert/image?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+    );
+    const listRaw = (data as any)?.items ?? (data as any)?.result?.items ?? data;
     const list = Array.isArray(listRaw) ? listRaw : [];
     return list.map((i: any) => ({
       id: String(i.id ?? i.Id ?? ''),
@@ -330,8 +358,11 @@ export interface ExpertAnnotationPagedResponse {
 
 export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10): Promise<ExpertAnnotationPagedResponse> {
   try {
-    const { data } = await http.get<any>(`/api/expert/annotation?pageIndex=${pageIndex}&pageSize=${pageSize}`);
-    const itemsRaw = data?.items ?? data?.result?.items ?? [];
+    const data = await getExpertListPayload(
+      `/api/expert/annotations?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+      `/api/expert/annotation?pageIndex=${pageIndex}&pageSize=${pageSize}`,
+    );
+    const itemsRaw = (data as any)?.items ?? (data as any)?.result?.items ?? [];
     const items = Array.isArray(itemsRaw)
       ? itemsRaw.map((a: any) => ({
           id: String(a.id ?? a.Id ?? ''),
@@ -340,11 +371,13 @@ export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10): Prom
           coordinates: String(a.coordinates ?? a.Coordinates ?? '{}'),
         }))
       : [];
+    const d = data as Record<string, unknown>;
+    const res = d?.result as Record<string, unknown> | undefined;
     return {
       items,
-      totalCount: Number(data?.totalCount ?? data?.result?.totalCount ?? items.length),
-      pageIndex: Number(data?.pageIndex ?? data?.result?.pageIndex ?? pageIndex),
-      pageSize: Number(data?.pageSize ?? data?.result?.pageSize ?? pageSize),
+      totalCount: Number(d?.totalCount ?? res?.totalCount ?? items.length),
+      pageIndex: Number(d?.pageIndex ?? res?.pageIndex ?? pageIndex),
+      pageSize: Number(d?.pageSize ?? res?.pageSize ?? pageSize),
     };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

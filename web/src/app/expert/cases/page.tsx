@@ -1,19 +1,26 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import CaseManagementCard from '@/components/expert/CaseManagementCard';
+import CaseAssetsDialog from '@/components/expert/cases/CaseAssetsDialog';
+import CreateExpertCaseModal from '@/components/expert/cases/CreateExpertCaseModal';
 import { Button } from '@/components/ui/button';
-import { FolderCog, FolderOpen } from 'lucide-react';
+import { FolderCog, FolderOpen, Plus } from 'lucide-react';
 import { fetchExpertRecentCases, type ExpertRecentCase } from '@/lib/api/expert-dashboard';
+import { useToast } from '@/components/ui/toast';
 
 type StatusTab = 'all' | 'pending' | 'approved' | 'draft';
 
 export default function ExpertCasesPage() {
+  const toast = useToast();
+  const { mutate } = useSWRConfig();
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [assetsCaseId, setAssetsCaseId] = useState<string | null>(null);
   const { data, isLoading, error } = useSWR<ExpertRecentCase[]>('expert-case-library', fetchExpertRecentCases, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
@@ -52,10 +59,20 @@ export default function ExpertCasesPage() {
               Curate high-value teaching cases and track approval status at a glance.
             </p>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Library overview</p>
-            <p className="mt-2 text-3xl font-bold text-card-foreground">{counts.all}</p>
-            <p className="text-sm text-muted-foreground">total cases visible</p>
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              className="w-full gap-2 shadow-sm"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Add New Case
+            </Button>
+            <div className="overflow-hidden rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Library overview</p>
+              <p className="mt-2 text-3xl font-bold text-card-foreground">{counts.all}</p>
+              <p className="text-sm text-muted-foreground">total cases visible</p>
+            </div>
           </div>
         </header>
 
@@ -134,6 +151,27 @@ export default function ExpertCasesPage() {
           </div>
         )}
       </div>
+
+      <CreateExpertCaseModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(newId) => {
+          void mutate('expert-case-library');
+          if (newId) setAssetsCaseId(newId);
+          else
+            toast.info(
+              'Case was created. If the API did not return an id, refresh the list and use Manage assets on a case when available.',
+            );
+        }}
+      />
+      {assetsCaseId ? (
+        <CaseAssetsDialog
+          caseId={assetsCaseId}
+          mode="tags"
+          allowModeSwitch
+          onClose={() => setAssetsCaseId(null)}
+        />
+      ) : null}
     </div>
   );
 }

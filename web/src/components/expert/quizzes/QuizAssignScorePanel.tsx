@@ -49,7 +49,7 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
         {children}
@@ -228,9 +228,9 @@ export default function QuizAssignScorePanel() {
   ];
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="w-full overflow-hidden rounded-xl border-0 bg-transparent">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="text-sm font-semibold text-card-foreground">Assign Quiz &amp; Score</div>
         <button
           onClick={openAssignModal}
@@ -558,7 +558,7 @@ export default function QuizAssignScorePanel() {
             <button
               disabled={isAssigning || !canAssign}
               onClick={handleAssign}
-              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-colors"
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-colors"
             >
               {isAssigning ? 'Assigning...' : 'Assign'}
             </button>

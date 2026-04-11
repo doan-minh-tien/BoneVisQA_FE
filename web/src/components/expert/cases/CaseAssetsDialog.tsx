@@ -19,9 +19,11 @@ interface CaseAssetsDialogProps {
   caseId: string;
   mode: 'tags' | 'annotation';
   onClose: () => void;
+  /** Lets experts switch between tags and images/annotations in one modal (e.g. after creating a case). */
+  allowModeSwitch?: boolean;
 }
 
-export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDialogProps) {
+export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitch }: CaseAssetsDialogProps) {
   const toast = useToast();
   const [isMutating, setIsMutating] = useState(false);
 
@@ -44,6 +46,13 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
   const [imagesList, setImagesList] = useState<ExpertImageDto[]>([]);
   const [annotationsList, setAnnotationsList] = useState<ExpertAnnotationDto[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
+  const [activeMode, setActiveMode] = useState<'tags' | 'annotation'>(mode);
+
+  const effectiveMode = allowModeSwitch ? activeMode : mode;
+
+  useEffect(() => {
+    setActiveMode(mode);
+  }, [mode, caseId]);
 
   // Build a merged map of all available images (from /images + from /annotation imageUrls)
   const allImageOptions = (() => {
@@ -74,13 +83,13 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
     : null;
 
   useEffect(() => {
-    if (mode === 'tags') {
+    if (effectiveMode === 'tags') {
       fetchExpertTags(1, 100)
         .then(setTagsList)
         .catch((e) => console.error('fetch tags failed', e));
     }
 
-    if (mode === 'annotation') {
+    if (effectiveMode === 'annotation') {
       setIsLoadingImages(true);
       Promise.all([
         fetchExpertImages(1, 100).catch(() => [] as ExpertImageDto[]),
@@ -97,7 +106,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
         .finally(() => setIsLoadingImages(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [effectiveMode, caseId]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -173,16 +182,42 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
     setCoordinates(JSON.stringify(newPoints));
   };
 
-  const title = mode === 'tags' ? 'Manage Tags' : 'Image & Annotation';
+  const title = effectiveMode === 'tags' ? 'Manage Tags' : 'Image & Annotation';
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-card-foreground mb-2">{title}</h3>
+        {allowModeSwitch ? (
+          <div className="mb-4 flex gap-2 rounded-lg border border-border bg-muted/30 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveMode('tags')}
+              className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                effectiveMode === 'tags'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Tags
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMode('annotation')}
+              className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                effectiveMode === 'annotation'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Images &amp; annotations
+            </button>
+          </div>
+        ) : null}
 
         {/* ── TAGS MODE ──────────────────────────────────────────────────── */}
-        {mode === 'tags' && (
+        {effectiveMode === 'tags' && (
           <div className="space-y-6">
             <div className="p-4 rounded-xl border border-border bg-input/20">
               <h4 className="text-sm font-medium mb-3">Add Case Tag</h4>
@@ -212,7 +247,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
         )}
 
         {/* ── ANNOTATION MODE ────────────────────────────────────────────── */}
-        {mode === 'annotation' && (
+        {effectiveMode === 'annotation' && (
           <div className="space-y-6">
             {/* 1. Upload Image */}
             <div className="p-4 rounded-xl border border-border bg-input/20">

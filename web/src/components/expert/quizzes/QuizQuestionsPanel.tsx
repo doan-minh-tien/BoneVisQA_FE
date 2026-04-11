@@ -395,7 +395,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-card-foreground">
           Questions

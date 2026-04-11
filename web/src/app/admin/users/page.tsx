@@ -36,7 +36,7 @@ import { ChevronDown, Filter, Plus, Search, Users } from 'lucide-react';
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
 const allRoles = assignableRoles;
 
-type RoleTab = UserRole | 'Pending' | 'Unassigned';
+type RoleTab = UserRole | 'Pending' | 'Unassigned' | 'All';
 
 function normalizeUser(user: AdminUser): UiUser {
   const roles = user.roles.map((r) => r.trim()).filter(Boolean);
@@ -71,7 +71,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<RoleTab>('Pending');
+  const [activeTab, setActiveTab] = useState<RoleTab>('All');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [submitting, setSubmitting] = useState(false);
 
@@ -104,7 +104,9 @@ export default function AdminUsersPage() {
     return users.filter((u) => {
       if (activeTab === 'Pending' && u.role !== 'Pending') return false;
       if (activeTab === 'Unassigned' && u.role !== 'Unassigned') return false;
-      if (
+      if (activeTab === 'All') {
+        // no role filter
+      } else if (
         activeTab !== 'Pending' &&
         activeTab !== 'Unassigned' &&
         u.role !== activeTab
@@ -241,6 +243,12 @@ export default function AdminUsersPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
             <TabButton
+              label="All"
+              count={users.length}
+              active={activeTab === 'All'}
+              onClick={() => setActiveTab('All')}
+            />
+            <TabButton
               label={t('users.pendingRequests', 'Pending')}
               count={countsByTab.Pending}
               active={activeTab === 'Pending'}
@@ -267,7 +275,7 @@ export default function AdminUsersPage() {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95"
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md transition-all hover:opacity-95 active:scale-95"
           >
             <Plus className="h-4 w-4" />
             Create User
@@ -408,9 +416,9 @@ function TabButton({
       className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
         active
           ? highlight
-            ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
-            : 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            ? 'bg-primary text-primary-foreground shadow-md'
+            : 'bg-foreground text-background shadow-md'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       }`}
     >
       <span>{label}</span>
@@ -418,9 +426,9 @@ function TabButton({
         className={`rounded-full px-2 py-0.5 text-xs font-bold ${
           active
             ? highlight
-              ? 'bg-white/25 text-white'
-              : 'bg-white/20 text-white'
-            : 'bg-slate-100 text-slate-600'
+              ? 'bg-primary-foreground/20 text-primary-foreground'
+              : 'bg-background/20 text-background'
+            : 'bg-muted text-muted-foreground'
         }`}
       >
         {count}
