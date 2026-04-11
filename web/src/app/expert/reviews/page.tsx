@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -35,6 +36,7 @@ import {
 } from 'lucide-react';
 
 export default function ExpertReviewsPage() {
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [items, setItems] = useState<ExpertReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,7 @@ export default function ExpertReviewsPage() {
   const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [submittingFlag, setSubmittingFlag] = useState(false);
+  const openedFocusRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,14 +68,25 @@ export default function ExpertReviewsPage() {
     void load();
   }, [load]);
 
-  const openEdit = (item: ExpertReviewItem) => {
+  const openEdit = useCallback((item: ExpertReviewItem) => {
     setActive(item);
     setDiag(item.report.suggestedDiagnosis || '');
     setKeyText(item.report.keyFindings.join('\n'));
     setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
     setReflectiveEdit(item.report.reflectiveQuestions?.trim() ?? item.reflectiveQuestions?.trim() ?? '');
     setExpanded(item.id);
-  };
+  }, []);
+
+  useEffect(() => {
+    const focus = searchParams.get('focus')?.trim();
+    if (!focus || items.length === 0) return;
+    if (openedFocusRef.current === focus) return;
+    const match = items.find((i) => i.id === focus || i.answerId === focus);
+    if (match) {
+      openedFocusRef.current = focus;
+      openEdit(match);
+    }
+  }, [items, searchParams, openEdit]);
 
   const openFlagModal = (chunkId: string) => {
     setFlaggingChunkId(chunkId);

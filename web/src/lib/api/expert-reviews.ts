@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
 import type { Citation, ExpertReviewItem, VisualQaReport } from './types';
@@ -86,15 +87,37 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   };
 }
 
+function unwrapReviewList(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  const b = data as Record<string, unknown>;
+  if (Array.isArray(b.items)) return b.items;
+  if (Array.isArray(b.data)) return b.data;
+  const res = b.result;
+  if (Array.isArray(res)) return res;
+  if (res && typeof res === 'object') {
+    const r = res as Record<string, unknown>;
+    if (Array.isArray(r.items)) return r.items;
+  }
+  return [];
+}
+
+/** Primary queue: case-answer reviews; fallback to escalated. */
 export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   try {
+    const { data } = await http.get<unknown>('/api/expert/reviews/case-answer');
+    const primary = unwrapReviewList(data)
+      .map(mapExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
+    if (primary.length > 0) return primary;
+  } catch {
+    /* fall through to escalated */
+  }
+  try {
     const { data } = await http.get<unknown>('/api/expert/reviews/escalated');
-    const list = Array.isArray(data)
-      ? data
-      : data && typeof data === 'object' && 'items' in data
-        ? (data as { items: unknown[] }).items
-        : [];
-    return list.map(mapExpertItem).filter((x): x is ExpertReviewItem => x !== null);
+    return unwrapReviewList(data)
+      .map(mapExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -109,19 +132,31 @@ export interface ExpertReviewUpdatePayload {
   reflectiveQuestions?: string | null;
 }
 
+const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => ({
+  answerText: payload.answerText,
+  structuredDiagnosis: payload.structuredDiagnosis,
+  differentialDiagnoses: payload.differentialDiagnoses,
+  reviewNote: payload.reviewNote,
+  keyImagingFindings: payload.keyImagingFindings ?? null,
+  reflectiveQuestions: payload.reflectiveQuestions ?? null,
+});
+
+/** Approve / finalize review — prefers `POST .../approve`, falls back to legacy `.../resolve`. */
 export async function putExpertReview(
   answerId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
+  const body = reviewSubmitBody(payload);
   try {
-    await http.post(`/api/expert/reviews/${answerId}/resolve`, {
-      answerText: payload.answerText,
-      structuredDiagnosis: payload.structuredDiagnosis,
-      differentialDiagnoses: payload.differentialDiagnoses,
-      reviewNote: payload.reviewNote,
-      keyImagingFindings: payload.keyImagingFindings ?? null,
-      reflectiveQuestions: payload.reflectiveQuestions ?? null,
-    });
+    await http.post(`/api/expert/reviews/${answerId}/approve`, body);
+    return;
+  } catch (e) {
+    if (!axios.isAxiosError(e)) throw new Error(getApiErrorMessage(e));
+    const st = e.response?.status;
+    if (st !== 404 && st !== 405 && st !== 400) throw new Error(getApiErrorMessage(e));
+  }
+  try {
+    await http.post(`/api/expert/reviews/${answerId}/resolve`, body);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -129,10 +164,14 @@ export async function putExpertReview(
 
 export async function flagRagChunk(
   chunkId: string,
-  payload: { reason: string },
+  payload: { reason: string; isFlagged?: boolean },
 ): Promise<void> {
   try {
-    await http.post(`/api/expert/reviews/chunks/${chunkId}/flag`, payload);
+    await http.post(`/api/expert/reviews/chunks/${chunkId}/flag`, {
+      reason: payload.reason,
+      isFlagged: payload.isFlagged ?? true,
+      IsFlagged: payload.isFlagged ?? true,
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

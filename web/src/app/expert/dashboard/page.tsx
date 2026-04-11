@@ -169,10 +169,13 @@ export default function ExpertDashboardPage() {
             </div>
 
             <div className="mb-6 flex items-center gap-3">
-              <button className="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-white transition-colors duration-150 hover:bg-primary/90">
+              <a
+                href="/expert/cases"
+                className="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-primary-foreground transition-colors duration-150 hover:bg-primary/90"
+              >
                 <Plus className="h-5 w-5" />
                 <span className="font-medium">Add New Case</span>
-              </button>
+              </a>
               <button className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2.5 transition-colors duration-150 hover:bg-muted">
                 <Filter className="h-5 w-5" />
                 <span className="font-medium">Filter Cases</span>

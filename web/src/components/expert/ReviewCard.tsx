@@ -103,8 +103,8 @@ export default function ReviewCard({
       {/* Actions */}
       <div className="flex items-center gap-2">
         <Link
-          href={`/expert/reviews/${id}`}
-          className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-white transition-all duration-150 hover:bg-primary/90 active:scale-[0.98]"
+          href={`/expert/reviews?focus=${encodeURIComponent(id)}`}
+          className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-all duration-150 hover:bg-primary/90 active:scale-[0.98]"
         >
           <Eye className="w-4 h-4" />
           <span className="text-sm font-medium">Review</span>
