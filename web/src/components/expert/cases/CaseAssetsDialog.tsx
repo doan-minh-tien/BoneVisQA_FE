@@ -177,7 +177,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
 
@@ -203,7 +203,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
               <button
                 disabled={isMutating || !tagId}
                 onClick={handleAddTag}
-                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 Add Tag
               </button>
@@ -239,7 +239,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
               <button
                 disabled={isMutating || !imageFile}
                 onClick={handleUploadImage}
-                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
               >
                 Upload Image
               </button>
@@ -317,7 +317,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
                         </button>
                       </div>
                       <div
-                        className="relative rounded-lg overflow-hidden border border-border cursor-crosshair bg-black/5 shadow-inner select-none"
+                        className="relative rounded-lg overflow-hidden border border-border cursor-crosshair bg-muted/40 shadow-inner select-none"
                         onClick={handleImageClick}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -327,8 +327,8 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
                           {polyPoints.length > 0 && (
                             <polygon
                               points={polyPoints.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
-                              fill="rgba(59, 130, 246, 0.25)"
-                              stroke="#3b82f6"
+                              fill="color-mix(in srgb, var(--primary) 25%, transparent)"
+                              stroke="var(--primary)"
                               strokeWidth="0.5"
                               vectorEffect="non-scaling-stroke"
                               strokeDasharray={polyPoints.length >= 3 ? 'none' : '2,2'}
@@ -339,7 +339,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
                         {polyPoints.map((p, i) => (
                           <div
                             key={i}
-                            className="absolute w-2 h-2 bg-blue-500 border border-white rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none shadow"
+                            className="absolute w-2 h-2 bg-primary border border-background rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none shadow"
                             style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
                           />
                         ))}
@@ -354,7 +354,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose }: CaseAssetsDi
                   <button
                     disabled={isMutating || !annotImageId || !label}
                     onClick={handleAddAnnotation}
-                    className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                    className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
                   >
                     Save Annotation
                   </button>
