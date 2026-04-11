@@ -502,6 +502,7 @@ export interface StudentGeneratedQuizSession {
     questionText: string;
     type?: string | null;
     caseId?: string | null;
+    caseTitle?: string | null;
     optionA?: string | null;
     optionB?: string | null;
     optionC?: string | null;

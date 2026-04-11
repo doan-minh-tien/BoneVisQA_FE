@@ -15,6 +15,9 @@ import {
   Clock,
   Plus,
   Search,
+  Trash2,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 
 const statusFilters = ['all', 'active', 'overdue', 'completed'] as const;
@@ -36,6 +39,32 @@ export default function LecturerAssignmentsPage() {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<StatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectMode(true);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredAssignments.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredAssignments.map((a) => a.id)));
+    }
+  };
+
+  const deleteSelected = () => {
+    setAssignments((prev) => prev.filter((a) => !selectedIds.has(a.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +181,17 @@ export default function LecturerAssignmentsPage() {
         {/* Filter & Search */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectMode(!selectMode)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors duration-150 cursor-pointer ${
+                selectMode
+                  ? 'bg-primary text-white'
+                  : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              Multi Select
+            </button>
             {statusFilters.map((filter) => (
               <button
                 key={filter}
@@ -168,24 +208,42 @@ export default function LecturerAssignmentsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search assignments..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary w-64"
-              />
-            </div>
-            <Link
-              href="/lecturer/assignments/create"
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="font-medium text-sm">New Assignment</span>
-            </Link>
+            {selectMode && selectedIds.size > 0 && (
+              <button
+                onClick={deleteSelected}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors duration-150 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete ({selectedIds.size})
+              </button>
+            )}
+            {selectMode && filteredAssignments.length > 0 && (
+              <button
+                onClick={toggleSelectAll}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-150 cursor-pointer"
+              >
+                {selectedIds.size === filteredAssignments.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                Select All
+              </button>
+            )}
           </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search assignments..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary w-64"
+            />
+          </div>
+          <Link
+            href="/lecturer/assignments/create"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="font-medium text-sm">New Assignment</span>
+          </Link>
         </div>
 
         {/* Assignments Grid */}
@@ -215,6 +273,9 @@ export default function LecturerAssignmentsPage() {
                 {...a}
                 submitted={a.submittedCount}
                 graded={a.gradedCount}
+                selectable={selectMode}
+                selected={selectedIds.has(a.id)}
+                onSelect={toggleSelect}
               />
             ))}
           </div>

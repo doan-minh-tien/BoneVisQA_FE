@@ -61,6 +61,12 @@ http.interceptors.response.use(
         window.location.href = '/auth/sign-in';
       }
     }
+    // Log chi tiết lỗi để debug
+    if (err.response) {
+      console.warn(`[API] HTTP ${err.response.status}: ${err.config?.url}`, err.response.data);
+    } else if (err.request) {
+      console.warn(`[API] No response from ${err.config?.url} — server may be offline or unreachable.`);
+    }
     return Promise.reject(err);
   },
 );

@@ -181,22 +181,42 @@ export default function StudentProfilePage() {
     let cancelled = false;
     (async () => {
       try {
-        const [data, prog, act] = await Promise.all([
+        const [data, prog, act] = await Promise.allSettled([
           fetchStudentProfile(),
-          fetchStudentProgress().catch(() => null),
-          fetchStudentRecentActivity().catch(() => []),
+          fetchStudentProgress(),
+          fetchStudentRecentActivity(),
         ]);
         if (cancelled) return;
-        setProfile(data);
+
+        const profileResult = data;
+        if (profileResult.status === 'rejected') {
+          const msg = profileResult.reason instanceof Error
+            ? profileResult.reason.message
+            : 'Failed to load profile.';
+          toast.error(msg);
+          setLoading(false);
+          return;
+        }
+
+        const p = profileResult.value;
+        setProfile(p);
         setForm({
-          fullName: data.fullName ?? '',
-          schoolCohort: data.schoolCohort ?? '',
-          avatarUrl: data.avatarUrl ?? '',
-          classCode: data.classCode ?? '',
+          fullName: p.fullName ?? '',
+          schoolCohort: p.schoolCohort ?? '',
+          avatarUrl: p.avatarUrl ?? '',
+          classCode: p.classCode ?? '',
         });
-        setPersonal(profileToPersonalValues(data));
-        if (prog) setProgress(prog);
-        setActivity(act);
+        setPersonal(profileToPersonalValues(p));
+
+        const progResult = prog;
+        if (progResult.status === 'fulfilled' && progResult.value) {
+          setProgress(progResult.value);
+        }
+
+        const actResult = act;
+        if (actResult.status === 'fulfilled' && Array.isArray(actResult.value)) {
+          setActivity(actResult.value);
+        }
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Failed to load student profile.');
@@ -459,9 +479,11 @@ export default function StudentProfilePage() {
                   </label>
                   <input
                     id="stu-school-id"
-                    readOnly
-                    value={personal.studentSchoolId || '—'}
-                    className={inputReadonlyCls}
+                    readOnly={credentialsReadOnly}
+                    value={personal.studentSchoolId || ''}
+                    onChange={(e) => setPersonal((p) => ({ ...p, studentSchoolId: e.target.value }))}
+                    placeholder="Enter your student ID"
+                    className={credentialsReadOnly ? inputReadonlyCls : inputCls}
                   />
                 </div>
               </div>
@@ -478,6 +500,19 @@ export default function StudentProfilePage() {
                       : 'Your account is inactive. Contact your lecturer or administrator.'}
                   </p>
                 </div>
+              </div>
+
+              {/* Nút Lưu — đặt ngay dưới phần credentials để dễ thấy */}
+              <div className="mt-6 flex justify-end">
+                <Button
+                  type="submit"
+                  isLoading={saving}
+                  disabled={saving}
+                  className="rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-8 py-3 font-bold shadow-md hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  {!saving && <Save className="mr-2 h-4 w-4" />}
+                  Save changes
+                </Button>
               </div>
             </div>
           </div>
@@ -590,8 +625,7 @@ export default function StudentProfilePage() {
             <div className="mt-6">
               <PersonalInfoFields idPrefix="stu-pi" values={personal} onChange={setPersonal} />
               <p className="mt-4 text-xs text-[#727783] dark:text-slate-500">
-                Student ID (above) is managed by your institution. Email is tied to login and cannot be changed
-                here.
+                Email is tied to login and cannot be changed here.
               </p>
             </div>
           </details>
@@ -603,15 +637,6 @@ export default function StudentProfilePage() {
                 <RoleBadgeList roles={profile.roles} emptyLabel="Student" />
               </div>
             </div>
-            <Button
-              type="submit"
-              isLoading={saving}
-              disabled={saving}
-              className="rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-8 font-bold shadow-md"
-            >
-              {!saving && <Save className="mr-2 h-4 w-4" />}
-              Save changes
-            </Button>
           </div>
         </form>
       </div>

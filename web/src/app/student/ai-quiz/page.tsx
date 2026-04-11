@@ -13,6 +13,7 @@ import {
   ArrowRight,
   ZoomIn,
   Minus,
+  BookOpen,
   PlayCircle,
   AlertCircle,
   Timer,
@@ -20,9 +21,9 @@ import {
   Contrast,
   Ruler,
   ChevronDown,
-  AutoFixHigh,
   Eye,
   Star,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,9 +31,9 @@ import {
   submitAIPracticeQuiz,
   fetchQuizAttemptReview,
 } from '@/lib/api/student';
-import type { QuizAttemptReview } from '@/lib/api/student';
+import type { QuizAttemptReview, StudentGeneratedQuizSession } from '@/lib/api/student';
 import { resolveApiAssetUrl, getApiErrorMessage } from '@/lib/api/client';
-import type { StudentGeneratedQuizSession, StudentSubmitQuestionDto } from '@/lib/api/types';
+import type { StudentSubmitQuestionDto } from '@/lib/api/types';
 
 const ZOOM_LEVELS = [1, 1.25, 1.5, 2, 2.5];
 
