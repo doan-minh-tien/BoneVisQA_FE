@@ -47,7 +47,7 @@ export default function ExpertCasesPage() {
   const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'All'>('All');
   const [expandedCase, setExpandedCase] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ c: Case; action: 'approve' | 'delete' } | null>(null);
-  const [assetsDialog, setAssetsDialog] = useState<{ c: Case; mode: 'tags' | 'annotation' } | null>(null);
+  const [assetsDialog, setAssetsDialog] = useState<{ c: Case; mode: 'tags' | 'images' | 'annotations' | 'upload-image' | 'add-annotation' } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,9 +272,9 @@ export default function ExpertCasesPage() {
                         </div>
                       </button>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'tags' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-purple-600 bg-purple-50 hover:bg-purple-100">Tags</button>
-                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'annotation' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100">Image &amp; Annotation</button>
-                        
+                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'images' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-sky-600 bg-sky-50 hover:bg-sky-100">Images</button>
+                        <button disabled={isMutating} onClick={(e) => { e.stopPropagation(); setAssetsDialog({ c, mode: 'annotations' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-violet-600 bg-violet-50 hover:bg-violet-100">Annotations</button>
+
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}>{StIcon && <StIcon className="w-3.5 h-3.5" />}{st.label}</span>
                       </div>
                     </div>
@@ -295,6 +295,9 @@ export default function ExpertCasesPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button disabled={isMutating} onClick={() => openEditForm(c)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"><Edit className="w-3.5 h-3.5" />Edit</button>
+                          <button disabled={isMutating} onClick={() => setAssetsDialog({ c, mode: 'tags' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-purple-600 bg-purple-50 hover:bg-purple-100">Tags</button>
+                          <button disabled={isMutating} onClick={() => setAssetsDialog({ c, mode: 'upload-image' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-emerald-600 bg-emerald-50 hover:bg-emerald-100">Add Image</button>
+                          <button disabled={isMutating} onClick={() => setAssetsDialog({ c, mode: 'add-annotation' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 cursor-pointer transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100">Add Annotation</button>
                           <button disabled={isMutating} onClick={() => setDialog({ c, action: 'delete' })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
                         </div>
                       </div>

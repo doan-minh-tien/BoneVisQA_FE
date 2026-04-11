@@ -28,7 +28,6 @@ export interface ExpertPendingReview {
 export interface ExpertRecentCase {
   id: string;
   title: string;
-  boneLocation: string;
   lesionType: string;
   difficulty: string;
   status: string;
@@ -87,7 +86,6 @@ function mapRecentCase(row: unknown): ExpertRecentCase | null {
   return {
     id,
     title: String(item.title ?? 'Untitled'),
-    boneLocation: String(item.boneLocation ?? '—'),
     lesionType: String(item.lesionType ?? '—'),
     difficulty: String(item.difficulty ?? '—'),
     status: String(item.status ?? '—'),
