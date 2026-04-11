@@ -82,6 +82,7 @@ export default function AIQuizPage() {
 
   // UI state
   const [showAIReasoning, setShowAIReasoning] = useState(false);
+  const [showReview, setShowReview] = useState(false);
 
   const questions = session?.questions ?? [];
   const currentQ = questions[currentIndex];
@@ -690,26 +691,83 @@ export default function AIQuizPage() {
                     <ArrowLeft className="h-5 w-5" />
                     Quay lại Quiz List
                   </Link>
+
+                  {/* Review Answers Button */}
+                  {quizReview && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReview(!showReview)}
+                      className="w-full py-3 bg-[#00478d]/10 text-[#00478d] font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-[#00478d]/20 transition-colors"
+                    >
+                      <Eye className="h-5 w-5" />
+                      {showReview ? 'Ẩn đáp án' : 'Xem đáp án'}
+                    </button>
+                  )}
+
+                  {/* Review Panel */}
+                  {showReview && quizReview && (
+                    <div className="border-t border-slate-200/60 pt-4 mt-4 space-y-4">
+                      <h4 className="text-sm font-bold text-[#191c1e]">Đáp án chi tiết</h4>
+                      {quizReview.questions.map((q, idx) => {
+                        const isCorrect = q.isCorrect;
+                        const studentAns = q.studentAnswer ?? '-';
+                        const correctAns = q.correctAnswer ?? '-';
+                        return (
+                          <div
+                            key={q.questionId}
+                            className={`rounded-xl border p-4 text-left ${
+                              isCorrect
+                                ? 'border-green-300 bg-green-50'
+                                : 'border-red-300 bg-red-50'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2 mb-2">
+                              {isCorrect ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                              )}
+                              <p className="text-sm font-semibold text-[#191c1e] flex-1">
+                                Câu {idx + 1}: {q.questionText}
+                              </p>
+                            </div>
+                            <div className="ml-7 space-y-1">
+                              <p className="text-xs">
+                                <span className="font-semibold text-[#424752]">Đáp án của bạn: </span>
+                                <span className={`font-bold ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>{studentAns}</span>
+                              </p>
+                              {!isCorrect && (
+                                <p className="text-xs">
+                                  <span className="font-semibold text-[#424752]">Đáp án đúng: </span>
+                                  <span className="font-bold text-green-600">{correctAns}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    if (!allAnswered) {
-                      toast.error(`Vui lòng trả lời tất cả ${totalQ} câu hỏi trước khi nộp bài. (${answeredCount}/${totalQ} đã trả lời)`);
+                    if (answeredCount === 0) {
+                      toast.error('Vui lòng trả lời ít nhất 1 câu hỏi trước khi nộp bài.');
                       return;
                     }
                     void handleSubmit();
                   }}
                   disabled={submitting}
                   className={`group relative w-full overflow-hidden rounded-2xl font-bold flex items-center justify-center gap-3 transition-all duration-300 ${
-                    allAnswered
+                    answeredCount > 0
                       ? 'bg-gradient-to-r from-[#00478d] via-[#005eb8] to-[#006a68] text-white shadow-xl shadow-blue-500/30 hover:shadow-2xl hover:shadow-blue-500/40 active:scale-[0.98]'
                       : 'bg-slate-100 text-[#727783] cursor-not-allowed'
                   }`}
                 >
                   {/* Background animation for ready state */}
-                  {allAnswered && (
+                  {answeredCount > 0 && (
                     <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                   )}
                   {submitting ? (
@@ -717,7 +775,7 @@ export default function AIQuizPage() {
                       <Loader2 className="h-5 w-5 animate-spin relative z-10" />
                       <span className="relative z-10">Đang nộp bài...</span>
                     </>
-                  ) : allAnswered ? (
+                  ) : answeredCount > 0 ? (
                     <>
                       <span className="relative z-10 flex items-center gap-2">
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
@@ -735,10 +793,7 @@ export default function AIQuizPage() {
                         <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-current">
                           !
                         </span>
-                        <span>Nộp bài</span>
-                        <span className="ml-2 rounded-full bg-slate-200/50 px-3 py-1 text-sm font-bold">
-                          {answeredCount}/{totalQ}
-                        </span>
+                        <span>Chưa trả lời câu nào</span>
                       </span>
                     </>
                   )}
