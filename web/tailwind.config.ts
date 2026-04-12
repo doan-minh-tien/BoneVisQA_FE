@@ -1,5 +1,9 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Tailwind v4 theme tokens live primarily in `src/app/globals.css` (`@theme inline`).
+ * Scrollbar utilities: `@plugin "tailwind-scrollbar"` in globals.css (not this file).
+ */
 const config: Config = {
   darkMode: 'class',
   content: [
@@ -16,7 +20,6 @@ const config: Config = {
         muted: "#eef2f7",
         border: "#dbe3ee",
         surface: "#ffffff",
-        sidebar: "#0F1F35",
         primary: {
           DEFAULT: "#2563eb",
           50: "#eff6ff",

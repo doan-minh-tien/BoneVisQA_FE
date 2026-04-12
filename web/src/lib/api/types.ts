@@ -60,6 +60,8 @@ export interface ClassItem {
   semester: string;
   lecturerId: string;
   createdAt: string;
+  expertId?: string | null;
+  expertName?: string | null;
 }
 
 export interface StudentEnrollment {
@@ -88,6 +90,10 @@ export interface LectStudentQuestionDto {
   id: string;
   /** Use for POST /api/lecturer/triage/{answerId}/escalate when distinct from question id. */
   answerId?: string | null;
+  /** Alternate answer-row id from some API shapes (escalation fallback). */
+  caseAnswerId?: string | null;
+  /** Explicit study image URL when the API uses ImageUrl (see also customImageUrl). */
+  imageUrl?: string | null;
   studentId: string;
   studentName: string;
   studentEmail: string;
@@ -101,6 +107,8 @@ export interface LectStudentQuestionDto {
   escalatedById?: string | null;
   escalatedAt?: string | null;
   aiConfidenceScore?: number | null;
+  /** Student study image or case thumbnail for triage (URLs from API). */
+  customImageUrl?: string | null;
 }
 
 export interface Announcement {
@@ -400,10 +408,18 @@ export interface PercentageBoundingBox {
   heightPct: number;
 }
 
-/** Polygon vertices in normalized image space (0–1 per axis), for responsive `customPolygon` payloads. */
+/** Polygon vertices in normalized image space (0–1 per axis); legacy student ROI payloads. */
 export interface NormalizedPolygonPoint {
   x: number;
   y: number;
+}
+
+/** Axis-aligned bounding box in normalized image space (0–1). Preferred for Visual QA + expert case annotations. */
+export interface NormalizedImageBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface ExpertReviewItem {
@@ -415,7 +431,9 @@ export interface ExpertReviewItem {
   question: string;
   imageUrl?: string;
   customCoordinates?: PercentageBoundingBox | null;
-  /** Preferred: student ROI as normalized polygon (replaces legacy bounding box when present). */
+  /** Normalized rectangle ROI `{ x, y, width, height }` in 0–1 (preferred when present). */
+  customBoundingBox?: NormalizedImageBoundingBox | null;
+  /** Legacy: polygon vertices (0–1). */
   customPolygon?: NormalizedPolygonPoint[] | null;
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;

@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 @import "tailwindcss";
+@plugin "tailwind-scrollbar";
 
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -13,7 +14,7 @@
   /* App canvas + typography (Material-style light shell) */
   --background: #f8fafc;
   --surface: #ffffff;
-  /* Sidebar: deep navy-earth — keep in sync with AppSidebar bg-[#0F1F35]; do not swap for MD3 surface tokens */
+  /* Sidebar surface + chrome (paired with .dark below; AppSidebar uses bg-sidebar-bg / text-sidebar-text) */
   --sidebar: #0f1f35;
   /* Medical blue core (aligned with primary-600 scale) */
   --primary: #2563eb;
@@ -43,6 +44,9 @@
   --sidebar-text: #F8FBFF;
   --sidebar-hover: rgba(255, 255, 255, 0.08);
   --sidebar-active: rgba(255, 255, 255, 0.14);
+
+  /* Full-bleed app areas (e.g. Visual QA) — matches h-16 local headers */
+  --app-header-height: 4rem;
 }
 
 .dark {
@@ -215,15 +219,24 @@ textarea::placeholder {
   border-color: var(--border-color);
 }
 
+/* Semantic scrollbars (WebKit + Firefox via plugin utilities on elements) */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
+  height: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c2c6d4;
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 /* Scroll without showing scrollbars (main shell + panels) */
