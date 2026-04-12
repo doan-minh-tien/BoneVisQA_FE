@@ -355,7 +355,7 @@ export default function QuizResultsPage({
           Quizzes
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="text-sm font-medium">{quiz?.quizName ?? quizId}</span>
+        <span className="text-sm font-medium">{quiz?.title ?? quizId}</span>
         <span className="text-muted-foreground">/</span>
         <span className="text-sm font-medium text-primary">Results</span>
       </div>
@@ -364,7 +364,8 @@ export default function QuizResultsPage({
         <h1 className="text-2xl font-bold">Quiz Results</h1>
         {quiz && (
           <p className="text-muted-foreground text-sm mt-1">
-            {quiz.quizName} {quiz.className && `· ${quiz.className}`}
+            {quiz.title}
+            {quiz.topic ? ` · ${quiz.topic}` : ''}
           </p>
         )}
       </div>

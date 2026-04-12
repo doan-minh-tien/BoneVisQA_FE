@@ -1,0 +1,14 @@
+{
+  "name": "bonevisqa-labelme-expert-import",
+  "private": true,
+  "type": "module",
+  "description": "Bulk import LabelMe JSON + JPEG → Supabase + BoneVisQA expert case API",
+  "scripts": {
+    "import": "node import-labelme-expert-cases.mjs"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "axios": "^1.7.9"
+  }
+}

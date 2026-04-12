@@ -1,7 +1,9 @@
-import { BookOpen, CheckCircle2, Clock, ShieldAlert, TrendingUp } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { BookOpen, CheckCircle2, Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
+import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
 
 interface CaseCardProps {
-  id: string;
   title: string;
   thumbnail?: string;
   boneLocation: string;
@@ -11,6 +13,11 @@ interface CaseCardProps {
   progress?: number;
   status?: string;
   askedAt?: string;
+  /** SEPS learning fields when returned by history API */
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
+  /** When set, the whole card links (e.g. catalog case detail). */
+  href?: string;
 }
 
 const difficultyConfig = {
@@ -38,6 +45,9 @@ export default function CaseCard({
   progress = 0,
   status,
   askedAt,
+  keyImagingFindings,
+  reflectiveQuestions,
+  href,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
   const normalizedStatus = status?.toLowerCase();
@@ -57,13 +67,19 @@ export default function CaseCard({
         : null;
   const ReviewIcon = reviewBadge?.icon;
 
-  return (
+  const article = (
     <article className="group block overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-lg">
       {/* Thumbnail */}
-      <div className="relative h-48 bg-muted overflow-hidden">
+      <div className="relative h-48 overflow-hidden bg-muted">
         {thumbnail ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumbnail} alt={title} className="h-full w-full object-cover" />
+          <Image
+            src={thumbnail}
+            alt={title}
+            fill
+            sizes="(max-width: 768px) 100vw, 320px"
+            className="object-cover"
+            unoptimized={!isNextImageRemoteOptimized(thumbnail)}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-accent/20">
             <BookOpen className="h-16 w-16 text-muted-foreground opacity-30" />
@@ -113,6 +129,19 @@ export default function CaseCard({
           </span>
         </div>
 
+        {keyImagingFindings?.trim() ? (
+          <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-card-foreground">Imaging: </span>
+            {keyImagingFindings.trim()}
+          </p>
+        ) : null}
+        {reflectiveQuestions?.trim() ? (
+          <div className="mb-3 flex gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-2">
+            <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">{reflectiveQuestions.trim()}</p>
+          </div>
+        ) : null}
+
         {/* Meta */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
@@ -129,4 +158,14 @@ export default function CaseCard({
       </div>
     </article>
   );
+
+  if (href?.trim()) {
+    return (
+      <Link href={href.trim()} className="block rounded-xl no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        {article}
+      </Link>
+    );
+  }
+
+  return article;
 }

@@ -1,5 +1,12 @@
-import { redirect } from 'next/navigation';
+import type { Metadata } from 'next';
+import { LandingHome } from '@/components/landing/LandingHome';
 
-export default function Home() {
-  redirect('/auth/sign-in');
+export const metadata: Metadata = {
+  title: 'BoneVisQA - Radiology Education',
+  description:
+    'AI-powered interactive visual question answering for radiology education',
+};
+
+export default function HomePage() {
+  return <LandingHome />;
 }

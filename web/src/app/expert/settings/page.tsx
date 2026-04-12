@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, Loader2, RotateCcw, Save, Shield } from 'lucide-react';
+import { Bell, RotateCcw, Save, Shield } from 'lucide-react';
+import { SettingsFormSkeleton } from '@/components/shared/DashboardSkeletons';
 import { fetchExpertProfile, updateExpertProfile } from '@/lib/api/lecturer-dashboard';
 import type { ExpertProfile, UpdateExpertProfilePayload } from '@/lib/api/lecturer-dashboard';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,7 @@ function Toggle({
       }`}
     >
       <div
-        className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+        className={`absolute top-1 h-4 w-4 rounded-full bg-card shadow-sm transition-transform duration-200 ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -163,12 +164,7 @@ export default function ExpertSettingsPage() {
           <h1 className="mt-1 text-2xl font-bold text-card-foreground">Settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage your expert profile and review preferences.</p>
         </div>
-        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Loading profile…
-          </div>
-        </div>
+        <SettingsFormSkeleton />
       </div>
     );
   }

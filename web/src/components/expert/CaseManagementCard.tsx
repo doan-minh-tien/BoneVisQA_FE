@@ -1,5 +1,17 @@
-import { Edit, Trash2, Eye, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+'use client';
+
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSWRConfig } from 'swr';
+import { Edit, Trash2, Eye, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { deleteExpertCase, formatCaseDateForDisplay } from '@/lib/api/expert-cases';
+import { getApiProblemDetails } from '@/lib/api/client';
+import { useState } from 'react';
+
+const EXPERT_DASHBOARD_SWR_KEY = 'expert-dashboard';
+const EXPERT_CASE_LIBRARY_SWR_KEY = 'expert-case-library';
 
 interface CaseManagementCardProps {
   id: string;
@@ -16,32 +28,36 @@ interface CaseManagementCardProps {
 
 const statusConfig = {
   draft: {
-    color: 'bg-muted/50 text-muted-foreground',
+    color: 'border-border bg-muted/60 text-muted-foreground',
     icon: Clock,
-    label: 'Draft'
+    label: 'Draft',
   },
   pending: {
-    color: 'bg-warning/10 text-warning',
+    color: 'border-warning/30 bg-warning/10 text-warning',
     icon: AlertCircle,
-    label: 'Pending Review'
+    label: 'Pending',
   },
   approved: {
-    color: 'bg-success/10 text-success',
+    color: 'border-success/30 bg-success/10 text-success',
     icon: CheckCircle,
-    label: 'Approved'
+    label: 'Approved',
   },
   rejected: {
-    color: 'bg-destructive/10 text-destructive',
+    color: 'border-destructive/30 bg-destructive/10 text-destructive',
     icon: AlertCircle,
-    label: 'Rejected'
-  }
+    label: 'Rejected',
+  },
 };
 
 const difficultyConfig = {
-  basic: 'bg-success/10 text-success',
-  intermediate: 'bg-warning/10 text-warning',
-  advanced: 'bg-destructive/10 text-destructive',
+  basic: 'border-success/25 bg-success/10 text-success',
+  intermediate: 'border-warning/25 bg-warning/10 text-warning',
+  advanced: 'border-destructive/25 bg-destructive/10 text-destructive',
 };
+
+function difficultyLabel(d: CaseManagementCardProps['difficulty']): string {
+  return d.charAt(0).toUpperCase() + d.slice(1);
+}
 
 export default function CaseManagementCard({
   id,
@@ -55,46 +71,76 @@ export default function CaseManagementCard({
   viewCount,
   usageCount,
 }: CaseManagementCardProps) {
+  const toast = useToast();
+  const { mutate } = useSWRConfig();
+  const queryClient = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+
   const statusInfo = statusConfig[status];
   const StatusIcon = statusInfo.icon;
+  const dateLabel = formatCaseDateForDisplay(addedDate);
+  const locLabel = boneLocation === '—' ? 'Not specified' : boneLocation;
+  const catLabel = lesionType === '—' ? 'Uncategorized' : lesionType;
+
+  const handleDelete = async () => {
+    if (!id.trim()) return;
+    if (!window.confirm('Delete this case from your library? This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      const { message } = await deleteExpertCase(id);
+      toast.success(message?.trim() || 'Case deleted.');
+      await Promise.all([
+        mutate(EXPERT_CASE_LIBRARY_SWR_KEY),
+        mutate(EXPERT_DASHBOARD_SWR_KEY),
+        queryClient.invalidateQueries({ queryKey: ['expert', 'cases'] }),
+        queryClient.invalidateQueries({ queryKey: ['expert', 'case'] }),
+      ]);
+    } catch (e) {
+      const { title: errTitle, detail } = getApiProblemDetails(e);
+      toast.error(detail ? `${errTitle}: ${detail}` : errTitle);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-all duration-200">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${statusInfo.color}`}>
-              <StatusIcon className="w-3 h-3" />
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="mb-3 flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusInfo.color}`}
+            >
+              <StatusIcon className="h-3 w-3 shrink-0" aria-hidden />
               {statusInfo.label}
             </span>
-            <span className={`px-2 py-1 rounded text-xs font-medium ${difficultyConfig[difficulty]}`}>
-              {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+            <span
+              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${difficultyConfig[difficulty]}`}
+            >
+              {difficultyLabel(difficulty)}
             </span>
           </div>
-          <h3 className="font-semibold text-card-foreground line-clamp-2">{title}</h3>
+          <h3 className="line-clamp-2 font-semibold text-card-foreground">{title}</h3>
         </div>
       </div>
 
-      {/* Tags */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">
-          {boneLocation}
+      <div className="mb-3 flex flex-wrap gap-2">
+        <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+          {locLabel}
         </span>
-        <span className="px-2 py-1 bg-accent/10 text-accent text-xs rounded">
-          {lesionType}
+        <span className="rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent-foreground">
+          {catLabel}
         </span>
       </div>
 
-      {/* Meta Info */}
-      <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-muted/30 rounded-lg">
+      <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
         <div>
-          <p className="text-xs text-muted-foreground">Added by</p>
-          <p className="text-sm font-medium text-card-foreground">{addedBy}</p>
+          <p className="text-xs text-muted-foreground">Expert</p>
+          <p className="truncate text-sm font-medium text-card-foreground">{addedBy}</p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Date</p>
-          <p className="text-sm font-medium text-card-foreground">{addedDate}</p>
+          <p className="text-xs text-muted-foreground">Created</p>
+          <p className="text-sm font-medium text-card-foreground">{dateLabel}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Views</p>
@@ -102,28 +148,36 @@ export default function CaseManagementCard({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Usage</p>
-          <p className="text-sm font-medium text-card-foreground">{usageCount} times</p>
+          <p className="text-sm font-medium text-card-foreground">{usageCount}×</p>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Link
           href={`/expert/cases/${id}`}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors duration-150 cursor-pointer"
+          className="inline-flex h-10 min-w-[6rem] flex-1 items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-3.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(0,123,255,0.22)] transition-all hover:border-primary-hover hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[0.98]"
         >
-          <Eye className="w-4 h-4" />
-          <span className="text-sm font-medium">View</span>
+          <Eye className="h-4 w-4 shrink-0" aria-hidden />
+          View
         </Link>
         <Link
           href={`/expert/cases/${id}/edit`}
-          className="px-3 py-2 border border-border rounded-lg hover:bg-muted transition-colors duration-150 cursor-pointer"
+          title="Edit case"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-all hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[0.98]"
         >
-          <Edit className="w-4 h-4 text-muted-foreground" />
+          <Edit className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          Edit
         </Link>
-        <button className="px-3 py-2 border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors duration-150 cursor-pointer">
-          <Trash2 className="w-4 h-4 text-destructive" />
-        </button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 w-10 shrink-0 border-destructive/40 p-0 text-destructive hover:bg-destructive/10"
+          disabled={deleting}
+          aria-label="Delete case"
+          onClick={() => void handleDelete()}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );

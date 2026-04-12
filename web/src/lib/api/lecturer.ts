@@ -80,12 +80,37 @@ export async function createClass(body: {
   }
 }
 
+function normalizeClassItem(raw: unknown): ClassItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const expertRaw = r.expertId ?? r.ExpertId;
+  const expertNameRaw = r.expertName ?? r.ExpertName;
+  return {
+    id,
+    className: String(r.className ?? r.ClassName ?? ''),
+    semester: String(r.semester ?? r.Semester ?? ''),
+    lecturerId: String(r.lecturerId ?? r.LecturerId ?? ''),
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? ''),
+    expertId:
+      expertRaw !== undefined && expertRaw !== null && String(expertRaw).trim() !== ''
+        ? String(expertRaw).trim()
+        : null,
+    expertName:
+      expertNameRaw !== undefined && expertNameRaw !== null && String(expertNameRaw).trim() !== ''
+        ? String(expertNameRaw)
+        : null,
+  };
+}
+
 export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
+    const { data } = await http.get<unknown[]>('/api/lecturer/classes', {
       params: { lecturerId },
     });
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeClassItem).filter((c): c is ClassItem => c !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -314,6 +339,150 @@ export async function getClassStats(classId: string): Promise<ClassStats> {
 }
 
 /**
+ * Pulls the answer row GUID for POST /api/lecturer/triage/{answerId}/escalate from flat or nested payloads.
+ */
+export function extractAnswerIdFromQuestionRow(r: Record<string, unknown>): string | null {
+  const direct =
+    r.answerId ??
+    r.AnswerId ??
+    r.answer_id ??
+    r.latestAnswerId ??
+    r.LatestAnswerId ??
+    r.answerGuid ??
+    r.AnswerGuid ??
+    r.visualQaAnswerId ??
+    r.VisualQaAnswerId ??
+    r.caseAnswerId ??
+    r.CaseAnswerId ??
+    r.triageAnswerId ??
+    r.TriageAnswerId ??
+    r.responseId ??
+    r.ResponseId;
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+
+  const nestedCandidates = [
+    r.answer,
+    r.Answer,
+    r.answerDto,
+    r.AnswerDto,
+    r.latestAnswer,
+    r.LatestAnswer,
+    r.visualQaAnswer,
+    r.VisualQaAnswer,
+    r.caseAnswer,
+    r.CaseAnswer,
+  ];
+  for (const nested of nestedCandidates) {
+    if (nested && typeof nested === 'object') {
+      const a = nested as Record<string, unknown>;
+      const id = a.id ?? a.Id ?? a.answerId ?? a.AnswerId ?? a.guid ?? a.Guid;
+      if (id != null && String(id).trim() !== '') return String(id).trim();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
+ * `answerId` is populated when the backend sends PascalCase or alternate keys.
+ * Escalation uses POST /api/lecturer/triage/{answerId}/escalate — the route id must be the answer GUID, not the question id.
+ */
+function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const questionId = String(
+    r.questionId ?? r.QuestionId ?? r.id ?? r.Id ?? '',
+  ).trim();
+  if (!questionId) return null;
+
+  let answerId = extractAnswerIdFromQuestionRow(r);
+  const explicitQuestionId = String(r.questionId ?? r.QuestionId ?? '').trim();
+  const explicitRowId = String(r.id ?? r.Id ?? '').trim();
+  if (
+    !answerId &&
+    explicitQuestionId &&
+    explicitRowId &&
+    explicitQuestionId !== explicitRowId
+  ) {
+    // Common list DTO: `id` is the answer row, `questionId` is the parent question.
+    answerId = explicitRowId;
+  }
+
+  const scoreRaw = r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? r.SimilarityScore;
+  let aiConfidenceScore: number | null = null;
+  if (typeof scoreRaw === 'number' && !Number.isNaN(scoreRaw)) {
+    aiConfidenceScore = scoreRaw > 1 ? Math.min(1, scoreRaw / 100) : scoreRaw;
+  } else if (typeof scoreRaw === 'string' && scoreRaw.trim() !== '') {
+    const n = parseFloat(scoreRaw);
+    if (!Number.isNaN(n)) aiConfidenceScore = n > 1 ? Math.min(1, n / 100) : n;
+  }
+
+  const caseObj = r.case ?? r.Case;
+  const fromCase =
+    caseObj && typeof caseObj === 'object'
+      ? String(
+          (caseObj as Record<string, unknown>).customImageUrl ??
+            (caseObj as Record<string, unknown>).CustomImageUrl ??
+            (caseObj as Record<string, unknown>).imageUrl ??
+            (caseObj as Record<string, unknown>).ImageUrl ??
+            (caseObj as Record<string, unknown>).thumbnailUrl ??
+            (caseObj as Record<string, unknown>).ThumbnailUrl ??
+            '',
+        ).trim()
+      : '';
+  const fromRow = String(
+    r.customImageUrl ??
+      r.CustomImageUrl ??
+      r.studentImageUrl ??
+      r.StudentImageUrl ??
+      r.imageUrl ??
+      r.ImageUrl ??
+      r.thumbnailUrl ??
+      r.ThumbnailUrl ??
+      r.caseThumbnailUrl ??
+      r.CaseThumbnailUrl ??
+      '',
+  ).trim();
+  const customImageUrl = fromRow || fromCase || null;
+  const imageUrlExplicit = String(r.imageUrl ?? r.ImageUrl ?? r.studyImageUrl ?? r.StudyImageUrl ?? '').trim() || null;
+
+  const caseAnswerIdRaw =
+    r.caseAnswerId ??
+    r.CaseAnswerId ??
+    r.visualQaAnswerId ??
+    r.VisualQaAnswerId ??
+    r.caseVisualAnswerId ??
+    r.CaseVisualAnswerId;
+  const caseAnswerId =
+    caseAnswerIdRaw != null && String(caseAnswerIdRaw).trim() !== ''
+      ? String(caseAnswerIdRaw).trim()
+      : null;
+
+  return {
+    id: questionId,
+    answerId,
+    caseAnswerId,
+    studentId: String(r.studentId ?? r.StudentId ?? ''),
+    studentName: String(r.studentName ?? r.StudentName ?? ''),
+    studentEmail: String(r.studentEmail ?? r.StudentEmail ?? ''),
+    caseId: String(r.caseId ?? r.CaseId ?? ''),
+    caseTitle: String(r.caseTitle ?? r.CaseTitle ?? ''),
+    questionText: String(r.questionText ?? r.QuestionText ?? ''),
+    language: r.language == null && r.Language == null ? null : String(r.language ?? r.Language ?? ''),
+    createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
+    answerText: (r.answerText ?? r.AnswerText ?? null) as string | null,
+    answerStatus: (r.answerStatus ?? r.AnswerStatus ?? null) as string | null,
+    escalatedById: (r.escalatedById ?? r.EscalatedById ?? null) as string | null,
+    escalatedAt: (r.escalatedAt ?? r.EscalatedAt ?? null) as string | null,
+    aiConfidenceScore,
+    customImageUrl,
+    imageUrl: imageUrlExplicit,
+  };
+}
+
+/**
  * Get student questions for a class
  */
 export async function getStudentQuestions(
@@ -321,7 +490,7 @@ export async function getStudentQuestions(
   options?: { caseId?: string; studentId?: string },
 ): Promise<LectStudentQuestionDto[]> {
   try {
-    const { data } = await http.get<LectStudentQuestionDto[]>(
+    const { data } = await http.get<unknown[]>(
       `/api/lecturer/classes/${classId}/questions`,
       {
         params: {
@@ -330,7 +499,10 @@ export async function getStudentQuestions(
         },
       },
     );
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeLectStudentQuestionDto)
+      .filter((row): row is LectStudentQuestionDto => row !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

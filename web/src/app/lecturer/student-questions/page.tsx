@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Search,
   Loader2,
   MessageSquare,
-  ChevronRight,
-  Eye,
   ZoomIn,
   Contrast,
   Pencil,
@@ -16,18 +15,20 @@ import {
   AlertTriangle,
   Plus,
   Bell,
-  Settings,
-  BarChart3,
 } from 'lucide-react';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
+import { escalateToExpert, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
+import type { LectStudentQuestionDto } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
 
 const XRAY_PLACEHOLDER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCINRzGp6z40Z2fsIZBJEM-zldyzpS3z_ih-Bfgh4mig52ts5MniL-9e43XYgucFN-WgwCWVHHmb6ZmiKWBe1o5U38a_alK5WfGZVT6MDhkHtaegScow4-aHvPzDfZMToJd55FiQox63njJi0VcktL5yJKoYeuQo47pBabw2NzpMgmK7qNcyKcxZbFP9puiQVdiuUDTOokGV-Hy573lajieFijGkk9MGyb0Mcz6zVto6MmqVxXgStDewXjMh4rzuqAcWxG1RyRzYiY';
 
 interface StudentQuestion {
   id: string;
+  /** Answer row id for POST/PUT escalation when provided by API */
+  answerId?: string | null;
   studentId: string;
   studentName: string | null;
   studentEmail: string | null;
@@ -38,6 +39,7 @@ interface StudentQuestion {
   askedAt: string;
   status: 'pending' | 'answered' | 'escalated';
   thumbnailUrl?: string;
+  studyImageUrl?: string | null;
 }
 
 function initials(name: string | null): string {
@@ -103,7 +105,7 @@ function QuestionCard({
 }
 
 export default function StudentQuestionsPage() {
-  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const toast = useToast();
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,6 +114,7 @@ export default function StudentQuestionsPage() {
   const [escalateText, setEscalateText] = useState('');
   const [highPriority, setHighPriority] = useState(false);
   const [notifyHead, setNotifyHead] = useState(false);
+  const [expertSubmitting, setExpertSubmitting] = useState(false);
 
   useEffect(() => {
     loadClasses();
@@ -123,7 +126,6 @@ export default function StudentQuestionsPage() {
       const userId = getStoredUserId();
       if (!userId) return;
       const data = await getLecturerClasses(userId);
-      setClasses(data);
       if (data.length > 0) setSelectedClass(data[0].id);
     } catch {
       // silent
@@ -139,6 +141,7 @@ export default function StudentQuestionsPage() {
       const data = await getStudentQuestions(selectedClass, {});
       const mapped: StudentQuestion[] = data.map((item: LectStudentQuestionDto) => ({
         id: item.id,
+        answerId: item.answerId?.trim() || null,
         studentId: item.studentId,
         studentName: item.studentName || 'Unknown',
         studentEmail: item.studentEmail || null,
@@ -153,6 +156,7 @@ export default function StudentQuestionsPage() {
             ? 'answered'
             : 'pending',
         thumbnailUrl: item.aiConfidenceScore != null ? undefined : undefined,
+        studyImageUrl: item.customImageUrl?.trim() || null,
       }));
       setQuestions(mapped);
       if (!selectedQuestion && mapped.length > 0) {
@@ -223,6 +227,25 @@ export default function StudentQuestionsPage() {
         ? `"Based on the clinical curator engine, the lucency at the distal phalanx suggests a volar-displaced tuft fracture. In lateral views, displacement is assessed relative to the longitudinal axis of the proximal fragment. Crush injuries typically result in comminuted tuft fractures with minimal dorsal displacement, whereas "mallet" mechanisms involve dorsal avulsion at the flexor digitorum profundus insertion. The mechanism of injury is the primary discriminator."`
         : '';
 
+  const handleExpertEscalate = async () => {
+    if (!selectedQuestion || !selectedClass) return;
+    const routeId = selectedQuestion.answerId?.trim() || selectedQuestion.id;
+    setExpertSubmitting(true);
+    try {
+      await escalateToExpert(routeId);
+      toast.success('Escalated successfully');
+      await loadStudentQuestions();
+    } catch (e) {
+      if (e instanceof Error && e.message === TRIAGE_ALREADY_ESCALATED) {
+        toast.info('This case has already been escalated.');
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Escalation failed');
+      }
+    } finally {
+      setExpertSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       {/* Sticky Header */}
@@ -233,18 +256,18 @@ export default function StudentQuestionsPage() {
               Inquiry Dashboard
             </h2>
             <nav className="hidden md:flex items-center gap-6">
-              <a href="/lecturer" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/lecturer/dashboard" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Dashboard
-              </a>
-              <a href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Curricula
-              </a>
-              <a href="/lecturer/reports" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
-                Reports
-              </a>
-              <a href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/student-questions" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
+                Inquiries
+              </Link>
+              <Link href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Settings
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-4">
@@ -338,7 +361,7 @@ export default function StudentQuestionsPage() {
                       {/* Quote */}
                       <div className="rounded-xl border border-border/40 bg-muted/50 p-5">
                         <p className="text-sm leading-relaxed text-foreground italic">
-                          "{selectedQuestion.questionText}"
+                          &ldquo;{selectedQuestion.questionText}&rdquo;
                         </p>
                       </div>
 
@@ -372,7 +395,7 @@ export default function StudentQuestionsPage() {
                     <div className="relative flex min-h-[400px] flex-col items-center justify-center bg-slate-900 p-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={XRAY_PLACEHOLDER}
+                        src={selectedQuestion.studyImageUrl?.trim() || XRAY_PLACEHOLDER}
                         alt="Medical X-ray"
                         className="max-h-full max-w-full rounded-lg shadow-2xl opacity-90 object-contain"
                       />
@@ -456,9 +479,11 @@ export default function StudentQuestionsPage() {
                         </button>
                         <button
                           type="button"
-                          className="rounded-full bg-gradient-to-br from-primary to-primary/90 px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-opacity hover:opacity-95 active:scale-[0.98]"
+                          disabled={expertSubmitting}
+                          onClick={() => void handleExpertEscalate()}
+                          className="rounded-full bg-gradient-to-br from-primary to-primary/90 px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-opacity hover:opacity-95 active:scale-[0.98] disabled:opacity-60"
                         >
-                          Submit for Expert Review
+                          {expertSubmitting ? 'Submitting…' : 'Submit for Expert Review'}
                         </button>
                       </div>
                     </div>

@@ -491,7 +491,7 @@ function CreateAssignmentPageContent({
                             {cls.className}
                             <button
                               onClick={() => toggleClass(classId)}
-                              className="hover:bg-white/20 rounded-full p-0.5 cursor-pointer"
+                            className="hover:bg-primary-foreground/20 rounded-full p-0.5 cursor-pointer"
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -1156,7 +1156,7 @@ function ToggleRow({
         }`}
       >
         <div
-          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+          className={`absolute top-0.5 w-5 h-5 bg-card rounded-full shadow transition-transform duration-200 ${
             value ? 'translate-x-5' : 'translate-x-0.5'
           }`}
         />

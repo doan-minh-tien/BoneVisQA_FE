@@ -1,19 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Cho phép Google Identity Services / popup OAuth giao tiếp qua postMessage (tránh cảnh báo COOP trên dev)
-  async headers() {
-    return [
+  images: {
+    remotePatterns: [
       {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin-allow-popups',
-          },
-        ],
+        protocol: 'https',
+        hostname: 'jshryhplbayoymtthqpu.supabase.co',
+        pathname: '/**',
       },
-    ];
+    ],
   },
   async redirects() {
     return [
@@ -21,6 +16,19 @@ const nextConfig: NextConfig = {
       { source: "/register", destination: "/auth/sign-up", permanent: false },
       { source: "/forgot-password", destination: "/auth/forgot-password", permanent: false },
       { source: "/reset-password", destination: "/auth/reset-password", permanent: false },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/auth/sign-in",
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+        ],
+      },
     ];
   },
 };

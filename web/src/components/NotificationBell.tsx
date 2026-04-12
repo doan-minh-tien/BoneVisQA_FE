@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Bell, Check } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { getPublicApiOrigin } from '@/lib/api/client';
 
 interface NotificationItem {
   id: string;
@@ -42,7 +43,8 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
     if (!silent) setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      const base = getPublicApiOrigin();
+      if (!base) return;
       const res = await fetch(`${base}/api/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -112,7 +114,8 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
   async function markRead(id: string) {
     try {
       const token = localStorage.getItem('token');
-      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      const base = getPublicApiOrigin();
+      if (!base) return;
       await fetch(`${base}/api/notifications/${id}/read`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },

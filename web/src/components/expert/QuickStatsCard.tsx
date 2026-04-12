@@ -26,7 +26,7 @@ export default function QuickStatsCard({
       : 'text-muted-foreground';
 
   return (
-    <div className="bg-card rounded-xl p-5 border border-border hover:shadow-md transition-shadow duration-200">
+    <div className="bg-card rounded-2xl border border-border p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex items-start justify-between mb-3">
         <div className={`w-12 h-12 rounded-lg ${iconColor} flex items-center justify-center`}>
           <Icon className="w-6 h-6" />

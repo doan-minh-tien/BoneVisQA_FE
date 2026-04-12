@@ -223,7 +223,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 pr-11 text-sm text-text-main placeholder:text-outline/50 focus:outline-none focus:ring-2 focus:ring-primary-container/40"
+                  className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 pr-11 text-sm text-text-main placeholder:text-outline/50 focus:outline-none focus:ring-2 focus:ring-primary-container/40 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                 />
                 <button
                   type="button"

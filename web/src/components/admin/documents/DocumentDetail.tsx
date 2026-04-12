@@ -38,9 +38,9 @@ export default function DocumentDetail({ id }: { id: string }) {
         setError(null);
         const data = await getAdminDocumentById(id);
         setDoc(data);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error fetching document:', err);
-        setError(err.message || 'Failed to load document details');
+        setError(err instanceof Error ? err.message : 'Failed to load document details');
       } finally {
         setLoading(false);
       }
@@ -59,9 +59,12 @@ export default function DocumentDetail({ id }: { id: string }) {
       // Refetch doc to see updated status
       const data = await getAdminDocumentById(id);
       setDoc(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error reindexing document:', err);
-      setReindexMessage({ type: 'error', text: err.message || 'Failed to start reindexing.' });
+      setReindexMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to start reindexing.',
+      });
     } finally {
       setIsReindexing(false);
     }

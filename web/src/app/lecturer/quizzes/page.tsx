@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { QuizWorkbenchListSkeleton } from '@/components/shared/DashboardSkeletons';
 import {
-  Loader2,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -258,11 +258,7 @@ export default function QuizListPage() {
       : Math.min(currentPage * PAGE_SIZE, filtered.length);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <QuizWorkbenchListSkeleton />;
   }
 
   return (
