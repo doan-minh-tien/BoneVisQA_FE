@@ -1,19 +1,19 @@
 import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { NormalizedPolygonPoint, VisualQaReport } from './types';
-import { serializeCustomPolygon } from '@/lib/utils/annotations';
+import type { NormalizedImageBoundingBox, VisualQaReport } from './types';
+import { serializeNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 export async function postStudentVisualQa(
   file: File,
   questionText: string,
-  customPolygon?: NormalizedPolygonPoint[] | null,
+  roiBoundingBox?: NormalizedImageBoundingBox | null,
   onUploadProgress?: (percent: number) => void,
 ): Promise<VisualQaReport> {
   const form = new FormData();
   form.append('CustomImage', file);
   form.append('QuestionText', questionText);
-  const serialized = serializeCustomPolygon(customPolygon);
+  const serialized = serializeNormalizedBoundingBox(roiBoundingBox);
   if (serialized) {
     form.append('customPolygon', serialized);
   }

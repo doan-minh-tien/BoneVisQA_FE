@@ -38,6 +38,8 @@ export function getPublicApiOrigin(): string {
 export function resolveApiAssetUrl(path: string | null | undefined): string {
   if (path == null || !String(path).trim()) return '';
   const p = String(path).trim();
+  // Absolute URLs (e.g. Supabase storage) must never be prefixed with API origin
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
   if (/^(https?:|data:)/i.test(p)) return p;
   const base = getPublicApiOrigin();
   if (!base) return p;
@@ -132,4 +134,32 @@ export function getApiErrorMessage(err: unknown): string {
   }
   if (err instanceof Error) return err.message;
   return 'Request failed';
+}
+
+/** RFC 7807 / ASP.NET ProblemDetails — use for toasts and inline error copy. */
+export function getApiProblemDetails(err: unknown): {
+  title: string;
+  detail?: string;
+  status?: number;
+} {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const data = err.response?.data as unknown;
+    if (data && typeof data === 'object') {
+      const o = data as ProblemDetailsPayload;
+      const title =
+        typeof o.title === 'string' && o.title.trim()
+          ? o.title.trim()
+          : status === 404
+            ? 'Not found'
+            : status === 500
+              ? 'Server error'
+              : 'Request failed';
+      const detail = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined;
+      if (detail || title) return { title, detail, status };
+    }
+    return { title: getApiErrorMessage(err), status };
+  }
+  if (err instanceof Error) return { title: err.message };
+  return { title: 'Request failed' };
 }

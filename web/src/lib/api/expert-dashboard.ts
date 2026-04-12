@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 
 export interface ExpertDashboardStats {
@@ -57,10 +58,19 @@ function mapDifficulty(raw: unknown): 'basic' | 'intermediate' | 'advanced' {
   return 'basic';
 }
 
-function mapStatus(raw: unknown): 'approved' | 'pending' | 'draft' {
-  const val = String(raw ?? '').toLowerCase();
-  if (val === 'approved') return 'approved';
-  if (val === 'pending') return 'pending';
+function pickDisplayStr(value: unknown, fallback: string): string {
+  const s = value != null ? String(value).trim() : '';
+  return s || fallback;
+}
+
+function mapRecentCaseStatus(item: Record<string, unknown>): ExpertRecentCase['status'] {
+  const s = String(item.status ?? item.Status ?? '').toLowerCase();
+  if (s === 'approved') return 'approved';
+  if (s === 'pending') return 'pending';
+  if (s === 'draft') return 'draft';
+  if (s === 'rejected') return 'draft';
+  if (Boolean(item.isApproved ?? item.IsApproved)) return 'approved';
+  if (Boolean(item.isActive ?? item.IsActive)) return 'pending';
   return 'draft';
 }
 
@@ -85,20 +95,35 @@ function mapPendingReview(row: unknown): ExpertPendingReview | null {
 function mapRecentCase(row: unknown): ExpertRecentCase | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
-  const id = String(item.id ?? '');
+  const id = String(item.id ?? item.Id ?? '');
   if (!id) return null;
+
+  const boneLocation = pickDisplayStr(
+    item.boneLocation ?? item.BoneLocation ?? item.anatomicalRegion ?? item.AnatomicalRegion,
+    '—',
+  );
+  const addedBy = pickDisplayStr(
+    item.expertName ?? item.ExpertName ?? item.addedBy ?? item.AddedBy,
+    '—',
+  );
+  const addedRaw = String(
+    item.addedDate ?? item.AddedDate ?? item.createdAt ?? item.created_at ?? item.CreatedAt ?? '',
+  ).trim();
 
   return {
     id,
-    title: String(item.title ?? 'Untitled'),
-    boneLocation: String(item.boneLocation ?? 'Unknown'),
-    lesionType: String(item.lesionType ?? 'General'),
-    difficulty: mapDifficulty(item.difficulty),
-    status: mapStatus(item.status),
-    addedBy: String(item.addedBy ?? 'Unknown'),
-    addedDate: String(item.addedDate ?? ''),
-    viewCount: Number(item.viewCount ?? 0),
-    usageCount: Number(item.usageCount ?? 0),
+    title: pickDisplayStr(item.title ?? item.Title, 'Untitled'),
+    boneLocation,
+    lesionType: pickDisplayStr(
+      item.categoryName ?? item.category_name ?? item.CategoryName ?? item.lesionType ?? item.LesionType,
+      '—',
+    ),
+    difficulty: mapDifficulty(item.difficulty ?? item.Difficulty),
+    status: mapRecentCaseStatus(item),
+    addedBy,
+    addedDate: addedRaw,
+    viewCount: Number(item.viewCount ?? item.ViewCount ?? 0),
+    usageCount: Number(item.usageCount ?? item.UsageCount ?? 0),
   };
 }
 
@@ -159,6 +184,7 @@ export async function fetchExpertRecentCases(): Promise<ExpertRecentCase[]> {
       .map(mapRecentCase)
       .filter((item): item is ExpertRecentCase => item !== null);
   } catch (e) {
+    if (axios.isAxiosError(e)) throw e;
     throw new Error(getApiErrorMessage(e));
   }
 }

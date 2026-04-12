@@ -61,42 +61,38 @@ export function useAuth() {
 
       // Prefer canonical profile from API when available.
       void http
-        .get<{
-          fullName?: string | null;
-          email?: string | null;
-          activeRole?: string | null;
-          role?: string | null;
-          roles?: string[] | null;
-          status?: string | null;
-          userStatus?: string | null;
-          avatarUrl?: string | null;
-        }>('/api/users/me')
+        .get<Record<string, unknown>>('/api/users/me')
         .then((response) => {
           if (cancelled) return;
           const payload = response.data ?? {};
           const normalizedActiveRole =
-            normalizeRole(payload.activeRole ?? payload.role ?? undefined) ?? localUser.activeRole;
-          const normalizedRoles = Array.isArray(payload.roles)
-            ? payload.roles
-                .map((role) => normalizeRole(role))
+            normalizeRole(
+              (payload.activeRole ?? payload.role ?? payload.ActiveRole ?? payload.Role) as string | null | undefined,
+            ) ?? localUser.activeRole;
+          const rawRoles = payload.roles ?? payload.Roles;
+          const normalizedRoles = Array.isArray(rawRoles)
+            ? rawRoles
+                .map((role) => normalizeRole(String(role)))
                 .filter((role): role is BackendRole => role !== null)
             : localUser.roles;
 
+          const rawAvatar =
+            payload.avatarUrl ?? payload.AvatarUrl ?? payload.profileImageUrl ?? payload.ProfileImageUrl;
           const nextAvatar =
-            payload.avatarUrl != null && String(payload.avatarUrl).trim()
-              ? String(payload.avatarUrl).trim()
-              : localUser.avatarUrl;
+            rawAvatar != null && String(rawAvatar).trim() ? String(rawAvatar).trim() : localUser.avatarUrl;
           if (nextAvatar && typeof window !== 'undefined') {
             localStorage.setItem('avatarUrl', nextAvatar);
           }
 
           setUser({
-            fullName: payload.fullName ?? localUser.fullName,
-            email: payload.email ?? localUser.email,
+            fullName: (payload.fullName ?? payload.FullName ?? localUser.fullName) as string | null,
+            email: (payload.email ?? payload.Email ?? localUser.email) as string | null,
             activeRole: normalizedActiveRole,
             roles: normalizedRoles,
-            status:
-              payload.status ?? payload.userStatus ?? localUser.status,
+            status: (payload.status ??
+              payload.userStatus ??
+              payload.UserStatus ??
+              localUser.status) as string | null,
             avatarUrl: nextAvatar,
           });
         })

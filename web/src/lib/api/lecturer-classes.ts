@@ -18,12 +18,6 @@ function throwApiError(error: unknown): never {
   throw new Error(getApiErrorMessage(error));
 }
 
-export type UpsertLecturerClassPayload = {
-  className: string;
-  semester: string;
-  expertId?: string;
-};
-
 export type AssignCasesPayload = {
   caseIds: string[];
   dueDate?: string;
@@ -37,15 +31,6 @@ export type AssignQuizPayload = {
   timeLimitMinutes?: number;
   passingScore?: number;
 };
-
-export async function createLecturerClass(payload: UpsertLecturerClassPayload): Promise<ClassItem> {
-  try {
-    const { data } = await http.post<ClassItem>('/api/lecturer/classes', payload);
-    return data;
-  } catch (error) {
-    throwApiError(error);
-  }
-}
 
 export async function fetchLecturerClasses(): Promise<ClassItem[]> {
   try {
@@ -65,56 +50,9 @@ export async function fetchLecturerClassById(classId: string): Promise<ClassItem
   }
 }
 
-export async function updateLecturerClass(
-  classId: string,
-  payload: UpsertLecturerClassPayload,
-): Promise<ClassItem> {
-  try {
-    const { data } = await http.put<ClassItem>(`/api/lecturer/classes/${classId}`, payload);
-    return data;
-  } catch (error) {
-    throwApiError(error);
-  }
-}
-
-export async function deleteLecturerClass(classId: string): Promise<void> {
-  try {
-    await http.delete(`/api/lecturer/classes/${classId}`);
-  } catch (error) {
-    throwApiError(error);
-  }
-}
-
-export async function enrollStudentsMany(classId: string, studentIds: string[]): Promise<void> {
-  try {
-    await http.post(`/api/lecturer/classes/${classId}/enrollmany`, { studentIds });
-  } catch (error) {
-    throwApiError(error);
-  }
-}
-
-export async function removeStudentFromClass(classId: string, studentId: string): Promise<void> {
-  try {
-    await http.delete(`/api/lecturer/classes/${classId}/students/${studentId}`);
-  } catch (error) {
-    throwApiError(error);
-  }
-}
-
 export async function fetchClassStudents(classId: string): Promise<StudentEnrollment[]> {
   try {
     const { data } = await http.get<StudentEnrollment[]>(`/api/lecturer/classes/${classId}/students`);
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    throwApiError(error);
-  }
-}
-
-export async function fetchAvailableStudents(classId: string): Promise<StudentEnrollment[]> {
-  try {
-    const { data } = await http.get<StudentEnrollment[]>(
-      `/api/lecturer/classes/${classId}/students/available`,
-    );
     return Array.isArray(data) ? data : [];
   } catch (error) {
     throwApiError(error);

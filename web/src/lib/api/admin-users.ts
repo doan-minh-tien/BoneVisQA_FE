@@ -2,6 +2,8 @@ import { http, getApiErrorMessage } from './client';
 import type { AdminUser } from './types';
 
 const ADMIN_USERS = '/api/admin/users';
+const ADMIN_CLASSES = '/api/admin/classes';
+const ADMIN_CLASS_ENROLLMENTS = `${ADMIN_CLASSES}/enrollments`;
 
 // ── Normalizers ─────────────────────────────────────────────────────────────
 
@@ -212,10 +214,12 @@ export async function deleteAdminUser(userId: string): Promise<void> {
 
 // ── Class management ───────────────────────────────────────────────────────────
 
+export type ClassEnrollmentRelation = 'Lecturer' | 'Student' | 'Expert';
+
 export interface UserClassInfo {
   id: string;
   className: string;
-  relationType: 'Lecturer' | 'Student';
+  relationType: ClassEnrollmentRelation;
   enrolledAt: string | null;
 }
 
@@ -226,47 +230,134 @@ export interface AvailableClass {
   studentCount: number;
 }
 
+function unwrapClassArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== 'object') return [];
+  const o = raw as Record<string, unknown>;
+  if (Array.isArray(o.items)) return o.items;
+  if (Array.isArray(o.data)) return o.data;
+  if (o.result && typeof o.result === 'object') {
+    const r = o.result as Record<string, unknown>;
+    if (Array.isArray(r.items)) return r.items;
+    if (Array.isArray(r.data)) return r.data;
+    if (Array.isArray(o.result)) return o.result as unknown[];
+  }
+  return [];
+}
+
+function normalizeUserClassInfo(row: unknown): UserClassInfo | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  const id = String(r.id ?? r.classId ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const rt = String(r.relationType ?? r.RelationType ?? 'Student').toLowerCase();
+  let relationType: ClassEnrollmentRelation = 'Student';
+  if (rt === 'lecturer') relationType = 'Lecturer';
+  else if (rt === 'expert') relationType = 'Expert';
+  return {
+    id,
+    className: String(r.className ?? r.name ?? r.title ?? 'Class'),
+    relationType,
+    enrolledAt: r.enrolledAt != null ? String(r.enrolledAt) : r.EnrolledAt != null ? String(r.EnrolledAt) : null,
+  };
+}
+
+function normalizeAvailableClass(row: unknown): AvailableClass | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  const id = String(r.id ?? r.classId ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const lec = r.lecturer;
+  const lecturerRaw =
+    r.lecturerName ??
+    r.LecturerName ??
+    (lec && typeof lec === 'object' && lec !== null && 'name' in lec ? (lec as { name: unknown }).name : undefined);
+  return {
+    id,
+    className: String(r.className ?? r.name ?? r.title ?? 'Class'),
+    lecturerName: lecturerRaw != null ? String(lecturerRaw) : null,
+    studentCount: Number(r.studentCount ?? r.enrollmentCount ?? r.StudentCount ?? 0),
+  };
+}
+
 export async function fetchUserClasses(userId: string): Promise<UserClassInfo[]> {
   try {
-    const { data } = await http.get<{ result?: UserClassInfo[] } | UserClassInfo[]>(
-      `${ADMIN_USERS}/${userId}/classes`,
+    const { data } = await http.get<unknown>(`${ADMIN_USERS}/${userId}/classes`);
+    const list = unwrapClassArray(
+      data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data,
     );
-    const list = 'result' in data ? data.result : (data as UserClassInfo[]);
-    return Array.isArray(list) ? list : [];
+    const mapped = list.map(normalizeUserClassInfo).filter((x): x is UserClassInfo => x !== null);
+    return mapped;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
 export async function fetchAvailableClasses(): Promise<AvailableClass[]> {
+  const mapRows = (payload: unknown): AvailableClass[] =>
+    unwrapClassArray(payload)
+      .map(normalizeAvailableClass)
+      .filter((x): x is AvailableClass => x !== null);
+
   try {
-    const { data } = await http.get<{ result?: AvailableClass[] } | AvailableClass[]>(
-      `${ADMIN_USERS}/classes`,
+    const { data } = await http.get<unknown>(ADMIN_CLASSES);
+    const list = mapRows(
+      data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data,
     );
-    const list = 'result' in data ? data.result : (data as AvailableClass[]);
-    return Array.isArray(list) ? list : [];
+    return list;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
-export async function assignUserToClass(userId: string, classId: string): Promise<UserClassInfo> {
+/** Matches backend AssignClassDTO for POST/PUT /api/admin/classes/enrollments */
+export interface AssignClassEnrollmentDto {
+  classId: string;
+  studentId: string | null;
+  lecturerId: string | null;
+  expertId: string | null;
+  removeExpert: boolean;
+}
+
+export async function assignUserToClass(
+  userId: string,
+  classId: string,
+  opts: { relation: ClassEnrollmentRelation; className: string },
+): Promise<UserClassInfo> {
   try {
-    const { data } = await http.post<{ result?: UserClassInfo } | UserClassInfo>(
-      `${ADMIN_USERS}/${userId}/classes`,
-      { classId },
-    );
-    const result = 'result' in data ? data.result : (data as UserClassInfo);
-    if (!result) throw new Error('No result from server.');
-    return result;
+    const body: AssignClassEnrollmentDto = {
+      classId,
+      studentId: opts.relation === 'Student' ? userId : null,
+      lecturerId: opts.relation === 'Lecturer' ? userId : null,
+      expertId: opts.relation === 'Expert' ? userId : null,
+      removeExpert: false,
+    };
+    await http.post(ADMIN_CLASS_ENROLLMENTS, body);
+    return {
+      id: classId,
+      className: opts.className,
+      relationType: opts.relation,
+      enrolledAt: new Date().toISOString(),
+    };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
-export async function removeUserFromClass(userId: string, classId: string): Promise<void> {
+export async function removeUserFromClass(
+  userId: string,
+  classId: string,
+  relation: ClassEnrollmentRelation,
+): Promise<void> {
   try {
-    await http.delete(`${ADMIN_USERS}/${userId}/classes/${classId}`);
+    const body: AssignClassEnrollmentDto = {
+      classId,
+      studentId: relation === 'Student' ? userId : null,
+      lecturerId: relation === 'Lecturer' ? userId : null,
+      expertId: relation === 'Expert' ? userId : null,
+      removeExpert: false,
+    };
+    await http.request({ method: 'DELETE', url: ADMIN_CLASS_ENROLLMENTS, data: body });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

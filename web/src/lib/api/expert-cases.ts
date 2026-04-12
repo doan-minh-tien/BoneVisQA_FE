@@ -1,7 +1,14 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 
 export type CaseDifficulty = 'Easy' | 'Medium' | 'Hard';
-export type CaseStatus = 'approved' | 'pending' | 'rejected';
+/** Aligns with workbench cards: draft (inactive), pending, approved, rejected. */
+export type CaseStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+
+export interface ExpertCaseTag {
+  id: string;
+  name: string;
+}
 
 export interface ExpertCase {
   id: string;
@@ -14,11 +21,22 @@ export interface ExpertCase {
   isApproved: boolean;
   isActive: boolean;
   addedBy: string;
+  expertName: string;
   addedDate: string;
+  boneLocation: string;
   description: string;
   suggestedDiagnosis: string;
   reflectiveQuestions: string;
   keyFindings: string;
+  medicalImages?: ExpertCaseMedicalImageJson[];
+  tags?: ExpertCaseTag[];
+}
+
+export function formatCaseDateForDisplay(raw: string | undefined | null): string {
+  if (raw == null || !String(raw).trim()) return '—';
+  const d = new Date(String(raw));
+  if (Number.isNaN(d.getTime())) return String(raw).trim();
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 interface ExpertCaseListResponse {
@@ -51,6 +69,14 @@ interface ExpertCaseApiRow {
   suggestedDiagnosis?: unknown;
   reflectiveQuestions?: unknown;
   keyFindings?: unknown;
+  boneLocation?: unknown;
+  BoneLocation?: unknown;
+  status?: unknown;
+  Status?: unknown;
+  medicalImages?: unknown;
+  MedicalImages?: unknown;
+  tags?: unknown;
+  Tags?: unknown;
 }
 
 function mapDifficulty(raw: unknown): CaseDifficulty {
@@ -60,10 +86,64 @@ function mapDifficulty(raw: unknown): CaseDifficulty {
   return 'Easy';
 }
 
-function mapStatus(isApproved: unknown, isActive: unknown): CaseStatus {
-  if (Boolean(isApproved)) return 'approved';
-  if (Boolean(isActive)) return 'pending';
-  return 'rejected';
+function mapCaseListStatus(item: ExpertCaseApiRow, record: Record<string, unknown>): CaseStatus {
+  const s = String(item.status ?? record.status ?? record.Status ?? '').toLowerCase();
+  if (s === 'draft') return 'draft';
+  if (s === 'pending') return 'pending';
+  if (s === 'approved') return 'approved';
+  if (s === 'rejected') return 'rejected';
+  const approved = Boolean(
+    item.isApproved ?? item.approved ?? record.isApproved ?? record.approved ?? record.IsApproved,
+  );
+  const active = Boolean(item.isActive ?? item.active ?? record.isActive ?? record.active ?? record.IsActive);
+  if (approved) return 'approved';
+  if (active) return 'pending';
+  return 'draft';
+}
+
+function mapTags(raw: unknown): ExpertCaseTag[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ExpertCaseTag[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (!t || typeof t !== 'object') continue;
+    const o = t as Record<string, unknown>;
+    const name = String(o.name ?? o.Name ?? o.tagName ?? o.TagName ?? '').trim() || 'Tag';
+    const id = String(o.id ?? o.Id ?? '').trim() || `tag-${i}-${name}`;
+    out.push({ id, name });
+  }
+  return out.length ? out : undefined;
+}
+
+function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ExpertCaseMedicalImageJson[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const imageUrl = String(o.imageUrl ?? o.ImageUrl ?? '');
+    if (!imageUrl.trim()) continue;
+    const modality = o.modality ?? o.Modality;
+    const annRaw = o.annotations ?? o.Annotations;
+    let annotations: ExpertCaseMedicalImageAnnotationJson[] | null = null;
+    if (Array.isArray(annRaw)) {
+      annotations = annRaw
+        .map((a) => {
+          if (!a || typeof a !== 'object') return null;
+          const ar = a as Record<string, unknown>;
+          const label = String(ar.label ?? ar.Label ?? '');
+          const coordinates = String(ar.coordinates ?? ar.Coordinates ?? '{}');
+          return { label, coordinates };
+        })
+        .filter((x): x is ExpertCaseMedicalImageAnnotationJson => x != null);
+    }
+    out.push({
+      imageUrl,
+      modality: modality != null ? String(modality) : undefined,
+      annotations,
+    });
+  }
+  return out.length ? out : undefined;
 }
 
 function mapCase(row: unknown): ExpertCase | null {
@@ -123,6 +203,22 @@ function mapCase(row: unknown): ExpertCase | null {
     record.categoryName ??
     'General';
 
+  const expertNameRaw = String(
+    item.expertName ?? record.expertName ?? record.ExpertName ?? record.addedBy ?? record.AddedBy ?? '',
+  ).trim();
+  const addedByDisplay = expertNameRaw || '—';
+
+  const boneRaw = String(
+    item.boneLocation ?? item.BoneLocation ?? record.boneLocation ?? record.BoneLocation ?? '',
+  ).trim();
+
+  const createdRaw = String(
+    item.createdAt ?? item.created_at ?? record.CreatedAt ?? record.createdAt ?? record.addedDate ?? '',
+  );
+
+  const medicalImages = mapMedicalImagesRaw(item.medicalImages ?? item.MedicalImages ?? record.medicalImages);
+  const tags = mapTags(item.tags ?? item.Tags ?? record.tags ?? record.Tags);
+
   return {
     id,
     createdByExpertId: String(
@@ -132,20 +228,21 @@ function mapCase(row: unknown): ExpertCase | null {
     title: String(item.title ?? item.caseTitle ?? record.title ?? record.Title ?? 'Untitled case'),
     categoryName: String(categoryNameRaw),
     difficulty: mapDifficulty(item.difficulty ?? record.caseDifficulty ?? record.difficulty ?? record.Difficulty),
-    status: mapStatus(
-      item.isApproved ?? item.approved ?? record.approved ?? record.IsApproved,
-      item.isActive ?? item.active ?? record.active ?? record.IsActive,
-    ),
+    status: mapCaseListStatus(item, record),
     isApproved: Boolean(item.isApproved ?? item.approved ?? record.isApproved ?? record.approved ?? record.IsApproved),
     isActive: Boolean(item.isActive ?? item.active ?? record.isActive ?? record.active ?? record.IsActive),
-    addedBy: String(item.expertName ?? record.addedBy ?? record.ExpertName ?? 'Unknown expert'),
-    addedDate: String(item.createdAt ?? item.created_at ?? record.CreatedAt ?? record.createdAt ?? ''),
+    addedBy: addedByDisplay,
+    expertName: addedByDisplay,
+    addedDate: createdRaw,
+    boneLocation: boneRaw || '—',
     description: String(item.description ?? ''),
     suggestedDiagnosis: String(item.suggestedDiagnosis ?? record.suggested_diagnosis ?? record.SuggestedDiagnosis ?? ''),
     reflectiveQuestions: String(
       item.reflectiveQuestions ?? record.reflective_questions ?? record.ReflectiveQuestions ?? '',
     ),
     keyFindings: String(item.keyFindings ?? record.key_findings ?? record.KeyFindings ?? ''),
+    medicalImages,
+    tags,
   };
 }
 
@@ -217,51 +314,144 @@ export interface SaveExpertCaseInput {
   keyFindings: string;
 }
 
-export async function createExpertCase(input: SaveExpertCaseInput): Promise<string | undefined> {
+/** Backend `CreateExpertMedicalCaseJsonRequest` — JSON POST /api/expert/cases (expert from JWT). */
+export interface ExpertCaseMedicalImageAnnotationJson {
+  label: string;
+  /** Normalized axis-aligned box JSON: `{"x","y","width","height"}` each 0–1 (same as Visual QA ROI). */
+  coordinates: string;
+}
+
+export interface ExpertCaseMedicalImageJson {
+  imageUrl: string;
+  modality?: string | null;
+  annotations?: ExpertCaseMedicalImageAnnotationJson[] | null;
+}
+
+export interface CreateExpertCaseJsonInput {
+  title: string;
+  description: string;
+  difficulty?: string | null;
+  categoryId?: string | null;
+  suggestedDiagnosis?: string | null;
+  reflectiveQuestions?: string | null;
+  keyFindings?: string | null;
+  tagIds?: string[] | null;
+  medicalImages?: ExpertCaseMedicalImageJson[] | null;
+}
+
+function parseCreatedCaseId(data: unknown): string | undefined {
+  if (data == null) return undefined;
+  if (typeof data === 'string' && data.trim()) return data.trim();
+  const row = data as Record<string, unknown>;
+  const nested = row.result as Record<string, unknown> | undefined;
+  const id =
+    row.caseId ??
+    row.CaseId ??
+    row.id ??
+    row.Id ??
+    nested?.id ??
+    nested?.Id ??
+    nested?.caseId ??
+    nested?.CaseId;
+  return id != null && String(id).trim() ? String(id) : undefined;
+}
+
+/** Creates a case via `application/json` (public image URLs + polygon coordinates). */
+export async function createExpertCase(input: CreateExpertCaseJsonInput): Promise<string | undefined> {
   try {
-    const { data } = await http.post<unknown>('/api/expert/cases', input);
-    const row = data as Record<string, unknown> | null | undefined;
-    const nested = row?.result as Record<string, unknown> | undefined;
-    const id =
-      row?.id ??
-      row?.Id ??
-      nested?.id ??
-      nested?.Id ??
-      (typeof data === 'string' ? data : undefined);
-    return id != null && String(id).trim() ? String(id) : undefined;
+    const { data } = await http.post<unknown>('/api/expert/cases', input, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return parseCreatedCaseId(data);
   } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchExpertCase(id: string): Promise<ExpertCase> {
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/cases/${id}`);
+    const row =
+      data && typeof data === 'object' && 'result' in data
+        ? (data as { result: unknown }).result
+        : data;
+    const mapped = mapCase(row);
+    if (!mapped) throw new Error('Case not found or invalid response.');
+    return mapped;
+  } catch (e) {
+    if (axios.isAxiosError(e)) throw e;
     throw new Error(getApiErrorMessage(e));
   }
 }
 
 export async function updateExpertCase(id: string, input: SaveExpertCaseInput): Promise<void> {
   try {
-    await http.put(`/api/expert/cases/${id}`, {
-      ...input,
-      id,
-      updatedAt: new Date().toISOString(),
+    const trimmedId = String(id).trim();
+    if (!trimmedId) throw new Error('Missing case id.');
+    /** Match `UpdateMedicalCaseDTORequest` — route is PUT `api/expert/cases/{id:guid}` (no duplicate id in path). */
+    const body = {
+      title: input.title,
+      description: input.description,
+      difficulty: input.difficulty,
+      categoryId: input.categoryId?.trim() || null,
+      suggestedDiagnosis: input.suggestedDiagnosis?.trim() || null,
+      reflectiveQuestions: input.reflectiveQuestions?.trim() || null,
+      keyFindings: input.keyFindings?.trim() || null,
+      isApproved: input.isApproved,
+      isActive: input.isActive,
+    };
+    await http.request({
+      method: 'PUT',
+      url: `/api/expert/cases/${encodeURIComponent(trimmedId)}`,
+      data: body,
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    throw new Error(getApiErrorMessage(e));
+    if (axios.isAxiosError(e)) throw e;
+    throw e instanceof Error ? e : new Error(getApiErrorMessage(e));
   }
 }
 
 export async function approveExpertCase(id: string): Promise<ExpertCase> {
   try {
     const { data } = await http.patch<unknown>(`/api/expert/cases/${id}`, { isApproved: true });
-    const mapped = mapCase(data);
+    const row =
+      data && typeof data === 'object' && 'result' in data
+        ? (data as { result: unknown }).result
+        : data;
+    const mapped = mapCase(row);
     if (!mapped) throw new Error('Invalid case response from server');
     return mapped;
   } catch (e) {
+    if (axios.isAxiosError(e)) throw e;
     throw new Error(getApiErrorMessage(e));
   }
 }
 
-export async function deleteExpertCase(id: string): Promise<void> {
+function messageFromDeleteResponse(data: unknown): string | undefined {
+  if (data == null) return undefined;
+  if (typeof data === 'string' && data.trim()) return data.trim();
+  if (typeof data !== 'object') return undefined;
+  const row = data as Record<string, unknown>;
+  const nested = row.result && typeof row.result === 'object' ? (row.result as Record<string, unknown>) : null;
+  for (const src of [row, nested].filter(Boolean) as Record<string, unknown>[]) {
+    for (const key of ['message', 'Message', 'detail', 'Detail', 'title', 'Title']) {
+      const v = src[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+  }
+  return undefined;
+}
+
+export async function deleteExpertCase(id: string): Promise<{ message?: string }> {
   try {
-    await http.delete(`/api/expert/cases/${id}`);
+    const trimmed = String(id).trim();
+    if (!trimmed) throw new Error('Missing case id.');
+    const { data } = await http.delete<unknown>(`/api/expert/cases/${encodeURIComponent(trimmed)}`);
+    return { message: messageFromDeleteResponse(data) };
   } catch (e) {
-    throw new Error(getApiErrorMessage(e));
+    if (axios.isAxiosError(e)) throw e;
+    throw e instanceof Error ? e : new Error(getApiErrorMessage(e));
   }
 }
 

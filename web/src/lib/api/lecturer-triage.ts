@@ -82,11 +82,21 @@ export async function approveAnswer(
 }
 
 export async function escalateToExpert(answerId: string): Promise<void> {
+  const id = encodeURIComponent(answerId);
   try {
-    await http.post(`/api/lecturer/triage/${answerId}/escalate`);
+    await http.post(`/api/lecturer/triage/${id}/escalate`);
+    return;
   } catch (e) {
     if (axios.isAxiosError(e) && e.response?.status === 409) {
       throw new Error(TRIAGE_ALREADY_ESCALATED);
+    }
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      try {
+        await http.put(`/api/lecturer/reviews/${id}/escalate`);
+        return;
+      } catch (e2) {
+        throw new Error(getApiErrorMessage(e2));
+      }
     }
     throw new Error(getApiErrorMessage(e));
   }

@@ -752,6 +752,7 @@ export interface StudentClassDetail {
   /** Clinical expert attached to this cohort when returned by the API. */
   expertName?: string | null;
   expertEmail?: string | null;
+  expertAvatarUrl?: string | null;
   enrolledAt?: string | null;
   /** Case assignments for this class (optional; depends on backend). */
   assignedCases?: Array<{
@@ -789,6 +790,22 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
   try {
     const { data } = await http.get<unknown>(`/api/students/classes/${classId}`);
     const item = data as Record<string, unknown>;
+    const expertRaw = item.expert ?? item.Expert;
+    const expertObj =
+      expertRaw && typeof expertRaw === 'object' ? (expertRaw as Record<string, unknown>) : null;
+    const expertAvatarFromNested = expertObj
+      ? pickStrAny(
+          expertObj,
+          'avatarUrl',
+          'AvatarUrl',
+          'photoUrl',
+          'PhotoUrl',
+          'imageUrl',
+          'ImageUrl',
+          'profileImageUrl',
+          'ProfileImageUrl',
+        )
+      : null;
     const quizRows = item.quizzes ?? item.Quizzes;
     const studentRows = item.students ?? item.Students;
     const announcementRows = item.announcements ?? item.Announcements;
@@ -817,6 +834,9 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
           : item.ExpertEmail != null
             ? String(item.ExpertEmail)
             : null,
+      expertAvatarUrl:
+        expertAvatarFromNested ??
+        pickStrAny(item, 'expertAvatarUrl', 'ExpertAvatarUrl', 'expertPhotoUrl', 'ExpertPhotoUrl'),
       enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
       assignedCases: cases.map((c) => ({
         caseId: String(c.caseId ?? c.CaseId ?? c.id ?? c.Id ?? ''),

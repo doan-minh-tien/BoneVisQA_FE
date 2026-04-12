@@ -2,7 +2,11 @@ import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import { normalizeVisualQaReport } from './normalize-visual-qa';
 import type { Citation, ExpertReviewItem, VisualQaReport } from './types';
-import { parseCustomPolygon, parsePercentageBoundingBox } from '@/lib/utils/annotations';
+import {
+  parseCustomPolygon,
+  parseNormalizedBoundingBox,
+  parsePercentageBoundingBox,
+} from '@/lib/utils/annotations';
 
 function mapExpertCitation(row: unknown): Citation | null {
   if (!row || typeof row !== 'object') return null;
@@ -53,9 +57,12 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
       r.questionCoordinates ??
       r.coordinates,
   );
-  const customPolygon = parseCustomPolygon(
-    r.customPolygon ?? r.CustomPolygon,
-  );
+  const polyRaw = r.customPolygon ?? r.CustomPolygon;
+  const dedicatedBoxRaw =
+    r.customBoundingBox ?? r.CustomBoundingBox ?? r.normalizedBoundingBox ?? r.NormalizedBoundingBox;
+  const customBoundingBox =
+    parseNormalizedBoundingBox(dedicatedBoxRaw) ?? parseNormalizedBoundingBox(polyRaw);
+  const customPolygon = customBoundingBox ? null : parseCustomPolygon(polyRaw);
   const citationSource = Array.isArray(r.citations)
     ? r.citations
     : Array.isArray(r.evidence)
@@ -77,6 +84,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     question: questionText,
     imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
     customCoordinates,
+    customBoundingBox,
     customPolygon,
     askedAt: String(r.askedAt ?? ''),
     status: String(r.status ?? 'PendingExpert'),
@@ -132,10 +140,18 @@ export interface ExpertReviewUpdatePayload {
   reflectiveQuestions?: string | null;
 }
 
+/**
+ * BE `ResolveEscalatedAnswerRequestDto.DifferentialDiagnoses` is `JsonElement?`.
+ * Sending a JSON array inline can bind inconsistently; a stringified array parses reliably,
+ * then `NormalizeDifferentialDiagnosesForStorage` handles String vs Array.
+ */
 const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => ({
   answerText: payload.answerText,
   structuredDiagnosis: payload.structuredDiagnosis,
-  differentialDiagnoses: payload.differentialDiagnoses,
+  differentialDiagnoses:
+    payload.differentialDiagnoses.length > 0
+      ? JSON.stringify(payload.differentialDiagnoses)
+      : null,
   reviewNote: payload.reviewNote,
   keyImagingFindings: payload.keyImagingFindings ?? null,
   reflectiveQuestions: payload.reflectiveQuestions ?? null,
