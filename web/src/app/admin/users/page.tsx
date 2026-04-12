@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import Header from "@/components/Header";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import Header from '@/components/Header';
 import {
   UiUser,
   UserManagementTable,
@@ -29,6 +30,7 @@ import {
   toggleAdminUserStatus,
   updateAdminUser,
   type CreateUserPayload,
+  type UserClassInfo,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
 import { ChevronDown, Filter, Plus, Search, Users } from 'lucide-react';
@@ -67,9 +69,11 @@ function normalizeUser(user: AdminUser): UiUser {
 
 export default function AdminUsersPage() {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const [users, setUsers] = useState<UiUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [classListByUser, setClassListByUser] = useState<
+    Record<string, NonNullable<UiUser['classList']>>
+  >({});
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<RoleTab>('All');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
@@ -85,20 +89,28 @@ export default function AdminUsersPage() {
   const [manageClassesTarget, setManageClassesTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
+  const {
+    data: adminUsersRaw,
+    isPending: loading,
+    error: usersError,
+  } = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: fetchAdminUsers,
+  });
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchAdminUsers();
-        if (!cancelled) setUsers(data.map(normalizeUser));
-      } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load users.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [toast]);
+    if (usersError) {
+      toast.error(usersError instanceof Error ? usersError.message : 'Failed to load users.');
+    }
+  }, [usersError, toast]);
+
+  const users = useMemo(() => {
+    return (adminUsersRaw ?? []).map((u) => {
+      const base = normalizeUser(u);
+      const cl = classListByUser[u.id];
+      return cl ? { ...base, classList: cl } : base;
+    });
+  }, [adminUsersRaw, classListByUser]);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -140,15 +152,9 @@ export default function AdminUsersPage() {
     try {
       const nextIsActive = statusTarget.status !== 'Active';
       await toggleAdminUserStatus(statusTarget.id, nextIsActive);
-      setUsers((prev) =>
-        prev.map((user) =>
-          user.id === statusTarget.id
-            ? { ...user, status: nextIsActive ? 'Active' : 'Inactive' }
-            : user,
-        ),
-      );
       toast.success(`User ${nextIsActive ? 'activated' : 'deactivated'} successfully.`);
       setStatusTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update user status.');
     } finally {
@@ -160,15 +166,9 @@ export default function AdminUsersPage() {
     setSubmitting(true);
     try {
       await assignAdminUserRole(user.id, selectedRole);
-      setUsers((prev) =>
-        prev.map((item) =>
-          item.id === user.id
-            ? { ...item, role: selectedRole, status: 'Active' as const }
-            : item,
-        ),
-      );
       toast.success(`Role set to ${selectedRole} for ${user.name}.`);
       setAssignRoleDialog(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to assign role.');
     } finally {
@@ -182,10 +182,10 @@ export default function AdminUsersPage() {
       await createAdminUser(payload);
       toast.success(`User "${payload.fullName}" created successfully.`);
       setCreateOpen(false);
-      const data = await fetchAdminUsers();
-      setUsers(data.map(normalizeUser));
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create user.');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -194,13 +194,9 @@ export default function AdminUsersPage() {
     setSubmitting(true);
     try {
       await updateAdminUser(userId, { fullName, schoolCohort: cohort });
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId ? { ...u, name: fullName, className: cohort } : u,
-        ),
-      );
       toast.success('User details updated successfully.');
       setEditTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update user.');
     } finally {
@@ -211,25 +207,28 @@ export default function AdminUsersPage() {
   const handleDeleteUser = async (userId: string) => {
     try {
       await deleteAdminUser(userId);
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
       toast.success('User deleted successfully.');
       setDeleteTarget(null);
+      setClassListByUser((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete user.');
     }
   };
 
-  const handleManageClassesUpdated = (
-    userId: string,
-    updatedClasses: Array<{ id: string; className: string; relationType: string }>,
-  ) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? { ...u, classList: updatedClasses }
-          : u,
-      ),
-    );
+  const handleManageClassesUpdated = (userId: string, updatedClasses: UserClassInfo[]) => {
+    setClassListByUser((prev) => ({
+      ...prev,
+      [userId]: updatedClasses.map((c) => ({
+        id: c.id,
+        className: c.className,
+        relationType: c.relationType,
+      })),
+    }));
   };
 
   return (
@@ -241,7 +240,7 @@ export default function AdminUsersPage() {
 
       <div className="mx-auto max-w-[1600px] space-y-8 p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-muted/40 p-1 shadow-inner">
             <TabButton
               label="All"
               count={users.length}
@@ -316,7 +315,7 @@ export default function AdminUsersPage() {
           {loading ? (
             <UserManagementTableSkeleton />
           ) : filtered.length === 0 ? (
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <tbody>
                 <TableEmptyState
                   icon={Users}
@@ -342,7 +341,10 @@ export default function AdminUsersPage() {
 
       {createOpen ? (
         <CreateUserDialog
-          onCancel={() => { setCreateOpen(false); setSubmitting(false); }}
+          onCancel={() => {
+            setCreateOpen(false);
+            setSubmitting(false);
+          }}
           onConfirm={handleCreateUser}
         />
       ) : null}
@@ -352,7 +354,10 @@ export default function AdminUsersPage() {
           userId={editTarget.id}
           initialFullName={editTarget.name}
           initialCohort={editTarget.className}
-          onCancel={() => { setEditTarget(null); setSubmitting(false); }}
+          onCancel={() => {
+            setEditTarget(null);
+            setSubmitting(false);
+          }}
           onConfirm={handleEditUser}
         />
       ) : null}
@@ -413,22 +418,22 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+      className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-all ${
         active
           ? highlight
-            ? 'bg-primary text-primary-foreground shadow-md'
-            : 'bg-foreground text-background shadow-md'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20'
+            : 'bg-background text-foreground shadow-sm ring-1 ring-border'
+          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
       }`}
     >
       <span>{label}</span>
       <span
-        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+        className={`min-w-[1.25rem] rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
           active
             ? highlight
-              ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'bg-background/20 text-background'
-            : 'bg-muted text-muted-foreground'
+              ? 'bg-primary-foreground/15 text-primary-foreground'
+              : 'bg-muted/80 text-muted-foreground'
+            : 'bg-background/80 text-muted-foreground'
         }`}
       >
         {count}

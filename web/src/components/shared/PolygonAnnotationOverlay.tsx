@@ -5,6 +5,17 @@ import type { NormalizedPolygonPoint } from '@/lib/api/types';
 /**
  * Renders student / expert ROI as an SVG overlay in normalized image coordinates (0–1).
  */
+function sanitizeRing(pts: NormalizedPolygonPoint[] | null | undefined): NormalizedPolygonPoint[] {
+  if (!pts || !Array.isArray(pts)) return [];
+  return pts.filter(
+    (p) =>
+      p &&
+      typeof p === 'object' &&
+      Number.isFinite(p.x) &&
+      Number.isFinite(p.y),
+  );
+}
+
 export function PolygonAnnotationOverlay({
   closed,
   draft,
@@ -18,8 +29,11 @@ export function PolygonAnnotationOverlay({
 }) {
   const ptsAttr = (pts: NormalizedPolygonPoint[]) => pts.map((p) => `${p.x},${p.y}`).join(' ');
 
-  const showDraft = draft.length > 0;
-  const showClosed = closed && closed.length >= 3;
+  const closedClean = sanitizeRing(closed);
+  const draftClean = sanitizeRing(draft);
+
+  const showDraft = draftClean.length > 0;
+  const showClosed = closedClean.length >= 3;
 
   if (!showDraft && !showClosed) return null;
 
@@ -33,7 +47,7 @@ export function PolygonAnnotationOverlay({
     >
       {showClosed ? (
         <polygon
-          points={ptsAttr(closed!)}
+          points={ptsAttr(closedClean)}
           fill="rgba(239, 68, 68, 0.2)"
           stroke="rgb(239, 68, 68)"
           strokeWidth={0.004}
@@ -43,9 +57,9 @@ export function PolygonAnnotationOverlay({
       ) : null}
       {showDraft ? (
         <>
-          {draft.length >= 2 ? (
+          {draftClean.length >= 2 ? (
             <polyline
-              points={ptsAttr(draft)}
+              points={ptsAttr(draftClean)}
               fill="none"
               stroke="rgb(239, 68, 68)"
               strokeWidth={0.003}
@@ -53,7 +67,7 @@ export function PolygonAnnotationOverlay({
               strokeLinecap="round"
             />
           ) : null}
-          {draft.map((p, i) => (
+          {draftClean.map((p, i) => (
             <circle
               key={`${p.x}-${p.y}-${i}`}
               cx={p.x}

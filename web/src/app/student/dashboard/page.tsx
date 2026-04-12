@@ -332,7 +332,7 @@ export default function StudentDashboardPage() {
                       Shortcuts to live workflows backed by the BoneVisQA API.
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]">
                     {quickActions.map((action) => (
                       <QuickActionCard key={action.title} {...action} />
                     ))}

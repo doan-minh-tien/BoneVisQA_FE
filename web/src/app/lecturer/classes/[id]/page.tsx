@@ -14,7 +14,7 @@ import {
   Megaphone,
   Plus,
   ShieldAlert,
-  UserPlus,
+  Stethoscope,
   Users,
 } from 'lucide-react';
 import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
@@ -31,15 +31,12 @@ import {
   ForbiddenApiError,
   assignCasesToLecturerClass,
   assignQuizToLecturerClass,
-  enrollStudentsMany,
   fetchAssignedCases,
   fetchAssignedQuizzes,
-  fetchAvailableStudents,
   fetchClassStudents,
   fetchLecturerCaseLibrary,
   fetchLecturerClassById,
   fetchLecturerQuizLibrary,
-  removeStudentFromClass,
 } from '@/lib/api/lecturer-classes';
 
 type DetailTab = 'students' | 'cases' | 'quizzes' | 'announcements';
@@ -71,11 +68,6 @@ export default function LecturerClassDetailPage({
   const [assignedQuizzes, setAssignedQuizzes] = useState<QuizDto[]>([]);
   const [classAnnouncements, setClassAnnouncements] = useState<Announcement[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
-
-  const [enrollModalOpen, setEnrollModalOpen] = useState(false);
-  const [availableStudents, setAvailableStudents] = useState<StudentEnrollment[]>([]);
-  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
-  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
 
   const [assignCasesOpen, setAssignCasesOpen] = useState(false);
   const [caseLibrary, setCaseLibrary] = useState<CaseDto[]>([]);
@@ -140,44 +132,6 @@ export default function LecturerClassDetailPage({
     () => quizLibrary.filter((item) => !assignedQuizzes.some((assigned) => assigned.id === item.id)),
     [assignedQuizzes, quizLibrary],
   );
-
-  const onOpenEnrollModal = async () => {
-    setEnrollModalOpen(true);
-    try {
-      const data = await fetchAvailableStudents(classId);
-      setAvailableStudents(data);
-      setSelectedStudentIds(new Set());
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load available students.');
-    }
-  };
-
-  const onEnrollMany = async () => {
-    if (selectedStudentIds.size === 0) return;
-    setEnrollSubmitting(true);
-    try {
-      const ids = Array.from(selectedStudentIds);
-      await enrollStudentsMany(classId, ids);
-      const newlyEnrolled = availableStudents.filter((student) => ids.includes(student.studentId));
-      setStudents((prev) => [...prev, ...newlyEnrolled]);
-      setEnrollModalOpen(false);
-      toast.success('Students enrolled successfully.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Enrollment failed.');
-    } finally {
-      setEnrollSubmitting(false);
-    }
-  };
-
-  const onRemoveStudent = async (studentId: string) => {
-    try {
-      await removeStudentFromClass(classId, studentId);
-      setStudents((prev) => prev.filter((item) => item.studentId !== studentId));
-      toast.success('Student removed from class.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove student.');
-    }
-  };
 
   const onOpenAssignCases = async () => {
     setAssignCasesOpen(true);
@@ -253,7 +207,11 @@ export default function LecturerClassDetailPage({
     <div className="min-h-screen bg-background text-foreground">
       <Header
         title={displayTitle}
-        subtitle={classInfo ? `Semester ${classInfo.semester}` : 'Manage students, cases, and quizzes.'}
+        subtitle={
+          classInfo
+            ? `Semester ${classInfo.semester} — assign cases and quizzes; roster changes are admin-only.`
+            : 'Class workbench'
+        }
       />
 
       <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6">
@@ -331,6 +289,17 @@ export default function LecturerClassDetailPage({
                     </div>
                     <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-primary">
+                        <Stethoscope className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Assigned expert</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {classInfo.expertName?.trim() || '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-primary">
                         <Calendar className="h-5 w-5" aria-hidden />
                       </div>
                       <div>
@@ -387,37 +356,26 @@ export default function LecturerClassDetailPage({
 
             {activeTab === 'students' ? (
               <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Class roster</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Learners enrolled in this cohort.</p>
-                  </div>
-                  <Button onClick={onOpenEnrollModal}>
-                    <UserPlus className="h-4 w-4" />
-                    Enroll Students
-                  </Button>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-foreground">Class roster</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Learners enrolled in this cohort. Adding or removing students is handled by an administrator.
+                  </p>
                 </div>
                 {students.length === 0 ? (
                   <EmptyState
                     icon={<Users className="h-7 w-7 opacity-90" />}
                     title="No enrolled students yet"
-                    description="Invite learners from your roster or add them to get started with assignments and quizzes."
-                    action={
-                      <Button type="button" onClick={onOpenEnrollModal}>
-                        <UserPlus className="h-4 w-4" />
-                        Enroll students
-                      </Button>
-                    }
+                    description="When an administrator enrolls students in this class, they will appear here."
                   />
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border">
-                    <table className="w-full min-w-[640px]">
+                    <table className="w-full min-w-[520px]">
                       <thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                         <tr>
                           <th className="px-4 py-3">Student</th>
                           <th className="px-4 py-3">Code</th>
                           <th className="px-4 py-3">Email</th>
-                          <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -438,11 +396,6 @@ export default function LecturerClassDetailPage({
                             </td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentCode || '—'}</td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentEmail || '—'}</td>
-                            <td className="px-4 py-3 text-right">
-                              <Button variant="outline" size="sm" onClick={() => onRemoveStudent(student.studentId)}>
-                                Remove
-                              </Button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -603,56 +556,6 @@ export default function LecturerClassDetailPage({
           </div>
         )}
       </div>
-
-      <Modal
-        open={enrollModalOpen}
-        onClose={() => !enrollSubmitting && setEnrollModalOpen(false)}
-        title="Enroll Students"
-        size="lg"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setEnrollModalOpen(false)} disabled={enrollSubmitting}>
-              Cancel
-            </Button>
-            <Button onClick={onEnrollMany} isLoading={enrollSubmitting} disabled={selectedStudentIds.size === 0}>
-              Enroll Selected
-            </Button>
-          </div>
-        }
-      >
-        {availableStudents.length === 0 ? (
-          <EmptyState title="No available students" description="All students may already be enrolled." />
-        ) : (
-          <div className="space-y-2">
-            {availableStudents.map((student) => {
-              const checked = selectedStudentIds.has(student.studentId);
-              return (
-                <label
-                  key={student.studentId}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-background p-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() =>
-                      setSelectedStudentIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(student.studentId)) next.delete(student.studentId);
-                        else next.add(student.studentId);
-                        return next;
-                      })
-                    }
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-card-foreground">{student.studentName || 'Unknown student'}</p>
-                    <p className="text-xs text-muted-foreground">{student.studentEmail || 'No email'}</p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
 
       <Modal
         open={assignCasesOpen}

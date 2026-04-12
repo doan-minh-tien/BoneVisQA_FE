@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { Loader2 } from 'lucide-react';
 import {
@@ -15,6 +15,13 @@ import {
   type ExpertAnnotationDto,
 } from '@/lib/api/expert-cases';
 import { getPublicApiOrigin } from '@/lib/api/client';
+import type { NormalizedImageBoundingBox } from '@/lib/api/types';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
+import {
+  cornersNormalizedToBox,
+  cornersNormalizedToDraftBox,
+  serializeNormalizedBoundingBox,
+} from '@/lib/utils/annotations';
 
 interface CaseAssetsDialogProps {
   caseId: string;
@@ -36,8 +43,11 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
   // ── Annotation form ───────────────────────────────────────────────────────
   const [annotImageId, setAnnotImageId] = useState('');
   const [label, setLabel] = useState('');
-  const [coordinates, setCoordinates] = useState('[]');
-  const [polyPoints, setPolyPoints] = useState<{ x: number; y: number }[]>([]);
+  const [coordinates, setCoordinates] = useState('');
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawEnd, setDrawEnd] = useState<{ x: number; y: number } | null>(null);
+  const [committedBox, setCommittedBox] = useState<NormalizedImageBoundingBox | null>(null);
+  const drawLayerRef = useRef<HTMLDivElement | null>(null);
 
   // ── Tag form ──────────────────────────────────────────────────────────────
   const [tagId, setTagId] = useState('');
@@ -139,6 +149,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
   const handleAddAnnotation = async () => {
     if (!annotImageId) return toast.error('Please select an image');
     if (!label) return toast.error('Please provide a label');
+    if (!coordinates.trim()) return toast.error('Click and drag on the image to draw a rectangle ROI');
     setIsMutating(true);
     try {
       await createExpertAnnotation({
@@ -148,8 +159,10 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
       });
       toast.success('Annotation added successfully!');
       setLabel('');
-      setCoordinates('[]');
-      setPolyPoints([]);
+      setCoordinates('');
+      setDrawStart(null);
+      setDrawEnd(null);
+      setCommittedBox(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to add annotation');
     } finally {
@@ -174,14 +187,49 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
     }
   };
 
-  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Number(((e.clientX - rect.left) / rect.width).toFixed(4));
-    const y = Number(((e.clientY - rect.top) / rect.height).toFixed(4));
-    const newPoints = [...polyPoints, { x, y }];
-    setPolyPoints(newPoints);
-    setCoordinates(JSON.stringify(newPoints));
+  const normFromClient = (clientX: number, clientY: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const lx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const ly = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+    return { x: lx / rect.width, y: ly / rect.height };
   };
+
+  const handleDrawMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = drawLayerRef.current;
+    if (!el) return;
+    e.preventDefault();
+    const startPt = normFromClient(e.clientX, e.clientY, el);
+    if (!startPt) return;
+    setCommittedBox(null);
+    setCoordinates('');
+    setDrawStart(startPt);
+    setDrawEnd(startPt);
+
+    const onMove = (ev: MouseEvent) => {
+      const p = normFromClient(ev.clientX, ev.clientY, el);
+      if (p) setDrawEnd(p);
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const end = normFromClient(ev.clientX, ev.clientY, el) ?? startPt;
+      setDrawStart(null);
+      setDrawEnd(null);
+      const box = cornersNormalizedToBox(startPt, end);
+      if (box) {
+        setCommittedBox(box);
+        const s = serializeNormalizedBoundingBox(box);
+        if (s) setCoordinates(s);
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const draftBox = drawStart && drawEnd ? cornersNormalizedToDraftBox(drawStart, drawEnd) : null;
 
   const title = effectiveMode === 'tags' ? 'Manage Tags' : 'Image & Annotation';
 
@@ -303,8 +351,10 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
                       value={annotImageId}
                       onChange={(e) => {
                         setAnnotImageId(e.target.value);
-                        setPolyPoints([]);
-                        setCoordinates('[]');
+                        setDrawStart(null);
+                        setDrawEnd(null);
+                        setCommittedBox(null);
+                        setCoordinates('');
                       }}
                       className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none appearance-none cursor-pointer"
                     >
@@ -330,55 +380,46 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
                   {/* Coordinates display */}
                   <input
                     type="text"
-                    placeholder="Coordinates (JSON)"
+                    placeholder='Coordinates JSON e.g. {"x":0.1,"y":0.2,"width":0.3,"height":0.4}'
                     value={coordinates}
                     readOnly
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none font-mono text-[10px] mb-3"
+                    className="mb-3 w-full rounded-lg border border-border bg-input px-3 py-2 font-mono text-[10px] focus:outline-none"
                   />
 
                   {/* Image drawing area */}
                   {resolvedImageUrl ? (
                     <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-muted-foreground">Click on the image to draw a polygon selection</span>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          Click and drag on the image to draw a rectangle ROI (normalized coordinates)
+                        </span>
                         <button
-                          disabled={isMutating || polyPoints.length === 0}
+                          type="button"
+                          disabled={isMutating || (!committedBox && !draftBox)}
                           onClick={() => {
-                            setPolyPoints([]);
-                            setCoordinates('[]');
+                            setDrawStart(null);
+                            setDrawEnd(null);
+                            setCommittedBox(null);
+                            setCoordinates('');
                           }}
-                          className="px-2 py-1 text-xs rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                          className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
                         >
-                          Clear Points
+                          Clear ROI
                         </button>
                       </div>
                       <div
-                        className="relative rounded-lg overflow-hidden border border-border cursor-crosshair bg-muted/40 shadow-inner select-none"
-                        onClick={handleImageClick}
+                        ref={drawLayerRef}
+                        role="presentation"
+                        className="relative cursor-crosshair select-none overflow-hidden rounded-lg border border-border bg-muted/40 shadow-inner"
+                        onMouseDown={handleDrawMouseDown}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolvedImageUrl} alt="Annotation target" className="w-full h-auto block pointer-events-none" />
-
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                          {polyPoints.length > 0 && (
-                            <polygon
-                              points={polyPoints.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
-                              fill="color-mix(in srgb, var(--primary) 25%, transparent)"
-                              stroke="var(--primary)"
-                              strokeWidth="0.5"
-                              vectorEffect="non-scaling-stroke"
-                              strokeDasharray={polyPoints.length >= 3 ? 'none' : '2,2'}
-                            />
-                          )}
-                        </svg>
-
-                        {polyPoints.map((p, i) => (
-                          <div
-                            key={i}
-                            className="absolute w-2 h-2 bg-primary border border-background rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none shadow"
-                            style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
-                          />
-                        ))}
+                        <img
+                          src={resolvedImageUrl}
+                          alt="Annotation target"
+                          className="pointer-events-none block h-auto w-full"
+                        />
+                        <RectangleAnnotationOverlay closed={committedBox} draft={draftBox} label="ROI" />
                       </div>
                     </div>
                   ) : (
@@ -388,7 +429,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
                   )}
 
                   <button
-                    disabled={isMutating || !annotImageId || !label}
+                    disabled={isMutating || !annotImageId || !label || !coordinates.trim()}
                     onClick={handleAddAnnotation}
                     className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
                   >

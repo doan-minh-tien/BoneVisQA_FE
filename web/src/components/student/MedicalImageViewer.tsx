@@ -1,68 +1,58 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eraser, Hand, Pencil, RefreshCcw, ScanSearch, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
-import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
+import { Eraser, Hand, RefreshCcw, ScanSearch, Square, ZoomIn, ZoomOut } from 'lucide-react';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { Button } from '@/components/ui/button';
-import type { NormalizedPolygonPoint } from '@/lib/api/types';
-import { isValidPolygon } from '@/lib/utils/annotations';
+import type { NormalizedImageBoundingBox } from '@/lib/api/types';
+import {
+  cornersNormalizedToBox,
+  cornersNormalizedToDraftBox,
+  isValidNormalizedBoundingBox,
+} from '@/lib/utils/annotations';
 
 const MIN = 0.5;
 const MAX = 4;
-const SNAP_TO_CLOSE_PX = 14;
-
-function clamp01(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(1, Math.max(0, n));
-}
-
-function nearFirstVertex(
-  first: NormalizedPolygonPoint,
-  p: NormalizedPolygonPoint,
-  imgWidth: number,
-  imgHeight: number,
-): boolean {
-  const dx = (p.x - first.x) * imgWidth;
-  const dy = (p.y - first.y) * imgHeight;
-  return Math.hypot(dx, dy) < SNAP_TO_CLOSE_PX;
-}
 
 export function MedicalImageViewer({
   src,
   alt,
-  initialPolygon,
+  initialAnnotation,
   onAnnotationComplete,
 }: {
   src: string | null;
   alt: string;
-  /** Restored draft polygon from persistence (normalized 0–1 vertices). */
-  initialPolygon?: NormalizedPolygonPoint[] | null;
-  onAnnotationComplete?: (polygon: NormalizedPolygonPoint[] | null) => void;
+  /** Restored draft ROI (normalized bounding box). */
+  initialAnnotation?: NormalizedImageBoundingBox | null;
+  onAnnotationComplete?: (box: NormalizedImageBoundingBox | null) => void;
 }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isDrawMode, setIsDrawMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [draftPoints, setDraftPoints] = useState<NormalizedPolygonPoint[]>([]);
-  const [closedPolygon, setClosedPolygon] = useState<NormalizedPolygonPoint[] | null>(() =>
-    initialPolygon && isValidPolygon(initialPolygon) ? initialPolygon : null,
+  const [closedBox, setClosedBox] = useState<NormalizedImageBoundingBox | null>(() =>
+    initialAnnotation && isValidNormalizedBoundingBox(initialAnnotation) ? initialAnnotation : null,
   );
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
   const drag = useRef(false);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  const draftRef = useRef<NormalizedPolygonPoint[]>([]);
-  const closedRef = useRef<NormalizedPolygonPoint[] | null>(null);
-  useEffect(() => {
-    draftRef.current = draftPoints;
-  }, [draftPoints]);
 
   useEffect(() => {
-    closedRef.current = closedPolygon;
-  }, [closedPolygon]);
+    if (initialAnnotation === undefined) return;
+    if (initialAnnotation === null) {
+      setClosedBox(null);
+      return;
+    }
+    if (isValidNormalizedBoundingBox(initialAnnotation)) {
+      setClosedBox(initialAnnotation);
+    }
+  }, [initialAnnotation]);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -90,26 +80,15 @@ export function MedicalImageViewer({
     return { x: lx / rect.width, y: ly / rect.height };
   }, []);
 
-  const finalizePolygon = useCallback(
-    (pts: NormalizedPolygonPoint[]) => {
-      const normalized = pts.map((p) => ({ x: clamp01(p.x), y: clamp01(p.y) }));
-      if (!isValidPolygon(normalized)) return;
-      setClosedPolygon(normalized);
-      setDraftPoints([]);
-      onAnnotationComplete?.(normalized);
-    },
-    [onAnnotationComplete],
-  );
+  const draftBox =
+    drawStart && drawCurrent ? cornersNormalizedToDraftBox(drawStart, drawCurrent) : null;
 
   const clearAnnotation = useCallback(() => {
-    setDraftPoints([]);
-    setClosedPolygon(null);
+    setClosedBox(null);
+    setDrawStart(null);
+    setDrawCurrent(null);
     onAnnotationComplete?.(null);
   }, [onAnnotationComplete]);
-
-  const undoLastVertex = useCallback(() => {
-    setDraftPoints((prev) => prev.slice(0, -1));
-  }, []);
 
   const resetView = useCallback(() => {
     setScale(1);
@@ -118,57 +97,42 @@ export function MedicalImageViewer({
     clearAnnotation();
   }, [clearAnnotation]);
 
-  const handleImageClick = useCallback(
+  const handleDrawMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (!isDrawMode) return;
+      e.preventDefault();
       e.stopPropagation();
-      if (e.detail === 2) {
-        const d = draftRef.current;
-        if (d.length >= 3) {
-          finalizePolygon(d);
+      const startPt = getNormalizedPoint(e.clientX, e.clientY);
+      if (!startPt) return;
+      if (closedBox) {
+        clearAnnotation();
+      }
+      setDrawStart(startPt);
+      setDrawCurrent(startPt);
+
+      const onMove = (ev: MouseEvent) => {
+        const q = getNormalizedPoint(ev.clientX, ev.clientY);
+        if (q) setDrawCurrent(q);
+      };
+
+      const onUp = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        const end = getNormalizedPoint(ev.clientX, ev.clientY) ?? startPt;
+        setDrawStart(null);
+        setDrawCurrent(null);
+        const box = cornersNormalizedToBox(startPt, end);
+        if (box) {
+          setClosedBox(box);
+          onAnnotationComplete?.(box);
         }
-        return;
-      }
-      const p = getNormalizedPoint(e.clientX, e.clientY);
-      if (!p) return;
+      };
 
-      const rect = imgRef.current?.getBoundingClientRect();
-      const w = rect?.width ?? 1;
-      const h = rect?.height ?? 1;
-      const currentDraft = draftRef.current;
-      const hasClosed = closedRef.current;
-
-      if (hasClosed) {
-        setClosedPolygon(null);
-        onAnnotationComplete?.(null);
-        setDraftPoints([p]);
-        return;
-      }
-
-      if (currentDraft.length >= 3 && nearFirstVertex(currentDraft[0], p, w, h)) {
-        finalizePolygon(currentDraft);
-        return;
-      }
-
-      setDraftPoints((prev) => {
-        if (prev.length > 0) {
-          const last = prev[prev.length - 1];
-          const dx = (p.x - last.x) * w;
-          const dy = (p.y - last.y) * h;
-          if (Math.hypot(dx, dy) < 4) return prev;
-        }
-        return [...prev, p];
-      });
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
     },
-    [finalizePolygon, getNormalizedPoint, isDrawMode, onAnnotationComplete],
+    [clearAnnotation, closedBox, getNormalizedPoint, isDrawMode, onAnnotationComplete],
   );
-
-  const handleEndDraw = useCallback(() => {
-    const d = draftRef.current;
-    if (d.length >= 3) {
-      finalizePolygon(d);
-    }
-  }, [finalizePolygon]);
 
   if (!src) {
     return (
@@ -188,7 +152,7 @@ export function MedicalImageViewer({
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden bg-black"
-        style={{ cursor: isDrawMode ? 'default' : undefined }}
+        style={{ cursor: isDrawMode ? undefined : undefined }}
       >
         <div
           className={`relative flex h-full w-full items-center justify-center p-4 ${
@@ -240,17 +204,13 @@ export function MedicalImageViewer({
                 });
               }}
             />
-            <PolygonAnnotationOverlay
-              closed={closedPolygon}
-              draft={draftPoints}
-              label="LESION ROI"
-            />
+            <RectangleAnnotationOverlay closed={closedBox} draft={draftBox} label="LESION ROI" />
             {isDrawMode ? (
               <div
                 role="presentation"
                 className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
                 aria-hidden
-                onClick={handleImageClick}
+                onMouseDown={handleDrawMouseDown}
               />
             ) : null}
           </div>
@@ -292,42 +252,21 @@ export function MedicalImageViewer({
             type="button"
             variant="ghost"
             className={`!rounded-full !px-2.5 !py-2 ${isDrawMode ? 'bg-cyan-accent/10 text-cyan-accent' : 'text-text-main'}`}
-            aria-label="Polygon annotate"
+            aria-label="Draw rectangle ROI"
             onClick={() => setIsDrawMode(true)}
           >
-            <Pencil className="h-4 w-4" />
+            <Square className="h-4 w-4" />
           </Button>
           {isDrawMode ? (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                className="!rounded-full !px-2.5 !py-2 text-text-main disabled:opacity-40"
-                aria-label="Undo last vertex"
-                disabled={draftPoints.length === 0}
-                onClick={undoLastVertex}
-              >
-                <Undo2 className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="!rounded-full !px-2.5 !py-2 text-amber-200/90"
-                aria-label="Clear annotation"
-                onClick={clearAnnotation}
-              >
-                <Eraser className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="!rounded-full !px-2.5 !py-2 text-xs font-semibold text-red-300"
-                disabled={draftPoints.length < 3}
-                onClick={handleEndDraw}
-              >
-                End draw
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="ghost"
+              className="!rounded-full !px-2.5 !py-2 text-amber-200/90"
+              aria-label="Clear annotation"
+              onClick={clearAnnotation}
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
           ) : null}
           <Button
             type="button"
@@ -341,8 +280,8 @@ export function MedicalImageViewer({
         </div>
       </div>
       <p className="border-t border-border-color bg-black px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Scroll to zoom · Polygon: click vertices, double-click or End draw to close, or click near the first point ·
-        Educational preview only
+        Scroll to zoom · Rectangle ROI: select square tool, click-drag on the image, release to commit (normalized x,
+        y, width, height) · Educational preview only
       </p>
     </div>
   );

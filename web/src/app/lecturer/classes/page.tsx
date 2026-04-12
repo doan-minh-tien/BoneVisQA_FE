@@ -2,34 +2,20 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Calendar, Plus, Search, ShieldAlert, Users } from 'lucide-react';
+import { BookOpen, Calendar, Search, ShieldAlert, Users } from 'lucide-react';
 import Header from '@/components/Header';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
-import { useToast } from '@/components/ui/toast';
 import { EmptyState } from '@/components/shared/EmptyState';
 import type { ClassItem } from '@/lib/api/types';
-import {
-  ForbiddenApiError,
-  createLecturerClass,
-  fetchLecturerClasses,
-} from '@/lib/api/lecturer-classes';
+import { ForbiddenApiError, fetchLecturerClasses } from '@/lib/api/lecturer-classes';
 
 export default function LecturerClassesPage() {
-  const toast = useToast();
   const [items, setItems] = useState<ClassItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('all');
   const [error, setError] = useState('');
   const [isForbidden, setIsForbidden] = useState(false);
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [className, setClassName] = useState('');
-  const [semester, setSemester] = useState('');
-  const [expertId, setExpertId] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -66,39 +52,15 @@ export default function LecturerClassesPage() {
     [items, search, semesterFilter],
   );
 
-  const onCreateClass = async () => {
-    if (!className.trim() || !semester.trim()) {
-      toast.error('Class name and semester are required.');
-      return;
-    }
-    setIsCreating(true);
-    try {
-      const created = await createLecturerClass({
-        className: className.trim(),
-        semester: semester.trim(),
-        expertId: expertId.trim() || undefined,
-      });
-      setItems((prev) => [created, ...prev]);
-      setCreateOpen(false);
-      setClassName('');
-      setSemester('');
-      setExpertId('');
-      toast.success('Class created successfully.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create class.');
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header title="Class Management" subtitle="Manage classes, enrollment, and class-level assignments." />
+      <Header
+        title="Your classes"
+        subtitle="View assigned classes and open the workbench to assign cases, quizzes, and announcements."
+      />
 
       <section className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 pb-16 sm:px-6">
-        <div
-          className="grid grid-cols-1 gap-4 md:grid-cols-3 animate-in fade-in slide-in-from-bottom-2 duration-300"
-        >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
             <p className="text-sm text-muted-foreground">Total classes</p>
             <p className="mt-2 font-['Manrope',sans-serif] text-2xl font-bold tracking-tight text-card-foreground">
@@ -144,10 +106,6 @@ export default function LecturerClassesPage() {
                 ))}
               </select>
             </div>
-            <Button onClick={() => setCreateOpen(true)} className="shrink-0 shadow-[0_8px_24px_rgba(0,123,255,0.18)]">
-              <Plus className="h-4 w-4" />
-              Create Class
-            </Button>
           </div>
         </div>
 
@@ -159,7 +117,7 @@ export default function LecturerClassesPage() {
           <EmptyState
             icon={<ShieldAlert className="h-6 w-6" />}
             title="You do not have permission to view classes"
-            description={error || 'Please contact your administrator for class management access.'}
+            description={error || 'Please contact your administrator for access.'}
           />
         ) : error ? (
           <EmptyState title="Unable to load classes" description={error} />
@@ -167,12 +125,10 @@ export default function LecturerClassesPage() {
           <EmptyState
             icon={<BookOpen className="h-7 w-7 opacity-90" />}
             title="No classes match your filters"
-            description="Create a new class or broaden your search and semester filter to see more results."
-            action={
-              <Button type="button" onClick={() => setCreateOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Create your first class
-              </Button>
+            description={
+              items.length === 0
+                ? 'Classes are created and rostered by an administrator. When you are assigned to a class, it will appear here.'
+                : 'Try a different search or semester filter.'
             }
           />
         ) : (
@@ -209,37 +165,6 @@ export default function LecturerClassesPage() {
           </div>
         )}
       </section>
-
-      <Modal
-        open={createOpen}
-        onClose={() => !isCreating && setCreateOpen(false)}
-        title="Create New Class"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={isCreating}>
-              Cancel
-            </Button>
-            <Button onClick={onCreateClass} isLoading={isCreating}>
-              Create Class
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-muted-foreground">Class Name</label>
-            <Input value={className} onChange={(event) => setClassName(event.target.value)} />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-muted-foreground">Semester</label>
-            <Input value={semester} onChange={(event) => setSemester(event.target.value)} placeholder="2026-Spring" />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm text-muted-foreground">Expert ID (optional)</label>
-            <Input value={expertId} onChange={(event) => setExpertId(event.target.value)} placeholder="GUID from expert account" />
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

@@ -1,12 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Camera, Loader2, Save, ShieldCheck } from 'lucide-react';
+import {
+  Camera,
+  GraduationCap,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  Save,
+  Shield,
+  Sparkles,
+  User,
+} from 'lucide-react';
 import Header from '@/components/Header';
 import { SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/toast';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   fetchMyProfile,
@@ -14,6 +26,9 @@ import {
   uploadMyAvatar,
   type UserProfileDto,
 } from '@/lib/api/users';
+import { toast } from 'sonner';
+
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
 
 function getInitials(name: string) {
   return (
@@ -26,23 +41,16 @@ function getInitials(name: string) {
   );
 }
 
-function ProfileFormSkeleton() {
+function ProfileHeroSkeleton() {
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8" aria-busy="true">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-4">
-          <SkeletonBlock className="h-20 w-20 rounded-full" />
-          <div className="space-y-2">
-            <SkeletonBlock className="h-6 w-48" />
-            <SkeletonBlock className="h-4 w-64" />
-          </div>
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm" aria-busy="true">
+      <SkeletonBlock className="h-40 w-full rounded-none sm:h-48" />
+      <div className="relative px-6 pb-6 pt-0">
+        <SkeletonBlock className="absolute -top-12 left-6 h-24 w-24 rounded-full border-4 border-card" />
+        <div className="ml-0 mt-16 space-y-2 sm:ml-28 sm:mt-4">
+          <SkeletonBlock className="h-8 w-56" />
+          <SkeletonBlock className="h-4 w-72" />
         </div>
-        <SkeletonBlock className="h-10 w-36 rounded-lg" />
-      </div>
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SkeletonBlock className="h-24 rounded-xl" />
-        <SkeletonBlock className="h-24 rounded-xl" />
-        <SkeletonBlock className="h-24 rounded-xl sm:col-span-2" />
       </div>
     </div>
   );
@@ -50,8 +58,8 @@ function ProfileFormSkeleton() {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
@@ -59,6 +67,11 @@ export default function ProfilePage() {
   const [schoolCohort, setSchoolCohort] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [bio, setBio] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{
+    fullName?: string;
+    avatar?: string;
+    form?: string;
+  }>({});
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -76,9 +89,12 @@ export default function ProfilePage() {
           setSchoolCohort(data.schoolCohort?.trim() ?? '');
           setPhoneNumber(typeof data.phoneNumber === 'string' ? data.phoneNumber : '');
           setBio(typeof data.bio === 'string' ? data.bio : '');
+          setLoadError(null);
         }
       } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : 'Failed to load profile.');
+        if (!cancelled) {
+          setLoadError(e instanceof Error ? e.message : 'Failed to load profile.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -86,10 +102,10 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [router, toast]);
+  }, [router]);
 
   const roleLabel = useMemo(() => {
-    const role = profile?.activeRole ?? profile?.role ?? profile?.roles?.[0] ?? 'Unassigned';
+    const role = profile?.activeRole ?? profile?.role ?? profile?.roles?.[0] ?? 'Member';
     return String(role);
   }, [profile]);
 
@@ -97,7 +113,7 @@ export default function ProfilePage() {
     return String(profile?.status ?? profile?.userStatus ?? 'Active');
   }, [profile]);
 
-  const displayName = fullName.trim() || profile?.email?.trim() || 'Authenticated User';
+  const displayName = fullName.trim() || profile?.email?.trim() || 'Member';
   const avatarSrc = profile?.avatarUrl?.trim() || '';
   const avatarDisplaySrc = useMemo(() => {
     if (!avatarSrc) return '';
@@ -105,7 +121,15 @@ export default function ProfilePage() {
   }, [avatarSrc]);
 
   const handleAvatarChange = async (file: File | null) => {
+    setFieldErrors((e) => ({ ...e, avatar: undefined }));
     if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      setFieldErrors((e) => ({
+        ...e,
+        avatar: `Image must be ${MAX_AVATAR_BYTES / (1024 * 1024)}MB or smaller.`,
+      }));
+      return;
+    }
     setUploading(true);
     try {
       const { avatarUrl } = await uploadMyAvatar(file);
@@ -115,9 +139,12 @@ export default function ProfilePage() {
         localStorage.setItem('avatarUrl', bustedUrl);
         window.dispatchEvent(new Event('bonevis:auth-refresh'));
       }
-      toast.success('Avatar updated successfully.');
+      toast.success('Profile photo updated.');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to upload avatar.');
+      setFieldErrors((err) => ({
+        ...err,
+        avatar: e instanceof Error ? e.message : 'Failed to upload photo.',
+      }));
     } finally {
       setUploading(false);
     }
@@ -125,8 +152,9 @@ export default function ProfilePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFieldErrors({});
     if (!fullName.trim()) {
-      toast.error('Full name is required.');
+      setFieldErrors({ fullName: 'Full name is required.' });
       return;
     }
     setSaving(true);
@@ -144,123 +172,229 @@ export default function ProfilePage() {
       }
       toast.success('Profile saved.');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save profile.');
+      setFieldErrors({
+        form: err instanceof Error ? err.message : 'Failed to save. Try again.',
+      });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-text-main">
-      <Header title="My Profile" subtitle="Manage your account details and avatar." />
-      <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="min-h-screen bg-background text-foreground">
+      <Header title="Profile" subtitle="Your public presence and account details." />
+
+      <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {loading ? (
-          <ProfileFormSkeleton />
+          <ProfileHeroSkeleton />
+        ) : loadError ? (
+          <div
+            className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4 text-sm text-destructive"
+            role="alert"
+          >
+            {loadError}
+          </div>
         ) : (
-          <form onSubmit={handleSave} className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-center gap-4">
-                {avatarDisplaySrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={avatarDisplaySrc}
-                    alt={displayName}
-                    className="h-20 w-20 rounded-full border border-border object-cover"
-                  />
-                ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary-100 text-xl font-bold text-primary-800 dark:bg-primary-900/50 dark:text-primary-200">
-                    {getInitials(displayName)}
-                  </div>
-                )}
-                <div>
-                  <h2 className="text-xl font-semibold text-text-main">{displayName}</h2>
-                  <p className="text-sm text-text-muted">{profile?.email || 'No email'}</p>
+          <>
+            {/* Hero: cover + overlapping avatar */}
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <div className="relative h-36 bg-gradient-to-br from-primary/35 via-primary/15 to-muted sm:h-44">
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-accent/20 via-transparent to-transparent opacity-90 dark:from-cyan-accent/10" />
+                <div className="absolute bottom-4 right-6 hidden text-right sm:block">
+                  <p className="text-xs font-medium uppercase tracking-widest text-primary-foreground/90 mix-blend-plus-lighter">
+                    BoneVisQA
+                  </p>
+                  <p className="text-[10px] text-primary-foreground/70 mix-blend-plus-lighter">Radiology education</p>
                 </div>
               </div>
+              <div className="relative px-4 pb-6 pt-0 sm:px-8">
+                <div className="absolute -top-14 left-4 flex sm:left-8">
+                  <div className="relative">
+                    <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-card bg-card shadow-lg ring-2 ring-border sm:h-32 sm:w-32">
+                      {avatarDisplaySrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={avatarDisplaySrc} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-primary/15 text-3xl font-bold text-primary">
+                          {getInitials(displayName)}
+                        </div>
+                      )}
+                    </div>
+                    <label className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-primary shadow-md transition-colors hover:bg-muted">
+                      {uploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploading || saving}
+                        onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="ml-0 mt-20 sm:ml-36 sm:mt-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="font-['Manrope',sans-serif] text-2xl font-extrabold tracking-tight text-card-foreground sm:text-3xl">
+                      {displayName}
+                    </h1>
+                    <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                      {roleLabel}
+                    </span>
+                    <span className="rounded-full bg-success/15 px-2.5 py-0.5 text-xs font-semibold text-success">
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    {profile?.email ?? '—'}
+                  </p>
+                  {fieldErrors.avatar ? (
+                    <p className="mt-2 text-xs text-destructive" role="alert">
+                      {fieldErrors.avatar}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">PNG or JPG, max {MAX_AVATAR_BYTES / (1024 * 1024)}MB.</p>
+                  )}
+                </div>
+              </div>
+            </section>
 
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm font-medium text-text-main hover:bg-muted">
-                <Camera className="h-4 w-4" />
-                {uploading ? 'Uploading...' : 'Upload avatar'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={uploading || saving}
-                  onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
-                />
-              </label>
-            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="space-y-6 lg:col-span-2">
+                <form onSubmit={handleSave} className="space-y-6">
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2 border-b border-border pb-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h2 className="font-semibold text-card-foreground">Personal info</h2>
+                        <p className="text-xs text-muted-foreground">How you appear across the platform.</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <label htmlFor="profile-fullName" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Full name <span className="text-destructive">*</span>
+                        </label>
+                        <input
+                          id="profile-fullName"
+                          type="text"
+                          value={fullName}
+                          onChange={(e) => {
+                            setFullName(e.target.value);
+                            if (fieldErrors.fullName) setFieldErrors((x) => ({ ...x, fullName: undefined }));
+                          }}
+                          aria-invalid={Boolean(fieldErrors.fullName)}
+                          className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        {fieldErrors.fullName ? (
+                          <p className="mt-1 text-xs text-destructive">{fieldErrors.fullName}</p>
+                        ) : null}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label htmlFor="profile-bio" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Bio
+                        </label>
+                        <textarea
+                          id="profile-bio"
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          rows={3}
+                          placeholder="Short introduction for peers and faculty…"
+                          className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="profile-phone" className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <Phone className="h-3 w-3" />
+                          Phone
+                        </label>
+                        <input
+                          id="profile-phone"
+                          type="tel"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value)}
+                          className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <label htmlFor="profile-fullName" className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Full name <span className="text-destructive">*</span>
-                </label>
-                <input
-                  id="profile-fullName"
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                  className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="profile-cohort" className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  School / cohort
-                </label>
-                <input
-                  id="profile-cohort"
-                  type="text"
-                  value={schoolCohort}
-                  onChange={(e) => setSchoolCohort(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label htmlFor="profile-phone" className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Phone
-                </label>
-                <input
-                  id="profile-phone"
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="profile-bio" className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Bio
-                </label>
-                <textarea
-                  id="profile-bio"
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  rows={3}
-                  className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="rounded-xl border border-border bg-muted/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Role</p>
-                <p className="mt-1 text-sm font-medium text-text-main">{roleLabel}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
-                <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-text-main">
-                  <ShieldCheck className="h-4 w-4 text-success" />
-                  {statusLabel}
-                </p>
-              </div>
-            </div>
+                  <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                    <div className="mb-5 flex items-center gap-2 border-b border-border pb-4">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary-container/30 text-secondary">
+                        <GraduationCap className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h2 className="font-semibold text-card-foreground">Academic info</h2>
+                        <p className="text-xs text-muted-foreground">Program and cohort context.</p>
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="profile-cohort" className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        School / cohort
+                      </label>
+                      <input
+                        id="profile-cohort"
+                        type="text"
+                        value={schoolCohort}
+                        onChange={(e) => setSchoolCohort(e.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
 
-            <div className="mt-8 flex flex-wrap justify-end gap-3">
-              <Button type="submit" isLoading={saving} disabled={uploading}>
-                <Save className="h-4 w-4" />
-                Save profile
-              </Button>
+                  {fieldErrors.form ? (
+                    <p className="text-sm text-destructive" role="alert">
+                      {fieldErrors.form}
+                    </p>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <Button type="submit" isLoading={saving} disabled={uploading}>
+                      <Save className="h-4 w-4" />
+                      Save changes
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              <aside className="space-y-6">
+                <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <Lock className="h-4 w-4" />
+                    </div>
+                    <h2 className="font-semibold text-card-foreground">Account security</h2>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Password, sessions, and notification preferences live in Settings.
+                  </p>
+                  <Link
+                    href="/settings"
+                    className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/50 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted"
+                  >
+                    <Shield className="h-4 w-4 text-primary" />
+                    Open settings
+                  </Link>
+                </div>
+                <div className="rounded-2xl border border-dashed border-primary/25 bg-primary/5 p-5">
+                  <div className="flex gap-2">
+                    <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+                    <p className="text-sm text-muted-foreground">
+                      Complete your profile to help lecturers and experts recognize you in class rosters and QA
+                      workflows.
+                    </p>
+                  </div>
+                </div>
+              </aside>
             </div>
-          </form>
+          </>
         )}
       </div>
     </div>

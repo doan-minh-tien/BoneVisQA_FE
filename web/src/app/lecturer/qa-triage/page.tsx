@@ -16,8 +16,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import axios from 'axios';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
-import { escalateToExpert, respondToQuestion, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
+import { http, getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
+import { respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
 
@@ -30,10 +32,50 @@ function scoreLabel(score: number | null | undefined) {
   return { label: 'Low confidence', tone: 'bg-red-500/15 text-red-800 dark:text-red-200' };
 }
 
-/** POST /api/lecturer/triage/{answerId}/escalate expects the answer row GUID, not the question id. */
-function resolveEscalationAnswerId(item: LectStudentQuestionDto): string | null {
-  const aid = item.answerId?.trim();
-  return aid && aid.length > 0 ? aid : null;
+/** Answer-row GUID for PUT /api/lecturer/reviews/{id}/escalate — never the question id. */
+function resolveEscalationAnswerRowId(item: LectStudentQuestionDto): string | null {
+  const a = item.answerId?.trim();
+  if (a) return a;
+  const c = item.caseAnswerId?.trim();
+  if (c) return c;
+  return null;
+}
+
+function hasAnswerIdForEscalateUi(item: LectStudentQuestionDto): boolean {
+  return Boolean(item.answerId?.trim());
+}
+
+function triageStudyImageSrc(item: LectStudentQuestionDto): string {
+  const raw = (item.imageUrl ?? item.customImageUrl ?? '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:')) return raw;
+  return resolveApiAssetUrl(raw);
+}
+
+function isEscalationBlockedByStatus(item: LectStudentQuestionDto): boolean {
+  if (item.escalatedById != null && String(item.escalatedById).trim() !== '') return true;
+  const raw = (item.answerStatus ?? '').trim();
+  if (!raw) return false;
+  const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (
+    key === 'escalated' ||
+    key === 'escalatedtoexpert' ||
+    key === 'expertapproved'
+  );
+}
+
+function escalateButtonTitle(
+  item: LectStudentQuestionDto,
+  hasClassExpert: boolean,
+): string | undefined {
+  if (isEscalationBlockedByStatus(item)) return 'Already escalated or approved.';
+  if (!hasAnswerIdForEscalateUi(item)) {
+    return 'Cannot escalate: AI answer is missing or incomplete.';
+  }
+  if (!hasClassExpert) {
+    return "No expert assigned to this class — escalation can still be sent. Assign an expert in class settings when possible.";
+  }
+  return undefined;
 }
 
 function confidencePercent(score: number | null | undefined): number | null {
@@ -62,6 +104,18 @@ export default function QATriagePage() {
   const selectedQuestion = useMemo(
     () => questions.find((item) => item.id === selectedQuestionId) ?? questions[0] ?? null,
     [questions, selectedQuestionId],
+  );
+
+  const selectedClass = useMemo(
+    () => classes.find((c) => c.id === selectedClassId) ?? null,
+    [classes, selectedClassId],
+  );
+
+  const hasClassExpert = Boolean(selectedClass?.expertId?.trim());
+
+  const selectedStudyImageSrc = useMemo(
+    () => (selectedQuestion ? triageStudyImageSrc(selectedQuestion) : ''),
+    [selectedQuestion],
   );
 
   useEffect(() => {
@@ -99,38 +153,33 @@ export default function QATriagePage() {
   }, [selectedClassId, loadQuestions]);
 
   const handleEscalate = async (item: LectStudentQuestionDto) => {
-    const routeAnswerId = resolveEscalationAnswerId(item);
-    if (!routeAnswerId) {
-      console.warn('[triage] escalate blocked: missing answerId', {
-        questionId: item.id,
-        answerId: item.answerId,
-      });
-      toast.error(
-        'Cannot escalate: missing answer id from server. Refresh the page or contact support if this persists.',
-      );
+    const targetId = resolveEscalationAnswerRowId(item);
+    if (!targetId) {
+      toast.error('Cannot escalate: AI answer is missing or incomplete.');
       return;
     }
 
-    console.log('[triage] escalate POST /api/lecturer/triage/{answerId}/escalate', {
-      answerId: routeAnswerId,
-      questionId: item.id,
-    });
+    if (!hasClassExpert) {
+      toast.info("No expert is assigned to this class — escalation will still be sent if the server accepts it.");
+    }
 
     setEscalatingId(item.id);
     try {
-      await escalateToExpert(routeAnswerId);
+      // `http` is the shared axios instance (base URL + auth).
+      await http.put(`/api/lecturer/reviews/${encodeURIComponent(targetId)}/escalate`);
       setQuestions((prev) =>
         prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'lecturer' } : q)),
       );
-      toast.success('Escalated to clinical expert workbench.');
+      toast.success('Escalated successfully');
+      if (selectedClassId) void loadQuestions(selectedClassId);
     } catch (error) {
-      if (error instanceof Error && error.message === TRIAGE_ALREADY_ESCALATED) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
         toast.info('This case has already been escalated.');
         setQuestions((prev) =>
           prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'prior' } : q)),
         );
       } else {
-        toast.error(error instanceof Error ? error.message : 'Escalation failed.');
+        toast.error(getApiErrorMessage(error));
       }
     } finally {
       setEscalatingId(null);
@@ -299,7 +348,9 @@ export default function QATriagePage() {
                         );
                       })()}
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        {selectedQuestion.escalatedById ? 'Already escalated' : 'Pending decision'}
+                        {isEscalationBlockedByStatus(selectedQuestion)
+                          ? 'Already escalated'
+                          : 'Pending decision'}
                       </span>
                     </div>
                   </div>
@@ -332,6 +383,22 @@ export default function QATriagePage() {
                   </div>
 
                   <div className="space-y-4">
+                    {selectedStudyImageSrc ? (
+                      <article className="overflow-hidden rounded-lg border border-border bg-muted/30 p-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Student study image
+                        </p>
+                        <div className="relative mx-auto max-h-[min(420px,55vh)] w-full overflow-hidden rounded-md bg-black/80">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={selectedStudyImageSrc}
+                            alt={`Study image for ${selectedQuestion.studentName}`}
+                            className="mx-auto max-h-[min(420px,55vh)] w-full object-contain"
+                            loading="lazy"
+                          />
+                        </div>
+                      </article>
+                    ) : null}
                     <article className="rounded-lg border border-border bg-background p-4">
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Student question</p>
                       <p className="mt-2 text-sm leading-relaxed text-foreground">{selectedQuestion.questionText}</p>
@@ -362,26 +429,41 @@ export default function QATriagePage() {
                       <Sparkles className="h-3.5 w-3.5 text-primary" />
                       Edit the draft or escalate to expert clinical auditing. Direct approval is not available.
                     </p>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative z-20 flex flex-wrap items-center gap-2">
                       <Button type="button" variant="outline" onClick={openModifyDialog}>
                         <Edit3 className="h-4 w-4" />
                         Modify answer
                       </Button>
-                      <Button
-                        type="button"
-                        disabled={
-                          Boolean(selectedQuestion.escalatedById) ||
-                          escalatingId === selectedQuestion.id ||
-                          !resolveEscalationAnswerId(selectedQuestion)
+                      <span
+                        className="inline-flex max-w-full cursor-default"
+                        title={
+                          escalatingId === selectedQuestion.id
+                            ? 'Sending escalation…'
+                            : escalateButtonTitle(selectedQuestion, hasClassExpert)
                         }
-                        isLoading={escalatingId === selectedQuestion.id}
-                        variant="primary"
-                        className="!border-red-700 !bg-red-600 font-bold !text-white shadow-md hover:!bg-red-700 focus-visible:!ring-red-500"
-                        onClick={() => void handleEscalate(selectedQuestion)}
                       >
-                        <Send className="h-4 w-4" />
-                        {selectedQuestion.escalatedById ? 'Escalated' : 'Escalate to Expert'}
-                      </Button>
+                        <Button
+                          type="button"
+                          disabled={
+                            escalatingId === selectedQuestion.id ||
+                            isEscalationBlockedByStatus(selectedQuestion) ||
+                            !hasAnswerIdForEscalateUi(selectedQuestion)
+                          }
+                          isLoading={escalatingId === selectedQuestion.id}
+                          variant="primary"
+                          className="pointer-events-auto !border-red-700 !bg-red-600 font-bold !text-white shadow-md hover:!bg-red-700 focus-visible:!ring-red-500"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void handleEscalate(selectedQuestion);
+                          }}
+                        >
+                          <Send className="h-4 w-4" />
+                          {isEscalationBlockedByStatus(selectedQuestion)
+                            ? 'Escalated'
+                            : 'Escalate to Expert'}
+                        </Button>
+                      </span>
                     </div>
                   </div>
                 </>

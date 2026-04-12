@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import Header from '@/components/Header';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
@@ -66,6 +66,8 @@ export default function AdminDocumentsPage() {
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [statusByDocId, setStatusByDocId] = useState<Record<string, DocumentStatusResponse>>({});
+  const [dropzoneHint, setDropzoneHint] = useState<string | null>(null);
+  const [formInlineError, setFormInlineError] = useState<string | null>(null);
 
   const loadDocuments = useCallback(async () => {
     setLoadingDocuments(true);
@@ -106,36 +108,37 @@ export default function AdminDocumentsPage() {
     void loadDocuments();
   }, [loadDocuments]);
 
-  const onDrop = useCallback(
-    (accepted: File[]) => {
-      const nextRows: UploadRow[] = [];
-      for (const f of accepted) {
-        if (f.size > MAX_BYTES) {
-          toast.error(`${f.name}: exceeds the maximum size of 50MB.`);
-          continue;
-        }
-        nextRows.push(createRowFromFile(f));
+  const onDrop = useCallback((accepted: File[]) => {
+    setDropzoneHint(null);
+    const nextRows: UploadRow[] = [];
+    const oversize: string[] = [];
+    for (const f of accepted) {
+      if (f.size > MAX_BYTES) {
+        oversize.push(f.name);
+        continue;
       }
-      if (nextRows.length === 0) return;
-      setUploadQueue((prev) => [...prev, ...nextRows]);
-    },
-    [toast],
-  );
+      nextRows.push(createRowFromFile(f));
+    }
+    if (oversize.length > 0) {
+      setDropzoneHint(
+        `${oversize.join(', ')} — each file must be 50MB or smaller. Remove or compress before uploading.`,
+      );
+    }
+    if (nextRows.length === 0) return;
+    setUploadQueue((prev) => [...prev, ...nextRows]);
+  }, []);
 
-  const onDropRejected = useCallback(
-    (rejections: FileRejection[]) => {
-      for (const r of rejections) {
-        for (const err of r.errors) {
-          if (err.code === 'file-too-large') {
-            toast.error('Uploaded file exceeds the 50MB limit. Please choose a smaller file.');
-            return;
-          }
+  const onDropRejected = useCallback((rejections: FileRejection[]) => {
+    for (const r of rejections) {
+      for (const err of r.errors) {
+        if (err.code === 'file-too-large') {
+          setDropzoneHint('File exceeds the 50MB limit. Choose a smaller PDF.');
+          return;
         }
       }
-      toast.error('File type not accepted. Please upload a PDF.');
-    },
-    [toast],
-  );
+    }
+    setDropzoneHint('Only PDF files are accepted for this knowledge base.');
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -201,14 +204,15 @@ export default function AdminDocumentsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormInlineError(null);
     if (uploadQueue.length === 0) {
-      toast.error('Please add at least one PDF.');
+      setFormInlineError('Add at least one PDF using the drop zone above.');
       return;
     }
     const pending = uploadQueue.filter((r) => r.status !== 'success');
     const missingMeta = pending.some((r) => !r.categoryId.trim() || !r.title.trim());
     if (missingMeta) {
-      toast.error('Each file needs a title and a category. Expand the rows below to complete metadata.');
+      setFormInlineError('Each file needs a title and category. Expand the rows below to complete metadata.');
       return;
     }
 
@@ -259,7 +263,7 @@ export default function AdminDocumentsPage() {
         setUploadQueue((prev) =>
           prev.map((r) => (r.id === row.id ? { ...r, status: 'failed' as const, progress: 0, error: msg } : r)),
         );
-        toast.error(`${row.file.name}: ${msg}`);
+        setFormInlineError(`${row.file.name}: ${msg}`);
       }
     }
 
@@ -304,6 +308,19 @@ export default function AdminDocumentsPage() {
       .filter((r) => r.status !== 'success')
       .every((r) => r.categoryId.trim() && r.title.trim());
 
+  const { processingDocs, completedDocs } = useMemo(() => {
+    const processing: DocumentDto[] = [];
+    const done: DocumentDto[] = [];
+    for (const doc of documents) {
+      const polled = statusByDocId[doc.id];
+      const statusRaw = polled?.status ?? doc.indexingStatus ?? 'Unknown';
+      const st = String(statusRaw).toLowerCase();
+      if (st === 'processing') processing.push(doc);
+      else done.push(doc);
+    }
+    return { processingDocs: processing, completedDocs: done };
+  }, [documents, statusByDocId]);
+
   return (
     <div className="min-h-screen">
       <Header
@@ -331,6 +348,11 @@ export default function AdminDocumentsPage() {
                 or click to browse — multiple files allowed
               </p>
             </div>
+            {dropzoneHint ? (
+              <p className="mt-3 text-center text-sm text-destructive" role="alert">
+                {dropzoneHint}
+              </p>
+            ) : null}
 
             {uploadQueue.length > 0 ? (
               <div className="mt-6 space-y-3">
@@ -485,12 +507,18 @@ export default function AdminDocumentsPage() {
             ) : null}
           </SectionCard>
 
+          {formInlineError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {formInlineError}
+            </p>
+          ) : null}
           <div className="flex justify-end gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={() => {
                 setUploadQueue([]);
+                setFormInlineError(null);
               }}
               disabled={submitting}
             >
@@ -503,33 +531,78 @@ export default function AdminDocumentsPage() {
           </div>
         </form>
 
-        <div className="mt-8">
+        <div className="mt-8 space-y-6">
           <SectionCard
-            title="Recent uploads"
-            description="Live indexing status from backend polling (every 2 seconds while processing)."
+            title="Indexing in progress"
+            description="Documents currently being processed — status refreshes every 2 seconds."
           >
             {loadingDocuments ? (
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                Loading uploaded documents...
+                Loading…
               </div>
-            ) : documents.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
-                No uploaded documents found yet.
+            ) : processingDocs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+                Nothing in the processing queue right now.
               </div>
             ) : (
               <div className="space-y-4">
-                {documents.map((doc) => {
+                {processingDocs.map((doc) => {
+                  const status = getEffectiveStatus(doc);
+                  return (
+                    <article
+                      key={doc.id}
+                      className="rounded-xl border border-primary/25 bg-primary/5 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-card-foreground">{doc.title}</p>
+                          <p className="text-xs text-muted-foreground">Uploaded: {formatTime(doc.createdAt)}</p>
+                        </div>
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-semibold text-primary">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                          Processing
+                        </span>
+                      </div>
+                      <DynamicProgressTracker
+                        mode="determinate"
+                        label="Indexing progress"
+                        progressPercentage={status.progressPercentage}
+                        message={status.currentOperation || 'Processing…'}
+                        className="mt-3"
+                      />
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Completed & failed uploads"
+            description="Finished indexing, or jobs that stopped with an error."
+          >
+            {loadingDocuments ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Loading…
+              </div>
+            ) : completedDocs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+                No completed or failed documents yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {completedDocs.map((doc) => {
                   const status = getEffectiveStatus(doc);
                   const normalized = status.status.toLowerCase();
-                  const isProcessing = normalized === 'processing';
                   const isFailed = normalized === 'failed';
                   const isCompleted = normalized === 'completed';
 
                   return (
                     <article
                       key={doc.id}
-                      className="rounded-xl border border-border bg-background/55 p-4"
+                      className="rounded-xl border border-border bg-card p-4"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -542,22 +615,12 @@ export default function AdminDocumentsPage() {
                               ? 'bg-destructive/10 text-destructive'
                               : isCompleted
                                 ? 'bg-success/10 text-success'
-                                : 'bg-primary/10 text-primary'
+                                : 'bg-muted text-muted-foreground'
                           }`}
                         >
                           {status.status}
                         </span>
                       </div>
-
-                      {isProcessing ? (
-                        <DynamicProgressTracker
-                          mode="determinate"
-                          label="Indexing progress"
-                          progressPercentage={status.progressPercentage}
-                          message={status.currentOperation || 'Processing...'}
-                          className="mt-3"
-                        />
-                      ) : null}
                     </article>
                   );
                 })}

@@ -8,6 +8,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
+import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import {
@@ -53,14 +54,18 @@ const MedicalImageViewer = dynamic(
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
-import type { NormalizedPolygonPoint, VisualQaReport } from '@/lib/api/types';
+import type { NormalizedImageBoundingBox, NormalizedPolygonPoint, VisualQaReport } from '@/lib/api/types';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import { splitLearningBullets } from '@/lib/utils/learning-text';
+import { looksLikeAiFallbackAnswer } from '@/lib/utils/ai-fallback-message';
 import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 
 type VisualQaDraft = {
   question: string;
-  customPolygon: NormalizedPolygonPoint[] | null;
+  customBoundingBox: NormalizedImageBoundingBox | null;
+  /** Legacy drafts (polygon vertices) — migrated once on load. */
+  customPolygon?: NormalizedPolygonPoint[] | null;
   imageDataUrl: string | null;
   imageName: string | null;
   imageType: string | null;
@@ -68,7 +73,7 @@ type VisualQaDraft = {
 
 const EMPTY_DRAFT: VisualQaDraft = {
   question: '',
-  customPolygon: null,
+  customBoundingBox: null,
   imageDataUrl: null,
   imageName: null,
   imageType: null,
@@ -90,7 +95,7 @@ export default function StudentVisualQaImagePage() {
   const [networkWarning, setNetworkWarning] = useState<string | null>(null);
   const [aiOverload, setAiOverload] = useState(false);
   const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
-  const [customPolygon, setCustomPolygon] = useState<NormalizedPolygonPoint[] | null>(null);
+  const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
@@ -108,7 +113,19 @@ export default function StudentVisualQaImagePage() {
     let cancelled = false;
     (async () => {
       if (draft.question) setQuestion(draft.question);
-      if (draft.customPolygon?.length) setCustomPolygon(draft.customPolygon);
+      if (draft.customBoundingBox && isValidNormalizedBoundingBox(draft.customBoundingBox)) {
+        setRoiBoundingBox(draft.customBoundingBox);
+      } else if (draft.customPolygon && draft.customPolygon.length >= 3) {
+        const xs = draft.customPolygon.map((p) => p.x);
+        const ys = draft.customPolygon.map((p) => p.y);
+        const x = Math.min(...xs);
+        const y = Math.min(...ys);
+        const width = Math.max(...xs) - x;
+        const height = Math.max(...ys) - y;
+        if (width > 0.008 && height > 0.008 && x + width <= 1.01 && y + height <= 1.01) {
+          setRoiBoundingBox({ x, y, width, height });
+        }
+      }
       if (draft.imageDataUrl && draft.imageName) {
         try {
           const response = await fetch(draft.imageDataUrl);
@@ -194,7 +211,7 @@ export default function StudentVisualQaImagePage() {
       setLastSubmittedQuestion(null);
       setAiOverload(false);
       setFile(f);
-      setCustomPolygon(null);
+      setRoiBoundingBox(null);
     },
     [],
   );
@@ -226,7 +243,7 @@ export default function StudentVisualQaImagePage() {
     setReport(null);
     let overloadExit = false;
     try {
-      const res = await postStudentVisualQa(file, q, customPolygon, handleUploadProgress);
+      const res = await postStudentVisualQa(file, q, roiBoundingBox, handleUploadProgress);
       setLastSubmittedQuestion(q);
       setReport(res);
       toast.success('Diagnostic report generated.');
@@ -284,8 +301,8 @@ export default function StudentVisualQaImagePage() {
 
   useEffect(() => {
     if (hydratingDraft) return;
-    setDraft((prev) => ({ ...prev, customPolygon }));
-  }, [customPolygon, hydratingDraft, setDraft]);
+    setDraft((prev) => ({ ...prev, customBoundingBox: roiBoundingBox, customPolygon: undefined }));
+  }, [roiBoundingBox, hydratingDraft, setDraft]);
 
   useEffect(() => {
     if (hydratingDraft || !file) return;
@@ -304,7 +321,7 @@ export default function StudentVisualQaImagePage() {
   }, [draft.imageDataUrl, draft.imageName, file, hydratingDraft, setDraft]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-text-main">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-text-main">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-color bg-background px-4 md:px-6">
         <div className="flex items-center gap-3">
           <Link
@@ -323,18 +340,20 @@ export default function StudentVisualQaImagePage() {
         </div>
       </header>
 
-      <div className="grid flex-1 grid-cols-1 xl:grid-cols-2">
-        <aside className="min-h-[50vh] border-b border-border-color xl:min-h-0 xl:border-b-0 xl:border-r">
-          <MedicalImageViewer
-            key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
-            src={previewUrl}
-            alt="Study image for diagnostic request"
-            initialPolygon={hydratingDraft ? undefined : (customPolygon ?? undefined)}
-            onAnnotationComplete={setCustomPolygon}
-          />
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
+          <div className="min-h-0 min-h-[40vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
+            <MedicalImageViewer
+              key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
+              src={previewUrl}
+              alt="Study image for diagnostic request"
+              initialAnnotation={hydratingDraft ? undefined : (roiBoundingBox ?? undefined)}
+              onAnnotationComplete={setRoiBoundingBox}
+            />
+          </div>
         </aside>
 
-        <main className="h-[calc(100vh-4rem)] overflow-y-auto bg-background p-5 md:p-6">
+        <main className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-background p-5 md:p-6">
           <div className="mx-auto flex max-w-3xl flex-col gap-6">
             <form
               onSubmit={handleSubmit}
@@ -402,9 +421,10 @@ export default function StudentVisualQaImagePage() {
                   Preloading selected catalog image...
                 </div>
               ) : null}
-              {customPolygon && customPolygon.length >= 3 ? (
+              {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
                 <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  Polygon saved: {customPolygon.length} vertices (normalized 0–1 coordinates)
+                  Rectangle ROI saved: x {roiBoundingBox.x.toFixed(3)}, y {roiBoundingBox.y.toFixed(3)}, w{' '}
+                  {roiBoundingBox.width.toFixed(3)}, h {roiBoundingBox.height.toFixed(3)} (normalized 0–1)
                 </div>
               ) : null}
             </div>
@@ -498,10 +518,24 @@ export default function StudentVisualQaImagePage() {
                   <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
                     Answer / explanation
                   </h3>
+                  {looksLikeAiFallbackAnswer(report.answerText) ? (
+                    <div
+                      className="mb-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+                      role="status"
+                    >
+                      <p className="font-medium">Assistant could not return a full clinical analysis</p>
+                      <p className="mt-1 text-xs opacity-90">
+                        The model returned a system-style message (for example an apology or “temporarily unavailable”).
+                        This is not a structured diagnosis — retry later or narrow your question.                         If you drew a region of interest, coordinates are sent as a normalized bounding box{' '}
+                        <code className="rounded bg-black/30 px-1">{'{ x, y, width, height }'}</code> (0–1).
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="rounded-xl border border-border-color bg-surface px-5 py-4 text-sm text-text-main">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
+                        ...markdownExternalLinkComponents,
                         p: ({ children }) => (
                           <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
                         ),
@@ -595,7 +629,12 @@ export default function StudentVisualQaImagePage() {
                       Reflective questions
                     </h3>
                     <div className="text-sm leading-relaxed text-text-main">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.reflectiveQuestions.trim()}</ReactMarkdown>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{ ...markdownExternalLinkComponents }}
+                      >
+                        {report.reflectiveQuestions.trim()}
+                      </ReactMarkdown>
                     </div>
                   </section>
                 ) : null}

@@ -1,54 +1,112 @@
 'use client';
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/components/ui/toast';
 import {
   createExpertCase,
   fetchExpertCategories,
+  fetchExpertTags,
+  type CreateExpertCaseJsonInput,
   type ExpertCategory,
-  type SaveExpertCaseInput,
+  type ExpertTag,
 } from '@/lib/api/expert-cases';
-import { fetchExpertProfile } from '@/lib/api/lecturer-dashboard';
+import type { NormalizedImageBoundingBox } from '@/lib/api/types';
+import { isValidNormalizedBoundingBox, serializeNormalizedBoundingBox } from '@/lib/utils/annotations';
+import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
 import { Loader2 } from 'lucide-react';
+
+const MedicalImageViewer = dynamic(
+  () =>
+    import('@/components/student/MedicalImageViewer').then((m) => ({
+      default: m.MedicalImageViewer,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[min(360px,50vh)] items-center justify-center rounded-xl border border-border bg-muted/30 text-sm text-muted-foreground">
+        Loading image viewer…
+      </div>
+    ),
+  },
+);
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** Called with new case id when API returns one; otherwise undefined (list still refreshes). */
   onCreated: (caseId: string | undefined) => void;
 };
 
+const MAX_IMAGE_BYTES = 100 * 1024 * 1024;
+
 export default function CreateExpertCaseModal({ open, onClose, onCreated }: Props) {
   const toast = useToast();
-  const [loadingMeta, setLoadingMeta] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [categories, setCategories] = useState<ExpertCategory[]>([]);
-  const [expertId, setExpertId] = useState('');
-
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [difficulty, setDifficulty] = useState<SaveExpertCaseInput['difficulty']>('Medium');
+  const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [suggestedDiagnosis, setSuggestedDiagnosis] = useState('');
   const [reflectiveQuestions, setReflectiveQuestions] = useState('');
   const [keyFindings, setKeyFindings] = useState('');
-  const [isActive, setIsActive] = useState(true);
-  const [isApproved, setIsApproved] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(() => new Set());
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
+  const [modality, setModality] = useState('XR');
+  const [annotationLabel, setAnnotationLabel] = useState('Lesion');
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const metaQuery = useQuery({
+    queryKey: ['expert', 'create-case-meta'],
+    queryFn: async () => {
+      const [cats, tags] = await Promise.all([fetchExpertCategories(), fetchExpertTags(1, 200)]);
+      return { categories: cats, tags };
+    },
+    enabled: open,
+  });
+
+  const categories: ExpertCategory[] = metaQuery.data?.categories ?? [];
+  const tags: ExpertTag[] = metaQuery.data?.tags ?? [];
 
   useEffect(() => {
-    if (!open) return;
-    setLoadingMeta(true);
-    Promise.all([fetchExpertCategories(), fetchExpertProfile()])
-      .then(([cats, profile]) => {
-        setCategories(cats);
-        setExpertId(profile.id);
-        if (cats.length > 0) setCategoryId((id) => id || cats[0].id);
-      })
-      .catch((e) => {
-        toast.error(e instanceof Error ? e.message : 'Failed to load form data');
-      })
-      .finally(() => setLoadingMeta(false));
-  }, [open, toast]);
+    if (open && categories.length > 0) {
+      setCategoryId((id) => id || categories[0].id);
+    }
+  }, [open, categories]);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  const createMutation = useMutation({
+    mutationFn: (payload: CreateExpertCaseJsonInput) => createExpertCase(payload),
+    onSuccess: (newId) => {
+      toast.success('Case created successfully.');
+      void queryClient.invalidateQueries({ queryKey: ['expert', 'create-case-meta'] });
+      reset();
+      onClose();
+      onCreated(newId);
+    },
+    onError: (err: Error) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to create case');
+    },
+  });
 
   const reset = () => {
     setTitle('');
@@ -58,58 +116,92 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
     setSuggestedDiagnosis('');
     setReflectiveQuestions('');
     setKeyFindings('');
-    setIsActive(true);
-    setIsApproved(false);
+    setSelectedTagIds(new Set());
+    setFile(null);
+    setRoiBoundingBox(null);
+    setModality('XR');
+    setAnnotationLabel('Lesion');
+    setUploadingImage(false);
   };
 
   const handleClose = () => {
-    if (!submitting) {
+    if (!createMutation.isPending && !uploadingImage) {
       reset();
       onClose();
     }
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > MAX_IMAGE_BYTES) {
+      toast.error('Image must be 100 MB or smaller.');
+      return;
+    }
+    setFile(f);
+    setRoiBoundingBox(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expertId.trim()) {
-      toast.error('Missing expert profile. Please sign in again.');
-      return;
-    }
-    if (!categoryId.trim()) {
-      toast.error('Please select a category.');
-      return;
-    }
     if (!title.trim()) {
       toast.error('Title is required.');
       return;
     }
-    const input: SaveExpertCaseInput = {
+    if (!description.trim()) {
+      toast.error('Description is required.');
+      return;
+    }
+
+    let medicalImages: CreateExpertCaseJsonInput['medicalImages'];
+    if (file) {
+      setUploadingImage(true);
+      try {
+        const imageUrl = await uploadExpertWorkbenchImage(file);
+        const coordinates = serializeNormalizedBoundingBox(roiBoundingBox);
+        const label = annotationLabel.trim() || 'Lesion';
+        medicalImages = [
+          {
+            imageUrl,
+            modality: modality.trim() || null,
+            annotations: coordinates ? [{ label, coordinates }] : [],
+          },
+        ];
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Image upload failed');
+        setUploadingImage(false);
+        return;
+      }
+      setUploadingImage(false);
+    }
+
+    createMutation.mutate({
       title: title.trim(),
-      createdByExpertId: expertId.trim(),
       description: description.trim(),
       difficulty,
-      isApproved,
-      isActive,
-      categoryId: categoryId.trim(),
-      suggestedDiagnosis: suggestedDiagnosis.trim(),
-      reflectiveQuestions: reflectiveQuestions.trim(),
-      keyFindings: keyFindings.trim(),
-    };
-    setSubmitting(true);
-    try {
-      const newId = await createExpertCase(input);
-      toast.success('Case created successfully.');
-      reset();
-      onClose();
-      onCreated(newId);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create case');
-    } finally {
-      setSubmitting(false);
-    }
+      categoryId: categoryId.trim() || null,
+      suggestedDiagnosis: suggestedDiagnosis.trim() || null,
+      reflectiveQuestions: reflectiveQuestions.trim() || null,
+      keyFindings: keyFindings.trim() || null,
+      tagIds: selectedTagIds.size > 0 ? Array.from(selectedTagIds) : null,
+      medicalImages: medicalImages ?? null,
+    });
   };
 
   if (!open) return null;
+
+  const loadingMeta = metaQuery.isPending;
+  const busy = createMutation.isPending || uploadingImage;
 
   return (
     <div className="fixed inset-0 z-[105] flex items-center justify-center p-4">
@@ -118,127 +210,224 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-case-title"
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-xl"
+        className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
       >
-        <h2 id="create-case-title" className="text-lg font-semibold text-card-foreground">
-          Create medical case
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Save the case first, then add tags and imaging in the next step.
-        </p>
+        <div className="max-h-[92vh] overflow-y-auto p-5 sm:p-6">
+          <h2 id="create-case-title" className="text-lg font-semibold text-card-foreground">
+            Create medical case
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+          Same workflow as Visual QA: attach an image, drag a rectangle ROI (optional), then submit. The image is
+          uploaded to Supabase storage; the API receives public URLs and normalized{' '}
+          <code className="rounded bg-muted px-1 text-xs">{'{ x, y, width, height }'}</code> JSON.
+          </p>
 
-        {loadingMeta ? (
-          <div className="mt-8 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading…
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Title</label>
-              <input
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Case title"
-              />
+          {loadingMeta ? (
+            <div className="mt-8 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading…
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Category</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {categories.length === 0 ? (
-                  <option value="">No categories — check API</option>
-                ) : (
-                  categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Difficulty</label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value as SaveExpertCaseInput['difficulty'])}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Clinical summary for learners"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Suggested diagnosis</label>
-              <input
-                value={suggestedDiagnosis}
-                onChange={(e) => setSuggestedDiagnosis(e.target.value)}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Key findings</label>
-              <textarea
-                value={keyFindings}
-                onChange={(e) => setKeyFindings(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Reflective questions</label>
-              <textarea
-                value={reflectiveQuestions}
-                onChange={(e) => setReflectiveQuestions(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="flex items-center gap-2 text-card-foreground">
-                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-                Active
-              </label>
-              <label className="flex items-center gap-2 text-card-foreground">
-                <input type="checkbox" checked={isApproved} onChange={(e) => setIsApproved(e.target.checked)} />
-                Approved
-              </label>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={submitting}
-                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting || !categoryId}
-                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {submitting ? 'Creating…' : 'Create case'}
-              </button>
-            </div>
-          </form>
-        )}
+          ) : metaQuery.isError ? (
+            <p className="mt-6 text-sm text-destructive">
+              {metaQuery.error instanceof Error ? metaQuery.error.message : 'Failed to load form data'}
+            </p>
+          ) : (
+            <form onSubmit={(e) => void handleSubmit(e)} className="mt-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="flex min-h-0 flex-col gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Imaging file (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={busy}
+                      onChange={onFileChange}
+                      className="w-full cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground"
+                    />
+                    {file ? (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{file.name}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">Text-only cases are allowed; skip the file to omit medicalImages.</p>
+                    )}
+                  </div>
+                  {file ? (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Modality</label>
+                        <input
+                          value={modality}
+                          onChange={(e) => setModality(e.target.value)}
+                          disabled={busy}
+                          placeholder="e.g. XR, CT, MRI"
+                          className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">ROI label</label>
+                        <input
+                          value={annotationLabel}
+                          onChange={(e) => setAnnotationLabel(e.target.value)}
+                          disabled={busy}
+                          className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div className="min-h-[min(360px,45vh)] overflow-hidden rounded-xl border border-border bg-muted/20">
+                        <MedicalImageViewer
+                          key={previewUrl ?? 'empty'}
+                          src={previewUrl}
+                          alt="Case imaging for annotation"
+                          initialAnnotation={roiBoundingBox ?? undefined}
+                          onAnnotationComplete={setRoiBoundingBox}
+                        />
+                      </div>
+                      {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
+                        <p className="text-xs text-muted-foreground">
+                          Rectangle ROI · coordinates serialized as normalized x, y, width, height (matches Visual QA).
+                        </p>
+                      ) : file ? (
+                        <p className="text-xs text-muted-foreground">
+                          Optional: use the square tool and click-drag on the image to set a bounding box.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Title</label>
+                    <input
+                      required
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      disabled={busy}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="Case title"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Category</label>
+                    <select
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                      disabled={busy}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">— None —</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Difficulty</label>
+                    <select
+                      value={difficulty}
+                      onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}
+                      disabled={busy}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Description</label>
+                    <textarea
+                      required
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      disabled={busy}
+                      rows={3}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="Clinical summary for learners"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Suggested diagnosis</label>
+                    <input
+                      value={suggestedDiagnosis}
+                      onChange={(e) => setSuggestedDiagnosis(e.target.value)}
+                      disabled={busy}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Key findings</label>
+                    <textarea
+                      value={keyFindings}
+                      onChange={(e) => setKeyFindings(e.target.value)}
+                      disabled={busy}
+                      rows={2}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Reflective questions</label>
+                    <textarea
+                      value={reflectiveQuestions}
+                      onChange={(e) => setReflectiveQuestions(e.target.value)}
+                      disabled={busy}
+                      rows={2}
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  {tags.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">Tags (optional)</p>
+                      <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto rounded-lg border border-border bg-muted/30 p-2">
+                        {tags.map((t) => (
+                          <label
+                            key={t.id}
+                            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium hover:bg-muted/60"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTagIds.has(t.id)}
+                              onChange={() => toggleTag(t.id)}
+                              disabled={busy}
+                              className="rounded border-border"
+                            />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      disabled={busy}
+                      className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                          {uploadingImage ? 'Uploading image…' : 'Creating…'}
+                        </>
+                      ) : (
+                        'Create case'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

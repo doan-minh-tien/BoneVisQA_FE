@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Header from '@/components/Header';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
@@ -21,13 +23,14 @@ import {
   fetchExpertDashboardBundle,
   type ExpertDashboardBundle,
 } from '@/lib/api/expert-dashboard';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
 import { EmptyState } from '@/components/shared/EmptyState';
 
 const EXPERT_DASHBOARD_KEY = 'expert-dashboard';
 
 export default function ExpertDashboardPage() {
+  const router = useRouter();
   const toast = useToast();
   const toastedErrorRef = useRef<string | null>(null);
 
@@ -110,10 +113,7 @@ export default function ExpertDashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <Header
-        title="Clinical Expert Dashboard"
-        subtitle="Manage cases and review student questions"
-      />
+      <Header title="Expert workbench" subtitle="Reviews, case library, and clinical quality" />
 
       <div className="mx-auto max-w-[1200px] p-6">
         {isLoading && !data ? (
@@ -147,39 +147,24 @@ export default function ExpertDashboardPage() {
           </div>
         ) : (
           <>
-            <header className="mb-8 grid gap-6 lg:grid-cols-[1fr_280px]">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-primary">Expert Overview</p>
-                <h1 className="mt-1 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight sm:text-4xl">
-                  Clinical expert workbench
-                </h1>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Prioritize high-risk questions, track case quality, and keep library quality consistent.
-                </p>
-              </div>
-              <div className="overflow-hidden rounded-2xl border border-border shadow-md">
-                <ClassDetailCover variant="hero" className="min-h-[12rem]" />
-              </div>
-            </header>
-
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {expertStats.map((stat) => (
                 <QuickStatsCard key={stat.title} {...stat} />
               ))}
             </div>
 
-            <div className="mb-6 flex items-center gap-3">
-              <a
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <Link
                 href="/expert/cases"
-                className="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-primary-foreground transition-colors duration-150 hover:bg-primary/90"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-3.5 text-sm font-medium text-white shadow-[0_8px_24px_rgba(0,123,255,0.22)] transition-all hover:border-primary-hover hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[0.98]"
               >
                 <Plus className="h-5 w-5" />
-                <span className="font-medium">Add New Case</span>
-              </a>
-              <button className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2.5 transition-colors duration-150 hover:bg-muted">
+                Case library
+              </Link>
+              <Button type="button" variant="outline" className="gap-2" disabled title="Coming soon">
                 <Filter className="h-5 w-5" />
-                <span className="font-medium">Filter Cases</span>
-              </button>
+                Filter cases
+              </Button>
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -192,9 +177,9 @@ export default function ExpertDashboardPage() {
                         {pendingReviews.length} questions awaiting your review
                       </p>
                     </div>
-                    <a href="/expert/reviews" className="cursor-pointer text-sm text-primary hover:underline">
+                    <Link href="/expert/reviews" className="text-sm font-medium text-primary hover:underline">
                       View all
-                    </a>
+                    </Link>
                   </div>
                   <div className="space-y-4">
                     {pendingReviews.length === 0 ? (
@@ -202,13 +187,9 @@ export default function ExpertDashboardPage() {
                         title="No pending reviews right now"
                         description="All queued Q&A items are resolved. New questions will appear here automatically."
                         action={
-                          <button
-                            type="button"
-                            onClick={() => window.location.assign('/expert/reviews')}
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-all hover:bg-muted/60 active:scale-[0.98]"
-                          >
+                          <Button type="button" variant="outline" onClick={() => router.push('/expert/reviews')}>
                             Open review queue
-                          </button>
+                          </Button>
                         }
                       />
                     ) : (
@@ -232,9 +213,9 @@ export default function ExpertDashboardPage() {
                 <div>
                   <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-card-foreground">Case Management</h2>
-                    <a href="/expert/cases" className="cursor-pointer text-sm text-primary hover:underline">
+                    <Link href="/expert/cases" className="text-sm font-medium text-primary hover:underline">
                       View all cases
-                    </a>
+                    </Link>
                   </div>
                   <div
                     className="mb-4 flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1"

@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR, { useSWRConfig } from 'swr';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -11,12 +12,15 @@ import CreateExpertCaseModal from '@/components/expert/cases/CreateExpertCaseMod
 import { Button } from '@/components/ui/button';
 import { FolderCog, FolderOpen, Plus } from 'lucide-react';
 import { fetchExpertRecentCases, type ExpertRecentCase } from '@/lib/api/expert-dashboard';
+import { getApiProblemDetails } from '@/lib/api/client';
 import { useToast } from '@/components/ui/toast';
 
 type StatusTab = 'all' | 'pending' | 'approved' | 'draft';
 
 export default function ExpertCasesPage() {
+  const router = useRouter();
   const toast = useToast();
+  const toastedErrorRef = useRef<string | null>(null);
   const { mutate } = useSWRConfig();
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,39 +46,32 @@ export default function ExpertCasesPage() {
     return cases.filter((c) => c.status === activeTab);
   }, [activeTab, cases]);
 
+  useEffect(() => {
+    if (!error) {
+      toastedErrorRef.current = null;
+      return;
+    }
+    const { title: errTitle, detail } = getApiProblemDetails(error);
+    const msg = detail ? `${errTitle}: ${detail}` : errTitle;
+    if (toastedErrorRef.current === msg) return;
+    toastedErrorRef.current = msg;
+    toast.error(msg);
+  }, [error, toast]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header
-        title="Case Library"
-        subtitle="Review and manage your expert case inventory."
-      />
+      <Header title="Case library" subtitle="Teaching cases, categories, and approval status" />
       <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-6">
-        <header className="grid gap-6 lg:grid-cols-[1fr_280px]">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">Expert Library</p>
-            <h1 className="mt-1 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Case workbench
-            </h1>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Curate high-value teaching cases and track approval status at a glance.
-            </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="rounded-xl border border-border bg-card px-4 py-3 text-card-foreground shadow-sm sm:min-w-[12rem]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total cases</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">{counts.all}</p>
           </div>
-          <div className="flex flex-col gap-3">
-            <Button
-              type="button"
-              className="w-full gap-2 shadow-sm"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Add New Case
-            </Button>
-            <div className="overflow-hidden rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Library overview</p>
-              <p className="mt-2 text-3xl font-bold text-card-foreground">{counts.all}</p>
-              <p className="text-sm text-muted-foreground">total cases visible</p>
-            </div>
-          </div>
-        </header>
+          <Button type="button" className="w-full gap-2 shadow-sm sm:w-auto" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add new case
+          </Button>
+        </div>
 
         <div
           className="mb-2 flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1"
@@ -122,7 +119,17 @@ export default function ExpertCasesPage() {
             icon={<FolderCog className="h-7 w-7 text-primary" />}
             title="Unable to load case library"
             description={error instanceof Error ? error.message : 'Please try again in a moment.'}
-            action={<Button onClick={() => window.location.reload()}>Retry</Button>}
+            action={
+              <Button
+                onClick={() => {
+                  toastedErrorRef.current = null;
+                  void mutate('expert-case-library');
+                  router.refresh();
+                }}
+              >
+                Retry
+              </Button>
+            }
           />
         ) : filtered.length === 0 ? (
           <EmptyState
@@ -157,6 +164,7 @@ export default function ExpertCasesPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={(newId) => {
           void mutate('expert-case-library');
+          void mutate('expert-dashboard');
           if (newId) setAssetsCaseId(newId);
           else
             toast.info(

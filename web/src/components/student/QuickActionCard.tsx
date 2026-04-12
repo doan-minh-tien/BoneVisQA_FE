@@ -21,10 +21,10 @@ export default function QuickActionCard({
   return (
     <Link
       href={href}
-      className="group relative block overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-lg"
+      className="group relative flex h-full min-h-[9.5rem] flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-lg"
     >
       <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/[0.06] blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex min-h-0 flex-1 items-start gap-4">
         <div
           className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-inner transition-transform duration-300 group-hover:scale-105 ${iconColor}`}
         >
@@ -32,7 +32,7 @@ export default function QuickActionCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-start justify-between gap-2">
-            <h3 className="font-headline text-base font-bold tracking-tight text-slate-900 transition-colors group-hover:text-primary">
+            <h3 className="font-headline text-base font-bold tracking-tight text-foreground transition-colors group-hover:text-primary">
               {title}
             </h3>
             {badge ? (
@@ -41,7 +41,7 @@ export default function QuickActionCard({
               </span>
             ) : null}
           </div>
-          <p className="text-sm leading-relaxed text-slate-600">{description}</p>
+          <p className="text-pretty text-sm leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>
     </Link>

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppSidebar } from '@/components/AppSidebar';
+import { cn } from '@/lib/utils';
 import { SessionGateSkeleton } from '@/components/shared/DashboardSkeletons';
 
 type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
@@ -74,6 +75,8 @@ export function AppShell({
 
   const sidebarPx = sidebarCollapsed ? 72 : 260;
   const gutterPx = 24;
+  /** Full-height workbench: only inner panels scroll (avoid nested scrollbars). */
+  const shellMainScrollLocked = pathname?.startsWith('/student/qa/image') ?? false;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-text-main">
@@ -86,7 +89,14 @@ export function AppShell({
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
         style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
       >
-        <main className="scrollbar-hide min-h-0 min-w-0 flex-1 overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <main
+          className={cn(
+            'min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500',
+            shellMainScrollLocked
+              ? 'overflow-hidden'
+              : 'overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50',
+          )}
+        >
           {children}
         </main>
       </div>

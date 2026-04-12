@@ -1,8 +1,6 @@
-'use client';
-
 import type { ReactNode } from 'react';
-import { AppShell } from '@/components/AppShell';
 
+/** Parent `student/layout.tsx` already wraps with `AppShell` — avoid double sidebar. */
 export default function StudentClassesLayout({ children }: { children: ReactNode }) {
-  return <AppShell role="student">{children}</AppShell>;
+  return children;
 }

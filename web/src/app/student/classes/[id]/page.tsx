@@ -13,6 +13,7 @@ import {
   type StudentClassDetail,
   type StudentClassItem,
 } from '@/lib/api/student';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   ChevronRight,
   ClipboardList,
@@ -75,6 +76,9 @@ export default function StudentClassDetailPage() {
   const lecturerName = detail?.lecturerName?.trim() || summary?.lecturerName?.trim() || 'Instructor';
   const expertName = detail?.expertName?.trim();
   const expertEmail = detail?.expertEmail?.trim();
+  const expertAvatarSrc = detail?.expertAvatarUrl
+    ? resolveApiAssetUrl(detail.expertAvatarUrl)
+    : '';
 
   const classmates = useMemo(() => {
     if (!detail?.students?.length) return [];
@@ -143,27 +147,40 @@ export default function StudentClassDetailPage() {
                 <h1 className="mt-1 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight sm:text-4xl">
                   {title}
                 </h1>
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-6 flex max-w-lg flex-col gap-3">
                   <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary">
                       {initials(lecturerName)}
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Lecturer</p>
-                      <p className="text-sm font-semibold text-foreground">{lecturerName}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lecturer</p>
+                      <p className="truncate text-sm font-semibold text-foreground">{lecturerName}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-primary">
-                      <Stethoscope className="h-5 w-5" aria-hidden />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Expert</p>
-                      <p className="text-sm font-semibold text-foreground">
+                    {expertAvatarSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={expertAvatarSrc}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-full border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-primary">
+                        {expertName ? (
+                          <span className="text-xs font-bold">{initials(expertName)}</span>
+                        ) : (
+                          <Stethoscope className="h-5 w-5" aria-hidden />
+                        )}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expert</p>
+                      <p className="truncate text-sm font-semibold text-foreground">
                         {expertName || 'Not assigned'}
                       </p>
                       {expertEmail ? (
-                        <p className="text-xs text-muted-foreground">{expertEmail}</p>
+                        <p className="truncate text-xs text-muted-foreground">{expertEmail}</p>
                       ) : !expertName ? (
                         <p className="text-xs text-muted-foreground">Shown when your school assigns a reviewer.</p>
                       ) : null}

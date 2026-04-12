@@ -53,7 +53,6 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Cases', href: '/lecturer/cases', icon: BookOpen },
     { label: 'Analytics', href: '/lecturer/analytics', icon: BarChart3 },
     { label: 'Announcements', href: '/lecturer/announcements', icon: Megaphone },
-    { label: 'Settings', href: '/settings', icon: Settings },
   ],
   expert: [
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
@@ -119,7 +118,7 @@ export function AppSidebar({
     return (
       <aside className={shellClass}>
         <div
-          className={`flex shrink-0 items-center border-b border-border py-2 ${
+          className={`flex shrink-0 items-center border-b border-sidebar-active/25 py-2 ${
             collapsed ? 'flex-col gap-2 px-1' : 'h-14 justify-between px-2'
           }`}
         >
@@ -146,7 +145,7 @@ export function AppSidebar({
         <div className="flex-1 px-2 py-4 text-center text-xs text-sidebar-text/70">
           {!collapsed ? 'No role-based navigation available.' : '—'}
         </div>
-        <div className="border-t border-border p-2">
+        <div className="border-t border-sidebar-active/25 p-2">
           <Button
             onClick={logout}
             variant="outline"
@@ -163,7 +162,7 @@ export function AppSidebar({
   return (
     <aside className={shellClass}>
       <div
-        className={`flex shrink-0 items-center border-b border-border py-2 ${
+        className={`flex shrink-0 items-center border-b border-sidebar-active/25 py-2 ${
           collapsed ? 'flex-col gap-2 px-1' : 'h-[4.5rem] justify-between gap-1 px-2'
         }`}
       >
@@ -188,7 +187,7 @@ export function AppSidebar({
         </button>
       </div>
 
-      <nav className="scrollbar-hide flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-sidebar-text/20 hover:scrollbar-thumb-sidebar-text/35">
         <ul className="space-y-1">
           {dashboardItem ? (
             <li key={dashboardItem.href}>
@@ -210,7 +209,7 @@ export function AppSidebar({
           ) : null}
           {!collapsed ? (
             <li className="my-2 px-3" aria-hidden>
-              <div className="border-t border-border" />
+              <div className="border-t border-sidebar-active/25" />
             </li>
           ) : null}
           {otherItems.map((item) => {
@@ -241,7 +240,7 @@ export function AppSidebar({
         </ul>
       </nav>
 
-      <div className="border-t border-border p-2">
+      <div className="border-t border-sidebar-active/25 p-2">
         <Link href={meta.actionHref} className="block" title={collapsed ? meta.actionLabel : undefined}>
           <Button className={`w-full justify-center ${collapsed ? 'px-2' : ''}`}>
             <Plus className="h-4 w-4 shrink-0" />

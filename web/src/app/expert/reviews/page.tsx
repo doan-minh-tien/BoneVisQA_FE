@@ -7,7 +7,9 @@ import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ExpertReviewQueueSkeleton } from '@/components/shared/DashboardSkeletons';
+import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -17,6 +19,7 @@ import {
 } from '@/lib/api/expert-reviews';
 import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
 import { splitLearningBullets } from '@/lib/utils/learning-text';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast as sonnerToast } from 'sonner';
@@ -34,6 +37,40 @@ import {
   User,
   XCircle,
 } from 'lucide-react';
+
+function ExpertImagingOverlays({ item }: { item: ExpertReviewItem }) {
+  try {
+    if (item.customBoundingBox && isValidNormalizedBoundingBox(item.customBoundingBox)) {
+      return (
+        <RectangleAnnotationOverlay
+          closed={item.customBoundingBox}
+          draft={null}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    if (item.customPolygon && item.customPolygon.length >= 3) {
+      return (
+        <PolygonAnnotationOverlay
+          closed={item.customPolygon}
+          draft={[]}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    return (
+      <AnnotationOverlay
+        box={item.customCoordinates}
+        label="STUDENT ROI"
+        className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+      />
+    );
+  } catch {
+    return null;
+  }
+}
 
 export default function ExpertReviewsPage() {
   const searchParams = useSearchParams();
@@ -312,20 +349,7 @@ export default function ExpertReviewsPage() {
                                       unoptimized
                                       className="mx-auto max-h-[420px] max-w-full object-contain"
                                     />
-                                    {item.customPolygon && item.customPolygon.length >= 3 ? (
-                                      <PolygonAnnotationOverlay
-                                        closed={item.customPolygon}
-                                        draft={[]}
-                                        label="STUDENT ROI"
-                                        className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
-                                      />
-                                    ) : (
-                                      <AnnotationOverlay
-                                        box={item.customCoordinates}
-                                        label="STUDENT ROI"
-                                        className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
-                                      />
-                                    )}
+                                    <ExpertImagingOverlays item={item} />
                                   </div>
                                 ) : (
                                   <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">
@@ -614,7 +638,9 @@ function ReportSections({ report }: { report: VisualQaReport }) {
           Answer / explanation
         </h4>
         <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+            {report.answerText || '—'}
+          </ReactMarkdown>
         </div>
       </section>
       {report.suggestedDiagnosis ? (
@@ -665,7 +691,12 @@ function ReportSections({ report }: { report: VisualQaReport }) {
             Reflective questions
           </h4>
           <div className="text-sm leading-relaxed text-text-main">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.reflectiveQuestions.trim()}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{ ...markdownExternalLinkComponents }}
+            >
+              {report.reflectiveQuestions.trim()}
+            </ReactMarkdown>
           </div>
         </section>
       ) : null}
@@ -709,7 +740,9 @@ function ReportWorkbench({
           Answer / explanation
         </h4>
         <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+            {report.answerText || '—'}
+          </ReactMarkdown>
         </div>
       </section>
 
