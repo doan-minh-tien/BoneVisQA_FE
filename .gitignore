@@ -1,0 +1,12 @@
+# Repository root — complements web/.gitignore (monorepo: web/, scripts/, etc.)
+
+# Every nested install (LabelMe tooling, packages, future scripts)
+**/node_modules/
+
+# LabelMe expert import — npm install + generated report
+scripts/labelme-expert-import/node_modules/
+scripts/labelme-expert-import/import-report.json
+
+# Temporary working notes / audits (delete these lines to track official docs in git)
+Board_Review_FE_Audit.md
+FE_Blueprint.md

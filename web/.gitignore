@@ -1,6 +1,11 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Next.js / Vercel: https://nextjs.org/docs/app/api-reference/config/next-config-js
+#
+# Always keep these under version control (do not add ignore rules that match them):
+#   next.config.{js,mjs,ts}, tsconfig.json, package.json, package-lock.json, postcss.config.*, etc.
 
-# dependencies
+# Dependencies (any depth under web/)
+**/node_modules/
 /node_modules
 /.pnp
 .pnp.*
@@ -10,40 +15,35 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# Next.js build output
+.next/
+out/
+
+# Testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
-# production
+# Production / misc build
 /build
 
-# misc
 .DS_Store
 *.pem
 
-# debug
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Environment — never commit machine-specific values (ports, secrets).
-# Use `.env.local` for overrides; keep `.env.example` as the shared baseline only.
-.env.local
-.env.development.local
-.env.production.local
-.env.test.local
+# Environment — never commit machine-specific secrets (use `.env*.local` locally).
 .env*.local
-# Other env files (opt-in un-ignore below)
+# Broad `.env*` catches stray `.env`, `.env.production`, etc.; template must stay tracked:
 .env*
 !.env.example
+!**/.env.example
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
