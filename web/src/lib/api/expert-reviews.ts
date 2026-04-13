@@ -183,7 +183,7 @@ export async function flagRagChunk(
   payload: { reason: string; isFlagged?: boolean },
 ): Promise<void> {
   try {
-    await http.post(`/api/expert/reviews/chunks/${chunkId}/flag`, {
+    await http.post(`/api/expert/documents/chunks/${chunkId}/flag`, {
       reason: payload.reason,
       isFlagged: payload.isFlagged ?? true,
       IsFlagged: payload.isFlagged ?? true,

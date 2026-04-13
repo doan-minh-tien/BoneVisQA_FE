@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import useSWRMutation from 'swr/mutation';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
@@ -88,6 +89,11 @@ export default function ExpertReviewsPage() {
   const [flagReason, setFlagReason] = useState('');
   const [submittingFlag, setSubmittingFlag] = useState(false);
   const openedFocusRef = useRef<string | null>(null);
+  const { trigger: triggerFlagChunk } = useSWRMutation(
+    'expert-flag-chunk',
+    async (_key, { arg }: { arg: { chunkId: string; reason: string } }) =>
+      flagRagChunk(arg.chunkId, { reason: arg.reason }),
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,7 +151,7 @@ export default function ExpertReviewsPage() {
 
     setSubmittingFlag(true);
     try {
-      await flagRagChunk(flaggingChunkId, { reason });
+      await triggerFlagChunk({ chunkId: flaggingChunkId, reason });
       setItems((prev) =>
         prev.map((item) => ({
           ...item,
