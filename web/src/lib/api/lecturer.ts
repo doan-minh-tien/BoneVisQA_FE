@@ -14,7 +14,9 @@ import type {
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
   ExpertOption,
+  VisualQaTurn,
 } from './types';
+import { parseNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -460,6 +462,59 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
       ? String(caseAnswerIdRaw).trim()
       : null;
 
+  const normalizeTurn = (row: unknown, idx: number): VisualQaTurn | null => {
+    if (!row || typeof row !== 'object') return null;
+    const t = row as Record<string, unknown>;
+    const q = String(t.questionText ?? t.QuestionText ?? '').trim();
+    const a = String(t.answerText ?? t.AnswerText ?? '').trim();
+    const turnIndexRaw = t.turnIndex ?? t.TurnIndex ?? idx + 1;
+    const turnIndex =
+      typeof turnIndexRaw === 'number'
+        ? turnIndexRaw
+        : Number.parseInt(String(turnIndexRaw), 10) || idx + 1;
+    const roiBoundingBox = parseNormalizedBoundingBox(
+      t.roiBoundingBox ??
+        t.RoiBoundingBox ??
+        t.coordinates ??
+        t.Coordinates ??
+        t.customPolygon ??
+        t.CustomPolygon,
+    );
+    return {
+      turnIndex,
+      questionText: q,
+      answerText: a,
+      roiBoundingBox,
+      suggestedDiagnosis: String(t.suggestedDiagnosis ?? t.SuggestedDiagnosis ?? ''),
+      keyFindings: Array.isArray(t.keyFindings) ? t.keyFindings.map((x) => String(x)) : [],
+      keyImagingFindings: String(t.keyImagingFindings ?? t.KeyImagingFindings ?? '').trim() || null,
+      reflectiveQuestions: String(t.reflectiveQuestions ?? t.ReflectiveQuestions ?? '').trim() || null,
+      differentialDiagnoses: Array.isArray(t.differentialDiagnoses)
+        ? t.differentialDiagnoses.map((x) => String(x))
+        : [],
+      recommendedReadings: [],
+      citations: [],
+      aiConfidenceScore:
+        typeof (t.aiConfidenceScore ?? t.AiConfidenceScore) === 'number'
+          ? Number(t.aiConfidenceScore ?? t.AiConfidenceScore)
+          : undefined,
+      createdAt: String(t.createdAt ?? t.CreatedAt ?? '').trim() || null,
+    };
+  };
+
+  const turnsRaw =
+    (Array.isArray(r.turns) ? r.turns : null) ??
+    (Array.isArray(r.Turns) ? r.Turns : null) ??
+    ((r.session && typeof r.session === 'object' && Array.isArray((r.session as Record<string, unknown>).turns))
+      ? ((r.session as Record<string, unknown>).turns as unknown[])
+      : null) ??
+    ((r.session && typeof r.session === 'object' && Array.isArray((r.session as Record<string, unknown>).Turns))
+      ? ((r.session as Record<string, unknown>).Turns as unknown[])
+      : null);
+  const turns = Array.isArray(turnsRaw)
+    ? turnsRaw.map(normalizeTurn).filter((t): t is VisualQaTurn => t !== null)
+    : undefined;
+
   return {
     id: questionId,
     answerId,
@@ -479,6 +534,7 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     aiConfidenceScore,
     customImageUrl,
     imageUrl: imageUrlExplicit,
+    turns,
   };
 }
 

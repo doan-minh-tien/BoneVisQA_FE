@@ -22,6 +22,8 @@ import { http, getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import { respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 function scoreLabel(score: number | null | undefined) {
   if (score == null || Number.isNaN(score)) {
@@ -100,6 +102,7 @@ export default function QATriagePage() {
   const [editDifferentialDiagnoses, setEditDifferentialDiagnoses] = useState('');
   const [modifying, setModifying] = useState(false);
   const [modifyError, setModifyError] = useState<string | null>(null);
+  const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
 
   const selectedQuestion = useMemo(
     () => questions.find((item) => item.id === selectedQuestionId) ?? questions[0] ?? null,
@@ -117,6 +120,12 @@ export default function QATriagePage() {
     () => (selectedQuestion ? triageStudyImageSrc(selectedQuestion) : ''),
     [selectedQuestion],
   );
+
+  const selectedTurn = useMemo(() => {
+    if (!selectedQuestion?.turns || selectedQuestion.turns.length === 0) return null;
+    if (selectedTurnIndex == null) return selectedQuestion.turns[selectedQuestion.turns.length - 1];
+    return selectedQuestion.turns.find((t) => t.turnIndex === selectedTurnIndex) ?? selectedQuestion.turns[selectedQuestion.turns.length - 1];
+  }, [selectedQuestion, selectedTurnIndex]);
 
   useEffect(() => {
     const userId = getStoredUserId();
@@ -138,6 +147,7 @@ export default function QATriagePage() {
       const data = await getStudentQuestions(classId);
       setQuestions(data);
       setSelectedQuestionId(data[0]?.id ?? null);
+      setSelectedTurnIndex(data[0]?.turns?.[data[0].turns.length - 1]?.turnIndex ?? null);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Failed to load triage queue.');
       setQuestions([]);
@@ -151,6 +161,15 @@ export default function QATriagePage() {
     if (!selectedClassId) return;
     void loadQuestions(selectedClassId);
   }, [selectedClassId, loadQuestions]);
+
+  useEffect(() => {
+    if (!selectedQuestion) {
+      setSelectedTurnIndex(null);
+      return;
+    }
+    const latestTurn = selectedQuestion.turns?.[selectedQuestion.turns.length - 1] ?? null;
+    setSelectedTurnIndex(latestTurn?.turnIndex ?? null);
+  }, [selectedQuestionId, selectedQuestion]);
 
   const handleEscalate = async (item: LectStudentQuestionDto) => {
     const targetId = resolveEscalationAnswerRowId(item);
@@ -188,7 +207,8 @@ export default function QATriagePage() {
 
   const openModifyDialog = () => {
     if (!selectedQuestion) return;
-    setEditAnswerText(selectedQuestion.answerText ?? '');
+    const latestAnswer = selectedQuestion.turns?.[selectedQuestion.turns.length - 1]?.answerText;
+    setEditAnswerText(latestAnswer ?? selectedQuestion.answerText ?? '');
     setEditStructuredDiagnosis('');
     setEditDifferentialDiagnoses('');
     setModifyError(null);
@@ -389,14 +409,54 @@ export default function QATriagePage() {
                           Student study image
                         </p>
                         <div className="relative mx-auto max-h-[min(420px,55vh)] w-full overflow-hidden rounded-md bg-black/80">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={selectedStudyImageSrc}
-                            alt={`Study image for ${selectedQuestion.studentName}`}
-                            className="mx-auto max-h-[min(420px,55vh)] w-full object-contain"
-                            loading="lazy"
-                          />
+                          <div className="relative mx-auto w-fit">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={selectedStudyImageSrc}
+                              alt={`Study image for ${selectedQuestion.studentName}`}
+                              className="mx-auto max-h-[min(420px,55vh)] w-auto max-w-full object-contain"
+                              loading="lazy"
+                            />
+                            <RectangleAnnotationOverlay
+                              closed={
+                                selectedTurn?.roiBoundingBox && isValidNormalizedBoundingBox(selectedTurn.roiBoundingBox)
+                                  ? selectedTurn.roiBoundingBox
+                                  : null
+                              }
+                              draft={null}
+                              label="Turn ROI"
+                              className="drop-shadow-[0_0_8px_rgba(239,68,68,0.45)]"
+                            />
+                          </div>
                         </div>
+                      </article>
+                    ) : null}
+                    {selectedQuestion.turns && selectedQuestion.turns.length > 0 ? (
+                      <article className="rounded-lg border border-border bg-background p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Chat session context
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Select a turn to inspect its ROI. AI Final Assessment below uses the latest turn.
+                        </p>
+                        <ol className="mt-3 space-y-2">
+                          {selectedQuestion.turns.slice(-3).map((turn) => (
+                            <li key={turn.turnIndex}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTurnIndex(turn.turnIndex)}
+                                className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
+                                  selectedTurn?.turnIndex === turn.turnIndex
+                                    ? 'border-primary bg-primary/10'
+                                    : 'border-border hover:bg-muted/40'
+                                }`}
+                              >
+                                <p className="font-medium">Turn {turn.turnIndex}: {turn.questionText || '—'}</p>
+                                <p className="mt-1 text-muted-foreground line-clamp-2">{turn.answerText || '—'}</p>
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
                       </article>
                     ) : null}
                     <article className="rounded-lg border border-border bg-background p-4">
@@ -405,9 +465,13 @@ export default function QATriagePage() {
                     </article>
 
                     <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI answer preview</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        AI Final Assessment (latest session turn)
+                      </p>
                       <p className="mt-2 text-sm leading-relaxed text-foreground/90">
-                        {selectedQuestion.answerText?.trim() || 'No generated answer available.'}
+                        {(selectedQuestion.turns?.[selectedQuestion.turns.length - 1]?.answerText ||
+                          selectedQuestion.answerText ||
+                          '').trim() || 'No generated answer available.'}
                       </p>
                     </article>
 
