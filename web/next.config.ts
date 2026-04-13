@@ -1,14 +1,28 @@
 import type { NextConfig } from "next";
 
+function getSupabaseHostnameFromEnv(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname;
+  } catch {
+    return null;
+  }
+}
+
+const supabaseHostname = getSupabaseHostnameFromEnv();
+
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'jshryhplbayoymtthqpu.supabase.co',
-        pathname: '/**',
-      },
-    ],
+    remotePatterns: supabaseHostname
+      ? [
+          {
+            protocol: 'https',
+            hostname: supabaseHostname,
+            pathname: '/**',
+          },
+        ]
+      : [],
   },
   async redirects() {
     return [

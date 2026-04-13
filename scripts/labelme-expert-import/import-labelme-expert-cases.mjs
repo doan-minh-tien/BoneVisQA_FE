@@ -134,6 +134,14 @@ function shapeToAnnotation(shape, imageWidth, imageHeight) {
     const y0 = Number(p0[1]);
     const x1 = Number(p1[0]);
     const y1 = Number(p1[1]);
+    if (
+      !Number.isFinite(x0) ||
+      !Number.isFinite(y0) ||
+      !Number.isFinite(x1) ||
+      !Number.isFinite(y1)
+    ) {
+      return null;
+    }
     xMin = Math.min(x0, x1);
     yMin = Math.min(y0, y1);
     xMax = Math.max(x0, x1);
