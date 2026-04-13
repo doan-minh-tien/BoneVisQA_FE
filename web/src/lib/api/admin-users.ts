@@ -370,7 +370,6 @@ export interface PendingVerification {
   fullName: string;
   email: string;
   schoolCohort: string | null;
-  isMedicalStudent: boolean;
   medicalSchool: string | null;
   medicalStudentId: string | null;
   verificationStatus: string | null;

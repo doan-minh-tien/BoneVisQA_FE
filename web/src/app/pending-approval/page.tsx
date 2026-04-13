@@ -15,11 +15,11 @@ export default function PendingApprovalPage() {
             <ShieldAlert className="h-7 w-7" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Account Pending Approval
+            Waiting for Admin Approval
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-            Your account has been created successfully, but an Administrator still needs to verify
-            your credentials and assign the correct access role before you can enter the platform.
+            Your account is currently assigned the Guest role. An Administrator needs to verify
+            your credentials and assign a platform role before you can access protected workflows.
           </p>
           <p className="mt-2 text-sm text-slate-500">
             Please check back shortly or contact your institution admin for expedited approval.

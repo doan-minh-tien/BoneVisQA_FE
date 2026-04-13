@@ -11,12 +11,12 @@ type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
 
 type AuthSnapshot = {
   token: string | null;
-  isPendingOrUnassigned: boolean;
+  isGuestOrUnassigned: boolean;
 };
 
 function readAuthSnapshot(): AuthSnapshot {
   if (typeof window === 'undefined') {
-    return { token: null, isPendingOrUnassigned: false };
+    return { token: null, isGuestOrUnassigned: false };
   }
   const nextToken = localStorage.getItem('token');
   const status = (localStorage.getItem('userStatus') || '').trim().toLowerCase();
@@ -29,16 +29,16 @@ function readAuthSnapshot(): AuthSnapshot {
   const normalizedRoles = roles.map((r) => r.trim().toLowerCase()).filter(Boolean);
   const activeRole = (localStorage.getItem('activeRole') || '').trim().toLowerCase();
   const hasUsableRole = Boolean(activeRole) && activeRole !== 'none';
-  const pendingStatus = status === 'pending';
+  const guestStatus = status === 'guest';
   const unassignedRole =
     normalizedRoles.length === 0 ||
     normalizedRoles.includes('none') ||
     normalizedRoles.includes('unassigned') ||
-    normalizedRoles.includes('pending') ||
+    normalizedRoles.includes('guest') ||
     !hasUsableRole;
   return {
     token: nextToken,
-    isPendingOrUnassigned: Boolean(nextToken) && (pendingStatus || unassignedRole),
+    isGuestOrUnassigned: Boolean(nextToken) && (guestStatus || unassignedRole),
   };
 }
 
@@ -51,7 +51,7 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [{ token, isPendingOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
+  const [{ token, isGuestOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
@@ -60,16 +60,16 @@ export function AppShell({
       router.replace(`/auth/sign-in${redirect}`);
       return;
     }
-    if (isPendingOrUnassigned) {
+    if (isGuestOrUnassigned) {
       router.replace('/pending-approval');
     }
-  }, [isPendingOrUnassigned, pathname, router, token]);
+  }, [isGuestOrUnassigned, pathname, router, token]);
 
   if (!token) {
     return <SessionGateSkeleton />;
   }
 
-  if (isPendingOrUnassigned) {
+  if (isGuestOrUnassigned) {
     return <SessionGateSkeleton />;
   }
 

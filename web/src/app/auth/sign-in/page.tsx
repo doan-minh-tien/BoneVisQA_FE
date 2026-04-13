@@ -39,18 +39,20 @@ function getRouteForRole(role: string | null | undefined) {
       return { activeRole: "expert", route: "/expert/dashboard" };
     case "admin":
       return { activeRole: "admin", route: "/admin/dashboard" };
+    case "guest":
+      return { activeRole: null, route: "/pending-approval" };
     default:
       return { activeRole: null, route: "/" };
   }
 }
 
-function isPendingOrUnassignedUser(payload: {
+function isGuestOrUnassignedUser(payload: {
   roles?: string[] | null;
   status?: string | null;
   userStatus?: string | null;
 }) {
   const normalizedStatus = (payload.status ?? payload.userStatus ?? '').trim().toLowerCase();
-  if (normalizedStatus === 'pending') {
+  if (normalizedStatus === 'guest') {
     return true;
   }
 
@@ -60,7 +62,7 @@ function isPendingOrUnassignedUser(payload: {
   if (roles.length === 0) {
     return true;
   }
-  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('pending')) {
+  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('guest')) {
     return true;
   }
   return false;
@@ -104,7 +106,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         localStorage.removeItem("userStatus");
       }
 
-      if (isPendingOrUnassignedUser(data)) {
+      if (isGuestOrUnassignedUser(data)) {
         localStorage.removeItem("activeRole");
         router.push("/pending-approval");
         return;

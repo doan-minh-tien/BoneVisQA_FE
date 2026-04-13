@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { http } from '@/lib/api/client';
 
-export type BackendRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
+export type BackendRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin' | 'Guest';
 
 export interface AuthUser {
   fullName: string | null;
@@ -22,6 +22,7 @@ function normalizeRole(raw: string | null | undefined): BackendRole | null {
   if (value === 'lecturer') return 'Lecturer';
   if (value === 'expert') return 'Expert';
   if (value === 'admin') return 'Admin';
+  if (value === 'guest') return 'Guest';
   return null;
 }
 
