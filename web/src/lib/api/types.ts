@@ -22,6 +22,31 @@ export interface VisualQaReport {
   aiConfidenceScore?: number;
 }
 
+export interface VisualQaTurn {
+  turnIndex: number;
+  questionText: string;
+  answerText: string;
+  /** Message-level ROI for this specific Q/A turn (normalized 0-1). */
+  roiBoundingBox?: NormalizedImageBoundingBox | null;
+  suggestedDiagnosis: string;
+  keyFindings: string[];
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
+  differentialDiagnoses: string[];
+  recommendedReadings: Array<{ title?: string; url?: string } | string>;
+  citations: VisualQaCitation[];
+  aiConfidenceScore?: number;
+  createdAt?: string | null;
+}
+
+export interface VisualQaSessionReport {
+  sessionId: string;
+  caseId?: string | null;
+  imageId?: string | null;
+  turns: VisualQaTurn[];
+  latest: VisualQaTurn | null;
+}
+
 export interface CategoryOption {
   id: string;
   name: string;
@@ -109,6 +134,8 @@ export interface LectStudentQuestionDto {
   aiConfidenceScore?: number | null;
   /** Student study image or case thumbnail for triage (URLs from API). */
   customImageUrl?: string | null;
+  /** Session chat history for this question; latest turn drives final assessment. */
+  turns?: VisualQaTurn[];
 }
 
 export interface Announcement {

@@ -1,4 +1,5 @@
-import type { VisualQaCitation, VisualQaReport } from './types';
+import type { VisualQaCitation, VisualQaReport, VisualQaSessionReport, VisualQaTurn } from './types';
+import { parseNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 function pick<T extends object>(o: T, keys: string[]): unknown {
   for (const k of keys) {
@@ -113,5 +114,62 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
     recommendedReadings: readings,
     citations,
     ...(aiConfidenceScore !== undefined ? { aiConfidenceScore } : {}),
+  };
+}
+
+function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTurn {
+  const report = normalizeVisualQaReport(raw);
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const turnRaw = pick(o, ['turnIndex', 'TurnIndex', 'index', 'Index']);
+  const createdRaw = pick(o, ['createdAt', 'CreatedAt', 'askedAt', 'AskedAt']);
+  const roiRaw = pick(o, [
+    'roiBoundingBox',
+    'RoiBoundingBox',
+    'coordinates',
+    'Coordinates',
+    'customPolygon',
+    'CustomPolygon',
+  ]);
+  const turnIndex =
+    typeof turnRaw === 'number' && Number.isFinite(turnRaw)
+      ? turnRaw
+      : typeof turnRaw === 'string' && turnRaw.trim()
+        ? Number.parseInt(turnRaw, 10) || fallbackIndex
+        : fallbackIndex;
+  return {
+    turnIndex,
+    questionText: report.questionText ?? '',
+    answerText: report.answerText,
+    roiBoundingBox: parseNormalizedBoundingBox(roiRaw),
+    suggestedDiagnosis: report.suggestedDiagnosis,
+    keyFindings: report.keyFindings,
+    keyImagingFindings: report.keyImagingFindings ?? null,
+    reflectiveQuestions: report.reflectiveQuestions ?? null,
+    differentialDiagnoses: report.differentialDiagnoses,
+    recommendedReadings: report.recommendedReadings,
+    citations: report.citations,
+    aiConfidenceScore: report.aiConfidenceScore,
+    createdAt: typeof createdRaw === 'string' ? createdRaw : null,
+  };
+}
+
+export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionReport {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const sessionId = asString(pick(o, ['sessionId', 'SessionId'])).trim();
+  const caseId = asString(pick(o, ['caseId', 'CaseId'])).trim() || null;
+  const imageId = asString(pick(o, ['imageId', 'ImageId'])).trim() || null;
+  const turnsRaw = pick(o, ['turns', 'Turns', 'history', 'History']);
+  const turns = Array.isArray(turnsRaw)
+    ? turnsRaw.map((row, idx) => normalizeVisualQaTurn(row, idx + 1))
+    : [];
+  const fallbackSingle = turns.length === 0 ? normalizeVisualQaTurn(raw, 1) : null;
+  const effectiveTurns = turns.length > 0 ? turns : fallbackSingle ? [fallbackSingle] : [];
+  const latest = effectiveTurns.length > 0 ? effectiveTurns[effectiveTurns.length - 1] : null;
+  return {
+    sessionId: sessionId || 'session-local',
+    caseId,
+    imageId,
+    turns: effectiveTurns.slice(-3),
+    latest,
   };
 }
