@@ -61,7 +61,7 @@ export function useAuth() {
 
       // Prefer canonical profile from API when available.
       void http
-        .get<Record<string, unknown>>('/api/users/me')
+        .get<Record<string, unknown>>('/api/profile')
         .then((response) => {
           if (cancelled) return;
           const payload = response.data ?? {};
