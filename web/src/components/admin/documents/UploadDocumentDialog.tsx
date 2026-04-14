@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { uploadAdminDocument } from '@/lib/api/admin-documents';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import useSWR from 'swr';
+import { fetchDocumentStatus, uploadAdminDocument } from '@/lib/api/admin-documents';
 import { X, UploadCloud, File, Loader2, AlertCircle } from 'lucide-react';
+
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 interface UploadDocumentDialogProps {
   isOpen: boolean;
@@ -17,31 +20,66 @@ export default function UploadDocumentDialog({
 }: UploadDocumentDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
-  
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [indexingDocumentId, setIndexingDocumentId] = useState<string | null>(null);
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const statusKey = indexingDocumentId ? `doc-status:${indexingDocumentId}` : null;
+  const { data: indexingStatus } = useSWR(
+    statusKey,
+    () => fetchDocumentStatus(indexingDocumentId as string),
+    {
+      refreshInterval: (latest) => {
+        if (!latest) return 2000;
+        const done = latest.progressPercentage >= 100 || latest.status.toLowerCase() === 'completed';
+        return done ? 0 : 2000;
+      },
+      revalidateOnFocus: false,
+    },
+  );
+
+  const indexingProgress = Math.round(indexingStatus?.progressPercentage ?? 0);
+  const totalProgress = useMemo(() => {
+    if (!indexingDocumentId) return uploadProgress;
+    return uploadProgress >= 100 ? indexingProgress : Math.min(99, uploadProgress);
+  }, [indexingDocumentId, indexingProgress, uploadProgress]);
+
+  const isDone = Boolean(indexingDocumentId) && indexingProgress >= 100;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const handleDismiss = () => {
-    if (isUploading) return;
+    if (isUploading || (!isDone && indexingDocumentId)) return;
     setFile(null);
     setTitle('');
-    setError(null);
+    setUploadProgress(0);
+    setIndexingDocumentId(null);
+    setTitleError(null);
+    setFileError(null);
+    setSubmitError(null);
     onClose();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+      const nextFile = e.target.files[0];
+      if (nextFile.size > MAX_DOCUMENT_SIZE_BYTES) {
+        setFile(null);
+        setFileError('Document must be smaller than 10MB.');
+        return;
+      }
+      setFile(nextFile);
       // If title is empty, default it to the filename without extension
       if (!title) {
-        const name = e.target.files[0].name;
+        const name = nextFile.name;
         setTitle(name.substring(0, name.lastIndexOf('.')) || name);
       }
-      setError(null);
+      setFileError(null);
+      setSubmitError(null);
     }
   };
 
@@ -54,83 +92,128 @@ export default function UploadDocumentDialog({
     e.preventDefault();
     e.stopPropagation();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setFile(e.dataTransfer.files[0]);
+      const nextFile = e.dataTransfer.files[0];
+      if (nextFile.size > MAX_DOCUMENT_SIZE_BYTES) {
+        setFile(null);
+        setFileError('Document must be smaller than 10MB.');
+        return;
+      }
+      setFile(nextFile);
       if (!title) {
-        const name = e.dataTransfer.files[0].name;
+        const name = nextFile.name;
         setTitle(name.substring(0, name.lastIndexOf('.')) || name);
       }
-      setError(null);
+      setFileError(null);
+      setSubmitError(null);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setTitleError(null);
+    setFileError(null);
+    setSubmitError(null);
 
     if (!file) {
-      setError('Please select a file to upload.');
-      return;
+      setFileError('Please select a file to upload.');
     }
     if (!title.trim()) {
-      setError('Document title is required.');
+      setTitleError('Document title is required.');
+    }
+    if (!file || !title.trim()) {
+      return;
+    }
+    if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+      setFileError('Document must be smaller than 10MB.');
       return;
     }
 
     try {
       setIsUploading(true);
-      await uploadAdminDocument({
+      setUploadProgress(0);
+      const result = await uploadAdminDocument({
         file,
+        title: title.trim(),
         categoryId: '',
         tagIds: [],
+        onUploadProgress: (pct) => setUploadProgress(Math.min(100, Math.max(0, pct))),
       });
-      
-      // Cleanup and notify parent
-      handleDismiss();
-      onSuccess();
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      setError(err.message || 'Failed to upload document.');
+      setUploadProgress(100);
+      if (result.documentId) {
+        setIndexingDocumentId(result.documentId);
+      } else {
+        onSuccess();
+        handleDismiss();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to upload document.';
+      if (message.includes('Tài liệu này đã tồn tại trong hệ thống.')) {
+        setFileError('Tài liệu này đã tồn tại trong hệ thống.');
+      } else {
+        setSubmitError(message);
+      }
     } finally {
       setIsUploading(false);
     }
   };
 
+  useEffect(() => {
+    if (!isDone) return;
+    onSuccess();
+    handleDismiss();
+  }, [isDone]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div 
-        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity animate-in fade-in" 
+        className="absolute inset-0 bg-background/70 backdrop-blur-sm transition-opacity animate-in fade-in" 
         onClick={handleDismiss} 
       />
       
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-8 py-6 border-b border-gray-100">
+      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between border-b border-border px-8 py-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Upload Document</h2>
-            <p className="text-gray-500 text-sm mt-1">Add a new file to the knowledge base.</p>
+            <h2 className="text-2xl font-bold text-card-foreground">Upload Document</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Add a new file to the knowledge base.</p>
           </div>
           <button
             onClick={handleDismiss}
-            disabled={isUploading}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
+            disabled={isUploading || (!isDone && indexingDocumentId !== null)}
+            className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          
-          {error && (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 text-red-600 border border-red-100 animate-in slide-in-from-top-2">
+          {submitError && (
+            <div className="animate-in slide-in-from-top-2 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <p className="text-sm font-medium leading-relaxed">{error}</p>
+              <p className="text-sm font-medium leading-relaxed">{submitError}</p>
             </div>
           )}
 
           <div className="space-y-4">
+            <div>
+              <label htmlFor="doc-title" className="mb-2 block text-sm font-semibold text-card-foreground">
+                Document title <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="doc-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={isUploading}
+                placeholder="e.g. Pediatric fracture guidelines"
+                className="w-full rounded-xl border border-border bg-input px-4 py-3 text-foreground placeholder:text-muted-foreground shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {titleError ? <p className="mt-2 text-xs text-destructive">{titleError}</p> : null}
+            </div>
+
             {/* File Upload Zone */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Document File <span className="text-red-500">*</span>
+              <label className="mb-2 block text-sm font-semibold text-card-foreground">
+                Document file <span className="text-red-500">*</span>
               </label>
               
               <div 
@@ -139,7 +222,7 @@ export default function UploadDocumentDialog({
                 onClick={() => !isUploading && fileInputRef.current?.click()}
                 className={`
                   relative group flex flex-col items-center justify-center w-full p-8 border-2 border-dashed rounded-2xl transition-all cursor-pointer
-                  ${file ? 'border-primary/50 bg-primary/5' : 'border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300'}
+                  ${file ? 'border-primary/50 bg-primary/5' : 'border-border bg-muted/30 hover:bg-muted/50'}
                   ${isUploading ? 'opacity-60 pointer-events-none' : ''}
                 `}
               >
@@ -157,60 +240,63 @@ export default function UploadDocumentDialog({
                       <File className="w-6 h-6" />
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-semibold text-gray-900 group-hover:text-primary transition-colors line-clamp-1 break-all px-4">
+                      <p className="line-clamp-1 break-all px-4 text-sm font-semibold text-card-foreground transition-colors group-hover:text-primary">
                         {file.name}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {(file.size / 1024 / 1024).toFixed(2)} MB
                       </p>
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-400 group-hover:text-primary transition-colors">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background shadow-sm text-muted-foreground transition-colors group-hover:text-primary">
                       <UploadCloud className="w-6 h-6" />
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-card-foreground">
                         <span className="text-primary font-semibold">Click to upload</span> or drag and drop
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">PDF, DOC, DOCX up to 50MB</p>
+                      <p className="mt-1 text-xs text-muted-foreground">PDF, DOC, DOCX up to 10MB</p>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="title" className="block text-sm font-semibold text-gray-700 mb-2">
-                Document Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={isUploading}
-                placeholder="Enter document title"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all shadow-sm"
-              />
+              {fileError ? <p className="mt-2 text-xs text-destructive">{fileError}</p> : null}
             </div>
           </div>
 
+          {(isUploading || indexingDocumentId) && (
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{indexingDocumentId ? 'Indexing progress' : 'Upload progress'}</span>
+                <span>{totalProgress}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${totalProgress}%` }} />
+              </div>
+              {indexingDocumentId ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {indexingStatus?.currentOperation || 'Processing document for retrieval...'}
+                </p>
+              ) : null}
+            </div>
+          )}
+
           {/* Footer Actions */}
-          <div className="pt-4 mt-6 border-t border-gray-100 flex items-center justify-end gap-3">
+          <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
             <button
               type="button"
               onClick={handleDismiss}
-              disabled={isUploading}
-              className="px-6 py-2.5 rounded-xl font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={isUploading || (!isDone && indexingDocumentId !== null)}
+              className="rounded-xl border border-border bg-background px-6 py-2.5 font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isUploading || !file || !title.trim()}
-              className="px-6 py-2.5 rounded-xl font-semibold text-white bg-primary hover:bg-primary/90 transition-all shadow-[0_4px_14px_0_rgba(8,145,178,0.25)] flex items-center gap-2 disabled:opacity-50 disabled:shadow-none"
+              disabled={isUploading || indexingDocumentId !== null || !file || !title.trim()}
+              className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:shadow-none"
             >
               {isUploading ? (
                 <>

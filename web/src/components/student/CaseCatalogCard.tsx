@@ -1,11 +1,11 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { BookOpen } from 'lucide-react';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
+import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
 
 export function CaseCatalogCard({ item }: { item: StudentCaseCatalogItem }) {
-  const href = item.imageUrl
-    ? `/student/qa/image?catalogImageUrl=${encodeURIComponent(item.imageUrl)}&catalogTitle=${encodeURIComponent(item.title)}`
-    : '/student/qa/image';
+  const href = `/student/cases/${encodeURIComponent(item.id)}`;
 
   return (
     <Link
@@ -14,8 +14,14 @@ export function CaseCatalogCard({ item }: { item: StudentCaseCatalogItem }) {
     >
       <div className="relative h-52 overflow-hidden bg-muted">
         {item.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" />
+          <Image
+            src={item.imageUrl}
+            alt={item.title}
+            fill
+            sizes="(max-width: 768px) 100vw, 280px"
+            className="object-cover"
+            unoptimized={!isNextImageRemoteOptimized(item.imageUrl)}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-cyan-accent/20">
             <BookOpen className="h-16 w-16 text-muted-foreground opacity-30" />

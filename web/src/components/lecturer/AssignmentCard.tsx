@@ -16,6 +16,10 @@ export interface AssignmentCardProps {
   type?: string;
   isMandatory?: boolean;
   assignedAt?: string | null;
+  /** Hiển thị checkbox để chọn/bỏ chọn assignment */
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
 }
 
 function computeStatus(
@@ -50,6 +54,10 @@ export default function AssignmentCard({
   graded = 0,
   type,
   isMandatory = false,
+  assignedAt,
+  selectable = false,
+  selected = false,
+  onSelect,
 }: AssignmentCardProps) {
   const status = computeStatus(dueDate ?? null, submitted, totalStudents);
 
@@ -63,13 +71,39 @@ export default function AssignmentCard({
   const submissionRate = totalStudents > 0 ? Math.round((submitted / totalStudents) * 100) : 0;
   const gradingProgress = submitted > 0 ? Math.round((graded / submitted) * 100) : 0;
 
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect?.(id, !selected);
+  };
+
   return (
     <Link
       href={`/lecturer/assignments/${id}?type=${type ?? 'quiz'}`}
-      className="block bg-card rounded-xl border border-border p-5 hover:shadow-md transition-all duration-200 cursor-pointer"
+      className={`block bg-card rounded-xl border p-5 hover:shadow-md transition-all duration-200 ${
+        selected ? 'border-primary ring-2 ring-primary/20' : 'border-border hover:border-primary/30'
+      }`}
     >
       {/* Header */}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start gap-3 mb-3">
+        {/* Checkbox for selection */}
+        {selectable && (
+          <button
+            type="button"
+            onClick={handleCheckboxClick}
+            className="flex-shrink-0 mt-1 cursor-pointer transition-colors"
+            title={selected ? 'Deselect' : 'Select'}
+          >
+            {selected ? (
+              <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
+                <CheckCircle className="w-4 h-4 text-white" />
+              </div>
+            ) : (
+              <div className="w-5 h-5 rounded border-2 border-muted-foreground/30 hover:border-primary transition-colors" />
+            )}
+          </button>
+        )}
+
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.bgColor} ${config.color}`}>

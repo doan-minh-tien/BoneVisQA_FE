@@ -6,12 +6,20 @@ export interface VisualQaCitation {
 }
 
 export interface VisualQaReport {
+  /** Echoed from the request when the API returns it. */
+  questionText?: string;
   answerText: string;
   suggestedDiagnosis: string;
   keyFindings: string[];
+  /** SEPS: radiology-focused learning narrative (may be prose or newline-separated). */
+  keyImagingFindings?: string | null;
+  /** SEPS: educator prompts for self-reflection. */
+  reflectiveQuestions?: string | null;
   differentialDiagnoses: string[];
   recommendedReadings: Array<{ title?: string; url?: string } | string>;
   citations: VisualQaCitation[];
+  /** Model confidence when provided by the backend (0–100). */
+  aiConfidenceScore?: number;
 }
 
 export interface CategoryOption {
@@ -25,8 +33,15 @@ export interface TagOption {
 }
 
 export interface DocumentUploadResponse {
+  documentId?: string;
   indexingStatus?: string;
   message?: string;
+}
+
+export interface DocumentStatusResponse {
+  status: string;
+  progressPercentage: number;
+  currentOperation: string;
 }
 
 export interface LecturerTriageRow {
@@ -44,9 +59,9 @@ export interface ClassItem {
   className: string;
   semester: string;
   lecturerId: string;
+  createdAt: string;
   expertId?: string | null;
   expertName?: string | null;
-  createdAt: string;
 }
 
 export interface StudentEnrollment {
@@ -73,6 +88,12 @@ export interface CaseDto {
 /** GET /api/lecturer/classes/{classId}/questions */
 export interface LectStudentQuestionDto {
   id: string;
+  /** Use for POST /api/lecturer/triage/{answerId}/escalate when distinct from question id. */
+  answerId?: string | null;
+  /** Alternate answer-row id from some API shapes (escalation fallback). */
+  caseAnswerId?: string | null;
+  /** Explicit study image URL when the API uses ImageUrl (see also customImageUrl). */
+  imageUrl?: string | null;
   studentId: string;
   studentName: string;
   studentEmail: string;
@@ -86,6 +107,8 @@ export interface LectStudentQuestionDto {
   escalatedById?: string | null;
   escalatedAt?: string | null;
   aiConfidenceScore?: number | null;
+  /** Student study image or case thumbnail for triage (URLs from API). */
+  customImageUrl?: string | null;
 }
 
 export interface Announcement {
@@ -113,6 +136,63 @@ export interface ClassAssignment {
   gradedCount: number;
 }
 
+// ========== Assignment Types ==========
+
+export interface AssignmentDetail {
+  id: string;
+  classId: string;
+  className: string;
+  classCode?: string | null;
+  /** "case" hoặc "quiz" */
+  type: string;
+  title: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate: string | null;
+  openDate?: string | null;
+  isMandatory: boolean;
+  assignedAt: string | null;
+  totalStudents: number;
+  submittedCount: number;
+  gradedCount: number;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate: boolean;
+  avgScore?: number | null;
+  createdAt: string;
+}
+
+export interface AssignmentSubmission {
+  studentId: string;
+  studentName: string;
+  studentCode: string | null;
+  submittedAt: string | null;
+  score: number | null;
+  status: 'graded' | 'pending' | 'not-submitted';
+}
+
+export interface UpdateAssignmentRequest {
+  title?: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate?: string | null;
+  openDate?: string | null;
+  isMandatory?: boolean;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate?: boolean;
+  allowRetake?: boolean;
+}
+
+export interface AssignmentSubmissionUpdate {
+  studentId: string;
+  score: number | null;
+}
+
+export interface UpdateAssignmentSubmissionRequest {
+  submissions: AssignmentSubmissionUpdate[];
+}
+
 export interface ClassStats {
   classId: string;
   totalStudents: number;
@@ -131,6 +211,9 @@ export interface LoginResponse {
   email: string;
   token: string;
   roles: string[];
+  /** Backend account lifecycle status (e.g. Pending, Active). */
+  status?: string;
+  userStatus?: string;
   requiresMedicalVerification?: boolean;
 }
 
@@ -212,6 +295,10 @@ export interface StudentRecentActivityItem {
   occurredAt: string;
   type: string;
   status?: string;
+  /** Absolute or app-relative navigation target when the API provides one. */
+  targetUrl?: string;
+  caseId?: string;
+  quizId?: string;
 }
 
 export interface StudentQuizQuestion {
@@ -271,8 +358,9 @@ export interface QuizSessionDto {
   quizId: string;
   title: string;
   topic: string | null;
-  /** Phút — từ BE khi start quiz; ưu tiên hơn danh sách quiz để đồng hồ đếm ngược đúng. */
   timeLimit?: number | null;
+  /** Thời gian đóng quiz (ISO string) - dùng để auto submit khi đến giờ */
+  closeTime?: string | null;
   questions: StudentSessionQuestion[];
 }
 
@@ -304,6 +392,9 @@ export interface StudentQuizResultDto {
   correctAnswers: number;
 }
 
+/** Distinguishes expert library case work vs student-upload Visual QA in history UI. */
+export type StudentHistoryKind = 'caseStudy' | 'personalQa';
+
 export interface StudentCaseHistoryItem {
   id: string;
   title: string;
@@ -315,6 +406,11 @@ export interface StudentCaseHistoryItem {
   progress?: number;
   status?: 'Pending' | 'PendingExpert' | 'Approved' | 'Revised' | string;
   askedAt?: string;
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
+  historyKind: StudentHistoryKind;
+  /** Published catalog case id when this row is tied to the case library (deep link to `/student/cases/[id]`). */
+  catalogCaseId?: string | null;
 }
 
 export interface StudentCaseCatalogItem {
@@ -324,6 +420,34 @@ export interface StudentCaseCatalogItem {
   location: string;
   lesionType: string;
   difficulty: 'basic' | 'intermediate' | 'advanced';
+}
+
+export interface StudentCaseCatalogDetail extends StudentCaseCatalogItem {
+  description?: string;
+  expertSummary?: string;
+  keyFindings?: string[];
+  approvedAt?: string;
+}
+
+/** Real-time payload from SignalR `ReceiveNotification` (aligned with backend hub). */
+export interface NotificationDto {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  targetUrl?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface AppNotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  message?: string;
+  route?: string;
+  createdAt?: string;
+  isRead?: boolean;
 }
 
 export interface AdminUser {
@@ -343,20 +467,42 @@ export interface PercentageBoundingBox {
   heightPct: number;
 }
 
+/** Polygon vertices in normalized image space (0–1 per axis); legacy student ROI payloads. */
+export interface NormalizedPolygonPoint {
+  x: number;
+  y: number;
+}
+
+/** Axis-aligned bounding box in normalized image space (0–1). Preferred for Visual QA + expert case annotations. */
+export interface NormalizedImageBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ExpertReviewItem {
+  answerId: string;
   id: string;
   studentName: string;
   className?: string;
+  questionText: string;
   question: string;
   imageUrl?: string;
   customCoordinates?: PercentageBoundingBox | null;
+  /** Normalized rectangle ROI `{ x, y, width, height }` in 0–1 (preferred when present). */
+  customBoundingBox?: NormalizedImageBoundingBox | null;
+  /** Legacy: polygon vertices (0–1). */
+  customPolygon?: NormalizedPolygonPoint[] | null;
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;
-  citations?: ExpertReviewCitation[];
+  citations?: Citation[];
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
 }
 
-export interface ExpertReviewCitation {
+export interface Citation {
   chunkId: string;
   sourceText: string;
   referenceUrl?: string;
@@ -364,6 +510,7 @@ export interface ExpertReviewCitation {
   flagged?: boolean;
 }
 
+export type ExpertReviewCitation = Citation;
 // ========== Lecturer Quiz Types ==========
 
 export interface QuizDto {
@@ -373,6 +520,7 @@ export interface QuizDto {
   title: string;
   topic: string | null;
   isAiGenerated: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty: string | null;
   classification: string | null;
   openTime: string | null;
@@ -380,7 +528,8 @@ export interface QuizDto {
   timeLimit: number | null;
   passingScore: number | null;
   createdAt: string | null;
-  questionCount?: number;
+  /** Present when API returns aggregate question count. */
+  questionCount?: number | null;
   quizName?: string | null;
 }
 
@@ -401,6 +550,7 @@ export interface CreateQuizRequest {
   title: string;
   topic?: string;
   isAiGenerated?: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty?: string;
   classification?: string;
   openTime?: string;
@@ -532,7 +682,6 @@ export interface UpdateClassRequest {
   expertId?: string;
 }
 
-/** Expert option displayed in the Expert Assignment dropdown */
 export interface ExpertOption {
   id: string;
   fullName: string;

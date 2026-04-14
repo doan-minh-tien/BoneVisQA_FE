@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 @import "tailwindcss";
+@plugin "tailwind-scrollbar";
 
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -11,28 +12,29 @@
   color-scheme: light;
 
   /* App canvas + typography (Material-style light shell) */
-  --background: #f7f9fb;
+  --background: #f8fafc;
   --surface: #ffffff;
-  /* Sidebar: deep navy-earth — keep in sync with AppSidebar bg-[#0F1F35]; do not swap for MD3 surface tokens */
+  /* Sidebar surface + chrome (paired with .dark below; AppSidebar uses bg-sidebar-bg / text-sidebar-text) */
   --sidebar: #0f1f35;
-  --primary: #00478d;
-  --primary-hover: #003a73;
+  /* Medical blue core (aligned with primary-600 scale) */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
   --cyan-accent: #00e5ff;
-  --text-main: #191c1e;
-  --text-muted: #424752;
-  --border-color: #d9e5f2;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --border-color: #dbe3ee;
   --danger: #EF4444;
   --warning: #F59E0B;
   --success: #10B981;
 
   /* Aliases for existing component classes */
   --foreground: var(--text-main);
-  --muted: #E5EEF7;
+  --muted: #eef2f7;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: #F8FBFE;
+  --input: #f8fafc;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
@@ -42,31 +44,34 @@
   --sidebar-text: #F8FBFF;
   --sidebar-hover: rgba(255, 255, 255, 0.08);
   --sidebar-active: rgba(255, 255, 255, 0.14);
+
+  /* Full-bleed app areas (e.g. Visual QA) — matches h-16 local headers */
+  --app-header-height: 4rem;
 }
 
 .dark {
   color-scheme: dark;
 
-  --background: #0B1320;
-  --surface: #132238;
-  --sidebar: #0D192B;
-  --primary: #007BFF;
-  --primary-hover: #0056b3;
+  --background: #020617;
+  --surface: #0f172a;
+  --sidebar: #111b2f;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
   --cyan-accent: #00E5FF;
-  --text-main: #FFFFFF;
-  --text-muted: #8BA0B2;
-  --border-color: #1E334D;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border-color: #1e293b;
   --danger: #EF4444;
   --warning: #F59E0B;
   --success: #10B981;
 
   --foreground: var(--text-main);
-  --muted: var(--surface);
+  --muted: #1e293b;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: var(--surface);
+  --input: #111827;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
@@ -108,6 +113,18 @@
   --color-sidebar-text: var(--sidebar-text);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
+
+  /* Medical blue scale (Tailwind-style utilities: bg-primary-600, text-primary-900, …) */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
 
   /* MD3 tokens for student shell / dashboards (sidebar excluded) */
   --color-on-surface: #191c1e;
@@ -202,15 +219,33 @@ textarea::placeholder {
   border-color: var(--border-color);
 }
 
+/* Semantic scrollbars (WebKit + Firefox via plugin utilities on elements) */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
+  height: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c2c6d4;
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+}
+
+/* Scroll without showing scrollbars (main shell + panels) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

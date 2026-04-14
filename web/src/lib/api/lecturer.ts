@@ -13,7 +13,11 @@ import type {
   StudentQuizAttemptDto,
   QuizAttemptDetailDto,
   UpdateQuizAttemptRequestDto,
-  ExpertOption,
+  AssignmentDetail,
+  AssignmentSubmission,
+  UpdateAssignmentRequest,
+  UpdateAssignmentSubmissionRequest,
+  // ExpertOption, // DISABLED: Expert assignment
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,12 +84,37 @@ export async function createClass(body: {
   }
 }
 
+function normalizeClassItem(raw: unknown): ClassItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id) return null;
+  const expertRaw = r.expertId ?? r.ExpertId;
+  const expertNameRaw = r.expertName ?? r.ExpertName;
+  return {
+    id,
+    className: String(r.className ?? r.ClassName ?? ''),
+    semester: String(r.semester ?? r.Semester ?? ''),
+    lecturerId: String(r.lecturerId ?? r.LecturerId ?? ''),
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? ''),
+    expertId:
+      expertRaw !== undefined && expertRaw !== null && String(expertRaw).trim() !== ''
+        ? String(expertRaw).trim()
+        : null,
+    expertName:
+      expertNameRaw !== undefined && expertNameRaw !== null && String(expertNameRaw).trim() !== ''
+        ? String(expertNameRaw)
+        : null,
+  };
+}
+
 export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
+    const { data } = await http.get<unknown[]>('/api/lecturer/classes', {
       params: { lecturerId },
     });
-    return Array.isArray(data) ? data : [];
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeClassItem).filter((c): c is ClassItem => c !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -126,6 +155,7 @@ export async function removeStudent(classId: string, studentId: string): Promise
     throw new Error(getApiErrorMessage(e));
   }
 }
+
 
 export async function getLecturerCases(): Promise<CaseDto[]> {
   try {
@@ -182,24 +212,26 @@ export async function assignQuizToClass(
   }
 }
 
-/** Lấy danh sách Expert để gán vào lớp học. */
-export async function getExperts(): Promise<ExpertOption[]> {
-  try {
-    const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// DISABLED: getExperts — Lecturer không gán expert
+// /** Lấy danh sách Expert để gán vào lớp học. */
+// export async function getExperts(): Promise<ExpertOption[]> {
+//   try {
+//     const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
+//     return Array.isArray(data) ? data : [];
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
-/** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
-export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
-  try {
-    await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// DISABLED: assignExpertToClass — Lecturer không gán expert
+// /** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
+// export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
+//   try {
+//     await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
 export async function approveCase(caseId: string, isApproved: boolean): Promise<void> {
   try {
@@ -296,9 +328,16 @@ export async function getAllLecturerAssignments(lecturerId: string): Promise<Cla
       `/api/lecturer/assignments?lecturerId=${encodeURIComponent(lid)}`,
     );
     const list = Array.isArray(data) ? data : [];
-    return list
+    const normalized = list
       .map(normalizeAssignment)
       .filter((a): a is ClassAssignment => a !== null);
+    // Deduplicate by id (defensive: guard against backend returning duplicates)
+    const seen = new Set<string>();
+    return normalized.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -314,6 +353,150 @@ export async function getClassStats(classId: string): Promise<ClassStats> {
 }
 
 /**
+ * Pulls the answer row GUID for POST /api/lecturer/triage/{answerId}/escalate from flat or nested payloads.
+ */
+export function extractAnswerIdFromQuestionRow(r: Record<string, unknown>): string | null {
+  const direct =
+    r.answerId ??
+    r.AnswerId ??
+    r.answer_id ??
+    r.latestAnswerId ??
+    r.LatestAnswerId ??
+    r.answerGuid ??
+    r.AnswerGuid ??
+    r.visualQaAnswerId ??
+    r.VisualQaAnswerId ??
+    r.caseAnswerId ??
+    r.CaseAnswerId ??
+    r.triageAnswerId ??
+    r.TriageAnswerId ??
+    r.responseId ??
+    r.ResponseId;
+  if (direct != null && String(direct).trim() !== '') return String(direct).trim();
+
+  const nestedCandidates = [
+    r.answer,
+    r.Answer,
+    r.answerDto,
+    r.AnswerDto,
+    r.latestAnswer,
+    r.LatestAnswer,
+    r.visualQaAnswer,
+    r.VisualQaAnswer,
+    r.caseAnswer,
+    r.CaseAnswer,
+  ];
+  for (const nested of nestedCandidates) {
+    if (nested && typeof nested === 'object') {
+      const a = nested as Record<string, unknown>;
+      const id = a.id ?? a.Id ?? a.answerId ?? a.AnswerId ?? a.guid ?? a.Guid;
+      if (id != null && String(id).trim() !== '') return String(id).trim();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
+ * `answerId` is populated when the backend sends PascalCase or alternate keys.
+ * Escalation uses POST /api/lecturer/triage/{answerId}/escalate — the route id must be the answer GUID, not the question id.
+ */
+function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const questionId = String(
+    r.questionId ?? r.QuestionId ?? r.id ?? r.Id ?? '',
+  ).trim();
+  if (!questionId) return null;
+
+  let answerId = extractAnswerIdFromQuestionRow(r);
+  const explicitQuestionId = String(r.questionId ?? r.QuestionId ?? '').trim();
+  const explicitRowId = String(r.id ?? r.Id ?? '').trim();
+  if (
+    !answerId &&
+    explicitQuestionId &&
+    explicitRowId &&
+    explicitQuestionId !== explicitRowId
+  ) {
+    // Common list DTO: `id` is the answer row, `questionId` is the parent question.
+    answerId = explicitRowId;
+  }
+
+  const scoreRaw = r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? r.SimilarityScore;
+  let aiConfidenceScore: number | null = null;
+  if (typeof scoreRaw === 'number' && !Number.isNaN(scoreRaw)) {
+    aiConfidenceScore = scoreRaw > 1 ? Math.min(1, scoreRaw / 100) : scoreRaw;
+  } else if (typeof scoreRaw === 'string' && scoreRaw.trim() !== '') {
+    const n = parseFloat(scoreRaw);
+    if (!Number.isNaN(n)) aiConfidenceScore = n > 1 ? Math.min(1, n / 100) : n;
+  }
+
+  const caseObj = r.case ?? r.Case;
+  const fromCase =
+    caseObj && typeof caseObj === 'object'
+      ? String(
+          (caseObj as Record<string, unknown>).customImageUrl ??
+            (caseObj as Record<string, unknown>).CustomImageUrl ??
+            (caseObj as Record<string, unknown>).imageUrl ??
+            (caseObj as Record<string, unknown>).ImageUrl ??
+            (caseObj as Record<string, unknown>).thumbnailUrl ??
+            (caseObj as Record<string, unknown>).ThumbnailUrl ??
+            '',
+        ).trim()
+      : '';
+  const fromRow = String(
+    r.customImageUrl ??
+      r.CustomImageUrl ??
+      r.studentImageUrl ??
+      r.StudentImageUrl ??
+      r.imageUrl ??
+      r.ImageUrl ??
+      r.thumbnailUrl ??
+      r.ThumbnailUrl ??
+      r.caseThumbnailUrl ??
+      r.CaseThumbnailUrl ??
+      '',
+  ).trim();
+  const customImageUrl = fromRow || fromCase || null;
+  const imageUrlExplicit = String(r.imageUrl ?? r.ImageUrl ?? r.studyImageUrl ?? r.StudyImageUrl ?? '').trim() || null;
+
+  const caseAnswerIdRaw =
+    r.caseAnswerId ??
+    r.CaseAnswerId ??
+    r.visualQaAnswerId ??
+    r.VisualQaAnswerId ??
+    r.caseVisualAnswerId ??
+    r.CaseVisualAnswerId;
+  const caseAnswerId =
+    caseAnswerIdRaw != null && String(caseAnswerIdRaw).trim() !== ''
+      ? String(caseAnswerIdRaw).trim()
+      : null;
+
+  return {
+    id: questionId,
+    answerId,
+    caseAnswerId,
+    studentId: String(r.studentId ?? r.StudentId ?? ''),
+    studentName: String(r.studentName ?? r.StudentName ?? ''),
+    studentEmail: String(r.studentEmail ?? r.StudentEmail ?? ''),
+    caseId: String(r.caseId ?? r.CaseId ?? ''),
+    caseTitle: String(r.caseTitle ?? r.CaseTitle ?? ''),
+    questionText: String(r.questionText ?? r.QuestionText ?? ''),
+    language: r.language == null && r.Language == null ? null : String(r.language ?? r.Language ?? ''),
+    createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
+    answerText: (r.answerText ?? r.AnswerText ?? null) as string | null,
+    answerStatus: (r.answerStatus ?? r.AnswerStatus ?? null) as string | null,
+    escalatedById: (r.escalatedById ?? r.EscalatedById ?? null) as string | null,
+    escalatedAt: (r.escalatedAt ?? r.EscalatedAt ?? null) as string | null,
+    aiConfidenceScore,
+    customImageUrl,
+    imageUrl: imageUrlExplicit,
+  };
+}
+
+/**
  * Get student questions for a class
  */
 export async function getStudentQuestions(
@@ -321,7 +504,7 @@ export async function getStudentQuestions(
   options?: { caseId?: string; studentId?: string },
 ): Promise<LectStudentQuestionDto[]> {
   try {
-    const { data } = await http.get<LectStudentQuestionDto[]>(
+    const { data } = await http.get<unknown[]>(
       `/api/lecturer/classes/${classId}/questions`,
       {
         params: {
@@ -330,15 +513,15 @@ export async function getStudentQuestions(
         },
       },
     );
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeLectStudentQuestionDto)
+      .filter((row): row is LectStudentQuestionDto => row !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
-/**
- * Import students from Excel file
- */
 export async function importStudentsFromExcel(
   classId: string,
   file: File,
@@ -362,9 +545,6 @@ export async function importStudentsFromExcel(
   }
 }
 
-/**
- * Bulk enroll students from list
- */
 export async function enrollManyStudents(
   classId: string,
   studentIds: string[],
@@ -518,6 +698,136 @@ export async function allowRetakeAll(classId: string, quizId: string): Promise<v
       `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
       {},
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Assignment CRUD API ==========
+
+/** Normalize assignment detail row from BE (camelCase or PascalCase). */
+function normalizeAssignmentDetail(row: unknown): AssignmentDetail | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id || !GUID_RE.test(id)) return null;
+  return {
+    id,
+    classId: String(r.classId ?? r.ClassId ?? '') || '',
+    className: String(r.className ?? r.ClassName ?? '') || '',
+    classCode: (r.classCode ?? r.ClassCode ?? null) as string | null,
+    type: String(r.type ?? r.Type ?? '') || '',
+    title: String(r.title ?? r.Title ?? '') || '',
+    description: (r.description ?? r.Description ?? null) as string | null,
+    instructions: (r.instructions ?? r.Instructions ?? null) as string | null,
+    dueDate: (r.dueDate ?? r.DueDate ?? null) as string | null,
+    openDate: (r.openDate ?? r.OpenDate ?? r.openTime ?? r.OpenTime ?? null) as string | null,
+    isMandatory: Boolean(r.isMandatory ?? r.IsMandatory ?? false),
+    assignedAt: (r.assignedAt ?? r.AssignedAt ?? null) as string | null,
+    totalStudents: Number(r.totalStudents ?? r.TotalStudents ?? 0) || 0,
+    submittedCount: Number(r.submittedCount ?? r.SubmittedCount ?? 0) || 0,
+    gradedCount: Number(r.gradedCount ?? r.GradedCount ?? 0) || 0,
+    maxScore: r.maxScore != null ? Number(r.maxScore) : null,
+    passingScore: r.passingScore != null ? Number(r.passingScore) : null,
+    allowLate: Boolean(r.allowLate ?? r.AllowLate ?? false),
+    avgScore: r.avgScore != null ? Number(r.avgScore) : null,
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+  };
+}
+
+/** Normalize submission row from BE (camelCase or PascalCase). */
+function normalizeSubmission(row: unknown): AssignmentSubmission | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const studentId = String(r.studentId ?? r.StudentId ?? '').trim();
+  if (!studentId) return null;
+  return {
+    studentId,
+    studentName: String(r.studentName ?? r.StudentName ?? 'Unknown') || 'Unknown',
+    studentCode: (r.studentCode ?? r.StudentCode ?? null) as string | null,
+    submittedAt: (r.submittedAt ?? r.SubmittedAt ?? r.submittedAt ?? null) as string | null,
+    score: r.score != null ? Number(r.score) : null,
+    status: String(r.status ?? r.Status ?? 'not-submitted') as AssignmentSubmission['status'],
+  };
+}
+
+/**
+ * Lấy chi tiết của một assignment cụ thể.
+ */
+export async function getAssignmentById(assignmentId: string): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown>(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cập nhật thông tin assignment.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  body: UpdateAssignmentRequest,
+): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}`,
+      body,
+    );
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Xóa một assignment.
+ */
+export async function deleteAssignment(assignmentId: string): Promise<void> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    await http.delete(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Lấy danh sách submissions của một assignment.
+ */
+export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Cập nhật điểm cho một hoặc nhiều submissions.
+ */
+export async function updateAssignmentSubmissions(
+  assignmentId: string,
+  body: UpdateAssignmentSubmissionRequest,
+): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+      body,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

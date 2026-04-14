@@ -1,5 +1,12 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
+/**
+ * When `NEXT_PUBLIC_API_URL` is unset, local dev uses this origin (no `/api` suffix).
+ * All axios paths are like `/api/...`, so the base must be e.g. `http://localhost:5046`, not `.../api`.
+ * Do not commit other ports (e.g. 5000) here — override in `.env.local` if your backend differs.
+ */
+const DEV_FALLBACK_API_ORIGIN = 'http://localhost:5046';
+
 /** BE gốc chỉ là origin + port, ví dụ http://localhost:5046 — không thêm /api/... */
 export function normalizeApiBaseUrl(raw: string): string {
   let u = raw.trim().replace(/\/+$/, '');
@@ -10,36 +17,59 @@ export function normalizeApiBaseUrl(raw: string): string {
 }
 
 /**
+ * Single source of truth for the public API origin (client + server bundles).
+ * 1) `NEXT_PUBLIC_API_URL` when set (after normalize)
+ * 2) In non-production only: `DEV_FALLBACK_API_ORIGIN` (team baseline)
+ * 3) Production without env: empty (fail loud; never guess a teammate's machine)
+ */
+export function getPublicApiOrigin(): string {
+  const fromEnv = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL?.trim() ?? '');
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV !== 'production') {
+    return DEV_FALLBACK_API_ORIGIN;
+  }
+  return '';
+}
+
+/**
  * Ảnh/static từ BE trả về path kiểu `/uploads/images/...` — trình duyệt không được dùng origin Next (3000).
- * Ghép với NEXT_PUBLIC_API_URL để img src trỏ đúng server API.
+ * Ghép với cùng origin như axios (`getPublicApiOrigin`).
  */
 export function resolveApiAssetUrl(path: string | null | undefined): string {
   if (path == null || !String(path).trim()) return '';
   const p = String(path).trim();
+  // Absolute URLs (e.g. Supabase storage) must never be prefixed with API origin
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
   if (/^(https?:|data:)/i.test(p)) return p;
-  const base = normalizeApiBaseUrl(
-    typeof window !== 'undefined'
-      ? process.env.NEXT_PUBLIC_API_URL || ''
-      : process.env.NEXT_PUBLIC_API_URL || '',
-  );
+  const base = getPublicApiOrigin();
   if (!base) return p;
   const suffix = p.startsWith('/') ? p : `/${p}`;
   return `${base}${suffix}`;
 }
 
-const baseURL = normalizeApiBaseUrl(
-  typeof window !== 'undefined'
-    ? process.env.NEXT_PUBLIC_API_URL || ''
-    : process.env.NEXT_PUBLIC_API_URL || '',
-);
+const baseURL = getPublicApiOrigin() || undefined;
+
+/** Base URL của BE để dùng trực tiếp, ví dụ: axios đến /api/... */
+export const API_BASE_URL = baseURL || '';
 
 export const http = axios.create({
-  baseURL: baseURL || undefined,
-  timeout: 180_000,
+  baseURL,
+  timeout: 60_000,
   headers: {
     Accept: 'application/json',
   },
 });
+
+type ProblemDetailsPayload = {
+  title?: unknown;
+  detail?: unknown;
+  status?: unknown;
+  type?: unknown;
+  instance?: unknown;
+  message?: unknown;
+  error?: unknown;
+  errors?: unknown;
+};
 
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
@@ -57,43 +87,32 @@ http.interceptors.response.use(
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('activeRole');
-      if (!window.location.pathname.startsWith('/auth/sign-in')) {
-        window.location.href = '/auth/sign-in';
-      }
+      window.dispatchEvent(new Event('auth:unauthorized'));
+    }
+    // Log chi tiết lỗi để debug
+    if (err.response) {
+      console.warn(`[API] HTTP ${err.response.status}: ${err.config?.url}`, err.response.data);
+    } else if (err.request) {
+      console.warn(`[API] No response from ${err.config?.url} — server may be offline or unreachable.`);
     }
     return Promise.reject(err);
   },
 );
 
-/** Lấy dòng thông báo ngắn từ chuỗi lỗi dài (HTML/stack trace từ dev middleware hoặc axios). */
-function shortenExceptionMessage(raw: string): string {
-  const s = raw.trim();
-  if (!s) return raw;
-  // JSON string từ axios: "Error: System.InvalidOperationException: ..."
-  const afterColon = s.match(
-    /(?:System\.)?(?:InvalidOperation|KeyNotFound|UnauthorizedAccess)Exception:\s*([^\r\n]+)/i,
-  );
-  if (afterColon?.[1]) return afterColon[1].trim();
-  // Cắt trước "   at BoneVisQA" hoặc dòng "at ..."
-  const atMatch = s.search(/\r?\n\s*at\s+[A-Za-z]/);
-  if (atMatch > 0) return s.slice(0, atMatch).replace(/^Error:\s*/i, '').trim();
-  const headMatch = s.match(/:\s*([^\r\n]{1,500})/);
-  if (headMatch?.[1] && headMatch[1].length < s.length * 0.9) return headMatch[1].trim();
-  if (s.length > 400) return `${s.slice(0, 380).trim()}…`;
-  return s;
-}
-
 export function getApiErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     if (!err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error')) {
-      const base = process.env.NEXT_PUBLIC_API_URL || '(not set)';
-      return `Cannot reach the API at ${base}. Start the backend and ensure NEXT_PUBLIC_API_URL matches its URL and port.`;
+      const origin = getPublicApiOrigin();
+      const hint =
+        origin ||
+        '(set NEXT_PUBLIC_API_URL in .env.local, e.g. http://localhost:5046 — see .env.example)';
+      return `Cannot reach the API at ${hint}. Start the backend and ensure the URL matches its host and port.`;
     }
     const data = err.response?.data as unknown;
-    if (typeof data === 'string' && data.trim()) return shortenExceptionMessage(data);
+    if (typeof data === 'string' && data.trim()) return data;
     if (data && typeof data === 'object') {
-      const o = data as Record<string, unknown>;
-      // ASP.NET Core validation: { title, errors: { "field": ["msg"] } }
+      const o = data as ProblemDetailsPayload;
+      // ASP.NET Core / .NET 8 validation: RFC 7807 + `errors` map.
       const errMap = o.errors;
       if (errMap && typeof errMap === 'object' && !Array.isArray(errMap)) {
         const lines: string[] = [];
@@ -110,12 +129,46 @@ export function getApiErrorMessage(err: unknown): string {
           return lines.join(' ');
         }
       }
-      const msg = o.message ?? o.title ?? o.detail ?? o.error;
-      if (typeof msg === 'string') return shortenExceptionMessage(msg);
+
+      // ProblemDetails priority: detail (specific) -> title (summary).
+      if (typeof o.detail === 'string' && o.detail.trim()) return o.detail.trim();
+      if (typeof o.title === 'string' && o.title.trim()) return o.title.trim();
+
+      // Backward compatibility for legacy API shapes.
+      if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
+      if (typeof o.error === 'string' && o.error.trim()) return o.error.trim();
       if (Array.isArray(o.errors) && o.errors[0]) return String(o.errors[0]);
     }
-    if (err.message) return shortenExceptionMessage(err.message);
+    if (err.message) return err.message;
   }
-  if (err instanceof Error) return shortenExceptionMessage(err.message);
+  if (err instanceof Error) return err.message;
   return 'Request failed';
+}
+
+/** RFC 7807 / ASP.NET ProblemDetails — use for toasts and inline error copy. */
+export function getApiProblemDetails(err: unknown): {
+  title: string;
+  detail?: string;
+  status?: number;
+} {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const data = err.response?.data as unknown;
+    if (data && typeof data === 'object') {
+      const o = data as ProblemDetailsPayload;
+      const title =
+        typeof o.title === 'string' && o.title.trim()
+          ? o.title.trim()
+          : status === 404
+            ? 'Not found'
+            : status === 500
+              ? 'Server error'
+              : 'Request failed';
+      const detail = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined;
+      if (detail || title) return { title, detail, status };
+    }
+    return { title: getApiErrorMessage(err), status };
+  }
+  if (err instanceof Error) return { title: err.message };
+  return { title: 'Request failed' };
 }

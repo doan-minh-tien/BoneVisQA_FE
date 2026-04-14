@@ -92,7 +92,7 @@ export function AppSidebar({
   onToggleCollapsed,
 }: {
   role?: RoleKey;
-  collapsed: boolean;
+  collapsed?: boolean;
   onToggleCollapsed: () => void;
 }) {
   const pathname = usePathname();

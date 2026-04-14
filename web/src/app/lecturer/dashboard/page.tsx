@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import useSWR from 'swr';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
+import {
+  LecturerDashboardSkeleton,
+  LecturerLeaderboardSkeleton,
+} from '@/components/shared/DashboardSkeletons';
 import { EngagementOverview } from '@/components/lecturer/dashboard/EngagementOverview';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -22,7 +27,6 @@ import {
   BookOpen,
   ClipboardList,
   FolderOpen,
-  Loader2,
   MessageSquare,
   Sparkles,
   TrendingUp,
@@ -46,71 +50,57 @@ type StatCardModel = {
 
 export default function LecturerDashboardPage() {
   const toast = useToast();
-  const [stats, setStats] = useState<LecturerDashboardStats | null>(null);
-  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
-  const [leaderboard, setLeaderboard] = useState<LecturerLeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+  const swrConfig = {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  };
+  const {
+    data: stats,
+    error: statsError,
+    isLoading: statsLoading,
+  } = useSWR<LecturerDashboardStats>('lecturer-dashboard-stats', fetchLecturerDashboardStats, swrConfig);
+  const {
+    data: classesData,
+    error: classesError,
+    isLoading: classesLoading,
+  } = useSWR<ClassItem[]>(
+    userId ? ['lecturer-classes', userId] : null,
+    ([, uid]: [string, string]) => fetchLecturerClasses(uid),
+    swrConfig,
+  );
+  const classes = classesData ?? [];
+  const selectedClassIdEffective = selectedClassId || classes[0]?.id || '';
+  const {
+    data: leaderboardData,
+    error: leaderboardError,
+    isLoading: loadingLeaderboard,
+  } = useSWR<LecturerLeaderboardEntry[]>(
+    selectedClassIdEffective ? ['lecturer-class-leaderboard', selectedClassIdEffective] : null,
+    ([, classId]: [string, string]) => fetchLecturerClassLeaderboard(classId),
+    swrConfig,
+  );
+  const leaderboard = leaderboardData ?? [];
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
-        const [dashboardStats, classList] = await Promise.all([
-          fetchLecturerDashboardStats(),
-          userId ? fetchLecturerClasses(userId) : Promise.resolve([]),
-        ]);
-        if (!cancelled) {
-          setStats(dashboardStats);
-          setClasses(classList);
-          if (classList.length > 0) {
-            setSelectedClassId(classList[0].id);
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load lecturer dashboard.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
-
-  useEffect(() => {
-    if (!selectedClassId) {
-      setLeaderboard([]);
-      return;
+    if (statsError) {
+      toast.error(statsError instanceof Error ? statsError.message : 'Failed to load lecturer dashboard.');
     }
-
-    let cancelled = false;
-    (async () => {
-      setLoadingLeaderboard(true);
-      try {
-        const data = await fetchLecturerClassLeaderboard(selectedClassId);
-        if (!cancelled) {
-          setLeaderboard(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load class leaderboard.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingLeaderboard(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedClassId, toast]);
+  }, [statsError, toast]);
+  useEffect(() => {
+    if (classesError) {
+      toast.error(classesError instanceof Error ? classesError.message : 'Failed to load lecturer classes.');
+    }
+  }, [classesError, toast]);
+  useEffect(() => {
+    if (leaderboardError) {
+      toast.error(
+        leaderboardError instanceof Error ? leaderboardError.message : 'Failed to load class leaderboard.',
+      );
+    }
+  }, [leaderboardError, toast]);
 
   const statCards = useMemo<StatCardModel[]>(
     () =>
@@ -118,25 +108,34 @@ export default function LecturerDashboardPage() {
         ? [
             {
               title: 'Active classes',
-              value: stats.totalClasses,
-              change: `${stats.totalStudents} students under supervision`,
+              value:
+                typeof stats.totalClasses === 'number' && Number.isFinite(stats.totalClasses)
+                  ? stats.totalClasses
+                  : '—',
+              change: `${typeof stats.totalStudents === 'number' && Number.isFinite(stats.totalStudents) ? stats.totalStudents : 0} students under supervision`,
               changeType: 'neutral' as const,
               icon: ClipboardList,
               iconColor: 'bg-primary/10 text-primary',
             },
             {
               title: 'Student questions',
-              value: stats.totalQuestions,
-              change: `${stats.escalatedItems} escalated for clinical validation`,
+              value:
+                typeof stats.totalQuestions === 'number' && Number.isFinite(stats.totalQuestions)
+                  ? stats.totalQuestions
+                  : '—',
+              change: `${typeof stats.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems) ? stats.escalatedItems : 0} escalated for clinical validation`,
               changeType: 'neutral' as const,
               icon: MessageSquare,
               iconColor: 'bg-cyan-accent/10 text-cyan-accent',
             },
             {
               title: 'Pending reviews',
-              value: stats.pendingReviews,
+              value:
+                typeof stats.pendingReviews === 'number' && Number.isFinite(stats.pendingReviews)
+                  ? stats.pendingReviews
+                  : '—',
               change: 'Awaiting expert follow-up',
-              changeType: stats.pendingReviews > 0 ? 'negative' : 'positive',
+              changeType: (stats.pendingReviews ?? 0) > 0 ? 'negative' : 'positive',
               icon: Bell,
               iconColor: 'bg-warning/10 text-warning',
             },
@@ -148,7 +147,9 @@ export default function LecturerDashboardPage() {
                   ? 'No submitted attempts yet'
                   : 'Across submitted student attempts',
               changeType:
-                stats.averageQuizScore != null && stats.averageQuizScore >= 70
+                stats.averageQuizScore != null &&
+                Number.isFinite(stats.averageQuizScore) &&
+                stats.averageQuizScore >= 70
                   ? 'positive'
                   : 'neutral',
               icon: TrendingUp,
@@ -203,41 +204,55 @@ export default function LecturerDashboardPage() {
           </Link>
         </div>
 
-        {loading ? (
-          <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading dashboard metrics...
-            </div>
-          </div>
-        ) : !stats ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-            <Users className="mx-auto h-10 w-10 text-muted-foreground" />
-            <h2 className="mt-4 text-lg font-semibold text-card-foreground">No dashboard data available</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              The lecturer stats endpoint returned no data. Verify the backend seed data or account scope.
-            </p>
-          </div>
+        {statsLoading && classesLoading ? (
+          <LecturerDashboardSkeleton />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((stat) => (
-                <StatCard key={stat.title} {...stat} />
-              ))}
-            </div>
+            {!stats && !statsLoading ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-8 text-center">
+                <Users className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h2 className="mt-3 text-base font-semibold text-card-foreground">Stats widget unavailable</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {(statsError instanceof Error ? statsError.message : statsError) ??
+                    'The lecturer stats endpoint returned no data.'}
+                </p>
+              </div>
+            ) : null}
+
+            {statsLoading ? (
+              <LecturerDashboardSkeleton />
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {statCards.map((stat) => (
+                  <StatCard key={stat.title} {...stat} />
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
               <div className="space-y-6 xl:col-span-8">
-                <EngagementOverview stats={stats} />
+                {stats ? <EngagementOverview stats={stats} /> : null}
 
                 <SectionCard title="Operational snapshot">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {statsLoading ? (
+                    <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                      <div className="h-36 animate-pulse rounded-xl bg-muted/70" />
+                    </div>
+                  ) : (
+                    <>
+                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="rounded-xl border border-border bg-gradient-to-br from-background to-muted/30 p-4">
                       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         <Users className="h-5 w-5" />
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Students</p>
-                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.totalStudents}</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">
+                        {typeof stats?.totalStudents === 'number' && Number.isFinite(stats.totalStudents)
+                          ? stats.totalStudents
+                          : '—'}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">Across all active lecturer classes</p>
                     </div>
                     <div className="rounded-xl border border-border bg-gradient-to-br from-background to-muted/30 p-4">
@@ -245,7 +260,11 @@ export default function LecturerDashboardPage() {
                         <MessageSquare className="h-5 w-5" />
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Escalations</p>
-                      <p className="mt-2 text-3xl font-semibold text-card-foreground">{stats.escalatedItems}</p>
+                      <p className="mt-2 text-3xl font-semibold text-card-foreground">
+                        {typeof stats?.escalatedItems === 'number' && Number.isFinite(stats.escalatedItems)
+                          ? stats.escalatedItems
+                          : '—'}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">Requests forwarded to experts</p>
                     </div>
                     <div className="rounded-xl border border-border bg-gradient-to-br from-background to-muted/30 p-4">
@@ -254,7 +273,7 @@ export default function LecturerDashboardPage() {
                       </div>
                       <p className="text-sm font-medium text-card-foreground">Quiz performance</p>
                       <p className="mt-2 text-3xl font-semibold text-card-foreground">
-                        {formatAverageQuizScore(stats.averageQuizScore)}
+                        {formatAverageQuizScore(stats?.averageQuizScore)}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">Average score from submitted quizzes</p>
                     </div>
@@ -327,6 +346,8 @@ export default function LecturerDashboardPage() {
                       </Link>
                     </div>
                   </div>
+                    </>
+                  )}
                 </SectionCard>
               </div>
 
@@ -342,7 +363,7 @@ export default function LecturerDashboardPage() {
                       </label>
                       <select
                         id="leaderboard-class"
-                        value={selectedClassId}
+                        value={selectedClassIdEffective}
                         onChange={(e) => setSelectedClassId(e.target.value)}
                         className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       >
@@ -359,16 +380,23 @@ export default function LecturerDashboardPage() {
                     </Link>
                   </div>
 
-                  {!selectedClassId ? (
+                  {classesLoading ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      Loading classes...
+                    </div>
+                  ) : classesError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      {classesError instanceof Error ? classesError.message : classesError}
+                    </div>
+                  ) : !selectedClassIdEffective ? (
                     <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
                       Select a class to load leaderboard analytics.
                     </div>
                   ) : loadingLeaderboard ? (
-                    <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-border bg-background/60">
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                        Loading student leaderboard...
-                      </div>
+                    <LecturerLeaderboardSkeleton />
+                  ) : leaderboardError ? (
+                    <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
+                      {leaderboardError instanceof Error ? leaderboardError.message : leaderboardError}
                     </div>
                   ) : leaderboard.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border bg-background/60 px-4 py-10 text-center text-sm text-muted-foreground">
@@ -387,8 +415,22 @@ export default function LecturerDashboardPage() {
                         </thead>
                         <tbody className="divide-y divide-border">
                           {leaderboard.map((entry, index) => {
-                            const pct = Math.min(100, Math.max(0, entry.averageQuizScore));
-                            const initials = entry.studentName
+                            const name = entry.studentName?.trim() || 'N/A';
+                            const casesViewed =
+                              typeof entry.totalCasesViewed === 'number' && Number.isFinite(entry.totalCasesViewed)
+                                ? entry.totalCasesViewed
+                                : 0;
+                            const questionsAsked =
+                              typeof entry.totalQuestionsAsked === 'number' &&
+                              Number.isFinite(entry.totalQuestionsAsked)
+                                ? entry.totalQuestionsAsked
+                                : 0;
+                            const avgNum =
+                              typeof entry.averageQuizScore === 'number' && Number.isFinite(entry.averageQuizScore)
+                                ? entry.averageQuizScore
+                                : null;
+                            const pct = avgNum != null ? Math.min(100, Math.max(0, avgNum)) : 0;
+                            const initials = name
                               .split(/\s+/)
                               .filter(Boolean)
                               .slice(0, 2)
@@ -396,7 +438,7 @@ export default function LecturerDashboardPage() {
                               .join('') || '?';
                             return (
                               <tr
-                                key={`${entry.studentId ?? entry.studentName}-${index}`}
+                                key={`${entry.studentId ?? name}-${index}`}
                                 className="even:bg-muted/25 hover:bg-primary/5"
                               >
                                 <td className="px-4 py-3">
@@ -404,23 +446,29 @@ export default function LecturerDashboardPage() {
                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                                       {initials}
                                     </div>
-                                    <span className="font-medium text-card-foreground">{entry.studentName}</span>
+                                    <span className="font-medium text-card-foreground">{name}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-muted-foreground">{entry.totalCasesViewed}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{entry.totalQuestionsAsked}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{casesViewed}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{questionsAsked}</td>
                                 <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    <span className="w-12 shrink-0 text-xs font-bold tabular-nums text-card-foreground">
-                                      {entry.averageQuizScore.toFixed(1)}%
-                                    </span>
-                                    <div className="h-2 min-w-[4rem] flex-1 overflow-hidden rounded-full bg-muted">
-                                      <div
-                                        className="h-full rounded-full bg-success transition-all"
-                                        style={{ width: `${pct}%` }}
-                                      />
+                                  {avgNum != null ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-12 shrink-0 text-xs font-bold tabular-nums text-card-foreground">
+                                        {avgNum.toFixed(1)}%
+                                      </span>
+                                      <div className="h-2 min-w-[4rem] flex-1 overflow-hidden rounded-full bg-muted">
+                                        <div
+                                          className="h-full rounded-full bg-success transition-all"
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                      </div>
                                     </div>
-                                  </div>
+                                  ) : (
+                                    <span className="inline-flex rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
+                                      —
+                                    </span>
+                                  )}
                                 </td>
                               </tr>
                             );

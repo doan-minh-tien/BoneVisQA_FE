@@ -272,8 +272,13 @@ export interface UpdateExpertProfilePayload {
 }
 
 function mapExpertProfile(raw: Record<string, unknown>): ExpertProfile {
+  const rolesFromActive =
+    raw.activeRole != null && String(raw.activeRole).trim()
+      ? [String(raw.activeRole)]
+      : [];
+  const rolesList = Array.isArray(raw.roles) ? (raw.roles as unknown[]).map(String) : rolesFromActive;
   return {
-    id: String(raw.id ?? ''),
+    id: String(raw.id ?? raw.userId ?? ''),
     fullName: String(raw.fullName ?? ''),
     email: String(raw.email ?? ''),
     specialty: optStr(raw.specialty),
@@ -282,12 +287,12 @@ function mapExpertProfile(raw: Record<string, unknown>): ExpertProfile {
     createdAt: optStr(raw.createdAt),
     updatedAt: optStr(raw.updatedAt),
     lastLogin: optStr(raw.lastLogin),
-    roles: Array.isArray(raw.roles) ? (raw.roles as unknown[]).map(String) : [],
+    roles: rolesList.length > 0 ? rolesList : ['Expert'],
     dateOfBirth: optDateStr(raw.dateOfBirth),
     phoneNumber: optStr(raw.phoneNumber),
     gender: optStr(raw.gender),
     studentSchoolId: optStr(raw.studentSchoolId),
-    classCode: optStr(raw.classCode),
+    classCode: optStr(raw.classCode ?? raw.schoolCohort),
     address: optStr(raw.address),
     bio: optStr(raw.bio),
     emergencyContact: optStr(raw.emergencyContact),
@@ -298,21 +303,47 @@ function mapExpertProfile(raw: Record<string, unknown>): ExpertProfile {
   };
 }
 
+/** Canonical profile — `GET /api/profile`. */
 export async function fetchExpertProfile(): Promise<ExpertProfile> {
   try {
-    const { data } = await http.get<unknown>('/api/expert/profile');
+    const { data } = await http.get<unknown>('/api/profile');
     return mapExpertProfile(data as Record<string, unknown>);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
+/** Canonical profile update — `PUT /api/profile` (expert-only prefs kept client-side if BE omits them). */
 export async function updateExpertProfile(
   payload: UpdateExpertProfilePayload,
 ): Promise<ExpertProfile> {
   try {
-    const { data } = await http.put<unknown>('/api/expert/profile', payload);
-    return mapExpertProfile(data as Record<string, unknown>);
+    const { data } = await http.put<unknown>('/api/profile', {
+      fullName: payload.fullName,
+      schoolCohort: payload.classCode?.trim() || null,
+      phoneNumber: payload.phoneNumber?.trim() || null,
+      bio: payload.bio?.trim() || null,
+      address: payload.address?.trim() || null,
+    });
+    const mapped = mapExpertProfile(data as Record<string, unknown>);
+    return {
+      ...mapped,
+      fullName: payload.fullName || mapped.fullName,
+      specialty: payload.specialty ?? mapped.specialty,
+      avatarUrl: payload.avatarUrl ?? mapped.avatarUrl,
+      dateOfBirth: payload.dateOfBirth ?? mapped.dateOfBirth,
+      phoneNumber: payload.phoneNumber ?? mapped.phoneNumber,
+      gender: payload.gender ?? mapped.gender,
+      studentSchoolId: payload.studentSchoolId ?? mapped.studentSchoolId,
+      classCode: payload.classCode ?? mapped.classCode,
+      address: payload.address ?? mapped.address,
+      bio: payload.bio ?? mapped.bio,
+      emergencyContact: payload.emergencyContact ?? mapped.emergencyContact,
+      autoApproveThreshold: payload.autoApproveThreshold,
+      notifyNewQA: payload.notifyNewQA,
+      notifyFlagged: payload.notifyFlagged,
+      notifyQuizComplete: payload.notifyQuizComplete,
+    };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bell, MessageCircle } from 'lucide-react';
+import { Bell, MessageCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchStudentProfile, fetchStudentAnnouncements } from '@/lib/api/student';
@@ -84,20 +84,27 @@ export function StudentAppChrome({
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex w-full items-center justify-between border-b border-slate-200/80 bg-slate-50/80 px-6 py-4 backdrop-blur-md md:px-10 md:py-5 dark:border-white/10 dark:bg-slate-900/80">
+      <header className="sticky top-0 z-30 flex w-full items-center justify-between border-b border-border bg-background/80 px-6 py-4 backdrop-blur-md md:px-10 md:py-5">
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate font-['Manrope',sans-serif] text-lg font-extrabold tracking-tight text-[#00478d] dark:text-blue-300 md:text-xl">
+          <h1 className="truncate font-['Manrope',sans-serif] text-lg font-extrabold tracking-tight text-primary md:text-xl">
             BoneVisQA
           </h1>
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" aria-hidden />
-          <span className="truncate text-sm font-medium text-[#424752] dark:text-slate-400">{breadcrumb}</span>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" aria-hidden />
+          <span className="truncate text-sm font-medium text-muted-foreground">{breadcrumb}</span>
+          <Link
+            href="/student/ai-quiz"
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-4 py-1.5 text-xs font-bold text-white shadow-md transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 active:scale-95"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Quiz
+          </Link>
         </div>
         <div className="flex shrink-0 items-center gap-4 md:gap-6">
           <div className="relative" ref={panelRef}>
             <button
               type="button"
               onClick={() => setAnnouncementsOpen((o) => !o)}
-              className="relative rounded-full p-2 text-slate-600 transition-colors hover:text-cyan-600 dark:text-slate-300 dark:hover:text-cyan-400"
+              className="relative rounded-full p-2 text-muted-foreground transition-colors hover:text-primary"
               aria-expanded={announcementsOpen}
               aria-label="Notifications and class announcements"
             >
@@ -107,26 +114,26 @@ export function StudentAppChrome({
               ) : null}
             </button>
             {announcementsOpen ? (
-              <div className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-slate-900">
-                <p className="px-2 pb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+              <div className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-border bg-card p-3 shadow-xl">
+                <p className="px-2 pb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Class announcements
                 </p>
                 {announcementsLoading ? (
-                  <p className="px-2 py-4 text-sm text-slate-500">Loading…</p>
+                  <p className="px-2 py-4 text-sm text-muted-foreground">Loading…</p>
                 ) : announcements.length === 0 ? (
-                  <p className="px-2 py-4 text-sm text-slate-500">No announcements yet.</p>
+                  <p className="px-2 py-4 text-sm text-muted-foreground">No announcements yet.</p>
                 ) : (
                   <ul className="max-h-72 space-y-2 overflow-y-auto">
                     {announcements.slice(0, 8).map((a) => (
                       <li
                         key={a.id}
-                        className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                        className="rounded-xl border border-border bg-muted/30 px-3 py-2"
                       >
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{a.title}</p>
+                        <p className="text-sm font-semibold text-foreground">{a.title}</p>
                         {a.className ? (
-                          <p className="text-xs text-cyan-700 dark:text-cyan-400">{a.className}</p>
+                          <p className="text-xs text-primary">{a.className}</p>
                         ) : null}
-                        <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-400">{a.content}</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.content}</p>
                       </li>
                     ))}
                   </ul>
@@ -134,10 +141,10 @@ export function StudentAppChrome({
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-3 border-l border-slate-200/80 pl-4 dark:border-white/10 md:pl-6">
+          <div className="flex items-center gap-3 border-l border-border pl-4 md:pl-6">
             <div className="hidden text-right sm:block">
-              <p className="text-sm font-bold leading-tight text-[#191c1e] dark:text-slate-100">{displayName}</p>
-              <p className="text-xs text-[#424752] dark:text-slate-400">{roleLabel}</p>
+              <p className="text-sm font-bold leading-tight text-foreground">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{roleLabel}</p>
             </div>
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -147,7 +154,7 @@ export function StudentAppChrome({
                 className="h-10 w-10 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00478d] text-xs font-bold text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                 {initials}
               </div>
             )}
@@ -155,14 +162,14 @@ export function StudentAppChrome({
         </div>
       </header>
       {(title || subtitle || children) && (
-        <div className="border-b border-slate-100 px-6 py-5 dark:border-white/10 md:px-10">
+        <div className="border-b border-border px-6 py-5 md:px-10">
           {title ? (
-            <h2 className="font-['Manrope',sans-serif] text-2xl font-bold tracking-tight text-[#191c1e] dark:text-slate-100">
+            <h2 className="font-['Manrope',sans-serif] text-2xl font-bold tracking-tight text-foreground">
               {title}
             </h2>
           ) : null}
           {subtitle ? (
-            <p className="mt-1 max-w-2xl text-sm text-[#424752] dark:text-slate-400">{subtitle}</p>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>
           ) : null}
           {children}
         </div>
@@ -171,13 +178,13 @@ export function StudentAppChrome({
   );
 }
 
-/** Floating chat shortcut — opens AI Q&A hub (not Visual QA page). */
+/** Floating shortcut to the visual QA workflow. */
 export function StudentDashboardFab() {
   return (
     <Link
-      href="/student/qa"
-      className="fixed bottom-10 right-10 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#00478d] to-[#005eb8] text-white shadow-2xl transition-transform hover:scale-110 active:scale-90"
-      aria-label="Open AI Q&A"
+      href="/student/qa/image"
+      className="fixed bottom-10 right-10 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-2xl transition-transform hover:scale-110 active:scale-90"
+      aria-label="Open Visual QA"
     >
       <MessageCircle className="h-7 w-7" aria-hidden />
     </Link>

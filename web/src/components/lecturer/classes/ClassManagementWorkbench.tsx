@@ -16,12 +16,12 @@ import {
 } from 'lucide-react';
 import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
 import {
-  getAvailableStudents,
-  enrollManyStudents,
+  // getAvailableStudents,    // DISABLED: Lecturer không CRUD student trong lớp
+  // enrollManyStudents,       // DISABLED: Lecturer không CRUD student trong lớp
   getLecturerCases,
   assignCasesToClass,
 } from '@/lib/api/lecturer';
-import type { CaseDto, StudentEnrollment } from '@/lib/api/types';
+import type { CaseDto } from '@/lib/api/types';
 
 export interface ClassManagementWorkbenchProps {
   classId: string;
@@ -30,7 +30,8 @@ export interface ClassManagementWorkbenchProps {
   caseActivityCount: number;
   /** Optional denominator for enrolled display, e.g. mock capacity. */
   enrolledCapacity?: number;
-  onRosterChanged?: () => void;
+  /** DISABLED: onRosterChanged — Lecturer không CRUD student trong lớp */
+  // onRosterChanged?: () => void;
 }
 
 export default function ClassManagementWorkbench({
@@ -38,10 +39,10 @@ export default function ClassManagementWorkbench({
   enrolledCount,
   caseActivityCount,
   enrolledCapacity,
-  onRosterChanged,
 }: ClassManagementWorkbenchProps) {
   const [showImport, setShowImport] = useState(false);
-  const [showBulk, setShowBulk] = useState(false);
+  // DISABLED: showBulk — Lecturer không CRUD student trong lớp
+  // const [showBulk, setShowBulk] = useState(false);
 
   const [cases, setCases] = useState<CaseDto[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
@@ -49,16 +50,18 @@ export default function ClassManagementWorkbench({
   const [assigningIds, setAssigningIds] = useState<Set<string>>(new Set());
   const [justAssigned, setJustAssigned] = useState<Set<string>>(new Set());
 
-  const [bulkList, setBulkList] = useState<StudentEnrollment[]>([]);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkSearch, setBulkSearch] = useState('');
-  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkError, setBulkError] = useState('');
+// DISABLED: Bulk enrollment state — Lecturer không CRUD student trong lớp
+// const [bulkList, setBulkList] = useState<StudentEnrollment[]>([]);
+// const [bulkLoading, setBulkLoading] = useState(false);
+// const [bulkSearch, setBulkSearch] = useState('');
+// const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+// const [bulkSubmitting, setBulkSubmitting] = useState(false);
+// const [bulkError, setBulkError] = useState('');
 
-  const refreshRoster = useCallback(() => {
-    onRosterChanged?.();
-  }, [onRosterChanged]);
+  // DISABLED: refreshRoster — Lecturer không CRUD student trong lớp
+  // const refreshRoster = useCallback(() => {
+  //   onRosterChanged?.();
+  // }, [onRosterChanged]);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,45 +94,48 @@ export default function ClassManagementWorkbench({
     return cases.filter((c) => c.categoryName === categoryFilter);
   }, [cases, categoryFilter]);
 
-  const openBulk = async () => {
-    setShowBulk(true);
-    setBulkError('');
-    setBulkSearch('');
-    setBulkSelected(new Set());
-    setBulkLoading(true);
-    try {
-      const data = await getAvailableStudents(classId);
-      setBulkList(data);
-    } catch {
-      setBulkList([]);
-    } finally {
-      setBulkLoading(false);
-    }
-  };
+  // DISABLED: openBulk — Lecturer không CRUD student trong lớp
+  // const openBulk = async () => {
+  //   setShowBulk(true);
+  //   setBulkError('');
+  //   setBulkSearch('');
+  //   setBulkSelected(new Set());
+  //   setBulkLoading(true);
+  //   try {
+  //     const data = await getAvailableStudents(classId);
+  //     setBulkList(data);
+  //   } catch {
+  //     setBulkList([]);
+  //   } finally {
+  //     setBulkLoading(false);
+  //   }
+  // };
 
-  const toggleBulk = (studentId: string) => {
-    setBulkSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(studentId)) next.delete(studentId);
-      else next.add(studentId);
-      return next;
-    });
-  };
+  // DISABLED: toggleBulk — Lecturer không CRUD student trong lớp
+  // const toggleBulk = (studentId: string) => {
+  //   setBulkSelected((prev) => {
+  //     const next = new Set(prev);
+  //     if (next.has(studentId)) next.delete(studentId);
+  //     else next.add(studentId);
+  //     return next;
+  //   });
+  // };
 
-  const submitBulkEnroll = async () => {
-    if (bulkSelected.size === 0) return;
-    setBulkSubmitting(true);
-    setBulkError('');
-    try {
-      await enrollManyStudents(classId, Array.from(bulkSelected));
-      setShowBulk(false);
-      refreshRoster();
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk enroll failed');
-    } finally {
-      setBulkSubmitting(false);
-    }
-  };
+  // DISABLED: submitBulkEnroll — Lecturer không CRUD student trong lớp
+  // const submitBulkEnroll = async () => {
+  //   if (bulkSelected.size === 0) return;
+  //   setBulkSubmitting(true);
+  //   setBulkError('');
+  //   try {
+  //     await enrollManyStudents(classId, Array.from(bulkSelected));
+  //     setShowBulk(false);
+  //     refreshRoster();
+  //   } catch (e) {
+  //     setBulkError(e instanceof Error ? e.message : 'Bulk enroll failed');
+  //   } finally {
+  //     setBulkSubmitting(false);
+  //   }
+  // };
 
   const handleAssignCase = async (caseId: string) => {
     setAssigningIds((prev) => new Set(prev).add(caseId));
@@ -150,21 +156,26 @@ export default function ClassManagementWorkbench({
     }
   };
 
-  const filteredBulk = bulkList.filter((s) => {
-    const q = bulkSearch.toLowerCase();
-    return (
-      (s.studentName?.toLowerCase().includes(q) ?? false) ||
-      (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
-      (s.studentCode?.toLowerCase().includes(q) ?? false)
-    );
-  });
+  // DISABLED: filteredBulk — Lecturer không CRUD student trong lớp
+  // const filteredBulk = bulkList.filter((s) => {
+  //   const q = bulkSearch.toLowerCase();
+  //   return (
+  //     (s.studentName?.toLowerCase().includes(q) ?? false) ||
+  //     (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
+  //     (s.studentCode?.toLowerCase().includes(q) ?? false)
+  //   );
+  // });
 
   const displayCases = filteredCases.slice(0, 9);
 
   return (
     <div className="mb-10 space-y-8">
       <div className="flex flex-wrap justify-end gap-3">
-        <button
+        {/*
+          DISABLED: Import students button — Lecturer không CRUD student trong lớp
+          Nếu cần import students, Admin sẽ làm việc đó.
+        */}
+        {/* <button
           type="button"
           onClick={() => setShowImport(true)}
           className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-5 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted"
@@ -179,7 +190,7 @@ export default function ClassManagementWorkbench({
         >
           <UserPlus className="h-4 w-4" />
           Bulk enroll
-        </button>
+        </button> */}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -346,14 +357,21 @@ export default function ClassManagementWorkbench({
         )}
       </div>
 
-      <ImportPreviewDialog
+      {/*
+        DISABLED: ImportPreviewDialog — Lecturer không CRUD student trong lớp
+        Nếu cần import students, Admin sẽ làm việc đó.
+      */}
+      {/* <ImportPreviewDialog
         open={showImport}
         onClose={() => setShowImport(false)}
         classId={classId}
         onSuccess={refreshRoster}
-      />
+      /> */}
 
-      {showBulk && (
+      {/*
+        DISABLED: Bulk enrollment modal — Lecturer không CRUD student trong lớp
+      */}
+      {/* {showBulk && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <button
             type="button"
@@ -448,7 +466,7 @@ export default function ClassManagementWorkbench({
             </button>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

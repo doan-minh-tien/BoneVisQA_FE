@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Hand, Pencil, RefreshCcw, ScanSearch, ZoomIn, ZoomOut } from 'lucide-react';
-import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { Eraser, Hand, RefreshCcw, ScanSearch, Square, ZoomIn, ZoomOut } from 'lucide-react';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { Button } from '@/components/ui/button';
-import type { PercentageBoundingBox } from '@/lib/api/types';
+import type { NormalizedImageBoundingBox } from '@/lib/api/types';
 import {
-  buildPercentageBoundingBox,
-  isValidPercentageBoundingBox,
+  cornersNormalizedToBox,
+  cornersNormalizedToDraftBox,
+  isValidNormalizedBoundingBox,
 } from '@/lib/utils/annotations';
 
 const MIN = 0.5;
@@ -16,25 +17,42 @@ const MAX = 4;
 export function MedicalImageViewer({
   src,
   alt,
+  initialAnnotation,
   onAnnotationComplete,
 }: {
   src: string | null;
   alt: string;
-  onAnnotationComplete?: (box: PercentageBoundingBox) => void;
+  /** Restored draft ROI (normalized bounding box). */
+  initialAnnotation?: NormalizedImageBoundingBox | null;
+  onAnnotationComplete?: (box: NormalizedImageBoundingBox | null) => void;
 }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [isDrawMode, setIsDrawMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [boundingBox, setBoundingBox] = useState<PercentageBoundingBox | null>(null);
+  const [closedBox, setClosedBox] = useState<NormalizedImageBoundingBox | null>(() =>
+    initialAnnotation && isValidNormalizedBoundingBox(initialAnnotation) ? initialAnnotation : null,
+  );
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+
   const drag = useRef(false);
-  const drawStart = useRef<{ x: number; y: number } | null>(null);
-  const latestBoundingBox = useRef<PercentageBoundingBox | null>(null);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (initialAnnotation === undefined) return;
+    if (initialAnnotation === null) {
+      setClosedBox(null);
+      return;
+    }
+    if (isValidNormalizedBoundingBox(initialAnnotation)) {
+      setClosedBox(initialAnnotation);
+    }
+  }, [initialAnnotation]);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -54,42 +72,67 @@ export function MedicalImageViewer({
     };
   }, []);
 
-  const reset = () => {
+  const getNormalizedPoint = useCallback((clientX: number, clientY: number) => {
+    const rect = imgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    const lx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const ly = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+    return { x: lx / rect.width, y: ly / rect.height };
+  }, []);
+
+  const draftBox =
+    drawStart && drawCurrent ? cornersNormalizedToDraftBox(drawStart, drawCurrent) : null;
+
+  const clearAnnotation = useCallback(() => {
+    setClosedBox(null);
+    setDrawStart(null);
+    setDrawCurrent(null);
+    onAnnotationComplete?.(null);
+  }, [onAnnotationComplete]);
+
+  const resetView = useCallback(() => {
     setScale(1);
     setTx(0);
     setTy(0);
-    setBoundingBox(null);
-    latestBoundingBox.current = null;
-    drawStart.current = null;
-    onAnnotationComplete?.({ xPct: 0, yPct: 0, widthPct: 0, heightPct: 0 });
-  };
+    clearAnnotation();
+  }, [clearAnnotation]);
 
-  const getRelativePoint = useCallback((clientX: number, clientY: number) => {
-    const rect = imgRef.current?.getBoundingClientRect();
-    if (!rect) return null;
+  const handleDrawMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isDrawMode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startPt = getNormalizedPoint(e.clientX, e.clientY);
+      if (!startPt) return;
+      if (closedBox) {
+        clearAnnotation();
+      }
+      setDrawStart(startPt);
+      setDrawCurrent(startPt);
 
-    const localX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-    const localY = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+      const onMove = (ev: MouseEvent) => {
+        const q = getNormalizedPoint(ev.clientX, ev.clientY);
+        if (q) setDrawCurrent(q);
+      };
 
-    return {
-      x: localX,
-      y: localY,
-      width: rect.width,
-      height: rect.height,
-    };
-  }, []);
+      const onUp = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        const end = getNormalizedPoint(ev.clientX, ev.clientY) ?? startPt;
+        setDrawStart(null);
+        setDrawCurrent(null);
+        const box = cornersNormalizedToBox(startPt, end);
+        if (box) {
+          setClosedBox(box);
+          onAnnotationComplete?.(box);
+        }
+      };
 
-  const finalizeAnnotation = useCallback(() => {
-    drawStart.current = null;
-    const box = latestBoundingBox.current;
-    if (isValidPercentageBoundingBox(box)) {
-      onAnnotationComplete?.(box);
-    }
-  }, [onAnnotationComplete]);
-
-  useEffect(() => {
-    latestBoundingBox.current = boundingBox;
-  }, [boundingBox]);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [clearAnnotation, closedBox, getNormalizedPoint, isDrawMode, onAnnotationComplete],
+  );
 
   if (!src) {
     return (
@@ -108,66 +151,39 @@ export function MedicalImageViewer({
     <div className="relative flex h-full min-h-[520px] flex-col overflow-hidden rounded-none bg-black shadow-panel">
       <div
         ref={containerRef}
-        className="relative flex-1 cursor-grab overflow-hidden bg-black active:cursor-grabbing"
-        style={{ cursor: isDrawMode ? 'crosshair' : undefined }}
-        onMouseDown={(e) => {
-          if (isDrawMode) {
-            const point = getRelativePoint(e.clientX, e.clientY);
-            if (!point) return;
-            drawStart.current = { x: point.x, y: point.y };
-            const nextBox = buildPercentageBoundingBox(drawStart.current, point);
-            latestBoundingBox.current = nextBox;
-            setBoundingBox(nextBox);
-            return;
-          }
-
-          drag.current = true;
-          setIsDragging(true);
-          start.current = { x: e.clientX, y: e.clientY, tx, ty };
-        }}
-        onMouseMove={(e) => {
-          if (isDrawMode) {
-            if (!drawStart.current) return;
-            const point = getRelativePoint(e.clientX, e.clientY);
-            if (!point) return;
-
-            const nextBox = buildPercentageBoundingBox(drawStart.current, point);
-            latestBoundingBox.current = nextBox;
-            setBoundingBox(nextBox);
-            return;
-          }
-
-          if (!drag.current) return;
-          setTx(start.current.tx + (e.clientX - start.current.x));
-          setTy(start.current.ty + (e.clientY - start.current.y));
-        }}
-        onMouseUp={() => {
-          if (isDrawMode) {
-            finalizeAnnotation();
-            return;
-          }
-          drag.current = false;
-          setIsDragging(false);
-        }}
-        onMouseLeave={() => {
-          if (isDrawMode) {
-            finalizeAnnotation();
-            return;
-          }
-          drag.current = false;
-          setIsDragging(false);
-        }}
+        className="relative flex-1 overflow-hidden bg-black"
+        style={{ cursor: isDrawMode ? undefined : undefined }}
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05),transparent_58%)]" />
         <div
-          className="flex h-full w-full items-center justify-center p-4"
+          className={`relative flex h-full w-full items-center justify-center p-4 ${
+            !isDrawMode ? 'cursor-grab active:cursor-grabbing' : ''
+          }`}
           style={{
             transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
             transition: isDragging ? 'none' : 'transform 80ms ease-out',
           }}
+          onMouseDown={(e) => {
+            if (isDrawMode) return;
+            drag.current = true;
+            setIsDragging(true);
+            start.current = { x: e.clientX, y: e.clientY, tx, ty };
+          }}
+          onMouseMove={(e) => {
+            if (!drag.current || isDrawMode) return;
+            setTx(start.current.tx + (e.clientX - start.current.x));
+            setTy(start.current.ty + (e.clientY - start.current.y));
+          }}
+          onMouseUp={() => {
+            drag.current = false;
+            setIsDragging(false);
+          }}
+          onMouseLeave={() => {
+            drag.current = false;
+            setIsDragging(false);
+          }}
         >
           <div
-            className="relative"
+            className="relative inline-block max-h-full max-w-full"
             style={{
               width: imageSize.width ? `${imageSize.width}px` : undefined,
               height: imageSize.height ? `${imageSize.height}px` : undefined,
@@ -188,11 +204,15 @@ export function MedicalImageViewer({
                 });
               }}
             />
-            <AnnotationOverlay
-              box={boundingBox}
-              label="ANNOTATION"
-              className="border-cyan-accent text-cyan-accent"
-            />
+            <RectangleAnnotationOverlay closed={closedBox} draft={draftBox} label="LESION ROI" />
+            {isDrawMode ? (
+              <div
+                role="presentation"
+                className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
+                aria-hidden
+                onMouseDown={handleDrawMouseDown}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -200,7 +220,7 @@ export function MedicalImageViewer({
           Radiograph viewer
         </div>
 
-        <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border-color bg-surface/85 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur">
+        <div className="absolute bottom-5 left-1/2 flex max-w-[min(100vw-2rem,42rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-full border border-border-color bg-surface/90 px-2 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur sm:gap-2 sm:px-3">
           <Button
             type="button"
             variant="ghost"
@@ -232,16 +252,27 @@ export function MedicalImageViewer({
             type="button"
             variant="ghost"
             className={`!rounded-full !px-2.5 !py-2 ${isDrawMode ? 'bg-cyan-accent/10 text-cyan-accent' : 'text-text-main'}`}
-            aria-label="Annotate"
+            aria-label="Draw rectangle ROI"
             onClick={() => setIsDrawMode(true)}
           >
-            <Pencil className="h-4 w-4" />
+            <Square className="h-4 w-4" />
           </Button>
+          {isDrawMode ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="!rounded-full !px-2.5 !py-2 text-amber-200/90"
+              aria-label="Clear annotation"
+              onClick={clearAnnotation}
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
             className="!rounded-full !px-2.5 !py-2 text-text-main"
-            onClick={reset}
+            onClick={resetView}
             aria-label="Reset viewer"
           >
             <RefreshCcw className="h-4 w-4" />
@@ -249,7 +280,8 @@ export function MedicalImageViewer({
         </div>
       </div>
       <p className="border-t border-border-color bg-black px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Scroll to zoom · Drag to pan or annotate · Educational preview only — not for diagnostic use
+        Scroll to zoom · Rectangle ROI: select square tool, click-drag on the image, release to commit (normalized x,
+        y, width, height) · Educational preview only
       </p>
     </div>
   );

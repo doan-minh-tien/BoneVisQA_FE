@@ -27,7 +27,7 @@ export function TriageQueueTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead>
-            <tr className="border-b border-border bg-input/30 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b border-border bg-slate-50/60 text-xs uppercase tracking-wider text-slate-500">
               <th className="px-4 py-3">Student</th>
               <th className="px-4 py-3">Question</th>
               <th className="px-4 py-3">Image</th>
@@ -68,7 +68,7 @@ export function TriageQueueTable({
                       : 'bg-success/15 text-success';
 
                 return (
-                  <tr key={row.id} className="even:bg-slate-50/55 transition-colors hover:bg-blue-50/70">
+                  <tr key={row.id} className="transition-colors even:bg-slate-50/45 hover:bg-slate-50/80">
                     <td className="px-4 py-3 font-medium text-card-foreground">{row.studentName}</td>
                     <td className="max-w-xs px-4 py-3 text-muted-foreground">
                       <span className="line-clamp-2">{row.questionSnippet}</span>

@@ -1,9 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ExpertReviewQueueSkeleton } from '@/components/shared/DashboardSkeletons';
+import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
+import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -12,8 +18,11 @@ import {
   putExpertReview,
 } from '@/lib/api/expert-reviews';
 import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
+import { splitLearningBullets } from '@/lib/utils/learning-text';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast as sonnerToast } from 'sonner';
 import {
   AlertCircle,
   CheckCircle,
@@ -22,14 +31,49 @@ import {
   Clock,
   Edit3,
   Flag,
-  Loader2,
+  Inbox,
   Link2,
   Save,
   User,
   XCircle,
 } from 'lucide-react';
 
+function ExpertImagingOverlays({ item }: { item: ExpertReviewItem }) {
+  try {
+    if (item.customBoundingBox && isValidNormalizedBoundingBox(item.customBoundingBox)) {
+      return (
+        <RectangleAnnotationOverlay
+          closed={item.customBoundingBox}
+          draft={null}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    if (item.customPolygon && item.customPolygon.length >= 3) {
+      return (
+        <PolygonAnnotationOverlay
+          closed={item.customPolygon}
+          draft={[]}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    return (
+      <AnnotationOverlay
+        box={item.customCoordinates}
+        label="STUDENT ROI"
+        className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+      />
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default function ExpertReviewsPage() {
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [items, setItems] = useState<ExpertReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,10 +81,13 @@ export default function ExpertReviewsPage() {
   const [active, setActive] = useState<ExpertReviewItem | null>(null);
   const [diag, setDiag] = useState('');
   const [keyText, setKeyText] = useState('');
+  const [keyImagingEdit, setKeyImagingEdit] = useState('');
+  const [reflectiveEdit, setReflectiveEdit] = useState('');
   const [saving, setSaving] = useState(false);
   const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [submittingFlag, setSubmittingFlag] = useState(false);
+  const openedFocusRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,12 +105,25 @@ export default function ExpertReviewsPage() {
     void load();
   }, [load]);
 
-  const openEdit = (item: ExpertReviewItem) => {
+  const openEdit = useCallback((item: ExpertReviewItem) => {
     setActive(item);
     setDiag(item.report.suggestedDiagnosis || '');
     setKeyText(item.report.keyFindings.join('\n'));
+    setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
+    setReflectiveEdit(item.report.reflectiveQuestions?.trim() ?? item.reflectiveQuestions?.trim() ?? '');
     setExpanded(item.id);
-  };
+  }, []);
+
+  useEffect(() => {
+    const focus = searchParams.get('focus')?.trim();
+    if (!focus || items.length === 0) return;
+    if (openedFocusRef.current === focus) return;
+    const match = items.find((i) => i.id === focus || i.answerId === focus);
+    if (match) {
+      openedFocusRef.current = focus;
+      openEdit(match);
+    }
+  }, [items, searchParams, openEdit]);
 
   const openFlagModal = (chunkId: string) => {
     setFlaggingChunkId(chunkId);
@@ -109,23 +169,34 @@ export default function ExpertReviewsPage() {
     if (!active) return;
     setSaving(true);
     try {
-      const keyFindings = keyText
+      const normalizedFindings = keyText
         .split('\n')
         .map((s) => s.trim())
-        .filter(Boolean)
-        .join('\n');
+        .filter(Boolean);
       await putExpertReview(active.id, {
-        status,
-        suggestedDiagnosis: diag.trim() || undefined,
-        keyFindings: keyFindings || undefined,
+        answerText: active.report.answerText || '',
+        structuredDiagnosis: diag.trim() || active.report.suggestedDiagnosis || '',
+        differentialDiagnoses:
+          normalizedFindings.length > 0
+            ? normalizedFindings
+            : active.report.differentialDiagnoses,
+        reviewNote:
+          status === 'Approved'
+            ? 'Approved by expert reviewer.'
+            : 'Rejected by expert reviewer.',
+        keyImagingFindings: keyImagingEdit.trim() || null,
+        reflectiveQuestions: reflectiveEdit.trim() || null,
       });
-      toast.success(
-        status === 'Approved'
-          ? 'Approved. This case can be published to the student reference library.'
-          : 'Marked as rejected.',
-      );
+      const removedId = active.id;
+      setItems((prev) => prev.filter((i) => i.id !== removedId));
+      setExpanded((e) => (e === removedId ? null : e));
       setActive(null);
-      await load();
+      sonnerToast.success(
+        status === 'Approved'
+          ? 'Gold-standard answer sent to the student and flagged for Knowledge Base integration.'
+          : 'Decision recorded. The student will be notified per your review outcome.',
+        { duration: 6000 },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -137,12 +208,21 @@ export default function ExpertReviewsPage() {
     setSaving(true);
     try {
       await putExpertReview(item.id, {
-        status: 'Approved',
-        suggestedDiagnosis: item.report.suggestedDiagnosis,
-        keyFindings: item.report.keyFindings.join('\n'),
+        answerText: item.report.answerText || '',
+        structuredDiagnosis: item.report.suggestedDiagnosis || '',
+        differentialDiagnoses: item.report.differentialDiagnoses,
+        reviewNote: 'Approved by expert reviewer.',
+        keyImagingFindings: item.report.keyImagingFindings ?? null,
+        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
       });
-      toast.success('Approved for the public reference library.');
-      await load();
+      const rid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== rid));
+      setExpanded((e) => (e === rid ? null : e));
+      if (active?.id === rid) setActive(null);
+      sonnerToast.success(
+        'Answer approved and delivered to the student. Flagged for Knowledge Base integration.',
+        { duration: 6000 },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -153,9 +233,22 @@ export default function ExpertReviewsPage() {
   const quickReject = async (item: ExpertReviewItem) => {
     setSaving(true);
     try {
-      await putExpertReview(item.id, { status: 'Rejected' });
-      toast.info('Answer flagged as invalid.');
-      await load();
+      await putExpertReview(item.id, {
+        answerText: item.report.answerText || '',
+        structuredDiagnosis: item.report.suggestedDiagnosis || '',
+        differentialDiagnoses: item.report.differentialDiagnoses,
+        reviewNote: 'Rejected by expert reviewer.',
+        keyImagingFindings: item.report.keyImagingFindings ?? null,
+        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
+      });
+      const jid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== jid));
+      setExpanded((e) => (e === jid ? null : e));
+      if (active?.id === jid) setActive(null);
+      sonnerToast.message('Review recorded', {
+        description: 'The student will be notified. This item is removed from your pending queue.',
+        duration: 5000,
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -166,19 +259,19 @@ export default function ExpertReviewsPage() {
   const pending = items.filter((i) => !isTerminal(i.status)).length;
 
   return (
-    <div className="dark min-h-screen bg-background text-text-main">
+    <div className="min-h-screen bg-background text-text-main">
       <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
         {loading ? (
-          <div className="flex justify-center py-20 text-text-muted">
-            <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
-          </div>
+          <ExpertReviewQueueSkeleton />
         ) : (
           <div className="space-y-4">
             {items.length === 0 ? (
-              <div className="rounded-xl border border-border-color bg-surface p-12 text-center text-text-muted">
-                No escalated diagnostic requests at this time.
-              </div>
+              <EmptyState
+                icon={<Inbox className="h-6 w-6 text-cyan-accent" />}
+                title="All caught up!"
+                description="There are no escalated cases requiring your expert review right now."
+              />
             ) : (
               items.map((item) => {
                 const isExp = expanded === item.id;
@@ -239,7 +332,7 @@ export default function ExpertReviewsPage() {
 
                     {isExp && (
                       <div className="border-t border-border-color px-5 py-5">
-                        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                           <section className="space-y-4">
                             <div className="rounded-xl border border-border-color bg-black p-3">
                               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -256,11 +349,7 @@ export default function ExpertReviewsPage() {
                                       unoptimized
                                       className="mx-auto max-h-[420px] max-w-full object-contain"
                                     />
-                                    <AnnotationOverlay
-                                      box={item.customCoordinates}
-                                      label="STUDENT ROI"
-                                      className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
-                                    />
+                                    <ExpertImagingOverlays item={item} />
                                   </div>
                                 ) : (
                                   <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">
@@ -271,26 +360,27 @@ export default function ExpertReviewsPage() {
                             </div>
                             <div className="rounded-xl border border-border-color bg-surface p-4">
                               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-accent">
-                                Student question
+                                Left pane · Expert edit mode
                               </p>
-                              <p className="text-sm leading-relaxed text-text-main">{item.question}</p>
+                              <p className="mb-4 text-sm leading-relaxed text-text-main">{item.question}</p>
+                              <ReportWorkbench
+                                report={item.report}
+                                isEditing={isEditing}
+                                diag={diag}
+                                keyText={keyText}
+                                keyImagingText={keyImagingEdit}
+                                reflectiveText={reflectiveEdit}
+                                onDiagChange={setDiag}
+                                onKeyTextChange={setKeyText}
+                                onKeyImagingChange={setKeyImagingEdit}
+                                onReflectiveChange={setReflectiveEdit}
+                                onBeginEdit={() => openEdit(item)}
+                              />
                             </div>
                           </section>
 
-                          <section className="space-y-4">
-                            <ReportWorkbench
-                              report={item.report}
-                              isEditing={isEditing}
-                              diag={diag}
-                              keyText={keyText}
-                              onDiagChange={setDiag}
-                              onKeyTextChange={setKeyText}
-                              onBeginEdit={() => openEdit(item)}
-                            />
-                            <EvidencePanel
-                              citations={item.citations ?? []}
-                              onFlag={openFlagModal}
-                            />
+                          <section className="xl:sticky xl:top-5">
+                            <EvidencePanel citations={item.citations ?? []} onFlag={openFlagModal} />
                           </section>
                         </div>
 
@@ -379,7 +469,7 @@ function EvidencePanel({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            RAG Evidence & Citations
+            Right pane · RAG Evidence & Citations
           </h4>
           <p className="mt-1 text-sm text-text-muted">
             Review the exact evidence chunks the AI used before approving this answer.
@@ -392,7 +482,7 @@ function EvidencePanel({
           No evidence chunks were returned for this case.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="max-h-[640px] space-y-3 overflow-y-auto pr-1">
           {citations.map((citation, index) => (
             <article
               key={citation.chunkId}
@@ -418,12 +508,15 @@ function EvidencePanel({
                 </div>
                 <Button
                   type="button"
+                  size="sm"
                   variant={citation.flagged ? 'outline' : 'destructive'}
                   disabled={citation.flagged}
                   onClick={() => onFlag(citation.chunkId)}
+                  title={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
+                  aria-label={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
+                  className="!px-2.5"
                 >
                   <Flag className="h-4 w-4" />
-                  {citation.flagged ? 'Issue Flagged' : 'Flag Issue'}
                 </Button>
               </div>
 
@@ -498,16 +591,14 @@ function FlagChunkModal({
 }
 
 function getConfidenceScore(item: ExpertReviewItem): number | null {
-  const raw = (item as ExpertReviewItem & { aiConfidenceScore?: number; confidenceScore?: number })
-    .aiConfidenceScore ??
-    (item as ExpertReviewItem & { confidenceScore?: number }).confidenceScore;
+  const raw =
+    (item as ExpertReviewItem & { aiConfidenceScore?: number }).aiConfidenceScore ??
+    item.report.aiConfidenceScore;
 
   if (typeof raw === 'number' && !Number.isNaN(raw)) {
     return raw <= 1 ? raw * 100 : raw;
   }
-
-  const derived = 84 + item.report.keyFindings.length * 1.8 + item.report.citations.length * 0.7;
-  return Math.min(98.7, Math.max(72.4, derived));
+  return null;
 }
 
 function isTerminal(status: string) {
@@ -539,6 +630,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ReportSections({ report }: { report: VisualQaReport }) {
+  const imagingLines = splitLearningBullets(report.keyImagingFindings ?? undefined);
   return (
     <div className="space-y-4">
       <section>
@@ -546,7 +638,9 @@ function ReportSections({ report }: { report: VisualQaReport }) {
           Answer / explanation
         </h4>
         <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+            {report.answerText || '—'}
+          </ReactMarkdown>
         </div>
       </section>
       {report.suggestedDiagnosis ? (
@@ -576,6 +670,36 @@ function ReportSections({ report }: { report: VisualQaReport }) {
           </ul>
         </section>
       ) : null}
+      {imagingLines.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+            Key imaging findings
+          </h4>
+          <ul className="space-y-2 rounded-xl border border-cyan-accent/25 bg-surface px-4 py-4 text-sm text-text-main">
+            {imagingLines.map((k, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
+                <span>{k}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {report.reflectiveQuestions?.trim() ? (
+        <section className="rounded-xl border border-amber-400/35 bg-amber-500/5 px-4 py-4">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+            Reflective questions
+          </h4>
+          <div className="text-sm leading-relaxed text-text-main">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{ ...markdownExternalLinkComponents }}
+            >
+              {report.reflectiveQuestions.trim()}
+            </ReactMarkdown>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -585,16 +709,24 @@ function ReportWorkbench({
   isEditing,
   diag,
   keyText,
+  keyImagingText,
+  reflectiveText,
   onDiagChange,
   onKeyTextChange,
+  onKeyImagingChange,
+  onReflectiveChange,
   onBeginEdit,
 }: {
   report: VisualQaReport;
   isEditing: boolean;
   diag: string;
   keyText: string;
+  keyImagingText: string;
+  reflectiveText: string;
   onDiagChange: (value: string) => void;
   onKeyTextChange: (value: string) => void;
+  onKeyImagingChange: (value: string) => void;
+  onReflectiveChange: (value: string) => void;
   onBeginEdit: () => void;
 }) {
   if (!isEditing) {
@@ -608,7 +740,9 @@ function ReportWorkbench({
           Answer / explanation
         </h4>
         <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+            {report.answerText || '—'}
+          </ReactMarkdown>
         </div>
       </section>
 
@@ -643,6 +777,38 @@ function ReportWorkbench({
           rows={8}
           className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
           placeholder="One key finding per line"
+        />
+      </section>
+
+      <section className="rounded-xl border border-cyan-accent/25 bg-surface p-4">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
+          Key imaging findings (SEPS)
+        </h4>
+        <p className="mb-2 text-xs text-text-muted">
+          Radiology-focused teaching points. Use line breaks or semicolons for separate bullets.
+        </p>
+        <textarea
+          value={keyImagingText}
+          onChange={(e) => onKeyImagingChange(e.target.value)}
+          rows={6}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          placeholder="e.g. Cortical thickening along the diaphysis..."
+        />
+      </section>
+
+      <section className="rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+          Reflective questions (SEPS)
+        </h4>
+        <p className="mb-2 text-xs text-text-muted">
+          Prompts for learner self-assessment before you resolve this case.
+        </p>
+        <textarea
+          value={reflectiveText}
+          onChange={(e) => onReflectiveChange(e.target.value)}
+          rows={5}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          placeholder="What features would you look for on the next view?"
         />
       </section>
     </div>

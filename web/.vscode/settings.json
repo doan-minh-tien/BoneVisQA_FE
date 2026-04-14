@@ -8,5 +8,6 @@
   // Disable preview features
   "workbench.editorAssociations": {
     "*.html": "default"
-  }
+  },
+  "git.ignoreLimitWarning": true
 }

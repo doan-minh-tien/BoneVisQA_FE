@@ -24,7 +24,10 @@ import { login } from "@/lib/api/auth";
 import { http, getApiErrorMessage } from "@/lib/api/client";
 import type { LoginResponse } from "@/lib/api/types";
 import { useToast } from "@/components/ui/toast";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+
+const motionEase = [0.22, 1, 0.36, 1] as const;
 
 function getRouteForRole(role: string | null | undefined) {
   switch (role?.trim().toLowerCase()) {
@@ -39,6 +42,28 @@ function getRouteForRole(role: string | null | undefined) {
     default:
       return { activeRole: null, route: "/" };
   }
+}
+
+function isPendingOrUnassignedUser(payload: {
+  roles?: string[] | null;
+  status?: string | null;
+  userStatus?: string | null;
+}) {
+  const normalizedStatus = (payload.status ?? payload.userStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'pending') {
+    return true;
+  }
+
+  const roles = Array.isArray(payload.roles)
+    ? payload.roles.map((r) => r.trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (roles.length === 0) {
+    return true;
+  }
+  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('pending')) {
+    return true;
+  }
+  return false;
 }
 
 type LoginPageInnerProps = {
@@ -72,6 +97,19 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
       localStorage.setItem("fullName", data.fullName);
       localStorage.setItem("email", data.email);
       localStorage.setItem("roles", JSON.stringify(data.roles));
+      const resolvedStatus = data.status ?? data.userStatus ?? null;
+      if (resolvedStatus) {
+        localStorage.setItem("userStatus", resolvedStatus);
+      } else {
+        localStorage.removeItem("userStatus");
+      }
+
+      if (isPendingOrUnassignedUser(data)) {
+        localStorage.removeItem("activeRole");
+        router.push("/pending-approval");
+        return;
+      }
+
       const primaryRole = Array.isArray(data.roles)
         ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
         : null;
@@ -123,7 +161,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         throw new Error("Google did not return a credential token.");
       }
 
-      const { data } = await http.post("/api/Auths/google-login", {
+      const { data } = await http.post("/api/auths/google-login", {
         idToken: credentialResponse.credential,
       });
 
@@ -162,7 +200,19 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         dir="ltr"
         className="grid min-h-[100dvh] w-full grid-cols-1 items-stretch lg:grid-cols-[1.22fr_1fr]"
       >
-        <section className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col">
+        <motion.section
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: motionEase }}
+          className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col"
+        >
+          {/* Animated mesh — soft drifting blobs + grid (no heavy JS). */}
+          <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
+            <div className="absolute -left-[10%] top-[8%] h-[min(52vw,420px)] w-[min(52vw,420px)] rounded-full bg-blue-500/25 blur-3xl animate-blob" />
+            <div className="absolute right-[-8%] top-[22%] h-[min(48vw,380px)] w-[min(48vw,380px)] rounded-full bg-cyan-400/20 blur-3xl animate-blob-slow" />
+            <div className="absolute bottom-[5%] left-[18%] h-[min(44vw,340px)] w-[min(44vw,340px)] rounded-full bg-indigo-500/20 blur-3xl animate-blob-delayed" />
+            <div className="absolute right-[12%] top-[55%] h-[min(36vw,280px)] w-[min(36vw,280px)] rounded-full bg-sky-400/15 blur-3xl animate-blob" />
+          </div>
           <div
             className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(0,229,255,0.12),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(0,123,255,0.18),transparent_28%),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:auto,auto,32px_32px,32px_32px]"
             aria-hidden
@@ -213,7 +263,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </div>
             </div>
 
-            <div className="max-w-xl shrink-0">
+            <motion.div
+              className="max-w-xl shrink-0"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.12, ease: motionEase }}
+            >
               <h1 className="text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl">
                 BoneVisQA
               </h1>
@@ -224,12 +279,17 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                 A medical imaging workspace for students, lecturers, experts, and administrators to
                 analyze radiographs, validate AI reasoning, and accelerate radiology education.
               </p>
-            </div>
+            </motion.div>
           </div>
-        </section>
+        </motion.section>
 
         <section className="flex min-h-[100dvh] min-w-0 items-center justify-center bg-surface px-6 py-10 lg:min-h-0">
-          <div className="w-full max-w-md">
+          <motion.div
+            className="w-full max-w-md"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08, ease: motionEase }}
+          >
             <div className="mb-8 text-center lg:text-left">
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
                 Secure access
@@ -242,7 +302,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </p>
             </div>
 
-            <div className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+            <motion.div
+              className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.18, ease: motionEase }}
+            >
               {error ? (
                 <div className="mb-5 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
                   {error}
@@ -293,7 +358,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                     />
                     <button
                       type="button"
@@ -351,7 +416,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               )}
 
               <p className="mt-8 text-center text-sm text-text-muted">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link
                   href="/auth/sign-up"
                   className="font-bold text-primary hover:underline"
@@ -359,8 +424,8 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                   Sign up
                 </Link>
               </p>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </section>
       </div>
     </div>

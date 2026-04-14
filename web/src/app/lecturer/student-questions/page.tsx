@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Search,
   Loader2,
   MessageSquare,
-  ChevronRight,
-  Eye,
   ZoomIn,
   Contrast,
   Pencil,
@@ -18,16 +17,24 @@ import {
   Bell,
   Settings,
   BarChart3,
+  Trash2,
+  CheckSquare,
+  Square,
+
 } from 'lucide-react';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
+import { escalateToExpert, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
+import type { LectStudentQuestionDto } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
 
 const XRAY_PLACEHOLDER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCINRzGp6z40Z2fsIZBJEM-zldyzpS3z_ih-Bfgh4mig52ts5MniL-9e43XYgucFN-WgwCWVHHmb6ZmiKWBe1o5U38a_alK5WfGZVT6MDhkHtaegScow4-aHvPzDfZMToJd55FiQox63njJi0VcktL5yJKoYeuQo47pBabw2NzpMgmK7qNcyKcxZbFP9puiQVdiuUDTOokGV-Hy573lajieFijGkk9MGyb0Mcz6zVto6MmqVxXgStDewXjMh4rzuqAcWxG1RyRzYiY';
 
 interface StudentQuestion {
   id: string;
+  /** Answer row id for POST/PUT escalation when provided by API */
+  answerId?: string | null;
   studentId: string;
   studentName: string | null;
   studentEmail: string | null;
@@ -38,6 +45,15 @@ interface StudentQuestion {
   askedAt: string;
   status: 'pending' | 'answered' | 'escalated';
   thumbnailUrl?: string;
+  studyImageUrl?: string | null;
+}
+
+interface QuestionCardProps {
+  question: StudentQuestion;
+  isActive: boolean;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onClick: () => void;
 }
 
 function initials(name: string | null): string {
@@ -67,12 +83,10 @@ function formatTime(dateStr: string): string {
 function QuestionCard({
   question,
   isActive,
+  isSelected,
+  onSelect,
   onClick,
-}: {
-  question: StudentQuestion;
-  isActive: boolean;
-  onClick: () => void;
-}) {
+}: QuestionCardProps) {
   const badgeClass = isActive
     ? 'border-l-4 border-primary bg-surface-container-lowest'
     : 'bg-surface-container-low hover:bg-surface-container transition-all';
@@ -83,9 +97,21 @@ function QuestionCard({
       role="button"
     >
       <div className="flex justify-between items-start mb-2">
-        <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-          CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
-        </span>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onSelect(question.id);
+            }}
+            className="w-4 h-4 rounded border-muted-foreground/30 text-primary focus:ring-primary cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+            CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
+          </span>
+        </div>
         <span className="text-[10px] text-muted-foreground">{formatTime(question.askedAt)}</span>
       </div>
       <h4 className="font-bold text-foreground text-sm mb-1 line-clamp-2">{question.questionText}</h4>
@@ -103,7 +129,7 @@ function QuestionCard({
 }
 
 export default function StudentQuestionsPage() {
-  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const toast = useToast();
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,6 +138,36 @@ export default function StudentQuestionsPage() {
   const [escalateText, setEscalateText] = useState('');
   const [highPriority, setHighPriority] = useState(false);
   const [notifyHead, setNotifyHead] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectMode(true);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((q) => q.id)));
+    }
+  };
+
+  const deleteSelected = () => {
+    setQuestions((prev) => prev.filter((q) => !selectedIds.has(q.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    if (selectedQuestion && selectedIds.has(selectedQuestion.id)) {
+      setSelectedQuestion(null);
+    }
+  };
+  const [expertSubmitting, setExpertSubmitting] = useState(false);
 
   useEffect(() => {
     loadClasses();
@@ -123,7 +179,6 @@ export default function StudentQuestionsPage() {
       const userId = getStoredUserId();
       if (!userId) return;
       const data = await getLecturerClasses(userId);
-      setClasses(data);
       if (data.length > 0) setSelectedClass(data[0].id);
     } catch {
       // silent
@@ -139,6 +194,7 @@ export default function StudentQuestionsPage() {
       const data = await getStudentQuestions(selectedClass, {});
       const mapped: StudentQuestion[] = data.map((item: LectStudentQuestionDto) => ({
         id: item.id,
+        answerId: item.answerId?.trim() || null,
         studentId: item.studentId,
         studentName: item.studentName || 'Unknown',
         studentEmail: item.studentEmail || null,
@@ -153,6 +209,7 @@ export default function StudentQuestionsPage() {
             ? 'answered'
             : 'pending',
         thumbnailUrl: item.aiConfidenceScore != null ? undefined : undefined,
+        studyImageUrl: item.customImageUrl?.trim() || null,
       }));
       setQuestions(mapped);
       if (!selectedQuestion && mapped.length > 0) {
@@ -223,6 +280,25 @@ export default function StudentQuestionsPage() {
         ? `"Based on the clinical curator engine, the lucency at the distal phalanx suggests a volar-displaced tuft fracture. In lateral views, displacement is assessed relative to the longitudinal axis of the proximal fragment. Crush injuries typically result in comminuted tuft fractures with minimal dorsal displacement, whereas "mallet" mechanisms involve dorsal avulsion at the flexor digitorum profundus insertion. The mechanism of injury is the primary discriminator."`
         : '';
 
+  const handleExpertEscalate = async () => {
+    if (!selectedQuestion || !selectedClass) return;
+    const routeId = selectedQuestion.answerId?.trim() || selectedQuestion.id;
+    setExpertSubmitting(true);
+    try {
+      await escalateToExpert(routeId);
+      toast.success('Escalated successfully');
+      await loadStudentQuestions();
+    } catch (e) {
+      if (e instanceof Error && e.message === TRIAGE_ALREADY_ESCALATED) {
+        toast.info('This case has already been escalated.');
+      } else {
+        toast.error(e instanceof Error ? e.message : 'Escalation failed');
+      }
+    } finally {
+      setExpertSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       {/* Sticky Header */}
@@ -233,18 +309,18 @@ export default function StudentQuestionsPage() {
               Inquiry Dashboard
             </h2>
             <nav className="hidden md:flex items-center gap-6">
-              <a href="/lecturer" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/lecturer/dashboard" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Dashboard
-              </a>
-              <a href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/classes" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Curricula
-              </a>
-              <a href="/lecturer/reports" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
-                Reports
-              </a>
-              <a href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/lecturer/student-questions" className="text-sm font-semibold text-primary border-b-2 border-primary pb-1">
+                Inquiries
+              </Link>
+              <Link href="/lecturer/settings" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
                 Settings
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-4">
@@ -273,10 +349,45 @@ export default function StudentQuestionsPage() {
           {/* Left: Question List */}
           <div className="col-span-12 space-y-4 lg:col-span-4">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                {pendingCount} Pending
-              </span>
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
+                {filtered.length > 0 && (
+                  <button
+                    onClick={() => setSelectMode(!selectMode)}
+                    className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                      selectMode
+                        ? 'bg-primary text-white'
+                        : 'bg-primary/10 text-primary hover:bg-primary/20'
+                    }`}
+                  >
+                    <CheckSquare className="h-3.5 w-3.5" />
+                    Multi Select
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {selectMode && selectedIds.size > 0 && (
+                  <button
+                    onClick={deleteSelected}
+                    className="flex items-center gap-1.5 rounded-full bg-red-500/10 px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-500/20 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete ({selectedIds.size})
+                  </button>
+                )}
+                {selectMode && (
+                  <button
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    {selectedIds.size === filtered.length ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                    Select All
+                  </button>
+                )}
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                  {pendingCount} Pending
+                </span>
+              </div>
             </div>
             <div className="space-y-3">
               {loading ? (
@@ -289,6 +400,8 @@ export default function StudentQuestionsPage() {
                     key={q.id}
                     question={q}
                     isActive={selectedQuestion?.id === q.id}
+                    isSelected={selectedIds.has(q.id)}
+                    onSelect={toggleSelect}
                     onClick={() => setSelectedQuestion(q)}
                   />
                 ))
@@ -338,7 +451,7 @@ export default function StudentQuestionsPage() {
                       {/* Quote */}
                       <div className="rounded-xl border border-border/40 bg-muted/50 p-5">
                         <p className="text-sm leading-relaxed text-foreground italic">
-                          "{selectedQuestion.questionText}"
+                          &ldquo;{selectedQuestion.questionText}&rdquo;
                         </p>
                       </div>
 
@@ -372,7 +485,7 @@ export default function StudentQuestionsPage() {
                     <div className="relative flex min-h-[400px] flex-col items-center justify-center bg-slate-900 p-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={XRAY_PLACEHOLDER}
+                        src={selectedQuestion.studyImageUrl?.trim() || XRAY_PLACEHOLDER}
                         alt="Medical X-ray"
                         className="max-h-full max-w-full rounded-lg shadow-2xl opacity-90 object-contain"
                       />
@@ -456,9 +569,11 @@ export default function StudentQuestionsPage() {
                         </button>
                         <button
                           type="button"
-                          className="rounded-full bg-gradient-to-br from-primary to-primary/90 px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-opacity hover:opacity-95 active:scale-[0.98]"
+                          disabled={expertSubmitting}
+                          onClick={() => void handleExpertEscalate()}
+                          className="rounded-full bg-gradient-to-br from-primary to-primary/90 px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-opacity hover:opacity-95 active:scale-[0.98] disabled:opacity-60"
                         >
-                          Submit for Expert Review
+                          {expertSubmitting ? 'Submitting…' : 'Submit for Expert Review'}
                         </button>
                       </div>
                     </div>
