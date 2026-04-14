@@ -27,8 +27,10 @@ function normalizeRole(raw: string | null | undefined): BackendRole | null {
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
+  // const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    // setIsHydrated(true);
     let cancelled = false;
 
     const readAuth = () => {
@@ -111,5 +113,6 @@ export function useAuth() {
     };
   }, []);
 
+  // return { user, isHydrated };
   return { user };
 }

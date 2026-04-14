@@ -51,25 +51,36 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [{ token, isPendingOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
+  const [auth, setAuth] = useState<AuthSnapshot>({ token: null, isPendingOrUnassigned: false });
+  const [mounted, setMounted] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    if (!token) {
+    setAuth(readAuthSnapshot());
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!auth.token) {
       const redirect = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
       router.replace(`/auth/sign-in${redirect}`);
       return;
     }
-    if (isPendingOrUnassigned) {
+    if (auth.isPendingOrUnassigned) {
       router.replace('/pending-approval');
     }
-  }, [isPendingOrUnassigned, pathname, router, token]);
+  }, [auth.isPendingOrUnassigned, auth.token, mounted, pathname, router]);
 
-  if (!token) {
+  if (!mounted) {
     return <SessionGateSkeleton />;
   }
 
-  if (isPendingOrUnassigned) {
+  if (!auth.token) {
+    return <SessionGateSkeleton />;
+  }
+
+  if (auth.isPendingOrUnassigned) {
     return <SessionGateSkeleton />;
   }
 

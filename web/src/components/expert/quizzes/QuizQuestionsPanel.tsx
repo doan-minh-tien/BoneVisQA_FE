@@ -11,6 +11,9 @@ import {
 import { fetchExpertCasesPaged } from '@/lib/api/expert-cases';
 import type { ExpertCase } from '@/lib/api/expert-cases';
 import type { ExpertQuizQuestion } from '@/lib/api/expert-quiz-questions';
+import { ImagePlus, X, Loader2, UploadCloud } from 'lucide-react';
+import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
+import ExpertQuestionImportDialog, { type ExpertParsedQuestion } from './ExpertQuestionImportDialog';
 
 // Note: component này được dùng ngay trong trang expert quiz (expand theo quiz),
 // nên xử lý UI modal nội bộ để thao tác question dễ hơn.
@@ -29,7 +32,7 @@ function ModalShell({
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
         {children}
       </div>
@@ -57,6 +60,11 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
   const [cases, setCases] = useState<ExpertCase[]>([]);
   const [isCasesLoading, setIsCasesLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Import dialog state
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const [form, setForm] = useState<{
     caseId: string;
@@ -67,6 +75,8 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     optionC: string;
     optionD: string;
     correctAnswer: string;
+    imageUrl: string;
+    imagePreview: string | null;
   }>({
     caseId: '',
     questionText: '',
@@ -76,6 +86,8 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     optionC: '',
     optionD: '',
     correctAnswer: '',
+    imageUrl: '',
+    imagePreview: null,
   });
 
   const loadCases = async () => {
@@ -126,8 +138,37 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       optionC: '',
       optionD: '',
       correctAnswer: '',
+      imageUrl: '',
+      imagePreview: null,
     });
     setIsModalOpen(true);
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const url = await uploadExpertWorkbenchImage(file);
+      setForm((p) => ({ ...p, imageUrl: url, imagePreview: url }));
+      toast.success('Image uploaded successfully.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Upload failed.';
+      toast.error(msg);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
+  };
+
+  const removeImage = () => {
+    setForm((p) => ({ ...p, imageUrl: '', imagePreview: null }));
   };
 
   const openEdit = async (q: ExpertQuizQuestion) => {
@@ -162,18 +203,20 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       optionC: q.optionC ?? '',
       optionD: q.optionD ?? '',
       correctAnswer: q.correctAnswer ?? '',
+      imageUrl: q.imageUrl ?? '',
+      imagePreview: q.imageUrl ?? null,
     });
     setIsModalOpen(true);
   };
 
   const canSubmit = useMemo(() => {
     if (mode === 'edit') {
-      // Khi edit: caseId có thể giữ nguyên, chỉ cần questionText và correctAnswer
+      // Khi edit: chỉ cần questionText, correctAnswer. CaseId và ImageUrl có thể giữ nguyên
       return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
     }
-    // Khi create: bắt buộc chọn case
-    return Boolean(form.caseId && form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
-  }, [mode, form.caseId, form.questionText, form.type, form.correctAnswer]);
+    // Khi create: bắt buộc chọn case, có questionText, correctAnswer và imageUrl
+    return Boolean(form.caseId && form.questionText.trim() && form.type.trim() && form.correctAnswer.trim() && form.imageUrl.trim());
+  }, [mode, form.caseId, form.questionText, form.type, form.correctAnswer, form.imageUrl]);
 
   // Computed pagination values
   const qTotalPages = Math.max(1, Math.ceil(questions.length / Q_PAGE_SIZE));
@@ -199,6 +242,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
           optionC: form.optionC.trim() || undefined,
           optionD: form.optionD.trim() || undefined,
           correctAnswer: form.correctAnswer.trim(),
+          imageUrl: form.imageUrl || undefined,
         });
         toast.success('Question created successfully.');
       } else {
@@ -213,6 +257,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
           optionC: form.optionC.trim() || undefined,
           optionD: form.optionD.trim() || undefined,
           correctAnswer: form.correctAnswer.trim(),
+          imageUrl: form.imageUrl || undefined,
         });
         toast.success('Question updated successfully.');
       }
@@ -248,6 +293,59 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     }
   };
 
+  // Handle bulk import questions
+  const handleBulkImport = async (importedQuestions: ExpertParsedQuestion[]) => {
+    if (!cases.length) await loadCases();
+
+    setIsImporting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const q of importedQuestions) {
+      try {
+        // Find case by title if provided
+        let caseId: string | undefined = undefined;
+        if (q.caseTitle) {
+          const matchedCase = cases.find((c) => c.title === q.caseTitle);
+          caseId = matchedCase?.id;
+        }
+        // Fallback to first case if no case matched
+        if (!caseId && cases.length > 0) {
+          caseId = cases[0].id;
+        }
+
+        // Skip if missing required fields
+        if (!q.questionText || !q.correctAnswer) continue;
+
+        await createExpertQuizQuestion(quizId, {
+          caseId,  // undefined if not found
+          questionText: q.questionText,
+          type: q.type || 'selection-choice',
+          optionA: q.optionA?.trim() || undefined,
+          optionB: q.optionB?.trim() || undefined,
+          optionC: q.optionC?.trim() || undefined,
+          optionD: q.optionD?.trim() || undefined,
+          correctAnswer: q.correctAnswer,
+          imageUrl: undefined, // Bulk import skips image requirement
+        });
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    setIsImporting(false);
+    if (successCount > 0) {
+      toast.success(`Imported ${successCount} question(s) successfully.`);
+      if (failCount > 0) {
+        toast.info(`Failed to import ${failCount} question(s). Check the errors above.`);
+      }
+      await loadQuestions();
+    } else if (failCount > 0) {
+      toast.error(`Failed to import ${failCount} question(s).`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="text-sm text-muted-foreground">Loading questions...</div>
@@ -256,6 +354,13 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
   return (
     <>
+      {/* Import Dialog */}
+      <ExpertQuestionImportDialog
+        open={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImport={handleBulkImport}
+      />
+
       {isModalOpen && (
         <ModalShell
           title={mode === 'edit' ? 'Edit Quiz Question' : 'Create Quiz Question'}
@@ -263,6 +368,51 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
             if (!isSaving) setIsModalOpen(false);
           }}
         >
+          {/* ========== IMAGE UPLOAD SECTION ========== */}
+          <div className="md:col-span-2 mb-4">
+            <label className="block text-sm font-medium text-card-foreground mb-1.5">
+              Question Image <span className="text-destructive">*</span>
+            </label>
+            {form.imagePreview ? (
+              <div className="relative inline-block">
+                <img
+                  src={form.imagePreview}
+                  alt="Question preview"
+                  className="max-h-48 rounded-lg border border-border object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-white shadow-md hover:bg-destructive/90 cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
+                {isUploading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Uploading...</span>
+                  </div>
+                ) : (
+                  <>
+                    <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">Click to upload image</span>
+                    <span className="text-xs text-muted-foreground/70">PNG, JPG, GIF up to 10MB</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+              </label>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-card-foreground mb-1.5">Case</label>
@@ -351,18 +501,18 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
           <div className="flex gap-3 mt-5">
             <button
-              disabled={isSaving}
+              disabled={isSaving || isImporting}
               onClick={() => setIsModalOpen(false)}
-              className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer"
             >
               Cancel
             </button>
             <button
-              disabled={isSaving || !canSubmit}
+              disabled={isSaving || isImporting || !canSubmit}
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
             >
-              {mode === 'edit' ? 'Update' : 'Create'}
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : mode === 'edit' ? 'Update' : 'Create'}
             </button>
           </div>
         </ModalShell>
@@ -379,16 +529,17 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteDialog(null)}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+                disabled={isSaving || isImporting}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                disabled={isSaving}
+                disabled={isSaving || isImporting}
                 onClick={confirmDelete}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors disabled:opacity-50 bg-destructive hover:bg-destructive/90"
               >
-                Delete
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Delete'}
               </button>
             </div>
           </div>
@@ -405,13 +556,23 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
             </span>
           )}
         </div>
-        <button
-          disabled={isSaving}
-          onClick={openCreate}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"
-        >
-          + Add Question
-        </button>
+        <div className="flex gap-2">
+          <button
+            disabled={isSaving || isImporting}
+            onClick={() => setIsImportOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/10 text-secondary text-xs font-medium hover:bg-secondary/20 disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            <UploadCloud className="h-3.5 w-3.5" />
+            Import
+          </button>
+          <button
+            disabled={isSaving || isImporting}
+            onClick={openCreate}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            + Add Question
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -426,7 +587,15 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
               return (
                 <div key={q.questionId} className="p-3 rounded-lg border border-border bg-input/20">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
+                      {/* Hiển thị ảnh nếu có */}
+                      {q.imageUrl && (
+                        <img
+                          src={q.imageUrl}
+                          alt="Question"
+                          className="max-h-24 rounded-lg border border-border mb-2 object-contain"
+                        />
+                      )}
                       <div className="text-xs text-muted-foreground mb-0.5">
                         <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary font-bold text-[10px] mr-1.5">{globalIdx}</span>
                         Case: <span className="text-card-foreground font-medium">{q.caseTitle ?? '-'}</span>
@@ -450,14 +619,14 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
                     <div className="flex gap-2 shrink-0">
                       <button
-                        disabled={isSaving}
+                        disabled={isSaving || isImporting}
                         onClick={() => openEdit(q)}
                         className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer transition-colors"
                       >
                         Edit
                       </button>
                       <button
-                        disabled={isSaving}
+                        disabled={isSaving || isImporting}
                         onClick={() => handleDelete(q.questionId)}
                         className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"
                       >
@@ -474,7 +643,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
           {qTotalPages > 1 && (
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
               <button
-                disabled={qPage <= 1}
+                disabled={qPage <= 1 || isSaving || isImporting}
                 onClick={() => setQPage((p) => Math.max(1, p - 1))}
                 className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
               >
@@ -484,7 +653,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
                 Page <span className="text-card-foreground font-semibold">{qPage}</span> / {qTotalPages}
               </span>
               <button
-                disabled={qPage >= qTotalPages}
+                disabled={qPage >= qTotalPages || isSaving || isImporting}
                 onClick={() => setQPage((p) => Math.min(qTotalPages, p + 1))}
                 className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
               >

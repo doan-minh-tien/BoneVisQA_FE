@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QuizWorkbenchListSkeleton } from '@/components/shared/DashboardSkeletons';
 import {
@@ -22,13 +22,16 @@ import {
   Copy,
   Check,
   Trash,
+  BookOpen,
 } from 'lucide-react';
 import { getLecturerQuizzes, deleteQuiz } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassQuizDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
+import ExpertQuizLibrary from '@/components/lecturer/quizzes/ExpertQuizLibrary';
 
 type QuizStatus = 'Active' | 'Draft' | 'Completed';
+type TabType = 'my-quizzes' | 'expert-library';
 
 interface EnrichedQuiz extends ClassQuizDto {
   status: QuizStatus;
@@ -93,6 +96,7 @@ function buildPageList(totalPages: number, current: number): (number | 'ellipsis
 
 export default function QuizListPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabType>('my-quizzes');
   const [quizzes, setQuizzes] = useState<EnrichedQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -273,21 +277,48 @@ export default function QuizListPage() {
             Quiz Workbench
           </h1>
           <p className="mt-2 max-w-xl text-lg text-muted-foreground">
-            Review, manage, and curate diagnostic assessment modules for clinical students.
+            Quản lý và gán bài kiểm tra từ thư viện Expert vào lớp học.
           </p>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-border">
         <button
           type="button"
-          onClick={() => router.push('/lecturer/quizzes/create')}
-          className="flex items-center gap-3 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-4 font-bold text-white shadow-xl shadow-primary/10 transition-all hover:scale-[0.98]"
+          onClick={() => setActiveTab('my-quizzes')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'my-quizzes'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
         >
-          <Plus className="h-5 w-5" />
-          Create New Quiz
+          <ClipboardList className="h-4 w-4" />
+          My Quizzes
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('expert-library')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'expert-library'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <BookOpen className="h-4 w-4" />
+          Expert Library
         </button>
       </div>
 
-      {/* Bento Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* Tab Content */}
+      {activeTab === 'expert-library' ? (
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <ExpertQuizLibrary onAssignSuccess={() => setActiveTab('my-quizzes')} />
+        </div>
+      ) : (
+        <React.Fragment>
+          {/* Bento Stats Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-start justify-between">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -840,6 +871,8 @@ export default function QuizListPage() {
           </div>
         )}
       </Modal>
+        </React.Fragment>
+      )}
     </div>
   );
 }
