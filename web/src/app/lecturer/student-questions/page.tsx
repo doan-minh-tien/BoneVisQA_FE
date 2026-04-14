@@ -140,6 +140,7 @@ export default function StudentQuestionsPage() {
   const [notifyHead, setNotifyHead] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [expertSubmitting, setExpertSubmitting] = useState(false);
 
   const toggleSelect = (id: string) => {
     setSelectMode(true);

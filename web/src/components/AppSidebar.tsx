@@ -22,8 +22,11 @@ import {
   BarChart3,
   Megaphone,
   Settings,
+
+  Sparkles,
   ChevronLeft,
   ChevronRight,
+  BotMessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
