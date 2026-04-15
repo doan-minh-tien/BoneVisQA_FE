@@ -1,27 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import useSWRMutation from 'swr/mutation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
+import Header from '@/components/Header';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
-import {
-  ArrowLeft,
-  AlertTriangle,
-  CheckCircle,
-  FileQuestion,
-  Loader2,
-  Send,
-  Sparkles,
-  UploadCloud,
-} from 'lucide-react';
+import { AlertTriangle, Loader2, MessageCircle, Send, UploadCloud } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -54,7 +45,7 @@ const MedicalImageViewer = dynamic(
 );
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
+import { postStudentVisualQa, requestStudentVisualQaReview } from '@/lib/api/student-visual-qa';
 import type {
   NormalizedImageBoundingBox,
   NormalizedPolygonPoint,
@@ -62,7 +53,6 @@ import type {
   VisualQaTurn,
 } from '@/lib/api/types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
-import { splitLearningBullets } from '@/lib/utils/learning-text';
 import { looksLikeAiFallbackAnswer } from '@/lib/utils/ai-fallback-message';
 import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
@@ -88,6 +78,7 @@ const EMPTY_DRAFT: VisualQaDraft = {
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_SESSION_TURNS = 3;
+const DRAFT_TTL_MS = 10_800_000;
 
 function turnToReport(turn: VisualQaTurn | null): null | {
   answerText: string;
@@ -131,22 +122,35 @@ export default function StudentVisualQaImagePage() {
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [networkWarning, setNetworkWarning] = useState<string | null>(null);
   const [aiOverload, setAiOverload] = useState(false);
-  const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
   const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [hydratingDraft, setHydratingDraft] = useState(true);
+  /** Synchronous guard against double-submit before React applies `loading`. */
+  const isSubmittingRef = useRef(false);
+  /** Remount file input on New Chat so the native picker and preview fully reset. */
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [requestingLecturerReview, setRequestingLecturerReview] = useState(false);
+  const [serverForcedExpired, setServerForcedExpired] = useState(false);
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
     'student-visual-qa-draft',
     EMPTY_DRAFT,
+    { ttlMs: DRAFT_TTL_MS },
   );
 
   const catalogImageUrl = searchParams.get('catalogImageUrl');
   const catalogTitle = searchParams.get('catalogTitle');
   const catalogContext = searchParams.get('catalogContext');
-  const catalogCaseId = searchParams.get('catalogCaseId') ?? searchParams.get('caseId');
-  const catalogImageId = searchParams.get('catalogImageId') ?? searchParams.get('imageId');
+  const historySessionId = searchParams.get('sessionId') ?? searchParams.get('historySessionId');
+  const catalogCaseId =
+    searchParams.get('catalogCaseId') ??
+    searchParams.get('caseId') ??
+    searchParams.get('catalogCaseID');
+  const catalogImageId =
+    searchParams.get('catalogImageId') ??
+    searchParams.get('imageId') ??
+    searchParams.get('catalogImageID');
 
   const { trigger: askVisualQa } = useSWRMutation(
     'student-visual-qa-session-ask',
@@ -156,7 +160,7 @@ export default function StudentVisualQaImagePage() {
         arg,
       }: {
         arg: {
-          file: File;
+          file?: File | null;
           questionText: string;
           sessionId?: string | null;
           caseId?: string | null;
@@ -274,7 +278,6 @@ export default function StudentVisualQaImagePage() {
       setQuestionError(null);
       setSession(null);
       setChatTurns([]);
-      setLastSubmittedQuestion(null);
       setAiOverload(false);
       setFile(f);
       setRoiBoundingBox(null);
@@ -289,26 +292,34 @@ export default function StudentVisualQaImagePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSessionLocked) {
-      toast.info('Session limit reached. Start a new session to continue.');
+    if (isSubmittingRef.current) return;
+    if (isSessionInteractionLocked) {
+      toast.info(
+        isExpired
+          ? 'Phiên hỏi đáp đã hết hạn. Vui lòng tạo phiên mới.'
+          : 'Bạn đã đạt giới hạn 3 câu hỏi.',
+      );
       return;
     }
-    if (!file || !question.trim()) {
-      if (!file) setImageError('Please attach an image before submitting.');
+    const requiresFile = !isOngoingSession;
+    if ((requiresFile && !file) || !question.trim()) {
+      if (requiresFile && !file) setImageError('Please attach an image before submitting.');
       if (!question.trim()) setQuestionError('Please enter your question or observations.');
       return;
     }
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    if (file && file.size > MAX_IMAGE_SIZE_BYTES) {
       setImageError('Image must be smaller than 5MB.');
       return;
     }
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     const q = question.trim();
     setImageError(null);
     setQuestionError(null);
     setNetworkWarning(null);
     setAiOverload(false);
     setLoading(true);
-    setLoadingPhase('upload');
+    setLoadingPhase(file ? 'upload' : 'analyzing');
     setUploadPct(0);
     let overloadExit = false;
     try {
@@ -320,7 +331,6 @@ export default function StudentVisualQaImagePage() {
         imageId: catalogImageId,
         roiBoundingBox,
       });
-      setLastSubmittedQuestion(q);
       const mergedTurns =
         res.turns.length > 0
           ? res.turns
@@ -344,9 +354,36 @@ export default function StudentVisualQaImagePage() {
       const finalTurns = mergedTurns.slice(-MAX_SESSION_TURNS);
       setChatTurns(finalTurns);
       setSelectedTurnIndex(finalTurns[finalTurns.length - 1]?.turnIndex ?? null);
+      setRoiBoundingBox(null);
       toast.success('Diagnostic report generated.');
       clearDraft();
     } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const errCode = (
+          err.response?.data as { errorCode?: string; code?: string } | undefined
+        )?.errorCode;
+        if (errCode === 'AI_SERVICE_UNAVAILABLE' || err.response?.status === 503) {
+          toast.info('Hệ thống AI đang bận hoặc quá tải. Lượt hỏi của bạn chưa bị trừ, vui lòng thử lại sau giây lát.');
+          return;
+        }
+        if (errCode === 'INTERNAL_SERVER_ERROR' || err.response?.status === 500) {
+          toast.error('Hệ thống gặp sự cố xử lý. File của bạn đã được dọn dẹp an toàn. Vui lòng thử lại.');
+          return;
+        }
+        if (errCode === 'SESSION_EXPIRED') {
+          setServerForcedExpired(true);
+          toast.info('Phiên hỏi đáp đã hết hạn. Vui lòng tạo phiên mới.');
+          return;
+        }
+        if (errCode === 'TURN_LIMIT_EXCEEDED') {
+          toast.info('Bạn đã đạt giới hạn 3 câu hỏi.');
+          return;
+        }
+      }
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        toast.info('Bạn thao tác quá nhanh. Vui lòng đợi khoảng 1 phút trước khi tiếp tục gửi câu hỏi.');
+        return;
+      }
       if (axios.isAxiosError(err)) {
         const code =
           (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
@@ -391,6 +428,7 @@ export default function StudentVisualQaImagePage() {
         toast.error(err instanceof Error ? err.message : 'Request failed');
       }
     } finally {
+      isSubmittingRef.current = false;
       if (!overloadExit) {
         setLoading(false);
         setUploadPct(0);
@@ -398,17 +436,6 @@ export default function StudentVisualQaImagePage() {
       }
     }
   };
-
-  const displayedQuestion = useMemo(() => {
-    const selectedTurn =
-      selectedTurnIndex != null
-        ? chatTurns.find((t) => t.turnIndex === selectedTurnIndex) ?? null
-        : session?.latest ?? null;
-    if (!selectedTurn) return '';
-    const fromApi = selectedTurn.questionText?.trim();
-    if (fromApi) return fromApi;
-    return lastSubmittedQuestion?.trim() ?? '';
-  }, [chatTurns, lastSubmittedQuestion, selectedTurnIndex, session]);
 
   const selectedTurn = useMemo(
     () =>
@@ -425,7 +452,42 @@ export default function StudentVisualQaImagePage() {
         : roiBoundingBox,
     [roiBoundingBox, selectedTurn],
   );
-  const isSessionLocked = chatTurns.length >= MAX_SESSION_TURNS;
+  const userMessageCountFromSession =
+    session?.messages?.filter((message) => (message.role ?? '').toLowerCase() === 'user').length ??
+    0;
+  const isLimitReached =
+    userMessageCountFromSession >= MAX_SESSION_TURNS || chatTurns.length >= MAX_SESSION_TURNS;
+  const isExpired = session?.updatedAt
+    ? new Date().getTime() - new Date(session.updatedAt).getTime() > 24 * 60 * 60 * 1000
+    : false;
+  const isSessionInteractionLocked = isLimitReached || isExpired || serverForcedExpired;
+  const composerPlaceholder = isExpired
+    ? 'Phiên chat đã hết hạn (quá 24 giờ).'
+    : isLimitReached
+      ? 'Phiên chat đã đạt giới hạn 3 câu hỏi.'
+      : 'Bạn muốn hỏi gì về hình ảnh này? (What do you want to know about this image?)';
+  const isOngoingSession = Boolean(session) && chatTurns.length > 0;
+  const lastSessionMessage = session?.messages?.[session.messages.length - 1];
+  const lastSessionRole = (lastSessionMessage?.role ?? '').toLowerCase();
+  const statusKey = (session?.status ?? '').toLowerCase();
+  const hasReviewerFeedback = chatTurns.some((turn) =>
+    (turn.messages ?? []).some((message) => {
+      const role = (message.role ?? '').toLowerCase();
+      return role === 'expert' || role === 'lecturer';
+    }),
+  );
+  const isReadOnlyMode =
+    Boolean(historySessionId?.trim()) ||
+    (Boolean(session?.status) && statusKey !== 'active') ||
+    hasReviewerFeedback;
+  const canRequestReview =
+    Boolean(session?.sessionId) &&
+    !isExpired &&
+    !serverForcedExpired &&
+    statusKey !== 'pendingexpertreview' &&
+    statusKey !== 'escalatedtoexpert' &&
+    lastSessionRole !== 'expert' &&
+    lastSessionRole !== 'lecturer';
   const isGuestUser = useMemo(() => {
     const active = user?.activeRole?.toLowerCase() ?? '';
     const roles = (user?.roles ?? []).map((r) => r.toLowerCase());
@@ -437,9 +499,9 @@ export default function StudentVisualQaImagePage() {
     setSession(null);
     setChatTurns([]);
     setSelectedTurnIndex(null);
-    setLastSubmittedQuestion(null);
     setQuestion('');
     setFile(null);
+    setFileInputKey((k) => k + 1);
     setRoiBoundingBox(null);
     setNetworkWarning(null);
     setAiOverload(false);
@@ -447,9 +509,36 @@ export default function StudentVisualQaImagePage() {
     setQuestionError(null);
     setUploadPct(0);
     setLoadingPhase('upload');
+    setRequestingLecturerReview(false);
+    setServerForcedExpired(false);
     clearDraft();
-    toast.info('Started a new session. You can choose a new image and ask again.');
+    toast.info('New chat started. Choose an image and ask a question.');
   }, [clearDraft, toast]);
+
+  const handleRequestLecturerReview = useCallback(async () => {
+    if (!session?.sessionId || requestingLecturerReview) return;
+    setRequestingLecturerReview(true);
+    try {
+      const updated = await requestStudentVisualQaReview(session.sessionId);
+      setSession((prev) => ({
+        ...(prev ?? session),
+        ...updated,
+        status: updated.status ?? 'PendingExpertReview',
+      }));
+      if (updated.turns.length > 0) {
+        setChatTurns(updated.turns.slice(-MAX_SESSION_TURNS));
+      }
+      toast.success('Đã gửi yêu cầu hỗ trợ tới giảng viên.');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        toast.info('Phiên này đã được gửi để giảng viên xem xét.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Could not request lecturer support.');
+      }
+    } finally {
+      setRequestingLecturerReview(false);
+    }
+  }, [requestingLecturerReview, session, toast]);
 
   useEffect(() => {
     if (!isGuestUser) return;
@@ -503,26 +592,12 @@ export default function StudentVisualQaImagePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-text-main">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-color bg-background px-4 md:px-6">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/student/qa"
-            className="rounded-lg border border-border-color bg-surface p-2 text-text-muted hover:text-text-main"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h1 className="text-base font-semibold text-text-main">Visual diagnostic request</h1>
-            <p className="text-xs text-text-muted">
-              Session mode: up to 3 Q&A turns per image
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
+      <Header
+        title="Visual QA"
+        subtitle="Mark a region on the image, then chat with the AI about what you see."
+      />
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2 lg:items-start">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)] lg:min-h-0 lg:self-start lg:border-b-0 lg:border-r">
           <div className="min-h-0 min-h-[40vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
             <MedicalImageViewer
               key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
@@ -534,14 +609,26 @@ export default function StudentVisualQaImagePage() {
           </div>
         </aside>
 
-        <main className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-background p-5 md:p-6">
-          <div className="mx-auto flex max-w-3xl flex-col gap-6">
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-5 rounded-xl border border-border-color bg-surface p-5 shadow-panel"
-            >
+        <main className="min-h-0 flex-1 overflow-hidden bg-background p-4 md:p-6">
+          <div className="mx-auto flex h-full max-w-4xl min-h-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3 md:px-5">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+                <MessageCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <span className="truncate">Conversation</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 transition-all hover:opacity-90 active:scale-95"
+                onClick={startNewSession}
+              >
+                New Chat
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar md:px-5">
               {networkWarning ? (
-                <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                     <p>{networkWarning}</p>
@@ -549,393 +636,289 @@ export default function StudentVisualQaImagePage() {
                 </div>
               ) : null}
               {aiOverload ? (
-                <div className="rounded-xl border border-sky-400/45 bg-sky-500/15 px-4 py-4 text-sm text-sky-50">
+                <div className="mb-4 rounded-xl border border-sky-400/45 bg-sky-500/15 px-4 py-4 text-sm text-sky-50">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                      <div>
-                        <p className="font-medium text-sky-100">
-                          Hệ thống AI hiện đang xử lý quá nhiều yêu cầu. Vui lòng đợi ít phút và gửi lại câu hỏi.
-                        </p>
-                        <p className="mt-1 text-xs text-sky-200/90">
-                          The AI system is experiencing high traffic. Please try again in a few minutes.
-                        </p>
-                      </div>
+                      <p className="font-medium text-sky-100">
+                        The AI system is experiencing high traffic. Please try again in a few minutes.
+                      </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setAiOverload(false)}
-                      className="shrink-0 rounded-lg border border-sky-400/40 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-950/50"
+                      className="shrink-0 rounded-lg border border-sky-400/40 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-100 transition-all hover:opacity-80 active:scale-95"
                     >
-                      Đóng
+                      Dismiss
                     </button>
                   </div>
                 </div>
               ) : null}
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-cyan-accent" />
-                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Diagnostic request
-                </h2>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-accent/25 bg-cyan-accent/10 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-accent">
-                  Session turns: {chatTurns.length}/{MAX_SESSION_TURNS}
-                </p>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="!h-9"
-                  onClick={startNewSession}
-                >
-                  Start New Session
-                </Button>
-              </div>
-              {isSessionLocked ? (
-                <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
-                  Session limit reached (3/3). Start a new session to ask additional questions.
-                </div>
-              ) : null}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-main">Imaging file</label>
-              <input
-                type="file"
-                accept="image/*,.dcm,application/dicom"
-                onChange={onFileChange}
-                className="block w-full rounded-xl border border-border-color bg-background/70 px-3 py-3 text-sm text-text-main file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
-              />
-              {imageError ? <p className="mt-2 text-xs text-destructive">{imageError}</p> : null}
-              {file ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  <UploadCloud className="h-4 w-4 text-cyan-accent" />
-                  <span className="truncate">{file.name}</span>
-                </div>
-              ) : null}
-              {hydratingDraft ? (
-                <div className="mt-2 text-xs text-text-muted">Restoring your unsent draft...</div>
-              ) : null}
-              {!file && prefillLoading ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
-                  Preloading selected catalog image...
-                </div>
-              ) : null}
-              {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
-                <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  Rectangle ROI saved: x {roiBoundingBox.x.toFixed(3)}, y {roiBoundingBox.y.toFixed(3)}, w{' '}
-                  {roiBoundingBox.width.toFixed(3)}, h {roiBoundingBox.height.toFixed(3)} (normalized 0–1)
-                </div>
-              ) : null}
-            </div>
-            <div>
-              <label htmlFor="q" className="block text-sm font-medium text-text-main">
-                Your question / observations
-              </label>
-              <textarea
-                id="q"
-                required
-                rows={5}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                disabled={isSessionLocked}
-                placeholder="e.g. Describe suspected pathology and differential diagnoses for this radiograph."
-                className="mt-1.5 w-full rounded-xl border border-border-color bg-background/70 px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
-              />
-              {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
-            </div>
-            {question.trim() ? (
-              <div className="rounded-xl border border-border-color bg-background/55 p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Question preview
-                </p>
-                <p className="text-sm leading-relaxed text-text-main">{question.trim()}</p>
-              </div>
-            ) : null}
-            {loading && loadingPhase === 'upload' ? (
-              <DynamicProgressTracker
-                mode="determinate"
-                label="Uploading image"
-                progressPercentage={uploadPct}
-                message="Uploading imaging file..."
-              />
-            ) : null}
-            {loading && loadingPhase === 'analyzing' ? (
-              <div className="rounded-xl border border-cyan-accent/25 bg-cyan-accent/5 p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-cyan-accent" />
-                  <p className="text-sm font-medium text-text-main">
-                    Analyzing image and reasoning with AI... Please wait.
+              {chatTurns.length === 0 ? (
+                <div className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 py-12 text-center">
+                  <p className="text-sm font-medium text-foreground">No messages yet</p>
+                  <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                    Add an image (first message), draw a region if you like, then ask the AI. You can send up to three
+                    questions per session.
                   </p>
                 </div>
-                <DynamicProgressTracker
-                  mode="indeterminate"
-                  label="AI reasoning"
-                  messages={[
-                    'Analyzing medical image...',
-                    'Searching vector database...',
-                    'Generating diagnosis and key findings...',
-                  ]}
-                />
-              </div>
-            ) : null}
-              <Button
-                type="submit"
-                className="w-full sm:w-auto"
-                isLoading={loading}
-                disabled={loading || isSessionLocked}
-              >
-                {!loading && <Send className="h-4 w-4" />}
-                {isSessionLocked ? 'Session limit reached' : 'Generate diagnostic report'}
-              </Button>
-            </form>
-
-            {!report ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-color bg-surface/40 py-20 text-center">
-                <FileQuestion className="mb-3 h-10 w-10 text-text-muted opacity-70" />
-                <p className="text-sm font-medium text-text-main">No session turns yet</p>
-                <p className="mt-1 max-w-md text-xs text-text-muted">
-                  Ask a question to start a diagnostic session. Each session retains up to 3 recent Q&A turns.
-                </p>
-              </div>
-            ) : (
-              <article className="space-y-6">
-                <header className="rounded-xl border border-border-color bg-surface p-5">
-                  <h2 className="text-lg font-semibold text-text-main">Medical AI report</h2>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Educational use — always correlate with clinical context and formal imaging interpretation.
-                  </p>
-                </header>
-
-                <section className="rounded-xl border border-border-color bg-surface p-5">
-                  <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Chat history ({chatTurns.length}/{MAX_SESSION_TURNS})
-                  </h3>
-                  {chatTurns.length === 0 ? (
-                    <p className="text-sm text-text-muted">No previous turns in this session.</p>
-                  ) : (
-                    <ol className="space-y-3">
-                      {chatTurns.map((turn) => (
-                        <li
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-5">
+                    {chatTurns.map((turn) => {
+                      const isActive = selectedTurnIndex === turn.turnIndex;
+                      const normalizedMessages = (turn.messages ?? [])
+                        .filter((message) => message.content?.trim())
+                        .map((message, idx) => ({
+                          id: `${turn.turnIndex}-m-${idx}`,
+                          role: (message.role ?? '').toLowerCase(),
+                          content: message.content.trim(),
+                        }));
+                      const reviewerNotes = normalizedMessages.filter(
+                        (message) => message.role === 'lecturer' || message.role === 'expert',
+                      );
+                      const baseMessages = normalizedMessages.filter(
+                        (message) => message.role !== 'lecturer' && message.role !== 'expert',
+                      );
+                      const renderFromMessages = normalizedMessages.length > 0;
+                      return (
+                        <button
                           key={`${turn.turnIndex}-${turn.createdAt ?? ''}`}
-                          className={`rounded-lg border p-3 ${
-                            selectedTurnIndex === turn.turnIndex
-                              ? 'border-cyan-accent bg-cyan-accent/10'
-                              : 'border-border-color bg-background/50'
+                          type="button"
+                          className={`w-full rounded-xl text-left outline-none transition-colors ${
+                            isActive ? 'ring-2 ring-primary/35 ring-offset-2 ring-offset-background' : ''
                           }`}
+                          onClick={() => setSelectedTurnIndex(turn.turnIndex)}
                         >
-                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                            Turn {turn.turnIndex}
-                          </p>
-                          <button
-                            type="button"
-                            className="w-full text-left"
-                            onClick={() => setSelectedTurnIndex(turn.turnIndex)}
-                          >
-                            <p className="text-sm font-medium text-text-main">Q: {turn.questionText || '—'}</p>
-                            <p className="mt-1 text-sm text-text-main/90">A: {turn.answerText || '—'}</p>
-                            <p className="mt-2 text-[11px] text-text-muted">
-                              {turn.roiBoundingBox ? 'Has message-level ROI' : 'No turn-specific ROI'}
-                            </p>
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </section>
-
-                <section className="rounded-xl border border-cyan-accent/30 bg-gradient-to-br from-cyan-accent/10 to-background p-5">
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Your original question
-                  </h3>
-                  <p className="text-sm leading-relaxed text-text-main">
-                    {displayedQuestion || (
-                      <span className="italic text-text-muted">No question text was returned.</span>
-                    )}
-                  </p>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Answer / explanation
-                  </h3>
-                  {looksLikeAiFallbackAnswer(report.answerText) ? (
-                    <div
-                      className="mb-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
-                      role="status"
-                    >
-                      <p className="font-medium">Assistant could not return a full clinical analysis</p>
-                      <p className="mt-1 text-xs opacity-90">
-                        The model returned a system-style message (for example an apology or “temporarily unavailable”).
-                        This is not a structured diagnosis — retry later or narrow your question.                         If you drew a region of interest, coordinates are sent as a normalized bounding box{' '}
-                        <code className="rounded bg-black/30 px-1">{'{ x, y, width, height }'}</code> (0–1).
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="rounded-xl border border-border-color bg-surface px-5 py-4 text-sm text-text-main">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        ...markdownExternalLinkComponents,
-                        p: ({ children }) => (
-                          <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                        ),
-                        ul: ({ children }) => (
-                          <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>
-                        ),
-                        li: ({ children }) => <li className="mb-1">{children}</li>,
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-text-main">{children}</strong>
-                        ),
-                      }}
-                    >
-                      {report.answerText?.trim() || '_No narrative returned._'}
-                    </ReactMarkdown>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Suggested diagnosis
-                  </h3>
-                  <div className="rounded-xl border-2 border-cyan-accent/40 bg-surface p-5 shadow-[0_0_0_1px_rgba(0,229,255,0.12)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <p className="max-w-2xl text-lg font-semibold leading-relaxed text-text-main">
-                        {report.suggestedDiagnosis?.trim() ? (
-                          report.suggestedDiagnosis
-                        ) : (
-                          <span className="text-base font-normal italic text-text-muted">
-                            No suggested diagnosis was provided in this response.
-                          </span>
-                        )}
-                      </p>
-                      {typeof report.aiConfidenceScore === 'number' &&
-                      Number.isFinite(report.aiConfidenceScore) ? (
-                        <span className="rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 text-sm font-semibold text-cyan-accent">
-                          {report.aiConfidenceScore.toFixed(1)}% confidence
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Key findings
-                  </h3>
-                  <div className="rounded-xl border border-border-color bg-surface p-5">
-                    {report.keyFindings.length > 0 ? (
-                      <ul className="space-y-3 text-sm text-text-main">
-                        {report.keyFindings.map((k, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-accent" />
-                            <span className="leading-relaxed">{k}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm italic text-text-muted">No key findings listed.</p>
-                    )}
-                  </div>
-                </section>
-
-                {report.keyImagingFindings?.trim() ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Key imaging findings
-                    </h3>
-                    <div className="rounded-xl border border-cyan-accent/25 bg-surface p-5">
-                      <ul className="space-y-2.5 text-sm text-text-main">
-                        {splitLearningBullets(report.keyImagingFindings).map((line, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
-                            <span className="leading-relaxed">{line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </section>
-                ) : null}
-
-                {report.reflectiveQuestions?.trim() ? (
-                  <section
-                    className="rounded-xl border border-amber-400/35 bg-gradient-to-br from-amber-500/10 to-background p-5 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)]"
-                    role="note"
-                    aria-label="Reflective questions"
-                  >
-                    <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
-                      Reflective questions
-                    </h3>
-                    <div className="text-sm leading-relaxed text-text-main">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{ ...markdownExternalLinkComponents }}
-                      >
-                        {report.reflectiveQuestions.trim()}
-                      </ReactMarkdown>
-                    </div>
-                  </section>
-                ) : null}
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Differential diagnoses
-                  </h3>
-                  <div className="space-y-3">
-                    {report.differentialDiagnoses.length > 0 ? (
-                      <ol className="list-decimal space-y-3 pl-5 text-sm text-text-main marker:font-semibold marker:text-cyan-accent">
-                        {report.differentialDiagnoses.map((d, i) => (
-                          <li
-                            key={i}
-                            className="rounded-lg border border-border-color bg-surface/90 py-3 pl-2 pr-4 leading-relaxed"
-                          >
-                            {d}
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <div className="rounded-xl border border-border-color bg-surface p-5 text-sm italic text-text-muted">
-                        No differential diagnoses were listed.
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                {report.recommendedReadings.length > 0 ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Recommended readings
-                    </h3>
-                    <ul className="space-y-2 rounded-xl border border-border-color bg-surface p-5 text-sm">
-                      {report.recommendedReadings.map((r, i) => (
-                        <li key={i} className="text-text-main">
-                          {typeof r === 'string' ? (
-                            r
+                          {renderFromMessages ? (
+                            <div className="space-y-2">
+                              {baseMessages.map((message) => {
+                                const isStudentMessage = message.role === 'student';
+                                return (
+                                  <div
+                                    key={message.id}
+                                    className={`flex ${isStudentMessage ? 'justify-end' : 'justify-start'}`}
+                                  >
+                                    <div
+                                      className={`max-w-[92%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed ${
+                                        isStudentMessage
+                                          ? 'border-border/80 bg-muted/60 text-foreground shadow-sm'
+                                          : 'border-border/60 bg-blue-50/80 text-foreground dark:border-border dark:bg-blue-950/40'
+                                      }`}
+                                    >
+                                      <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                          ...markdownExternalLinkComponents,
+                                          p: ({ children }) => (
+                                            <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+                                          ),
+                                        }}
+                                      >
+                                        {message.content}
+                                      </ReactMarkdown>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {reviewerNotes.length > 0 ? (
+                                <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Instructor async feedback notes
+                                  </p>
+                                  {reviewerNotes.map((message) => {
+                                    const isExpertNote = message.role === 'expert';
+                                    return (
+                                      <div
+                                        key={message.id}
+                                        className={`rounded-xl border px-3 py-2 text-sm leading-relaxed ${
+                                          isExpertNote
+                                            ? 'border-emerald-400/60 bg-emerald-500/10'
+                                            : 'border-orange-400/60 bg-orange-500/10'
+                                        }`}
+                                      >
+                                        <p
+                                          className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
+                                            isExpertNote
+                                              ? 'text-emerald-700 dark:text-emerald-300'
+                                              : 'text-orange-700 dark:text-orange-300'
+                                          }`}
+                                        >
+                                          {isExpertNote ? 'Chuyên gia phản hồi' : 'Giảng viên phản hồi'}
+                                        </p>
+                                        <ReactMarkdown
+                                          remarkPlugins={[remarkGfm]}
+                                          components={{
+                                            ...markdownExternalLinkComponents,
+                                            p: ({ children }) => (
+                                              <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+                                            ),
+                                          }}
+                                        >
+                                          {message.content}
+                                        </ReactMarkdown>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
                           ) : (
                             <>
-                              {r.title}
-                              {r.url ? (
-                                <a
-                                  href={r.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="ml-2 text-cyan-accent underline"
-                                >
-                                  Link
-                                </a>
-                              ) : null}
+                              <div className="flex justify-end">
+                                <div className="max-w-[92%] rounded-2xl border border-border/80 bg-muted/60 px-4 py-2.5 text-sm leading-relaxed text-foreground shadow-sm">
+                                  {turn.questionText?.trim() || '—'}
+                                </div>
+                              </div>
+                              <div className="mt-2 flex justify-start">
+                                <div className="max-w-[92%] rounded-2xl border border-border/60 bg-blue-50/80 px-4 py-3 text-sm leading-relaxed text-foreground dark:border-border dark:bg-blue-950/40">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      ...markdownExternalLinkComponents,
+                                      p: ({ children }) => (
+                                        <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+                                      ),
+                                    }}
+                                  >
+                                    {turn.answerText?.trim() || '_—_'}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
                             </>
                           )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {session?.sessionId && canRequestReview ? (
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleRequestLecturerReview()}
+                        disabled={requestingLecturerReview}
+                        className="transition-all hover:opacity-80 active:scale-95"
+                      >
+                        {requestingLecturerReview ? 'Đang gửi yêu cầu...' : 'Yêu cầu Chuyên gia hỗ trợ'}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {report ? (
+                    <div className="space-y-3 border-t border-border/60 pt-4">
+                      {looksLikeAiFallbackAnswer(report.answerText) ? (
+                        <div
+                          className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+                          role="status"
+                        >
+                          <p className="font-medium">Assistant could not return a full clinical analysis</p>
+                        </div>
+                      ) : null}
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sources</p>
+                      <CitationList citations={report.citations} />
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+            {!isReadOnlyMode ? (
+              <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-4">
+                <div>
+                  {!isOngoingSession && !isSessionInteractionLocked ? (
+                    <>
+                      <label className="mb-1.5 block text-sm font-medium text-text-main">Imaging file</label>
+                      <input
+                        key={fileInputKey}
+                        type="file"
+                        accept="image/*,.dcm,application/dicom"
+                        onChange={onFileChange}
+                        className="block w-full rounded-xl border border-border-color bg-background/70 px-3 py-3 text-sm text-text-main file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white file:transition-all file:hover:opacity-80 file:active:scale-95"
+                      />
+                      {imageError ? <p className="mt-2 text-xs text-destructive">{imageError}</p> : null}
+                      {file ? (
+                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
+                          <UploadCloud className="h-4 w-4 text-cyan-accent" />
+                          <span className="truncate">{file.name}</span>
+                        </div>
+                      ) : null}
+                      {hydratingDraft ? (
+                        <div className="mt-2 text-xs text-text-muted">Restoring your unsent draft...</div>
+                      ) : null}
+                      {!file && prefillLoading ? (
+                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
+                          <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
+                          Preloading selected catalog image...
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
+                  <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
+                    Rectangle ROI saved: x {roiBoundingBox.x.toFixed(3)}, y {roiBoundingBox.y.toFixed(3)}, w{' '}
+                    {roiBoundingBox.width.toFixed(3)}, h {roiBoundingBox.height.toFixed(3)} (normalized 0–1)
+                  </div>
                 ) : null}
-
-                <CitationList citations={report.citations} />
-              </article>
+                </div>
+                <label htmlFor="q" className="mt-3 block text-sm font-medium text-text-main">
+                  Message
+                </label>
+                <textarea
+                  id="q"
+                  required
+                  rows={3}
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  disabled={isSessionInteractionLocked}
+                  placeholder={composerPlaceholder}
+                  className="mt-1.5 w-full rounded-xl border border-border-color bg-background/70 px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:opacity-70"
+                />
+                {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
+                {isSessionInteractionLocked ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {isExpired ? (
+                      <>
+                        Phiên chat đã hết hạn. Tap <span className="font-medium text-foreground">New Chat</span> để tiếp tục.
+                      </>
+                    ) : (
+                      <>
+                        Session depth reached. Tap <span className="font-medium text-foreground">New Chat</span> to continue.
+                      </>
+                    )}
+                  </p>
+                ) : null}
+                {loading && loadingPhase === 'upload' ? (
+                  <DynamicProgressTracker
+                    mode="determinate"
+                    label="Uploading image"
+                    progressPercentage={uploadPct}
+                    message="Uploading imaging file..."
+                  />
+                ) : null}
+                {loading && loadingPhase === 'analyzing' ? (
+                  <DynamicProgressTracker
+                    mode="indeterminate"
+                    label="AI thinking"
+                    messages={['Đang tìm kiếm trong tài liệu và thư viện ca lâm sàng...']}
+                    className="mt-3"
+                  />
+                ) : null}
+                <Button
+                  type="submit"
+                  className="mt-3 w-full sm:w-auto transition-all hover:opacity-80 active:scale-95"
+                  disabled={loading || isSessionInteractionLocked}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Send className="h-4 w-4" aria-hidden />
+                  )}
+                  {isSessionInteractionLocked ? 'Session locked' : 'Ask AI'}
+                </Button>
+              </form>
+            ) : (
+              <div className="shrink-0 border-t border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
+                Đây là phiên hỏi đáp trong lịch sử. Khung chat đã được đóng.
+              </div>
             )}
           </div>
         </main>
