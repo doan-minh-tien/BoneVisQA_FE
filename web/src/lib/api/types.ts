@@ -26,6 +26,7 @@ export interface VisualQaTurn {
   turnIndex: number;
   questionText: string;
   answerText: string;
+  messages?: VisualQaMessage[];
   /** Message-level ROI for this specific Q/A turn (normalized 0-1). */
   roiBoundingBox?: NormalizedImageBoundingBox | null;
   suggestedDiagnosis: string;
@@ -39,10 +40,19 @@ export interface VisualQaTurn {
   createdAt?: string | null;
 }
 
+export interface VisualQaMessage {
+  role: 'Student' | 'Assistant' | 'Lecturer' | string;
+  content: string;
+  createdAt?: string | null;
+}
+
 export interface VisualQaSessionReport {
   sessionId: string;
   caseId?: string | null;
   imageId?: string | null;
+  status?: string | null;
+  updatedAt?: string | null;
+  messages?: VisualQaMessage[];
   turns: VisualQaTurn[];
   latest: VisualQaTurn | null;
 }
@@ -67,6 +77,9 @@ export interface DocumentStatusResponse {
   status: string;
   progressPercentage: number;
   currentOperation: string;
+  /** 1-based page currently being indexed (when provided by pipeline). */
+  currentPageIndexing?: number;
+  totalPages?: number;
 }
 
 export interface LecturerTriageRow {
@@ -450,13 +463,17 @@ export interface NormalizedImageBoundingBox {
 }
 
 export interface ExpertReviewItem {
-  answerId: string;
+  sessionId: string;
+  answerId?: string | null;
   id: string;
   studentName: string;
   className?: string;
   questionText: string;
   question: string;
   imageUrl?: string;
+  imageId?: string | null;
+  customImageUrl?: string | null;
+  promotedCaseId?: string | null;
   customCoordinates?: PercentageBoundingBox | null;
   /** Normalized rectangle ROI `{ x, y, width, height }` in 0–1 (preferred when present). */
   customBoundingBox?: NormalizedImageBoundingBox | null;
@@ -465,6 +482,8 @@ export interface ExpertReviewItem {
   askedAt: string;
   status: 'PendingExpert' | 'Approved' | 'Rejected' | string;
   report: VisualQaReport;
+  turns?: VisualQaTurn[];
+  latestTurnIndex?: number | null;
   citations?: Citation[];
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;

@@ -485,31 +485,51 @@ export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   }
 }
 
+export interface StudentHistoryPageResult {
+  totalCount: number;
+  items: StudentCaseHistoryItem[];
+}
+
 /**
  * Optional dedicated upload / custom Visual QA timeline (when backend exposes it).
  * Swallows errors so the UI still works with only `/api/student/cases/history`.
  */
-export async function fetchStudentUploadQaHistory(): Promise<StudentCaseHistoryItem[]> {
+export async function fetchStudentUploadQaHistory(): Promise<StudentHistoryPageResult> {
   try {
-    const { data } = await http.get<unknown>('/api/student/visual-qa/history');
+    const { data } = await http.get<unknown>('/api/student/visual-qa/history', {
+      params: { limit: 20, offset: 0 },
+    });
+    const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
     const list = Array.isArray(data)
       ? data
-      : data && typeof data === 'object' && 'items' in data
-        ? (data as { items?: unknown[] }).items ?? []
+      : Array.isArray(payload?.items)
+        ? payload.items
         : [];
-    return list
+    const items = list
       .map(mapStudentCase)
       .filter((item): item is StudentCaseHistoryItem => item !== null)
       .map((item) => ({ ...item, historyKind: 'personalQa' as const }));
+    const rawTotal = payload?.totalCount ?? payload?.TotalCount;
+    const totalCount =
+      typeof rawTotal === 'number' && Number.isFinite(rawTotal)
+        ? rawTotal
+        : items.length;
+    return { totalCount, items };
   } catch {
-    return [];
+    return { totalCount: 0, items: [] };
   }
 }
 
 /** Merges catalog/case history with optional upload-only feed for the student history UI. */
-export async function fetchStudentHistoryForUi(): Promise<StudentCaseHistoryItem[]> {
-  const [catalogRows, uploadRows] = await Promise.all([fetchStudentCases(), fetchStudentUploadQaHistory()]);
-  if (uploadRows.length === 0) return catalogRows;
+export async function fetchStudentHistoryForUi(): Promise<StudentHistoryPageResult> {
+  const [catalogRows, uploadHistory] = await Promise.all([
+    fetchStudentCases(),
+    fetchStudentUploadQaHistory(),
+  ]);
+  const uploadRows = uploadHistory.items;
+  if (uploadRows.length === 0) {
+    return { totalCount: catalogRows.length, items: catalogRows };
+  }
   const seen = new Set(catalogRows.map((r) => r.id));
   const merged = [...catalogRows];
   for (const row of uploadRows) {
@@ -518,7 +538,10 @@ export async function fetchStudentHistoryForUi(): Promise<StudentCaseHistoryItem
       seen.add(row.id);
     }
   }
-  return merged;
+  return {
+    totalCount: Math.max(merged.length, catalogRows.length + uploadHistory.totalCount),
+    items: merged,
+  };
 }
 
 export async function fetchCaseCatalog(filters: {

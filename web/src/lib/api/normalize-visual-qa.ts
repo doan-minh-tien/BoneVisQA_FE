@@ -1,4 +1,10 @@
-import type { VisualQaCitation, VisualQaReport, VisualQaSessionReport, VisualQaTurn } from './types';
+import type {
+  VisualQaCitation,
+  VisualQaMessage,
+  VisualQaReport,
+  VisualQaSessionReport,
+  VisualQaTurn,
+} from './types';
 import { parseNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 function pick<T extends object>(o: T, keys: string[]): unknown {
@@ -19,6 +25,20 @@ function asString(v: unknown): string {
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => (typeof x === 'string' ? x : String(x)));
+}
+
+function normalizeVisualQaMessage(raw: unknown): VisualQaMessage | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const m = raw as Record<string, unknown>;
+  const role = asString(pick(m, ['role', 'Role'])).trim();
+  const content = asString(pick(m, ['content', 'Content', 'message', 'Message'])).trim();
+  if (!content) return null;
+  const createdAtRaw = pick(m, ['createdAt', 'CreatedAt']);
+  return {
+    role: role || 'Assistant',
+    content,
+    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
+  };
 }
 
 export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
@@ -136,10 +156,17 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
       : typeof turnRaw === 'string' && turnRaw.trim()
         ? Number.parseInt(turnRaw, 10) || fallbackIndex
         : fallbackIndex;
+  const messagesRaw = pick(o, ['messages', 'Messages']);
+  const messages = Array.isArray(messagesRaw)
+    ? messagesRaw
+        .map((row): VisualQaMessage | null => normalizeVisualQaMessage(row))
+        .filter((message): message is VisualQaMessage => message !== null)
+    : [];
   return {
     turnIndex,
     questionText: report.questionText ?? '',
     answerText: report.answerText,
+    ...(messages.length > 0 ? { messages } : {}),
     roiBoundingBox: parseNormalizedBoundingBox(roiRaw),
     suggestedDiagnosis: report.suggestedDiagnosis,
     keyFindings: report.keyFindings,
@@ -158,6 +185,15 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
   const sessionId = asString(pick(o, ['sessionId', 'SessionId'])).trim();
   const caseId = asString(pick(o, ['caseId', 'CaseId'])).trim() || null;
   const imageId = asString(pick(o, ['imageId', 'ImageId'])).trim() || null;
+  const status = asString(pick(o, ['status', 'Status', 'sessionStatus', 'SessionStatus'])).trim() || null;
+  const updatedAtRaw = pick(o, ['updatedAt', 'UpdatedAt', 'lastUpdatedAt', 'LastUpdatedAt']);
+  const updatedAt = typeof updatedAtRaw === 'string' ? updatedAtRaw : null;
+  const sessionMessagesRaw = pick(o, ['messages', 'Messages']);
+  const messages = Array.isArray(sessionMessagesRaw)
+    ? sessionMessagesRaw
+        .map((row): VisualQaMessage | null => normalizeVisualQaMessage(row))
+        .filter((message): message is VisualQaMessage => message !== null)
+    : [];
   const turnsRaw = pick(o, ['turns', 'Turns', 'history', 'History']);
   const turns = Array.isArray(turnsRaw)
     ? turnsRaw.map((row, idx) => normalizeVisualQaTurn(row, idx + 1))
@@ -169,6 +205,9 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
     sessionId: sessionId || 'session-local',
     caseId,
     imageId,
+    status,
+    updatedAt,
+    ...(messages.length > 0 ? { messages } : {}),
     turns: effectiveTurns.slice(-3),
     latest,
   };

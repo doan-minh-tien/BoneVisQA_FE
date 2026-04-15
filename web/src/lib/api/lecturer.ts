@@ -564,6 +564,22 @@ export async function getStudentQuestions(
   }
 }
 
+export async function rejectTriageAnswer(answerId: string, reason: string): Promise<void> {
+  const id = String(answerId ?? '').trim();
+  if (!id) throw new Error('Answer id is required to reject.');
+  const payload = { reason: String(reason ?? '').trim() };
+  try {
+    await http.post(`/api/lecturer/triage/${encodeURIComponent(id)}/reject`, payload);
+    return;
+  } catch (e) {
+    if ((e as { response?: { status?: number } })?.response?.status === 404) {
+      await http.put(`/api/lecturer/reviews/${encodeURIComponent(id)}/reject`, payload);
+      return;
+    }
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 /**
  * Import students from Excel file
  */

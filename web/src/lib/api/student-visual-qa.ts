@@ -16,12 +16,17 @@ export interface StudentVisualQaAskOptions {
 }
 
 export async function postStudentVisualQa(
-  file: File,
+  file: File | null | undefined,
   questionText: string,
   options: StudentVisualQaAskOptions = {},
 ): Promise<VisualQaSessionReport> {
   const form = new FormData();
-  form.append('CustomImage', file);
+  const hasSession = Boolean(options.sessionId?.trim());
+  if (file) {
+    form.append('CustomImage', file);
+  } else if (!hasSession) {
+    throw new Error('Image file is required to start a new visual QA session.');
+  }
   form.append('QuestionText', questionText);
   const serialized = serializeNormalizedBoundingBox(options.roiBoundingBox);
   if (serialized) {
@@ -46,6 +51,28 @@ export async function postStudentVisualQa(
         options.onUploadProgress(Math.min(100, pct));
       },
     });
+    const payload =
+      data && typeof data === 'object' && 'data' in (data as object)
+        ? (data as { data: unknown }).data
+        : data;
+    return normalizeVisualQaSessionReport(payload);
+  } catch (e) {
+    if (axios.isAxiosError(e)) {
+      throw e;
+    }
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function requestStudentVisualQaReview(
+  sessionId: string,
+): Promise<VisualQaSessionReport> {
+  const id = sessionId.trim();
+  if (!id) throw new Error('Session id is required.');
+  try {
+    const { data } = await http.post<unknown>(
+      `/api/student/visual-qa/${encodeURIComponent(id)}/request-review`,
+    );
     const payload =
       data && typeof data === 'object' && 'data' in (data as object)
         ? (data as { data: unknown }).data

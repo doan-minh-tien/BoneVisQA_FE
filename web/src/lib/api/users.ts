@@ -74,6 +74,7 @@ export const fetchCurrentUser = fetchMyProfile;
 export type UpdateUserMePayload = {
   fullName?: string;
   schoolCohort?: string | null;
+  avatarUrl?: string | null;
   phoneNumber?: string | null;
   bio?: string | null;
   address?: string | null;

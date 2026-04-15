@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
-import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { Citation, ExpertReviewItem, VisualQaReport } from './types';
+import { normalizeVisualQaReport, normalizeVisualQaSessionReport } from './normalize-visual-qa';
+import type { Citation, ExpertReviewItem, VisualQaReport, VisualQaTurn } from './types';
 import {
   parseCustomPolygon,
   parseNormalizedBoundingBox,
@@ -39,10 +39,65 @@ function mapExpertCitation(row: unknown): Citation | null {
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const answerId = String(r.answerId ?? r.id ?? r.requestId ?? '');
-  if (!answerId) return null;
-  const reportRaw = r.report ?? r.structuredReport ?? r.aiReport;
+  const sessionId = String(
+    r.sessionId ?? r.SessionId ?? r.visualQaSessionId ?? r.VisualQaSessionId ?? r.id ?? r.requestId ?? '',
+  ).trim();
+  const answerIdRaw = String(r.answerId ?? r.AnswerId ?? r.caseAnswerId ?? r.CaseAnswerId ?? '').trim();
+  if (!sessionId) return null;
+  const turnsRaw = r.turns ?? r.Turns ?? r.history ?? r.History;
+  const hasSessionTurns = Array.isArray(turnsRaw) && turnsRaw.length > 0;
+  const sessionLikeRaw = hasSessionTurns
+    ? {
+        sessionId,
+        caseId: r.caseId ?? r.CaseId ?? null,
+        imageId: r.imageId ?? r.ImageId ?? null,
+        turns: turnsRaw,
+      }
+    : null;
+  const normalizedSession = sessionLikeRaw ? normalizeVisualQaSessionReport(sessionLikeRaw) : null;
+  const latestTurn = normalizedSession?.latest ?? null;
+  const allTurns: VisualQaTurn[] = normalizedSession?.turns ?? [];
+
+  const messages = Array.isArray(r.messages) ? r.messages : [];
+  const latestAssistantMessage =
+    messages.length > 0
+      ? [...messages]
+          .reverse()
+          .find((m) => {
+            if (!m || typeof m !== 'object') return false;
+            const mr = m as Record<string, unknown>;
+            const role = String(mr.role ?? mr.Role ?? '').toLowerCase();
+            return role.includes('assistant') || role === 'ai' || role === 'model';
+          }) ?? null
+      : null;
+  const latestAssistantRecord =
+    latestAssistantMessage && typeof latestAssistantMessage === 'object'
+      ? (latestAssistantMessage as Record<string, unknown>)
+      : null;
+
+  const reportRaw =
+    latestTurn ??
+    latestAssistantRecord ??
+    r.latest ??
+    r.latestTurn ??
+    r.report ??
+    r.structuredReport ??
+    r.aiReport;
   let report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+
+  if (latestTurn?.answerText?.trim()) {
+    report = { ...report, answerText: latestTurn.answerText.trim() };
+  } else if (latestAssistantRecord) {
+    const assistantContent = String(
+      latestAssistantRecord.content ??
+        latestAssistantRecord.text ??
+        latestAssistantRecord.answerText ??
+        '',
+    ).trim();
+    if (assistantContent) {
+      report = { ...report, answerText: assistantContent };
+    }
+  }
   if (r.keyImagingFindings !== undefined && r.keyImagingFindings !== null) {
     const v = String(r.keyImagingFindings).trim();
     report = { ...report, keyImagingFindings: v || null };
@@ -63,7 +118,11 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const customBoundingBox =
     parseNormalizedBoundingBox(dedicatedBoxRaw) ?? parseNormalizedBoundingBox(polyRaw);
   const customPolygon = customBoundingBox ? null : parseCustomPolygon(polyRaw);
-  const citationSource = Array.isArray(r.citations)
+  const citationSource = Array.isArray(latestTurn?.citations)
+    ? latestTurn.citations
+    : Array.isArray(latestAssistantRecord?.citations)
+      ? latestAssistantRecord?.citations
+      : Array.isArray(r.citations)
     ? r.citations
     : Array.isArray(r.evidence)
       ? r.evidence
@@ -73,22 +132,56 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const citations = citationSource
     .map(mapExpertCitation)
     .filter((item): item is Citation => item !== null);
-  const questionText = String(r.questionText ?? r.question ?? '');
+  const sessionQuestion = latestTurn?.questionText?.trim();
+  const fallbackQuestionFromMessage = (() => {
+    if (messages.length === 0 || !latestAssistantRecord) return '';
+    const assistantIdx = messages.findIndex((m) => m === latestAssistantMessage);
+    if (assistantIdx <= 0) return '';
+    for (let i = assistantIdx - 1; i >= 0; i -= 1) {
+      const prev = messages[i];
+      if (!prev || typeof prev !== 'object') continue;
+      const pr = prev as Record<string, unknown>;
+      const role = String(pr.role ?? pr.Role ?? '').toLowerCase();
+      if (role.includes('user') || role.includes('student')) {
+        return String(pr.content ?? pr.text ?? pr.questionText ?? '').trim();
+      }
+    }
+    return '';
+  })();
+  const questionText = String(
+    sessionQuestion || fallbackQuestionFromMessage || r.questionText || r.question || '',
+  );
 
   return {
-    answerId,
-    id: answerId,
+    sessionId,
+    answerId: answerIdRaw || null,
+    id: sessionId,
     studentName: String(r.studentName ?? ''),
     className: r.className !== undefined ? String(r.className) : undefined,
     questionText,
     question: questionText,
-    imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
+    imageUrl:
+      r.imageUrl !== undefined
+        ? String(r.imageUrl)
+        : r.customImageUrl !== undefined
+          ? String(r.customImageUrl)
+          : undefined,
+    imageId: r.imageId != null ? String(r.imageId) : null,
+    customImageUrl: r.customImageUrl != null ? String(r.customImageUrl) : null,
+    promotedCaseId:
+      r.promotedCaseId != null
+        ? String(r.promotedCaseId)
+        : r.PromotedCaseId != null
+          ? String(r.PromotedCaseId)
+          : null,
     customCoordinates,
     customBoundingBox,
     customPolygon,
     askedAt: String(r.askedAt ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,
+    turns: allTurns,
+    latestTurnIndex: latestTurn?.turnIndex ?? null,
     citations,
     keyImagingFindings: report.keyImagingFindings ?? null,
     reflectiveQuestions: report.reflectiveQuestions ?? null,
@@ -159,12 +252,12 @@ const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => ({
 
 /** Approve / finalize review — prefers `POST .../approve`, falls back to legacy `.../resolve`. */
 export async function putExpertReview(
-  answerId: string,
+  sessionId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
   const body = reviewSubmitBody(payload);
   try {
-    await http.post(`/api/expert/reviews/${answerId}/approve`, body);
+    await http.post(`/api/expert/reviews/${sessionId}/approve`, body);
     return;
   } catch (e) {
     if (!axios.isAxiosError(e)) throw new Error(getApiErrorMessage(e));
@@ -172,7 +265,80 @@ export async function putExpertReview(
     if (st !== 404 && st !== 405 && st !== 400) throw new Error(getApiErrorMessage(e));
   }
   try {
-    await http.post(`/api/expert/reviews/${answerId}/resolve`, body);
+    await http.post(`/api/expert/reviews/${sessionId}/resolve`, body);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function postExpertResponse(
+  sessionId: string,
+  content: string,
+): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  const message = String(content ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  if (!message) throw new Error('Feedback content is required.');
+  try {
+    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/respond`, {
+      content: message,
+    });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function approveExpertReview(sessionId: string): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  try {
+    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/approve`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface PromoteExpertReviewPayload {
+  description: string;
+  suggestedDiagnosis: string;
+  keyFindings: string;
+  reflectiveQuestions: string;
+}
+
+export async function promoteExpertReview(
+  sessionId: string,
+  payload: PromoteExpertReviewPayload,
+): Promise<string | null> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  const body = {
+    description: String(payload.description ?? '').trim(),
+    suggestedDiagnosis: String(payload.suggestedDiagnosis ?? '').trim(),
+    keyFindings: String(payload.keyFindings ?? '').trim(),
+    reflectiveQuestions: String(payload.reflectiveQuestions ?? '').trim(),
+  };
+  if (!body.description || !body.suggestedDiagnosis || !body.keyFindings || !body.reflectiveQuestions) {
+    throw new Error('All promote fields are required.');
+  }
+  try {
+    const { data } = await http.post<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}/promote`, body);
+    if (!data || typeof data !== 'object') return null;
+    const record = data as Record<string, unknown>;
+    const direct = record.promotedCaseId ?? record.PromotedCaseId ?? null;
+    if (direct != null) return String(direct);
+    const nestedData = record.data;
+    if (nestedData && typeof nestedData === 'object') {
+      const nested = nestedData as Record<string, unknown>;
+      const nestedId = nested.promotedCaseId ?? nested.PromotedCaseId ?? null;
+      if (nestedId != null) return String(nestedId);
+    }
+    const nestedResult = record.result;
+    if (nestedResult && typeof nestedResult === 'object') {
+      const nested = nestedResult as Record<string, unknown>;
+      const nestedId = nested.promotedCaseId ?? nested.PromotedCaseId ?? null;
+      if (nestedId != null) return String(nestedId);
+    }
+    return null;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
