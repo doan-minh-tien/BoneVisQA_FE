@@ -47,6 +47,14 @@ export function resolveApiAssetUrl(path: string | null | undefined): string {
   return `${base}${suffix}`;
 }
 
+/** Append `?v=` / `&v=` for API-reported document revision (cache-safe); skips if `v` already present. */
+export function withVersionedAssetUrl(resolvedUrl: string, version?: string | null): string {
+  if (!resolvedUrl?.trim() || !version?.trim()) return resolvedUrl;
+  if (/[?&]v=/.test(resolvedUrl)) return resolvedUrl;
+  const sep = resolvedUrl.includes('?') ? '&' : '?';
+  return `${resolvedUrl}${sep}v=${encodeURIComponent(version.trim())}`;
+}
+
 const baseURL = getPublicApiOrigin() || undefined;
 
 export const http = axios.create({

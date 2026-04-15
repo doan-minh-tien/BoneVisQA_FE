@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getAdminDocumentById,
   reindexAdminDocument,
   type AdminDocumentDetail,
 } from '@/lib/api/admin-documents';
+import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
 import {
   FileText,
   Loader2,
@@ -48,6 +49,11 @@ export default function DocumentDetail({ id }: { id: string }) {
 
     fetchDoc();
   }, [id]);
+
+  const fileOpenHref = useMemo(() => {
+    if (!doc?.filePath) return '';
+    return withVersionedAssetUrl(resolveApiAssetUrl(doc.filePath), doc.version);
+  }, [doc?.filePath, doc?.version]);
 
   const handleReindex = async () => {
     try {
@@ -230,7 +236,7 @@ export default function DocumentDetail({ id }: { id: string }) {
                 </button>
 
                 <a
-                  href={doc.filePath}
+                  href={fileOpenHref || doc.filePath}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 hover:border-primary/50 text-primary px-6 py-3 rounded-xl font-semibold transition-colors shadow-sm"
@@ -240,7 +246,7 @@ export default function DocumentDetail({ id }: { id: string }) {
                 </a>
                 
                 <a
-                  href={doc.filePath}
+                  href={fileOpenHref || doc.filePath}
                   download
                   className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-6 py-3 rounded-xl font-semibold transition-colors shadow-sm"
                 >

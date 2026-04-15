@@ -3,6 +3,12 @@ export interface VisualQaCitation {
   documentUrl?: string;
   chunkOrder?: number;
   title?: string;
+  /** Knowledge-base document id when API provides it (for markers & versioned links). */
+  documentId?: string;
+  /** Clinical case id when citation points at a case. */
+  caseId?: string;
+  /** Document revision — appended as `?v=` on file URLs when present. */
+  version?: string;
 }
 
 export interface VisualQaReport {

@@ -91,10 +91,20 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
     citations = cit.map((c) => {
       if (!c || typeof c !== 'object') return {};
       const cc = c as Record<string, unknown>;
+      const chunkRaw = cc.chunkOrder ?? cc.chunk_order;
+      let chunkOrder: number | undefined;
+      if (typeof chunkRaw === 'number' && Number.isFinite(chunkRaw)) chunkOrder = chunkRaw;
+      else if (typeof chunkRaw === 'string' && chunkRaw.trim()) {
+        const n = parseInt(chunkRaw, 10);
+        if (Number.isFinite(n)) chunkOrder = n;
+      }
       return {
         documentUrl: asString(cc.documentUrl ?? cc.referenceUrl ?? cc.documentURL),
-        chunkOrder: typeof cc.chunkOrder === 'number' ? Number(cc.chunkOrder) : undefined,
+        chunkOrder,
         title: asString(cc.title),
+        documentId: asString(cc.documentId ?? cc.DocumentId ?? cc.document_id),
+        caseId: asString(cc.caseId ?? cc.CaseId ?? cc.case_id),
+        version: asString(cc.version ?? cc.Version ?? cc.documentVersion ?? cc.document_version),
       };
     });
   }

@@ -21,6 +21,7 @@ import {
   normalizeIndexingStatus,
   reindexAdminDocument,
 } from '@/lib/api/admin-documents';
+import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
 import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
 import {
   ExternalLink,
@@ -325,7 +326,10 @@ export default function AdminDocumentsPage() {
                             </Button>
                             {doc.filePath ? (
                               <a
-                                href={doc.filePath}
+                                href={withVersionedAssetUrl(
+                                  resolveApiAssetUrl(doc.filePath),
+                                  doc.version,
+                                )}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"

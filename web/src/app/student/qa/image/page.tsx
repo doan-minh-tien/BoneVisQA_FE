@@ -8,6 +8,7 @@ import useSWRMutation from 'swr/mutation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
+import { VisualQaReflectiveQuestions, VisualQaRichAnswer } from '@/components/student/VisualQaRichAnswer';
 import Header from '@/components/Header';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
@@ -693,7 +694,8 @@ export default function StudentVisualQaImagePage() {
                           {renderFromMessages ? (
                             <div className="space-y-2">
                               {baseMessages.map((message) => {
-                                const isStudentMessage = message.role === 'student';
+                                const isStudentMessage =
+                                  (message.role ?? '').toLowerCase() === 'student';
                                 return (
                                   <div
                                     key={message.id}
@@ -706,21 +708,33 @@ export default function StudentVisualQaImagePage() {
                                           : 'border-border/60 bg-blue-50/80 text-foreground dark:border-border dark:bg-blue-950/40'
                                       }`}
                                     >
-                                      <ReactMarkdown
-                                        remarkPlugins={[remarkGfm]}
-                                        components={{
-                                          ...markdownExternalLinkComponents,
-                                          p: ({ children }) => (
-                                            <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                                          ),
-                                        }}
-                                      >
-                                        {message.content}
-                                      </ReactMarkdown>
+                                      {isStudentMessage ? (
+                                        <ReactMarkdown
+                                          remarkPlugins={[remarkGfm]}
+                                          components={{
+                                            ...markdownExternalLinkComponents,
+                                            p: ({ children }) => (
+                                              <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+                                            ),
+                                          }}
+                                        >
+                                          {message.content}
+                                        </ReactMarkdown>
+                                      ) : (
+                                        <VisualQaRichAnswer
+                                          markdown={message.content}
+                                          citations={turn.citations ?? []}
+                                        />
+                                      )}
                                     </div>
                                   </div>
                                 );
                               })}
+                              {turn.reflectiveQuestions?.trim() ? (
+                                <div className="pl-0 pr-2 sm:pr-4">
+                                  <VisualQaReflectiveQuestions text={turn.reflectiveQuestions} />
+                                </div>
+                              ) : null}
                               {reviewerNotes.length > 0 ? (
                                 <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -772,17 +786,13 @@ export default function StudentVisualQaImagePage() {
                               </div>
                               <div className="mt-2 flex justify-start">
                                 <div className="max-w-[92%] rounded-2xl border border-border/60 bg-blue-50/80 px-4 py-3 text-sm leading-relaxed text-foreground dark:border-border dark:bg-blue-950/40">
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      ...markdownExternalLinkComponents,
-                                      p: ({ children }) => (
-                                        <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                                      ),
-                                    }}
-                                  >
-                                    {turn.answerText?.trim() || '_—_'}
-                                  </ReactMarkdown>
+                                  <VisualQaRichAnswer
+                                    markdown={turn.answerText?.trim() || ''}
+                                    citations={turn.citations ?? []}
+                                  />
+                                  {turn.reflectiveQuestions?.trim() ? (
+                                    <VisualQaReflectiveQuestions text={turn.reflectiveQuestions} />
+                                  ) : null}
                                 </div>
                               </div>
                             </>
@@ -814,7 +824,9 @@ export default function StudentVisualQaImagePage() {
                           <p className="font-medium">Assistant could not return a full clinical analysis</p>
                         </div>
                       ) : null}
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sources</p>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Nguồn tham khảo (chi tiết)
+                      </p>
                       <CitationList citations={report.citations} />
                     </div>
                   ) : null}

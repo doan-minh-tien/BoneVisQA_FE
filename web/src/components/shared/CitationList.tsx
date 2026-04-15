@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import type { VisualQaCitation } from '@/lib/api/types';
+import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
 
 const FALLBACK =
   'No specific literature cited for this deductive reasoning.';
@@ -13,6 +15,7 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
   const visibleCitations = citations.filter((citation) => {
     return Boolean(
       (citation.documentUrl && citation.documentUrl.trim()) ||
+        (citation.caseId && citation.caseId.trim()) ||
         (citation.title && citation.title.trim()),
     );
   });
@@ -22,7 +25,7 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
     return (
       <section>
         <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-          Citations / Knowledge base
+          Nguồn tham khảo · Citations
         </h3>
         <div className="rounded-xl border border-border-color bg-surface/80 px-5 py-4 text-sm italic text-text-muted">
           {FALLBACK}
@@ -34,29 +37,41 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
   return (
     <section>
       <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-        Citations / Knowledge base
+        Nguồn tham khảo · Citations
       </h3>
       <ul className="space-y-3 rounded-xl border border-border-color bg-surface p-5 text-sm">
         {visibleCitations.map((citation, index) => {
-          const url = citation.documentUrl?.trim() || '';
+          const resolved = resolveApiAssetUrl(citation.documentUrl);
+          const docUrl = resolved ? withVersionedAssetUrl(resolved, citation.version) : '';
+          const caseId = citation.caseId?.trim();
           const label =
             citation.title?.trim() ||
             `Reference ${index + 1}${citation.chunkOrder != null ? ` · excerpt ${citation.chunkOrder}` : ''}`;
 
           return (
-            <li key={`${url}-${index}`} className="rounded-lg border border-border-color bg-background/45 px-4 py-3">
-              {url ? (
+            <li
+              key={`${docUrl || caseId || 'c'}-${index}`}
+              className="rounded-lg border border-border-color bg-background/45 px-4 py-3"
+            >
+              {docUrl ? (
                 <>
                   <a
-                    href={url}
+                    href={docUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-cyan-accent underline decoration-cyan-accent/50 underline-offset-4 hover:text-cyan-accent/80"
                   >
                     {label}
                   </a>
-                  <p className="mt-1 break-all text-xs text-text-muted">{url}</p>
+                  <p className="mt-1 break-all text-xs text-text-muted">{docUrl}</p>
                 </>
+              ) : caseId ? (
+                <Link
+                  href={`/student/cases/${caseId}`}
+                  className="font-medium text-emerald-700 underline decoration-emerald-500/50 underline-offset-4 hover:text-emerald-800 dark:text-emerald-300"
+                >
+                  {label}
+                </Link>
               ) : (
                 <span className="inline-flex rounded-full border border-border-color bg-surface px-3 py-1 text-xs font-medium text-text-main">
                   {label}
