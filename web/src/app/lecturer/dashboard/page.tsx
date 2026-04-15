@@ -51,13 +51,13 @@ export default function LecturerDashboardPage() {
   );
 
   useEffect(() => {
-    if (statsError) toast.error(statsError instanceof Error ? statsError.message : 'Không tải được learning statistics.');
+    if (statsError) toast.error(statsError instanceof Error ? statsError.message : 'Unable to load learning statistics.');
   }, [statsError, toast]);
   useEffect(() => {
-    if (classesError) toast.error(classesError instanceof Error ? classesError.message : 'Không tải được danh sách lớp.');
+    if (classesError) toast.error(classesError instanceof Error ? classesError.message : 'Unable to load class list.');
   }, [classesError, toast]);
   useEffect(() => {
-    if (leaderboardError) toast.error(leaderboardError instanceof Error ? leaderboardError.message : 'Không tải được top active students.');
+    if (leaderboardError) toast.error(leaderboardError instanceof Error ? leaderboardError.message : 'Unable to load top active students.');
   }, [leaderboardError, toast]);
 
   const topActive = useMemo(() => {
@@ -79,25 +79,25 @@ export default function LecturerDashboardPage() {
     <div className="min-h-screen">
       <Header
         title="Lecturer Dashboard"
-        subtitle="Learning statistics tổng quan và nhóm sinh viên hoạt động nổi bật"
+        subtitle="Overview of learning statistics and top-performing active students"
       />
 
       <div className="mx-auto max-w-7xl space-y-6 p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-sm text-muted-foreground">Tổng số ca đã học</p>
+            <p className="text-sm text-muted-foreground">Total studied cases</p>
             <p className="mt-2 text-3xl font-semibold text-card-foreground">
               {leaderboardLoading ? '…' : totalCasesLearned}
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-sm text-muted-foreground">Số câu hỏi sinh viên đã đặt</p>
+            <p className="text-sm text-muted-foreground">Student questions submitted</p>
             <p className="mt-2 text-3xl font-semibold text-card-foreground">
               {statsLoading ? '…' : (stats?.totalQuestions ?? 0)}
             </p>
           </div>
           <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-sm text-muted-foreground">Tỷ lệ trả lời Quiz chính xác</p>
+            <p className="text-sm text-muted-foreground">Average quiz accuracy</p>
             <p className="mt-2 text-3xl font-semibold text-card-foreground">
               {statsLoading ? '…' : toPercent(stats?.averageQuizScore)}
             </p>
@@ -106,11 +106,11 @@ export default function LecturerDashboardPage() {
 
         <SectionCard
           title="Top active students"
-          description="Bar chart theo số câu hỏi đã đặt (dùng dữ liệu learning statistics theo lớp)."
+          description="Bar chart of submitted questions based on class-level learning statistics."
         >
           <div className="mb-4 max-w-sm">
             <label htmlFor="lecturer-dashboard-class" className="text-sm font-medium text-card-foreground">
-              Lớp
+              Class
             </label>
             <select
               id="lecturer-dashboard-class"
@@ -119,7 +119,7 @@ export default function LecturerDashboardPage() {
               disabled={classesLoading || classes.length === 0}
               className="mt-1.5 w-full rounded-xl border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              {classes.length === 0 ? <option value="">Không có lớp</option> : null}
+              {classes.length === 0 ? <option value="">No classes available</option> : null}
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
                   {cls.className} ({cls.semester})
@@ -130,11 +130,11 @@ export default function LecturerDashboardPage() {
 
           {leaderboardLoading ? (
             <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-sm text-muted-foreground">
-              Đang tải biểu đồ...
+              Loading chart...
             </div>
           ) : topActive.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-sm text-muted-foreground">
-              Chưa có dữ liệu hoạt động sinh viên cho lớp này.
+              No student activity data is available for this class.
             </div>
           ) : (
             <div className="space-y-3">
@@ -147,11 +147,11 @@ export default function LecturerDashboardPage() {
                       <span className="truncate pr-3 font-medium text-card-foreground">
                         {row.studentName}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{count} câu hỏi</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{count} questions</span>
                     </div>
                     <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                       <div
-                        className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                        className="h-full rounded-full bg-primary transition-all duration-500 ease-in-out"
                         style={{ width: `${widthPct}%` }}
                       />
                     </div>

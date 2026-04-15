@@ -421,8 +421,8 @@ export default function StudentQuestionsPage() {
                 {/* Escalation Card */}
                 <div className="rounded-2xl border border-border bg-muted/30 p-8 shadow-sm">
                   <div className="mb-6 flex items-start gap-4">
-                    <div className="rounded-xl bg-amber-100 p-3 dark:bg-amber-900/30">
-                      <AlertTriangle className="h-5 w-5 text-amber-900 dark:text-amber-200" aria-hidden />
+                    <div className="rounded-xl bg-amber-100 p-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-900" aria-hidden />
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-foreground">Escalate to Clinical Expert</h3>

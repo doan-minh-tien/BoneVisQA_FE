@@ -75,17 +75,38 @@ export interface TagOption {
 
 export interface DocumentUploadResponse {
   documentId?: string;
-  indexingStatus?: string;
+  indexingStatus?: DocumentIndexingStatus | string;
   message?: string;
 }
 
+export type DocumentIndexingStatus =
+  | 'Pending'
+  | 'Processing'
+  | 'Indexing'
+  | 'Reindexing'
+  | 'Completed'
+  | 'Failed';
+
 export interface DocumentStatusResponse {
-  status: string;
+  status: DocumentIndexingStatus | string;
   progressPercentage: number;
   currentOperation: string;
   /** 1-based page currently being indexed (when provided by pipeline). */
   currentPageIndexing?: number;
   totalPages?: number;
+  /** Some pipelines report chunk totals instead of page totals. */
+  totalChunks?: number;
+}
+
+/** Real-time ingestion update payload from SignalR `DocumentIndexingProgressUpdated`. */
+export interface DocumentIngestionStatusDto {
+  documentId: string;
+  status?: string;
+  totalPages?: number;
+  totalChunks?: number;
+  currentPageIndexing?: number;
+  progressPercentage?: number;
+  operation?: string;
 }
 
 export interface LecturerTriageRow {
@@ -171,7 +192,7 @@ export interface ClassAssignment {
   id: string;
   classId: string;
   className: string;
-  /** "case" hoặc "quiz" */
+  /** "case" or "quiz" */
   type: string;
   title: string;
   dueDate: string | null;

@@ -14,18 +14,18 @@
   /* App canvas + typography (Material-style light shell) */
   --background: #f8fafc;
   --surface: #ffffff;
-  /* Sidebar surface + chrome (paired with .dark below; AppSidebar uses bg-sidebar-bg / text-sidebar-text) */
-  --sidebar: #0f1f35;
+  /* Sidebar surface + chrome (Medical Blue light shell) */
+  --sidebar: #f0f7ff;
   /* Medical blue core (aligned with primary-600 scale) */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
+  --primary: #0055ff;
+  --primary-hover: #0047d4;
   --cyan-accent: #00e5ff;
   --text-main: #0f172a;
   --text-muted: #475569;
   --border-color: #dbe3ee;
-  --danger: #EF4444;
-  --warning: #F59E0B;
-  --success: #10B981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
 
   /* Aliases for existing component classes */
   --foreground: var(--text-main);
@@ -38,49 +38,15 @@
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
-  --secondary: #EAF2FF;
+  --secondary: #eaf2ff;
   --primary-light: var(--cyan-accent);
   --sidebar-bg: var(--sidebar);
-  --sidebar-text: #F8FBFF;
-  --sidebar-hover: rgba(255, 255, 255, 0.08);
-  --sidebar-active: rgba(255, 255, 255, 0.14);
+  --sidebar-text: #1e293b;
+  --sidebar-hover: #dbeafe;
+  --sidebar-active: #0055ff;
 
   /* Full-bleed app areas (e.g. Visual QA) — matches h-16 local headers */
   --app-header-height: 4rem;
-}
-
-.dark {
-  color-scheme: dark;
-
-  --background: #020617;
-  --surface: #0f172a;
-  --sidebar: #111b2f;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
-  --cyan-accent: #00E5FF;
-  --text-main: #e2e8f0;
-  --text-muted: #94a3b8;
-  --border-color: #1e293b;
-  --danger: #EF4444;
-  --warning: #F59E0B;
-  --success: #10B981;
-
-  --foreground: var(--text-main);
-  --muted: #1e293b;
-  --muted-foreground: var(--text-muted);
-  --card: var(--surface);
-  --card-foreground: var(--text-main);
-  --border: var(--border-color);
-  --input: #111827;
-  --ring: var(--cyan-accent);
-  --destructive: var(--danger);
-  --accent: var(--cyan-accent);
-  --secondary: var(--surface);
-  --primary-light: var(--cyan-accent);
-  --sidebar-bg: var(--sidebar);
-  --sidebar-text: var(--text-main);
-  --sidebar-hover: rgba(255, 255, 255, 0.04);
-  --sidebar-active: var(--primary);
 }
 
 @theme inline {
@@ -120,11 +86,11 @@
   --color-primary-200: #bfdbfe;
   --color-primary-300: #93c5fd;
   --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  --color-primary-500: #2f6fff;
+  --color-primary-600: #0055ff;
+  --color-primary-700: #0047d4;
+  --color-primary-800: #0039aa;
+  --color-primary-900: #002d87;
 
   /* MD3 tokens for student shell / dashboards (sidebar excluded) */
   --color-on-surface: #191c1e;
@@ -272,4 +238,13 @@ textarea::placeholder {
 
 .animate-in {
   animation: fadeIn 200ms ease-out forwards;
+}
+
+@keyframes indeterminate-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
 }

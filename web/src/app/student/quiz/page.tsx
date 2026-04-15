@@ -626,7 +626,7 @@ export default function StudentQuizPage() {
               aiState !== 'active' &&
               aiState !== 'submitting' &&
               aiState !== 'result' && (
-                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm dark:from-amber-950/30 dark:to-slate-900">
+                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 shrink-0 text-[#703a00]" />
@@ -1175,7 +1175,7 @@ export default function StudentQuizPage() {
 
         {/* ── Quick topic chips ── */}
         {!loading && filterTab === 'assigned' && (
-          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5 dark:bg-slate-900/40">
+          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#727783]">Quick practice by topic</p>
             <div className="flex flex-wrap gap-2">
               {QUICK_TOPICS.map((topic) => (

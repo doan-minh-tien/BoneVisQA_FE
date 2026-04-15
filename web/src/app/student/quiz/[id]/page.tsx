@@ -185,9 +185,8 @@ export default function QuizSessionPage({
       if (
         msg.includes('already submitted') ||
         msg.includes('cannot retake') ||
-        msg.includes('nộp bài') ||
-        msg.includes('làm lại') ||
-        msg.includes('đã nộp')
+        msg.includes('submitted') ||
+        msg.includes('retake denied')
       ) {
         setStartError(msg);
       } else {
@@ -261,7 +260,7 @@ export default function QuizSessionPage({
   if (!session) {
     if (startError) {
       const retakeHint =
-        /nộp bài|làm lại|đã nộp|retake|submitted/i.test(startError) ||
+        /retake|submitted|submission/i.test(startError) ||
         startError.toLowerCase().includes('lecturer');
       return (
         <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
@@ -400,7 +399,7 @@ export default function QuizSessionPage({
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 bg-slate-50/95 px-4 py-4 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-900/95 sm:px-8 sm:py-5">
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 bg-slate-50/95 px-4 py-4 backdrop-blur-md sm:px-8 sm:py-5">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0">
             <h1 className="truncate font-headline text-lg font-extrabold tracking-tight text-primary sm:text-xl">
@@ -422,8 +421,8 @@ export default function QuizSessionPage({
             <div
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-headline text-sm font-bold tabular-nums sm:px-4 ${
                 timerDisplaySeconds === 0
-                  ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                  : 'bg-slate-100 text-primary dark:bg-slate-800 dark:text-blue-400'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-slate-100 text-primary'
               }`}
               title="Time remaining"
             >
@@ -572,11 +571,11 @@ export default function QuizSessionPage({
                   )}
                 </div>
 
-                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
+                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl">
                   <button
                     type="button"
                     onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
-                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom in"
                   >
                     <ZoomIn className="h-5 w-5" />
@@ -584,17 +583,17 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={() => setZoomIndex((i) => Math.max(i - 1, 0))}
-                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom out"
                   >
                     <Minus className="h-5 w-5" />
                   </button>
-                  <div className="mx-1 h-6 w-px bg-outline-variant/30 dark:bg-white/20" />
+                  <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
                     onClick={() => setHighContrastImg((v) => !v)}
-                    className={`rounded-full p-2 transition-colors hover:bg-surface-container-high dark:hover:bg-white/10 ${
-                      highContrastImg ? 'text-secondary dark:text-secondary-container' : 'text-on-surface dark:text-white/90'
+                    className={`rounded-full p-2 transition-colors hover:bg-surface-container-high ${
+                      highContrastImg ? 'text-secondary' : 'text-on-surface'
                     }`}
                     title="Contrast"
                   >
@@ -603,18 +602,18 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={() => setStraightenActive((v) => !v)}
-                    className={`rounded-full p-2 font-bold transition-colors hover:bg-surface-container-high dark:hover:bg-white/10 ${
-                      straightenActive ? 'text-secondary dark:text-secondary-container' : 'text-on-surface dark:text-white/90'
+                    className={`rounded-full p-2 font-bold transition-colors hover:bg-surface-container-high ${
+                      straightenActive ? 'text-secondary' : 'text-on-surface'
                     }`}
                     title="Straighten / align"
                   >
                     <Ruler className="h-5 w-5" />
                   </button>
-                  <div className="mx-1 h-6 w-px bg-outline-variant/30 dark:bg-white/20" />
+                  <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
                     onClick={() => setZoomIndex(0)}
-                    className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high"
                     title="Reset zoom"
                   >
                     {ZOOM_LEVELS[zoomIndex]}x
@@ -635,7 +634,7 @@ export default function QuizSessionPage({
                   </span>
                 )}
                 {currentQ.type && (
-                  <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                  <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900">
                     {currentQ.type}
                   </span>
                 )}
@@ -794,22 +793,22 @@ export default function QuizSessionPage({
               <div
                 className={`rounded-2xl border p-6 sm:p-8 ${
                   currentState === 'correct'
-                    ? 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30'
-                    : 'border-amber-500/30 bg-amber-50 dark:bg-amber-950/30'
+                    ? 'border-emerald-500/30 bg-emerald-50'
+                    : 'border-amber-500/30 bg-amber-50'
                 }`}
               >
                 <div className="mb-3 flex items-center gap-3">
                   {currentState === 'correct' ? (
                     <>
                       <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                      <span className="font-headline text-lg font-bold text-emerald-800 dark:text-emerald-200">
+                      <span className="font-headline text-lg font-bold text-emerald-800">
                         Correct
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-7 w-7 text-amber-600" />
-                      <span className="font-headline text-lg font-bold text-amber-800 dark:text-amber-200">
+                      <span className="font-headline text-lg font-bold text-amber-800">
                         Incorrect
                       </span>
                     </>
@@ -910,8 +909,8 @@ export default function QuizSessionPage({
                     key={q.questionId}
                     className={`rounded-2xl border-2 p-5 transition-all ${
                       isCorrect
-                        ? 'border-emerald-400/50 bg-emerald-50 dark:border-emerald-600/40 dark:bg-emerald-950/25'
-                        : 'border-destructive/40 bg-destructive/5 dark:border-destructive/30 dark:bg-destructive/10'
+                        ? 'border-emerald-400/50 bg-emerald-50'
+                        : 'border-destructive/40 bg-destructive/5'
                     }`}
                   >
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
@@ -950,7 +949,7 @@ export default function QuizSessionPage({
 
                         let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
                         if (isCorrectKey) {
-                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800 dark:border-emerald-500/50 dark:bg-emerald-950/40 dark:text-emerald-100';
+                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800';
                         } else if (isStudent && !isCorrect) {
                           cls = 'border-destructive/50 bg-destructive/10 text-destructive';
                         }

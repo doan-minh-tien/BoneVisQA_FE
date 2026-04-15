@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Bell, ChevronDown, LogOut, Settings, User } from 'lucide-react';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
 import { useLogout } from '@/lib/useLogout';
 import { resolveApiAssetUrl } from '@/lib/api/client';
@@ -173,14 +172,14 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 border-b border-blue-100 bg-[#f8fbff]/95 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
           {showBackButton ? (
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 hover:bg-blue-50 hover:text-slate-900"
               aria-label="Go back"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -198,12 +197,11 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
           </div>
         </div>
         <div className="relative flex shrink-0 items-center gap-2 md:gap-3">
-          <ThemeToggle />
           <div ref={notifRef} className="relative">
             <button
               type="button"
               onClick={() => setOpenNotifications((prev) => !prev)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground"
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-white text-slate-600 hover:bg-blue-50 hover:text-slate-900"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -221,7 +219,7 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
               ) : null}
             </button>
             {openNotifications ? (
-              <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-border bg-card p-2 shadow-xl">
+              <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-blue-100 bg-white p-2 shadow-xl">
                 <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Notifications
                 </div>
@@ -253,7 +251,7 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex max-w-[220px] items-center gap-2 rounded-xl border border-border bg-card px-2 py-1.5 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none sm:gap-3 sm:px-3 sm:py-2"
+                className="flex max-w-[220px] items-center gap-2 rounded-xl border border-blue-100 bg-white px-2 py-1.5 outline-none hover:bg-blue-50/80 focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none sm:gap-3 sm:px-3 sm:py-2"
                 aria-label="Open account menu"
               >
                 {avatarSrc && !avatarLoadFailed ? (

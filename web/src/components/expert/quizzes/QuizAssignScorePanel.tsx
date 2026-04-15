@@ -196,7 +196,7 @@ export default function QuizAssignScorePanel() {
     if (openIso && closeIso && Date.parse(openIso) > Date.parse(closeIso)) {
       return toast.error('Open time must be before or equal to close time.');
     }
-    if (!canAssign) return toast.error('Quiz và Class là bắt buộc.');
+    if (!canAssign) return toast.error('Quiz and Class are required.');
     try {
       setIsAssigning(true);
       await assignQuiz({
@@ -264,7 +264,7 @@ export default function QuizAssignScorePanel() {
           {/* Step 1 – pick Quiz */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              1. Chọn Quiz
+              1. Select Quiz
             </label>
             {sharedLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -291,7 +291,7 @@ export default function QuizAssignScorePanel() {
           {scoreQuizId && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                2. Chọn Student
+                2. Select Student
               </label>
               {attemptsLoading ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -300,7 +300,7 @@ export default function QuizAssignScorePanel() {
               ) : attempts.length === 0 ? (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
                   <AlertCircle className="w-4 h-4 text-warning shrink-0" />
-                  Chưa có sinh viên nào làm quiz này.
+                  No students have attempted this quiz yet.
                 </div>
               ) : (
                 <select
@@ -356,7 +356,7 @@ export default function QuizAssignScorePanel() {
               ) : (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-xs text-warning">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  Sinh viên <strong className="mx-1">{selectedAttempt.studentName}</strong> chưa hoàn thành quiz này.
+                  Student <strong className="mx-1">{selectedAttempt.studentName}</strong> has not completed this quiz yet.
                 </div>
               )}
             </div>
@@ -366,7 +366,7 @@ export default function QuizAssignScorePanel() {
           {selectedStudentId && !selectedAttempt && !attemptsLoading && (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              Không tìm thấy attempt của sinh viên này.
+              No attempt found for this student.
             </div>
           )}
         </div>

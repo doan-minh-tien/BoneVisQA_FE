@@ -214,7 +214,7 @@ export default function ProfilePage() {
             {/* Hero: cover + overlapping avatar */}
             <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               <div className="relative h-36 bg-gradient-to-br from-primary/35 via-primary/15 to-muted sm:h-44">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-accent/20 via-transparent to-transparent opacity-90 dark:from-cyan-accent/10" />
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-accent/20 via-transparent to-transparent opacity-90" />
                 <div className="absolute bottom-4 right-6 hidden text-right sm:block">
                   <p className="text-xs font-medium uppercase tracking-widest text-primary-foreground/90 mix-blend-plus-lighter">
                     BoneVisQA

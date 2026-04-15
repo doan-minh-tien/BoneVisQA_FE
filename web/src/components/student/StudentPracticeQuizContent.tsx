@@ -129,7 +129,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
         setAiQuestions(data.questions);
         toast.success(`AI generated ${data.questions.length} questions for you!`);
       } else {
-        toast.error(data.message || 'Không thể tạo câu hỏi. Vui lòng thử lại.');
+        toast.error(data.message || 'Unable to generate questions. Please try again.');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate AI quiz.');
@@ -350,32 +350,32 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
           </div>
 
           {/* AI Generate Section */}
-          <div className="mt-6 rounded-xl border-2 border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+          <div className="mt-6 rounded-xl border-2 border-purple-200 bg-purple-50 p-4">
             <div className="mb-3 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-600" />
-              <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+              <span className="text-sm font-bold text-purple-700">
                 AI Quiz Generator
               </span>
             </div>
             <p className="mb-3 text-xs text-muted-foreground">
-              Tạo quiz ôn luyện bằng AI dựa trên topic đã chọn.
+              Generate an AI practice quiz based on the selected topic.
             </p>
 
             <div className="mb-3 space-y-2">
               <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground">Số câu:</label>
+                <label className="text-xs text-muted-foreground">Number of questions:</label>
                 <select
                   value={questionCount}
                   onChange={(e) => setQuestionCount(parseInt(e.target.value))}
                   className="rounded-md border border-border bg-card px-2 py-1 text-xs"
                 >
-                  <option value={3}>3 câu</option>
-                  <option value={5}>5 câu</option>
-                  <option value={10}>10 câu</option>
+                  <option value={3}>3 questions</option>
+                  <option value={5}>5 questions</option>
+                  <option value={10}>10 questions</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground">Độ khó:</label>
+                <label className="text-xs text-muted-foreground">Difficulty:</label>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
@@ -483,7 +483,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                             type="button"
                             onClick={() => window.open(resolveApiAssetUrl(question.imageUrl), '_blank')}
                             className="rounded-full bg-primary/10 p-2 text-primary hover:bg-primary/20"
-                            title="Xem hình ảnh"
+                            title="View image"
                           >
                             <ImageIcon className="h-4 w-4" />
                           </button>
@@ -495,7 +495,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={resolveApiAssetUrl(question.imageUrl)}
-                          alt={`Hình ảnh cho câu ${index + 1}`}
+                          alt={`Image for question ${index + 1}`}
                           className="max-h-64 w-full object-contain"
                         />
                       </div>
@@ -531,10 +531,10 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
             </div>
           ) : aiQuestions.length > 0 ? (
             <div className="space-y-4">
-              <div className="mb-4 flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 dark:bg-purple-900/30">
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2">
                 <Sparkles className="h-4 w-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                  AI Generated Quiz - {topic} ({aiQuestions.length} câu hỏi)
+                <span className="text-sm font-medium text-purple-700">
+                  AI Generated Quiz - {topic} ({aiQuestions.length} questions)
                 </span>
               </div>
               {aiQuestions.map((question, index) => {
@@ -549,7 +549,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                 return (
                   <div
                     key={questionId}
-                    className="rounded-2xl border border-purple-200 bg-background p-6 shadow-sm dark:border-purple-800"
+                    className="rounded-2xl border border-purple-200 bg-background p-6 shadow-sm"
                   >
                     <div className="mb-4 flex items-center justify-between gap-3">
                       <div>
@@ -581,7 +581,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                             }
                             className={`rounded-xl border px-4 py-3 text-left text-sm transition-all ${
                               isSelected
-                                ? 'border-purple-500 bg-purple-100 text-card-foreground ring-1 ring-purple-500/30 dark:bg-purple-900/30'
+                                ? 'border-purple-500 bg-purple-100 text-card-foreground ring-1 ring-purple-500/30'
                                 : 'border-border bg-background/70 text-muted-foreground hover:bg-muted hover:border-muted-foreground/30'
                             }`}
                           >

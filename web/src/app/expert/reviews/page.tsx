@@ -332,7 +332,7 @@ export default function ExpertReviewsPage() {
             : row,
         ),
       );
-      toast.success('Đã duyệt và xác nhận chuyên môn.');
+      toast.success('Review approved and clinically validated.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to approve this review.');
     } finally {
@@ -390,7 +390,7 @@ export default function ExpertReviewsPage() {
       reflectiveQuestions: promoteDraft.reflectiveQuestions.trim(),
     };
     if (!payload.description || !payload.suggestedDiagnosis || !payload.keyFindings || !payload.reflectiveQuestions) {
-      toast.error('Vui lòng điền đầy đủ 4 trường trước khi publish.');
+      toast.error('Please complete all four fields before publishing.');
       return;
     }
 
@@ -408,7 +408,7 @@ export default function ExpertReviewsPage() {
       } else {
         await load();
       }
-      toast.success('Đã đưa ca bệnh vào Thư viện hệ thống!');
+      toast.success('Case has been published to the system case library.');
       setPromoteModalOpen(false);
       setPromoteTargetSessionId(null);
     } catch (error) {
@@ -562,11 +562,11 @@ export default function ExpertReviewsPage() {
                                             const isExpert = role === 'expert';
                                             const isLecturer = role === 'lecturer';
                                             const label = isExpert
-                                              ? 'Chuyên gia phản hồi'
+                                              ? 'Expert feedback'
                                               : isLecturer
-                                                ? 'Giảng viên phản hồi'
+                                                ? 'Lecturer feedback'
                                                 : isStudent
-                                                  ? 'Sinh viên'
+                                                  ? 'Student'
                                                   : 'AI';
                                             return (
                                               <div key={message.id} className={`rounded-lg border px-3 py-2 text-sm ${
@@ -604,7 +604,7 @@ export default function ExpertReviewsPage() {
                                       }))
                                     }
                                     rows={3}
-                                    placeholder="Nhập phản hồi chuyên gia cho sinh viên..."
+                                    placeholder="Enter expert feedback for the student..."
                                     className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
                                   />
                                   <div className="flex flex-wrap justify-end gap-2">
@@ -623,7 +623,7 @@ export default function ExpertReviewsPage() {
                                       disabled={sendingResponseSessionId === item.sessionId}
                                     >
                                       <Send className="h-4 w-4" />
-                                      Gửi phản hồi
+                                      Send feedback
                                     </Button>
                                     {canApprove ? (
                                       <Button
@@ -634,7 +634,7 @@ export default function ExpertReviewsPage() {
                                         disabled={approvingSessionId === item.sessionId}
                                       >
                                         <CheckCircle className="h-4 w-4" />
-                                        Duyệt & Xác nhận chuẩn
+                                        Approve and validate
                                       </Button>
                                     ) : null}
                                     {canPromote ? (
@@ -647,7 +647,7 @@ export default function ExpertReviewsPage() {
                                         disabled={promotingSessionId === item.sessionId}
                                       >
                                         <Save className="h-4 w-4" />
-                                        Đưa vào Thư viện
+                                        Add to Library
                                       </Button>
                                     ) : null}
                                   </>
@@ -927,9 +927,9 @@ function PromoteCaseModal({
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
       <div className="w-full max-w-3xl rounded-2xl border border-border-color bg-surface p-5 shadow-panel">
-        <h3 className="text-lg font-semibold text-text-main">Đưa ca bệnh vào Thư viện</h3>
+        <h3 className="text-lg font-semibold text-text-main">Publish Case to Library</h3>
         <p className="mt-2 text-sm text-text-muted">
-          Chuyên gia phải rà soát và điền đầy đủ thông tin học tập trước khi publish.
+          Expert review is required. Complete all educational fields before publishing.
         </p>
 
         <div className="mt-4 grid gap-3">
@@ -973,10 +973,10 @@ function PromoteCaseModal({
 
         <div className="mt-4 flex justify-end gap-2">
           <Button type="button" variant="outline" disabled={submitting} onClick={onClose}>
-            Hủy
+            Cancel
           </Button>
           <Button type="button" disabled={!canSubmit || submitting} isLoading={submitting} onClick={onSubmit}>
-            Xác nhận Publish
+            Confirm Publish
           </Button>
         </div>
       </div>

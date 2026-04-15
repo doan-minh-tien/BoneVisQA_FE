@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 type Prefs = {
   compactMode: boolean;
@@ -40,14 +39,9 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-card-foreground">Appearance</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Choose how the interface looks and behaves.</p>
-          <div className="mt-5 flex items-center justify-between rounded-xl border border-border bg-muted/20 px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-card-foreground">Theme</p>
-              <p className="text-xs text-muted-foreground">Switch between light and dark mode.</p>
-            </div>
-            <ThemeToggle />
-          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The interface uses a fixed light Medical Blue theme across the app.
+          </p>
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

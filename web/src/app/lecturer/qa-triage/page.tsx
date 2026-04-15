@@ -29,9 +29,9 @@ function scoreLabel(score: number | null | undefined) {
   if (score == null || Number.isNaN(score)) {
     return { label: 'N/A (AI Failed)', tone: 'bg-muted text-muted-foreground' };
   }
-  if (score >= 0.8) return { label: 'High confidence', tone: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200' };
-  if (score >= 0.5) return { label: 'Medium confidence', tone: 'bg-amber-500/15 text-amber-800 dark:text-amber-200' };
-  return { label: 'Low confidence', tone: 'bg-red-500/15 text-red-800 dark:text-red-200' };
+  if (score >= 0.8) return { label: 'High confidence', tone: 'bg-emerald-500/15 text-emerald-800' };
+  if (score >= 0.5) return { label: 'Medium confidence', tone: 'bg-amber-500/15 text-amber-800' };
+  return { label: 'Low confidence', tone: 'bg-red-500/15 text-red-800' };
 }
 
 /** Answer-row GUID for PUT /api/lecturer/reviews/{id}/escalate — never the question id. */
@@ -351,7 +351,7 @@ export default function QATriagePage() {
                       onClick={() => setSelectedQuestionId(question.id)}
                       className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                         isSelected
-                          ? 'border-primary bg-blue-50 text-foreground ring-2 ring-primary ring-offset-2 ring-offset-background dark:bg-blue-900/30 dark:text-blue-100'
+                          ? 'border-primary bg-blue-50 text-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
                           : 'border-border bg-background hover:bg-muted/60'
                       }`}
                     >
@@ -427,7 +427,7 @@ export default function QATriagePage() {
                     </div>
                     <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
-                        className="h-full rounded-full bg-primary transition-[width]"
+                        className="h-full rounded-full bg-primary transition-all duration-500 ease-in-out"
                         style={{
                           width:
                             confidencePercent(selectedQuestion.aiConfidenceScore) != null
@@ -542,7 +542,7 @@ export default function QATriagePage() {
                       <Button
                         type="button"
                         variant="outline"
-                        className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+                        className="border-red-300 text-red-700 hover:bg-red-50"
                         onClick={openRejectDialog}
                       >
                         Reject
@@ -665,7 +665,7 @@ export default function QATriagePage() {
           />
           <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
             <div className="border-b border-border px-6 py-4">
-              <h3 className="text-lg font-semibold text-card-foreground">Lý do từ chối</h3>
+              <h3 className="text-lg font-semibold text-card-foreground">Rejection reason</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Explain why this AI response is rejected so the student can improve.
               </p>
@@ -675,7 +675,7 @@ export default function QATriagePage() {
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 rows={4}
-                placeholder="Nhập lý do từ chối..."
+                placeholder="Enter rejection reason..."
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
               />
               {rejectError ? <p className="mt-3 text-sm text-destructive">{rejectError}</p> : null}

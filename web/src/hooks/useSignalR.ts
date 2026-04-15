@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { HubConnectionState, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { toast } from 'sonner';
 import { getPublicApiOrigin } from '@/lib/api/client';
-import type { NotificationDto } from '@/lib/api/types';
+import type { DocumentIngestionStatusDto, NotificationDto } from '@/lib/api/types';
 import { useAuth } from '@/lib/useAuth';
 
 function mapReceivePayload(raw: unknown): NotificationDto | null {
@@ -26,6 +26,44 @@ function mapReceivePayload(raw: unknown): NotificationDto | null {
           : undefined,
     isRead: Boolean(r.isRead ?? r.IsRead ?? false),
     createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+  };
+}
+
+function mapDocumentIngestionPayload(raw: unknown): DocumentIngestionStatusDto | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const documentId = String(r.documentId ?? r.DocumentId ?? '').trim();
+  if (!documentId) return null;
+
+  const num = (v: unknown): number | undefined => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+      const parsed = Number(v);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return undefined;
+  };
+
+  return {
+    documentId,
+    status:
+      r.status != null
+        ? String(r.status)
+        : r.Status != null
+          ? String(r.Status)
+          : undefined,
+    totalPages: num(r.totalPages ?? r.TotalPages),
+    totalChunks: num(r.totalChunks ?? r.TotalChunks),
+    currentPageIndexing: num(r.currentPageIndexing ?? r.CurrentPageIndexing),
+    progressPercentage: num(r.progressPercentage ?? r.ProgressPercentage),
+    operation:
+      r.operation != null
+        ? String(r.operation)
+        : r.currentOperation != null
+          ? String(r.currentOperation)
+          : r.Operation != null
+            ? String(r.Operation)
+            : undefined,
   };
 }
 
@@ -106,6 +144,14 @@ export function useSignalR() {
       .build();
 
     connection.on('ReceiveNotification', onNotification);
+    connection.on('DocumentIndexingProgressUpdated', (payload) => {
+      const normalized = mapDocumentIngestionPayload(payload);
+      if (!normalized) return;
+      const event = new CustomEvent<DocumentIngestionStatusDto>('DocumentIndexingProgressUpdated', {
+        detail: normalized,
+      });
+      window.dispatchEvent(event);
+    });
 
     connection.onreconnecting(() => {
       setConnectionStatus(mapHubState(connection.state));
@@ -128,6 +174,7 @@ export function useSignalR() {
 
     return () => {
       connection.off('ReceiveNotification');
+      connection.off('DocumentIndexingProgressUpdated');
       void connection.stop();
       setConnectionStatus('disconnected');
     };

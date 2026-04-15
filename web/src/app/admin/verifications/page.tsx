@@ -109,15 +109,15 @@ export default function MedicalVerificationsPage() {
 
       <div className="mx-auto max-w-[1400px] space-y-6 p-6">
         {/* Info Banner */}
-        <div className="flex items-start gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-900 dark:bg-blue-950/30">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/50">
-            <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        <div className="flex items-start gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100">
+            <ShieldCheck className="h-5 w-5 text-blue-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+            <h3 className="font-semibold text-blue-900">
               Medical Student Verification System
             </h3>
-            <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">
+            <p className="mt-1 text-sm text-blue-700">
               Users who register as medical students will appear here for verification.
               Once approved, they will automatically receive the <strong>Student</strong> role,
               their account will be activated, and a welcome email will be sent — in a single step.
@@ -129,8 +129,8 @@ export default function MedicalVerificationsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+                <Clock className="h-5 w-5 text-amber-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{verifications.length}</p>
@@ -140,8 +140,8 @@ export default function MedicalVerificationsPage() {
           </div>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                <GraduationCap className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
@@ -153,8 +153,8 @@ export default function MedicalVerificationsPage() {
           </div>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <FileText className="h-5 w-5 text-blue-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
@@ -232,7 +232,7 @@ export default function MedicalVerificationsPage() {
 
                       {/* Status Badge */}
                       <div className="mt-4 flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
                           <Clock className="h-3.5 w-3.5" />
                           Pending Verification
                         </span>
@@ -272,14 +272,14 @@ export default function MedicalVerificationsPage() {
               <div
                 className={`flex h-12 w-12 items-center justify-center rounded-full ${
                   actionType === 'approve'
-                    ? 'bg-emerald-100 dark:bg-emerald-900/30'
-                    : 'bg-red-100 dark:bg-red-900/30'
+                    ? 'bg-emerald-100'
+                    : 'bg-red-100'
                 }`}
               >
                 {actionType === 'approve' ? (
-                  <CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle className="h-6 w-6 text-emerald-600" />
                 ) : (
-                  <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                  <XCircle className="h-6 w-6 text-red-600" />
                 )}
               </div>
               <div>
@@ -312,18 +312,18 @@ export default function MedicalVerificationsPage() {
             </div>
 
             {actionType === 'approve' ? (
-              <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                <p className="text-sm text-emerald-800 dark:text-emerald-200">
+              <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-sm text-emerald-800">
                   <strong>Auto-assign:</strong> Upon approval, the user will be automatically assigned
                   the <strong>Student</strong> role, account activated, and receive a welcome email
                   with login credentials.
                 </p>
               </div>
             ) : (
-              <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
+              <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3">
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
-                  <p className="text-sm text-red-800 dark:text-red-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                  <p className="text-sm text-red-800">
                     The user will be notified via email about the rejection.
                   </p>
                 </div>

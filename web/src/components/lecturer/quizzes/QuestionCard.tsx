@@ -47,7 +47,7 @@ function getQuestionTypeStyle(type: string | null): {
   if (t === 'annotation' || t === 'draw') {
     return {
       label: 'Annotation',
-      badgeClass: 'bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100',
+      badgeClass: 'bg-violet-100 text-violet-900',
     };
   }
   return {
@@ -75,10 +75,10 @@ export default function QuestionCard({
     const topic = topicCategory;
     const topicClass =
       topic === 'Imaging'
-        ? 'bg-orange-100 text-orange-950 dark:bg-orange-950/50 dark:text-orange-100'
+        ? 'bg-orange-100 text-orange-950'
         : topic === 'Joints'
-          ? 'bg-teal-100 text-teal-950 dark:bg-teal-900/40 dark:text-teal-50'
-          : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-900/40 dark:text-emerald-100';
+          ? 'bg-teal-100 text-teal-950'
+          : 'bg-emerald-100 text-emerald-950';
     const subtitle =
       question.caseTitle ||
       [question.optionA, question.optionB].filter(Boolean).join(' · ') ||

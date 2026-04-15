@@ -474,11 +474,11 @@ export default function CreateQuizPage() {
 
   const handleCreateAndAddAIQuestions = async () => {
     if (!formData.title.trim()) {
-      setError('Vui lòng nhập tiêu đề quiz');
+      setError('Please enter a quiz title.');
       return;
     }
     if (!formData.topic) {
-      setError('Vui lòng chọn topic');
+      setError('Please select a topic.');
       return;
     }
 
@@ -651,9 +651,9 @@ export default function CreateQuizPage() {
   const estMinutes = Math.max(1, parseInt(formData.timeLimit, 10) || 12);
   const complexityBadge = useMemo(() => {
     const n = allQuestions.length;
-    if (classification.includes('Advanced')) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100' };
-    if (n >= 5) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100' };
-    if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900 dark:bg-sky-900/30 dark:text-sky-100' };
+    if (classification.includes('Advanced')) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
+    if (n >= 5) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
+    if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900' };
     return { label: 'LEVEL 1', className: 'bg-muted text-muted-foreground' };
   }, [allQuestions.length, classification]);
 
@@ -827,7 +827,7 @@ export default function CreateQuizPage() {
                   <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
                   <input type="file" accept=".dcm,.jpg,.jpeg,.png" className="hidden" disabled />
                 </label>
-                <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4 dark:bg-secondary/10">
+                <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4">
                   <div className="rounded-lg bg-secondary p-2 text-white">
                     <ShieldCheck className="h-5 w-5" />
                   </div>
@@ -938,10 +938,10 @@ export default function CreateQuizPage() {
               )}
 
               {/* ========== AI Quiz Section ========== */}
-              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-purple-600" />
-                  <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+                  <span className="text-sm font-bold text-purple-700">
                     AI Quiz Assistant
                   </span>
                 </div>
@@ -973,7 +973,7 @@ export default function CreateQuizPage() {
                       size="sm"
                       onClick={handleAIAutoGenerate}
                       disabled={aiGenerating || !formData.topic}
-                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300"
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
                     >
                       {aiGenerating ? (
                         <>
@@ -994,7 +994,7 @@ export default function CreateQuizPage() {
                       size="sm"
                       onClick={handleAISuggestFromCases}
                       disabled={aiSuggesting || referenceCaseIds.length === 0}
-                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300"
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
                     >
                       {aiSuggesting ? (
                         <>
@@ -1011,12 +1011,12 @@ export default function CreateQuizPage() {
                   </div>
 
                   {!formData.topic && (
-                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                    <p className="text-xs text-orange-600">
                       Please select a Topic to use AI Auto-Generate
                     </p>
                   )}
                   {referenceCaseIds.length === 0 && (
-                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                    <p className="text-xs text-orange-600">
                       Select Cases to use AI Suggest
                     </p>
                   )}
@@ -1104,11 +1104,11 @@ export default function CreateQuizPage() {
               <div>
                 {/* AI Questions Section */}
                 {aiQuestions.length > 0 && (
-                  <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+                  <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-purple-600" />
-                        <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+                        <span className="text-sm font-bold text-purple-700">
                           AI Generated Questions ({aiQuestions.length})
                         </span>
                       </div>
@@ -1133,9 +1133,9 @@ export default function CreateQuizPage() {
                     </div>
                     <div className="space-y-3">
                       {aiQuestions.map((q, index) => (
-                        <div key={index} className="rounded-lg border border-purple-200 bg-white p-3 dark:border-purple-700 dark:bg-slate-800">
+                        <div key={index} className="rounded-lg border border-purple-200 bg-white p-3">
                           <div className="mb-2 flex items-start gap-2">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
                               {index + 1}
                             </span>
                             <p className="text-sm font-medium">{q.questionText}</p>
@@ -1284,12 +1284,12 @@ export default function CreateQuizPage() {
             </div>
           </div>
 
-          <div className="rounded-xl bg-cyan-500/10 p-6 dark:bg-cyan-950/30">
+          <div className="rounded-xl bg-cyan-500/10 p-6">
             <div className="flex gap-3">
-              <Lightbulb className="h-5 w-5 shrink-0 text-cyan-800 dark:text-cyan-200" />
+              <Lightbulb className="h-5 w-5 shrink-0 text-cyan-800" />
               <div>
-                <h4 className="text-sm font-bold text-cyan-950 dark:text-cyan-100">Clinical tip</h4>
-                <p className="mt-1 text-xs leading-relaxed text-cyan-900/80 dark:text-cyan-100/80">
+                <h4 className="text-sm font-bold text-cyan-950">Clinical tip</h4>
+                <p className="mt-1 text-xs leading-relaxed text-cyan-900/80">
                   Include differential diagnoses for every question to improve resident critical thinking.
                   {tags.length > 0 ? ` Topics: ${tags.slice(0, 3).join(', ')}.` : ''}
                 </p>

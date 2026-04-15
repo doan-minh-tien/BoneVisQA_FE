@@ -19,7 +19,7 @@ const BADGE_FEATURED = {
 };
 const BADGE_SECONDARY = {
   label: 'Diagnostic track',
-  className: 'border border-warning/25 bg-warning/10 text-amber-900 dark:text-amber-200',
+  className: 'border border-warning/25 bg-warning/10 text-amber-900',
 };
 
 const SMALL_ICONS = [Microscope, HeartPulse, Brain] as const;
@@ -182,7 +182,7 @@ function SmallCourseCard({
       ? 'bg-primary/15 text-primary'
       : iconIndex % 3 === 1
         ? 'bg-secondary-container/80 text-secondary'
-        : 'bg-warning/15 text-amber-900 dark:text-amber-200';
+        : 'bg-warning/15 text-amber-900';
 
   return (
     <div className="group col-span-1 rounded-2xl border-2 border-border bg-card p-6 shadow-sm transition-all hover:border-primary/20 hover:shadow-md md:col-span-4">

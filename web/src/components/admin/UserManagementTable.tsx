@@ -19,15 +19,15 @@ export type UiUser = {
 function roleBadgeClass(role: DisplayRole): string {
   switch (role) {
     case 'Student':
-      return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/25';
+      return 'bg-blue-500/15 text-blue-700 border-blue-500/25';
     case 'Lecturer':
-      return 'bg-violet-500/15 text-violet-800 dark:text-violet-200 border-violet-500/25';
+      return 'bg-violet-500/15 text-violet-800 border-violet-500/25';
     case 'Expert':
-      return 'bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-200 border-fuchsia-500/25';
+      return 'bg-fuchsia-500/15 text-fuchsia-800 border-fuchsia-500/25';
     case 'Admin':
-      return 'bg-slate-500/15 text-slate-800 dark:text-slate-200 border-slate-500/30';
+      return 'bg-slate-500/15 text-slate-800 border-slate-500/30';
     case 'Pending':
-      return 'bg-amber-500/15 text-amber-900 dark:text-amber-200 border-amber-500/30';
+      return 'bg-amber-500/15 text-amber-900 border-amber-500/30';
     case 'Unassigned':
     default:
       return 'bg-muted text-muted-foreground border-border';

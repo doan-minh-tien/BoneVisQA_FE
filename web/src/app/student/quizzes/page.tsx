@@ -83,7 +83,7 @@ function AssignedPracticeQuizzesPanel() {
                 Required
               </span>
               {q.isCompleted ? (
-                <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase text-emerald-800 dark:text-emerald-200">
+                <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
                   Completed
                 </span>
               ) : null}

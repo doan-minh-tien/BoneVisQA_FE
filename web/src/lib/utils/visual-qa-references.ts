@@ -66,7 +66,7 @@ export function buildVisualQaReferences(
       pushRef({
         key: idKey('doc', m.id),
         kind: 'doc',
-        label: cit?.title?.trim() || `Tài liệu ${m.id.slice(0, 8)}…`,
+        label: cit?.title?.trim() || `Document ${m.id.slice(0, 8)}...`,
         href,
         documentId: m.id,
         isLegacyUnavailable: !href,
@@ -76,7 +76,7 @@ export function buildVisualQaReferences(
       pushRef({
         key: idKey('case', m.id),
         kind: 'case',
-        label: `Case lâm sàng ${m.id.slice(0, 8)}…`,
+        label: `Clinical case ${m.id.slice(0, 8)}...`,
         href: `/student/cases/${m.id}`,
       });
     }
@@ -95,7 +95,7 @@ export function buildVisualQaReferences(
       pushRef({
         key,
         kind: 'doc',
-        label: c.title?.trim() || `Tài liệu ${docId.slice(0, 8)}…`,
+        label: c.title?.trim() || `Document ${docId.slice(0, 8)}...`,
         href,
         documentId: docId,
         isLegacyUnavailable: !href,
@@ -107,7 +107,7 @@ export function buildVisualQaReferences(
       pushRef({
         key,
         kind: 'case',
-        label: c.title?.trim() || `Case lâm sàng ${caseId.slice(0, 8)}…`,
+        label: c.title?.trim() || `Clinical case ${caseId.slice(0, 8)}...`,
         href: `/student/cases/${caseId}`,
       });
     } else {
@@ -121,7 +121,7 @@ export function buildVisualQaReferences(
         kind: 'doc',
         label:
           c.title?.trim() ||
-          (c.chunkOrder != null ? `Trích đoạn ${c.chunkOrder}` : 'Tài liệu tham khảo'),
+          (c.chunkOrder != null ? `Excerpt ${c.chunkOrder}` : 'Reference document'),
         href,
         documentId: undefined,
         isLegacyUnavailable: !href,

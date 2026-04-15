@@ -567,6 +567,30 @@ export async function fetchCaseCatalog(filters: {
   }
 }
 
+export interface StudentCaseCatalogFilters {
+  locations: string[];
+  lesionTypes: string[];
+  difficulties: string[];
+}
+
+export async function fetchCaseCatalogFilters(): Promise<StudentCaseCatalogFilters> {
+  try {
+    const { data } = await http.get<unknown>('/api/cases/filters');
+    const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const asList = (value: unknown) =>
+      Array.isArray(value)
+        ? value.map((v) => String(v ?? '').trim()).filter(Boolean)
+        : [];
+    return {
+      locations: asList(payload.locations ?? payload.Locations),
+      lesionTypes: asList(payload.lesionTypes ?? payload.LesionTypes ?? payload.lesionType),
+      difficulties: asList(payload.difficulties ?? payload.Difficulties),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function fetchCaseCatalogDetail(caseId: string): Promise<StudentCaseCatalogDetail> {
   try {
     const { data } = await http.get<unknown>(`/api/student/cases/${caseId}`);

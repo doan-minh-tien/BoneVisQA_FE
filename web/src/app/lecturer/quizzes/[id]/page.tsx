@@ -429,7 +429,7 @@ export default function QuizDetailPage() {
               <div>
                 <p
                   className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground"
-                  title="Điểm quiz trung bình của lớp (theo dữ liệu hệ thống)"
+                  title="Average class quiz score (based on system data)"
                 >
                   {avgScoreDisplay}
                 </p>
