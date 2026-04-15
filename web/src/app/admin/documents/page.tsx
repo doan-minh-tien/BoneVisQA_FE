@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import AdminDocumentsUploadModal from '@/components/admin/documents/AdminDocumentsUploadModal';
@@ -19,7 +20,6 @@ import {
   fetchDocumentTags,
   getDocuments,
   normalizeIndexingStatus,
-  reindexAdminDocument,
 } from '@/lib/api/admin-documents';
 import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
 import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
@@ -29,11 +29,11 @@ import {
   FileUp,
   Loader2,
   Plus,
-  RefreshCw,
   Search,
 } from 'lucide-react';
 
 export default function AdminDocumentsPage() {
+  const router = useRouter();
   const toast = useToast();
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [tags, setTags] = useState<TagOption[]>([]);
@@ -44,26 +44,27 @@ export default function AdminDocumentsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [reindexingId, setReindexingId] = useState<string | null>(null);
   const [statusByDocId, setStatusByDocId] = useState<Record<string, DocumentStatusResponse>>({});
   const [replaceTarget, setReplaceTarget] = useState<{ id: string; title: string } | null>(null);
+  const [openingReplaceId, setOpeningReplaceId] = useState<string | null>(null);
 
   const loadDocuments = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoadingDocuments(true);
       try {
         const docs = await getDocuments({
+          search: search.trim() || undefined,
           categoryId: categoryFilter || undefined,
           indexingStatus: statusFilter || undefined,
         });
         setDocuments(docs);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Không tải được danh sách tài liệu.');
+        toast.error(e instanceof Error ? e.message : 'Unable to load document list.');
       } finally {
         if (!opts?.silent) setLoadingDocuments(false);
       }
     },
-    [toast, categoryFilter, statusFilter],
+    [toast, search, categoryFilter, statusFilter],
   );
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function AdminDocumentsPage() {
         setTags(t.filter((x) => x.id));
       } catch (e) {
         if (!cancelled) {
-          toast.error(e instanceof Error ? e.message : 'Không tải danh mục / thẻ.');
+          toast.error(e instanceof Error ? e.message : 'Unable to load categories/tags.');
         }
       } finally {
         if (!cancelled) setLoadingMeta(false);
@@ -105,16 +106,19 @@ export default function AdminDocumentsPage() {
   }, [listPollMs, loadDocuments]);
 
   useEffect(() => {
-    const processingIds = documents
-      .filter((d) => normalizeIndexingStatus(d.indexingStatus) === 'processing')
+    const activeIds = documents
+      .filter((d) => {
+        const n = normalizeIndexingStatus(d.indexingStatus);
+        return n === 'pending' || n === 'processing';
+      })
       .map((d) => d.id)
       .filter(Boolean);
-    if (processingIds.length === 0) return;
+    if (activeIds.length === 0) return;
 
     let cancelled = false;
     const tick = async () => {
       await Promise.all(
-        processingIds.map(async (docId) => {
+        activeIds.map(async (docId) => {
           try {
             const s = await fetchDocumentStatus(docId);
             if (!cancelled) {
@@ -139,41 +143,49 @@ export default function AdminDocumentsPage() {
 
   const pollActive = useMemo(() => documentListNeedsActivePolling(documents), [documents]);
   const hasProcessing = useMemo(() => documentListHasProcessing(documents), [documents]);
+  const effectiveStatusByDocId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of documents) {
+      map.set(d.id, statusByDocId[d.id]?.status ?? d.indexingStatus);
+    }
+    return map;
+  }, [documents, statusByDocId]);
+  const hasAnyProcessingLive = useMemo(
+    () =>
+      Array.from(effectiveStatusByDocId.values()).some(
+        (status) => normalizeIndexingStatus(status) === 'processing',
+      ),
+    [effectiveStatusByDocId],
+  );
 
   const sectionDescription = useMemo(() => {
     if (!pollActive) {
-      return 'Không có tài liệu đang xử lý — làm mới theo thao tác hoặc khi tải lên mới.';
+      return 'No active indexing jobs. Refreshes run on user actions or after uploads.';
     }
     if (hasProcessing) {
-      return 'Danh sách làm mới mỗi 3 giây khi có bản ghi Đang lập chỉ mục; tiến trình theo trang cập nhật mỗi 3 giây. Chỉ còn Chờ xử lý: 5 giây.';
+      return 'List refreshes every 3 seconds while documents are Processing. Page progress updates every 3 seconds.';
     }
-    return 'Đang làm mới danh sách mỗi 5 giây khi có tài liệu Chờ xử lý.';
+    return 'List refreshes every 5 seconds while documents are Pending.';
   }, [pollActive, hasProcessing]);
 
   const filteredDocuments = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return documents;
-    return documents.filter((d) => (d.title ?? '').toLowerCase().includes(q));
-  }, [documents, search]);
+    return documents.filter((d) => {
+      if (q && !(d.title ?? '').toLowerCase().includes(q)) return false;
+      if (categoryFilter && (d.categoryId ?? '') !== categoryFilter) return false;
+      if (statusFilter) {
+        const status = normalizeIndexingStatus(d.indexingStatus);
+        if (status !== normalizeIndexingStatus(statusFilter)) return false;
+      }
+      return true;
+    });
+  }, [documents, search, categoryFilter, statusFilter]);
 
   const categoryNameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of categories) m.set(c.id, c.name);
     return m;
   }, [categories]);
-
-  const handleReindex = async (docId: string) => {
-    setReindexingId(docId);
-    try {
-      await reindexAdminDocument(docId);
-      toast.success('Đã lập lại chỉ mục — trạng thái sẽ cập nhật sau vài giây.');
-      await loadDocuments();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Lập lại chỉ mục thất bại.');
-    } finally {
-      setReindexingId(null);
-    }
-  };
 
   const formatCreated = (value: string) => {
     const date = new Date(value);
@@ -185,17 +197,17 @@ export default function AdminDocumentsPage() {
     <div className="min-h-screen">
       <Header
         title="Knowledge Base"
-        subtitle="Quản lý tài liệu RAG — theo dõi trạng thái lập chỉ mục theo thời gian thực"
+        subtitle="Manage RAG documents with real-time indexing status."
       />
       <div className="mx-auto max-w-6xl p-6">
-        <SectionCard title="Tài liệu" description={sectionDescription}>
+        <SectionCard title="Documents" description={sectionDescription}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="relative min-w-[200px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-9"
-                  placeholder="Tìm theo tiêu đề…"
+                  placeholder="Search by title..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -206,7 +218,7 @@ export default function AdminDocumentsPage() {
                 disabled={loadingMeta}
                 className="h-10 rounded-lg border border-border bg-input px-3 text-sm text-foreground"
               >
-                <option value="">Tất cả danh mục</option>
+                <option value="">All categories</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -218,7 +230,7 @@ export default function AdminDocumentsPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="h-10 rounded-lg border border-border bg-input px-3 text-sm text-foreground"
               >
-                <option value="">Mọi trạng thái lập chỉ mục</option>
+                <option value="">All statuses</option>
                 <option value="Pending">Pending</option>
                 <option value="Processing">Processing</option>
                 <option value="Completed">Completed</option>
@@ -227,7 +239,7 @@ export default function AdminDocumentsPage() {
             </div>
             <Button type="button" onClick={() => setUploadOpen(true)}>
               <Plus className="h-4 w-4" />
-              Tải lên
+              Upload
             </Button>
           </div>
 
@@ -235,30 +247,37 @@ export default function AdminDocumentsPage() {
             {loadingDocuments ? (
               <div className="flex items-center gap-2 px-4 py-10 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                Đang tải danh sách…
+                Loading documents...
               </div>
             ) : filteredDocuments.length === 0 ? (
               <div className="px-4 py-12 text-center text-sm text-muted-foreground">
                 <FileText className="mx-auto mb-3 h-10 w-10 opacity-50" />
-                Không có tài liệu phù hợp. Thử đổi bộ lọc hoặc tải lên tài liệu mới.
+                No matching documents. Try changing filters or upload a new file.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Tài liệu</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Danh mục</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Lập chỉ mục</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Phiên bản</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Tạo lúc</th>
+                      <th className="px-4 py-3 font-semibold text-muted-foreground">Document</th>
+                      <th className="px-4 py-3 font-semibold text-muted-foreground">Category</th>
+                      <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Indexing</th>
+                      <th className="px-4 py-3 font-semibold text-muted-foreground">Version</th>
+                      <th className="px-4 py-3 font-semibold text-muted-foreground">Created</th>
                       <th className="px-4 py-3 text-right font-semibold text-muted-foreground">
-                        Thao tác
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredDocuments.map((doc) => (
+                    {filteredDocuments.map((doc) => {
+                      const liveStatus =
+                        effectiveStatusByDocId.get(doc.id) ?? statusByDocId[doc.id]?.status ?? doc.indexingStatus;
+                      const normalized = normalizeIndexingStatus(liveStatus);
+                      const interactionLocked =
+                        normalized === 'pending' || normalized === 'processing';
+                      const showQueueHint = normalized === 'pending' && hasAnyProcessingLive;
+                      return (
                       <tr key={doc.id} className="group hover:bg-muted/30">
                         <td className="px-4 py-3 font-medium text-card-foreground">
                           <div className="flex items-start gap-2">
@@ -271,8 +290,8 @@ export default function AdminDocumentsPage() {
                                 {doc.title}
                               </Link>
                               {doc.isOutdated ? (
-                                <span className="mt-1 inline-block rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
-                                  Lỗi thời
+                                <span className="mt-1 inline-block rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                                  Outdated
                                 </span>
                               ) : null}
                             </div>
@@ -283,65 +302,74 @@ export default function AdminDocumentsPage() {
                             ? categoryNameById.get(doc.categoryId) ?? doc.categoryId
                             : '—'}
                         </td>
-                        <td className="px-4 py-3 align-top">
-                          <DocumentIndexingCell
-                            doc={doc}
-                            statusDetail={statusByDocId[doc.id] ?? null}
-                          />
+                        <td className="px-4 py-3 align-middle">
+                          <div className="flex justify-center">
+                            <DocumentIndexingCell
+                              doc={doc}
+                              statusDetail={statusByDocId[doc.id] ?? null}
+                              showQueueHint={showQueueHint}
+                            />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {doc.version != null ? `v${doc.version}` : '—'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{formatCreated(doc.createdAt)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Link
-                              href={`/admin/documents/${doc.id}`}
-                              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition-all hover:bg-slate-50"
-                            >
-                              Chi tiết
-                            </Link>
-                            <button
-                              type="button"
-                              title="Cập nhật tệp"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-                              onClick={() => setReplaceTarget({ id: doc.id, title: doc.title })}
-                            >
-                              <FileUp className="h-4 w-4" aria-hidden />
-                              <span className="sr-only">Cập nhật tệp</span>
-                            </button>
+                        <td className="px-4 py-3 align-middle text-right">
+                          <div className="flex flex-row flex-wrap items-center justify-end gap-2">
                             <Button
                               type="button"
-                              variant="secondary"
+                              variant="outline"
                               size="sm"
-                              disabled={reindexingId === doc.id}
-                              onClick={() => void handleReindex(doc.id)}
+                              disabled={interactionLocked}
+                              onClick={() => router.push(`/admin/documents/${doc.id}`)}
                             >
-                              {reindexingId === doc.id ? (
+                              Details
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              title={interactionLocked ? 'Actions are locked while indexing is in progress.' : 'Replace file'}
+                              disabled={interactionLocked || openingReplaceId === doc.id}
+                              onClick={() => {
+                                setOpeningReplaceId(doc.id);
+                                setReplaceTarget({ id: doc.id, title: doc.title });
+                                window.setTimeout(() => {
+                                  setOpeningReplaceId((prev) => (prev === doc.id ? null : prev));
+                                }, 350);
+                              }}
+                            >
+                              {openingReplaceId === doc.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
+                                <FileUp className="h-3.5 w-3.5" />
                               )}
-                              Lập lại chỉ mục
+                              Update
                             </Button>
                             {doc.filePath ? (
-                              <a
-                                href={withVersionedAssetUrl(
-                                  resolveApiAssetUrl(doc.filePath),
-                                  doc.version,
-                                )}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"
-                                title="Mở tệp"
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={interactionLocked}
+                                onClick={() => {
+                                  const href = withVersionedAssetUrl(
+                                    resolveApiAssetUrl(doc.filePath),
+                                    doc.version,
+                                  );
+                                  window.open(href, '_blank', 'noopener,noreferrer');
+                                }}
                               >
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Open
+                              </Button>
                             ) : null}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -364,7 +392,7 @@ export default function AdminDocumentsPage() {
         documentId={replaceTarget?.id ?? ''}
         documentTitle={replaceTarget?.title ?? ''}
         onClose={() => setReplaceTarget(null)}
-        onSuccess={() => void loadDocuments()}
+        onSuccess={(_result) => void loadDocuments()}
       />
     </div>
   );

@@ -89,6 +89,7 @@ export interface AdminDocumentDetail {
   createdAt: string;
   version?: string;
   categoryId?: string;
+  categoryName?: string;
   indexingStatus: string;
   isOutdated?: boolean;
   filePath?: string;
@@ -142,6 +143,12 @@ function mapAdminDocumentDetail(row: unknown): AdminDocumentDetail {
     createdAt: String(r.createdAt ?? r.uploadedAt ?? new Date().toISOString()),
     version: r.version != null ? String(r.version) : undefined,
     categoryId: r.categoryId != null ? String(r.categoryId) : undefined,
+    categoryName:
+      r.categoryName != null
+        ? String(r.categoryName)
+        : r.category != null
+          ? String(r.category)
+          : undefined,
     indexingStatus: String(r.indexingStatus ?? r.status ?? 'Unknown'),
     isOutdated: Boolean(r.isOutdated ?? false),
     filePath:
@@ -287,6 +294,8 @@ function mapDocumentStatus(row: unknown): DocumentStatusResponse {
     optNonNegInt(r.current_page);
   const totalPages =
     optNonNegInt(r.totalPages) ?? optNonNegInt(r.total_pages) ?? optNonNegInt(r.pageCount);
+  const totalChunks =
+    optNonNegInt(r.totalChunks) ?? optNonNegInt(r.total_chunks) ?? optNonNegInt(r.chunkCount);
 
   return {
     status: String(r.status ?? r.indexingStatus ?? 'Unknown'),
@@ -294,6 +303,7 @@ function mapDocumentStatus(row: unknown): DocumentStatusResponse {
     currentOperation: String(r.currentOperation ?? r.operation ?? ''),
     currentPageIndexing,
     totalPages,
+    totalChunks,
   };
 }
 
@@ -306,12 +316,66 @@ export async function fetchDocumentStatus(id: string): Promise<DocumentStatusRes
   }
 }
 
+export interface PendingProcessingDataRow {
+  documentId: string;
+  pendingChunkCount: number;
+}
+
+export interface PendingProcessingCleanupResult {
+  deletedRows: number;
+  message?: string;
+}
+
+function toInt(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
+  if (typeof v === 'string') {
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.floor(n);
+  }
+  return 0;
+}
+
+function mapPendingProcessingRow(row: unknown): PendingProcessingDataRow {
+  const r = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>;
+  return {
+    documentId: String(r.documentId ?? r.DocumentId ?? r.id ?? ''),
+    pendingChunkCount: toInt(r.pendingChunkCount ?? r.PendingChunkCount ?? r.count),
+  };
+}
+
+export async function fetchPendingProcessingData(): Promise<PendingProcessingDataRow[]> {
+  try {
+    const { data } = await http.get<unknown>(`${ADMIN_DOCUMENTS}/ops/pending-chunks`);
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === 'object' && 'items' in data
+        ? (((data as { items?: unknown[] }).items ?? []) as unknown[])
+        : [];
+    return list.map(mapPendingProcessingRow).filter((row) => row.documentId);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function clearPendingProcessingData(): Promise<PendingProcessingCleanupResult> {
+  try {
+    const { data } = await http.delete<unknown>(`${ADMIN_DOCUMENTS}/ops/pending-chunks`);
+    const r = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+    return {
+      deletedRows: toInt(r.deletedRows ?? r.DeletedRows ?? r.count),
+      message: typeof r.message === 'string' ? r.message : undefined,
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export type NormalizedIndexingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'unknown';
 
 export function normalizeIndexingStatus(raw: string | undefined): NormalizedIndexingStatus {
   const s = (raw ?? '').trim().toLowerCase();
   if (['pending', 'queued'].includes(s)) return 'pending';
-  if (['processing', 'indexing'].includes(s)) return 'processing';
+  if (['processing', 'indexing', 'reindexing', 're-indexing', 'reindex'].includes(s)) return 'processing';
   if (['completed', 'complete', 'success'].includes(s)) return 'completed';
   if (['failed', 'error'].includes(s)) return 'failed';
   return 'unknown';

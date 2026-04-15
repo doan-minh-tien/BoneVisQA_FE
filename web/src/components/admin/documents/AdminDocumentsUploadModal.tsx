@@ -65,15 +65,15 @@ export default function AdminDocumentsUploadModal({
     e.preventDefault();
     setFormError(null);
     if (!file) {
-      setFormError('Chọn một tệp PDF để tải lên.');
+      setFormError('Please choose a PDF file to upload.');
       return;
     }
     if (!title.trim()) {
-      setFormError('Nhập tiêu đề tài liệu.');
+      setFormError('Please enter a document title.');
       return;
     }
     if (!categoryId.trim()) {
-      setFormError('Chọn danh mục.');
+      setFormError('Please select a category.');
       return;
     }
 
@@ -87,12 +87,12 @@ export default function AdminDocumentsUploadModal({
         tagIds,
         onUploadProgress: (pct) => setUploadProgress(Math.min(100, Math.max(0, pct))),
       });
-      toast.success('Tải lên thành công. Tài liệu đang chờ lập chỉ mục.');
+      toast.success('Upload successful. Document is now pending indexing.');
       reset();
       onSuccess();
       onClose();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Tải lên thất bại.');
+      setFormError(err instanceof Error ? err.message : 'Upload failed.');
     } finally {
       setSubmitting(false);
     }
@@ -104,21 +104,21 @@ export default function AdminDocumentsUploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
-        aria-label="Đóng"
+        className="absolute inset-0 bg-slate-950/45 backdrop-blur-md"
+        aria-label="Close"
         onClick={handleClose}
       />
-      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_20px_44px_rgba(15,23,42,0.2)] backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-slate-200/70 px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-card-foreground">Tải lên tài liệu</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">PDF — tối đa 50MB</p>
+            <h2 className="text-lg font-semibold text-card-foreground">Upload Document</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">PDF — up to 50MB</p>
           </div>
           <button
             type="button"
             onClick={handleClose}
             disabled={submitting}
-            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground disabled:opacity-50"
           >
             <X className="h-5 w-5" />
           </button>
@@ -134,7 +134,7 @@ export default function AdminDocumentsUploadModal({
 
           <div>
             <label htmlFor="adm-doc-title" className="text-sm font-medium text-card-foreground">
-              Tiêu đề <span className="text-destructive">*</span>
+              Title <span className="text-destructive">*</span>
             </label>
             <input
               id="adm-doc-title"
@@ -142,14 +142,14 @@ export default function AdminDocumentsUploadModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={submitting}
-              placeholder="Ví dụ: Hướng dẫn chẩn đoán hình ảnh"
+              placeholder="Example: Diagnostic Imaging Guide"
               className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
 
           <div>
             <label htmlFor="adm-doc-file" className="text-sm font-medium text-card-foreground">
-              Tệp <span className="text-destructive">*</span>
+              File <span className="text-destructive">*</span>
             </label>
             <input
               id="adm-doc-file"
@@ -166,7 +166,7 @@ export default function AdminDocumentsUploadModal({
                 }
                 if (f.size > MAX_BYTES) {
                   setFile(null);
-                  setFormError('Tệp vượt quá 50MB.');
+                  setFormError('File exceeds 50MB.');
                   return;
                 }
                 setFile(f);
@@ -185,7 +185,7 @@ export default function AdminDocumentsUploadModal({
 
           <div>
             <label htmlFor="adm-doc-category" className="text-sm font-medium text-card-foreground">
-              Danh mục <span className="text-destructive">*</span>
+              Category <span className="text-destructive">*</span>
             </label>
             <select
               id="adm-doc-category"
@@ -194,7 +194,7 @@ export default function AdminDocumentsUploadModal({
               onChange={(e) => setCategoryId(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <option value="">{loadingMeta ? 'Đang tải…' : 'Chọn danh mục'}</option>
+              <option value="">{loadingMeta ? 'Loading...' : 'Select category'}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -204,12 +204,12 @@ export default function AdminDocumentsUploadModal({
           </div>
 
           <div>
-            <p className="text-sm font-medium text-card-foreground">Thẻ (tùy chọn)</p>
-            <p className="text-xs text-muted-foreground">Chọn một hoặc nhiều thẻ để hỗ trợ truy vấn RAG.</p>
+            <p className="text-sm font-medium text-card-foreground">Tags (optional)</p>
+            <p className="text-xs text-muted-foreground">Choose one or more tags to improve RAG retrieval.</p>
             {loadingMeta ? (
               <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                Đang tải thẻ…
+                Loading tags...
               </div>
             ) : tags.length > 0 ? (
               <div className="mt-3 flex max-h-36 flex-wrap gap-2 overflow-y-auto rounded-lg border border-border bg-muted/20 p-2">
@@ -230,14 +230,14 @@ export default function AdminDocumentsUploadModal({
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">Chưa có thẻ từ máy chủ.</p>
+              <p className="mt-2 text-sm text-muted-foreground">No tags available from server.</p>
             )}
           </div>
 
           {submitting ? (
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Tiến trình tải lên</span>
+                <span>Upload progress</span>
                 <span>{uploadProgress}%</span>
               </div>
               <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
@@ -250,12 +250,12 @@ export default function AdminDocumentsUploadModal({
           ) : null}
 
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
-              Hủy
+            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting} className="rounded-xl">
+              Cancel
             </Button>
-            <Button type="submit" isLoading={submitting} disabled={submitting}>
+            <Button type="submit" isLoading={submitting} disabled={submitting} className="rounded-xl shadow-sm">
               <Upload className="h-4 w-4" />
-              Tải lên
+              Upload
             </Button>
           </div>
         </form>

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { replaceDocumentFile } from '@/lib/api/admin-documents';
+import type { DocumentUploadResponse } from '@/lib/api/types';
 import { AlertCircle, AlertTriangle, FileText, X } from 'lucide-react';
 
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -13,7 +14,7 @@ export type AdminDocumentReplaceFileModalProps = {
   documentId: string;
   documentTitle: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result: DocumentUploadResponse) => void;
 };
 
 export default function AdminDocumentReplaceFileModal({
@@ -29,11 +30,33 @@ export default function AdminDocumentReplaceFileModal({
   const [progress, setProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+
+  const normalizeName = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/\.pdf$/i, '')
+      .replace(/[_\-.]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const isNameDrasticallyDifferent = (currentName: string, selectedName: string) => {
+    const currentTokens = new Set(normalizeName(currentName).split(' ').filter(Boolean));
+    const selectedTokens = new Set(normalizeName(selectedName).split(' ').filter(Boolean));
+    if (currentTokens.size === 0 || selectedTokens.size === 0) return true;
+    let overlap = 0;
+    for (const t of selectedTokens) {
+      if (currentTokens.has(t)) overlap += 1;
+    }
+    const overlapRatio = overlap / Math.max(currentTokens.size, selectedTokens.size);
+    return overlapRatio < 0.35;
+  };
 
   const reset = useCallback(() => {
     setFile(null);
     setProgress(0);
     setError(null);
+    setIsConfirmed(false);
     if (inputRef.current) inputRef.current.value = '';
   }, []);
 
@@ -47,40 +70,49 @@ export default function AdminDocumentReplaceFileModal({
     e.preventDefault();
     setError(null);
     if (!file) {
-      setError('Chọn tệp PDF mới.');
+      setError('Please select a new PDF file.');
+      return;
+    }
+    if (!isConfirmed) {
+      setError('Please confirm this is an updated version before uploading.');
       return;
     }
     setSubmitting(true);
     setProgress(0);
     try {
-      await replaceDocumentFile(documentId, file, (pct) => setProgress(Math.min(100, Math.max(0, pct))));
-      toast.success('Đã lên file mới — lập chỉ mục sẽ chạy lại từ đầu.');
+      const result = await replaceDocumentFile(
+        documentId,
+        file,
+        (pct) => setProgress(Math.min(100, Math.max(0, pct))),
+      );
+      toast.success('File replaced successfully. Reindexing restarted from the beginning.');
       reset();
-      onSuccess();
+      onSuccess(result);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Cập nhật tệp thất bại.');
+      setError(err instanceof Error ? err.message : 'Failed to replace file.');
     } finally {
       setSubmitting(false);
     }
   };
 
   if (!open) return null;
+  const nameMismatch = file ? isNameDrasticallyDifferent(documentTitle, file.name) : false;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-background/70 backdrop-blur-sm" aria-label="Đóng" onClick={handleClose} />
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+      <button type="button" className="absolute inset-0 bg-slate-950/45 backdrop-blur-md" aria-label="Close" onClick={handleClose} />
+      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-[0_20px_44px_rgba(15,23,42,0.2)] backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-slate-200/70 px-5 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-card-foreground">Cập nhật tệp</h2>
+            <h2 className="text-lg font-semibold text-card-foreground">Replace File</h2>
             <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{documentTitle}</p>
           </div>
           <button
             type="button"
             onClick={handleClose}
             disabled={submitting}
-            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground disabled:opacity-50"
           >
             <X className="h-5 w-5" />
           </button>
@@ -88,12 +120,13 @@ export default function AdminDocumentReplaceFileModal({
 
         <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
           <div
-            className="flex gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-3 text-sm text-amber-950 dark:text-amber-100"
+            className="flex gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-3 text-sm text-amber-950"
             role="alert"
           >
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-200" />
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <p>
-              Tải lên file mới sẽ xóa toàn bộ dữ liệu chỉ mục cũ và bắt đầu quá trình băm nhỏ lại.
+              Warning: Overwriting this document will replace its knowledge base for the AI. Please
+              ensure the new file is an actual revision of the existing content.
             </p>
           </div>
 
@@ -106,7 +139,7 @@ export default function AdminDocumentReplaceFileModal({
 
           <div>
             <label htmlFor="replace-file" className="text-sm font-medium text-card-foreground">
-              File PDF mới <span className="text-destructive">*</span>
+              New PDF File <span className="text-destructive">*</span>
             </label>
             <input
               id="replace-file"
@@ -123,7 +156,7 @@ export default function AdminDocumentReplaceFileModal({
                 }
                 if (f.size > MAX_BYTES) {
                   setFile(null);
-                  setError('Tệp tối đa 50MB.');
+                  setError('Maximum file size is 50MB.');
                   return;
                 }
                 setFile(f);
@@ -131,17 +164,54 @@ export default function AdminDocumentReplaceFileModal({
               }}
             />
             {file ? (
-              <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <FileText className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{file.name}</span>
-              </p>
+              <div className="mt-3 rounded-xl border border-border bg-muted/20 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Comparison View
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="w-32 shrink-0 text-muted-foreground">Current Document:</span>
+                    <span className="font-medium text-card-foreground">{documentTitle}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-32 shrink-0 text-muted-foreground">New Upload:</span>
+                    <span
+                      className={`font-bold ${nameMismatch ? 'text-red-600' : 'text-card-foreground'}`}
+                    >
+                      {file.name}
+                    </span>
+                  </div>
+                  {nameMismatch ? (
+                    <p className="text-xs text-red-600">
+                      File name looks very different from the current document. Please verify before
+                      uploading.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
           </div>
+
+          <label className="flex items-start gap-2 rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-border"
+              checked={isConfirmed}
+              disabled={submitting || !file}
+              onChange={(e) => {
+                setIsConfirmed(e.target.checked);
+                if (e.target.checked) setError(null);
+              }}
+            />
+            <span className="text-card-foreground">
+              I confirm that this file is the updated version of the current document.
+            </span>
+          </label>
 
           {submitting ? (
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Đang tải lên</span>
+                <span>Uploading</span>
                 <span>{progress}%</span>
               </div>
               <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
@@ -154,11 +224,16 @@ export default function AdminDocumentReplaceFileModal({
           ) : null}
 
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
-              Hủy
+                    <Button type="button" variant="outline" onClick={handleClose} disabled={submitting} className="rounded-xl">
+                      Cancel
             </Button>
-            <Button type="submit" isLoading={submitting} disabled={submitting || !file}>
-              Xác nhận thay thế
+                    <Button
+                      type="submit"
+                      isLoading={submitting}
+                      disabled={submitting || !file || !isConfirmed}
+                      className="rounded-xl shadow-sm"
+                    >
+                      Start Upload
             </Button>
           </div>
         </form>
