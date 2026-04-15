@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { ActiveCourseworkBento } from '@/components/student/ActiveCourseworkBento';
 import { fetchStudentClasses } from '@/lib/api/student';
 import type { StudentClassItem } from '@/lib/api/student';
-import { GraduationCap, Loader2 } from 'lucide-react';
+import { BookOpen, GraduationCap, Loader2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 export default function StudentClassesPage() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function StudentClassesPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header title="My Classes" subtitle="Enter active classes, announcements, and coursework." />
+      <Header title="My Class" subtitle="View your enrolled class, lecturer, semester, and coursework at a glance." />
 
       <div className="mx-auto max-w-[1440px] px-4 pb-20 pt-6 sm:px-6 md:px-10">
         {loading ? (
@@ -56,10 +56,44 @@ export default function StudentClassesPage() {
             </p>
           </div>
         ) : (
-          <ActiveCourseworkBento
-            classes={classes}
-            onEnterClass={(cls) => router.push(`/student/classes/${cls.classId}`)}
-          />
+          <div className="space-y-5">
+            <div className="overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-r from-blue-50 to-slate-50 shadow-sm">
+              <div className="px-6 py-6 sm:px-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Class Overview</p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-900">{classes[0].className}</h2>
+                <p className="mt-1 text-sm text-slate-600">Professional bone imaging coursework dashboard</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Class Name</p>
+                <p className="mt-2 text-sm font-semibold text-foreground">{classes[0].className}</p>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lecturer Name</p>
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <UserRound className="h-4 w-4 text-primary" />
+                  {classes[0].lecturerName?.trim() || 'Instructor'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Semester</p>
+                <p className="mt-2 text-sm font-semibold text-foreground">{classes[0].semester || 'N/A'}</p>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coursework</p>
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <BookOpen className="h-4 w-4 text-primary" />
+                  {classes[0].totalCases} Cases · {classes[0].totalQuizzes} Quizzes
+                </p>
+              </div>
+            </div>
+            <div>
+              <Button type="button" onClick={() => router.push(`/student/classes/${classes[0].classId}`)}>
+                Open My Class
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </div>

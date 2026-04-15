@@ -92,7 +92,7 @@ export default function StudentClassDetailPage() {
       <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Link href="/student/classes" className="hover:text-foreground">
-            Classes
+            Class
           </Link>
           <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
           <span className="truncate text-foreground">{title}</span>
@@ -136,7 +136,7 @@ export default function StudentClassDetailPage() {
               href="/student/classes"
               className="mt-6 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground hover:bg-muted/60"
             >
-              Back to classes
+              Back to class
             </Link>
           </div>
         ) : (
