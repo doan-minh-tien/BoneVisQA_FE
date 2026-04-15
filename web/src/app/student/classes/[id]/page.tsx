@@ -290,7 +290,7 @@ export default function StudentClassDetailPage() {
             {tab === 'quizzes' && (
               <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-foreground">Class quizzes</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Micro quizzes tied to this class.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Practice quizzes tied to this class.</p>
                 {detail.quizzes.length === 0 ? (
                   <p className="mt-6 text-sm text-muted-foreground">No quizzes assigned yet.</p>
                 ) : (

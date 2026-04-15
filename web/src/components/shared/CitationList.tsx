@@ -11,7 +11,10 @@ type CitationListProps = {
 
 export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
   const visibleCitations = citations.filter((citation) => {
-    return Boolean(citation.documentUrl && citation.documentUrl.trim());
+    return Boolean(
+      (citation.documentUrl && citation.documentUrl.trim()) ||
+        (citation.title && citation.title.trim()),
+    );
   });
 
   if (visibleCitations.length === 0) {
@@ -35,22 +38,30 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
       </h3>
       <ul className="space-y-3 rounded-xl border border-border-color bg-surface p-5 text-sm">
         {visibleCitations.map((citation, index) => {
-          const url = citation.documentUrl!.trim();
+          const url = citation.documentUrl?.trim() || '';
           const label =
             citation.title?.trim() ||
             `Reference ${index + 1}${citation.chunkOrder != null ? ` · excerpt ${citation.chunkOrder}` : ''}`;
 
           return (
             <li key={`${url}-${index}`} className="rounded-lg border border-border-color bg-background/45 px-4 py-3">
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-cyan-accent underline decoration-cyan-accent/50 underline-offset-4 hover:text-cyan-accent/80"
-              >
-                {label}
-              </a>
-              <p className="mt-1 break-all text-xs text-text-muted">{url}</p>
+              {url ? (
+                <>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-cyan-accent underline decoration-cyan-accent/50 underline-offset-4 hover:text-cyan-accent/80"
+                  >
+                    {label}
+                  </a>
+                  <p className="mt-1 break-all text-xs text-text-muted">{url}</p>
+                </>
+              ) : (
+                <span className="inline-flex rounded-full border border-border-color bg-surface px-3 py-1 text-xs font-medium text-text-main">
+                  {label}
+                </span>
+              )}
             </li>
           );
         })}

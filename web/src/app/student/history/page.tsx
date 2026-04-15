@@ -33,6 +33,7 @@ export default function StudentHistoryPage() {
   const activeTab = tabFromSearch(searchParams.get('tab'));
 
   const [items, setItems] = useState<StudentCaseHistoryItem[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<(typeof difficultyFilters)[number]['id']>('all');
@@ -47,9 +48,10 @@ export default function StudentHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await fetchStudentHistoryForUi();
+        const response = await fetchStudentHistoryForUi();
         if (!cancelled) {
-          setItems(data);
+          setItems(response.items);
+          setTotalCount(response.totalCount);
         }
       } catch (error) {
         if (!cancelled) {
@@ -168,6 +170,9 @@ export default function StudentHistoryPage() {
           <span>
             Showing <span className="font-medium text-card-foreground">{filtered.length}</span> entr
             {filtered.length === 1 ? 'y' : 'ies'} in this tab
+            {totalCount > 0 ? (
+              <span className="ml-1 text-muted-foreground/80">(backend total: {totalCount})</span>
+            ) : null}
           </span>
           <span className="hidden md:inline">
             Green badges mean the answer was verified by a clinical expert.

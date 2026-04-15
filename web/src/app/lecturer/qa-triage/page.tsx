@@ -17,7 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import axios from 'axios';
-import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
+import { getLecturerClasses, getStudentQuestions, rejectTriageAnswer } from '@/lib/api/lecturer';
 import { http, getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import { respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
@@ -103,6 +103,10 @@ export default function QATriagePage() {
   const [modifying, setModifying] = useState(false);
   const [modifyError, setModifyError] = useState<string | null>(null);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
 
   const selectedQuestion = useMemo(
     () => questions.find((item) => item.id === selectedQuestionId) ?? questions[0] ?? null,
@@ -239,6 +243,43 @@ export default function QATriagePage() {
       setModifyError(e instanceof Error ? e.message : 'Failed to save changes');
     } finally {
       setModifying(false);
+    }
+  };
+
+  const openRejectDialog = () => {
+    setRejectReason('');
+    setRejectError(null);
+    setShowRejectDialog(true);
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!selectedQuestion) return;
+    const reason = rejectReason.trim();
+    if (!reason) {
+      setRejectError('Please provide a rejection reason.');
+      return;
+    }
+    const targetId = resolveEscalationAnswerRowId(selectedQuestion);
+    if (!targetId) {
+      setRejectError('Cannot reject: AI answer is missing or incomplete.');
+      return;
+    }
+    setRejecting(true);
+    setRejectError(null);
+    try {
+      await rejectTriageAnswer(targetId, reason);
+      setQuestions((prev) =>
+        prev.map((q) =>
+          q.id === selectedQuestion.id ? { ...q, answerStatus: 'Rejected' } : q,
+        ),
+      );
+      setShowRejectDialog(false);
+      toast.success('Answer rejected and feedback sent to student.');
+      if (selectedClassId) void loadQuestions(selectedClassId);
+    } catch (error) {
+      setRejectError(getApiErrorMessage(error));
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -498,6 +539,14 @@ export default function QATriagePage() {
                         <Edit3 className="h-4 w-4" />
                         Modify answer
                       </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+                        onClick={openRejectDialog}
+                      >
+                        Reject
+                      </Button>
                       <span
                         className="inline-flex max-w-full cursor-default"
                         title={
@@ -601,6 +650,50 @@ export default function QATriagePage() {
               </Button>
               <Button onClick={() => void handleModifySubmit()} disabled={modifying || !editAnswerText.trim()}>
                 {modifying ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showRejectDialog && selectedQuestion ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !rejecting && setShowRejectDialog(false)}
+            aria-label="Close"
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+            <div className="border-b border-border px-6 py-4">
+              <h3 className="text-lg font-semibold text-card-foreground">Lý do từ chối</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Explain why this AI response is rejected so the student can improve.
+              </p>
+            </div>
+            <div className="px-6 py-4">
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={4}
+                placeholder="Nhập lý do từ chối..."
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              />
+              {rejectError ? <p className="mt-3 text-sm text-destructive">{rejectError}</p> : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowRejectDialog(false)}
+                disabled={rejecting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleRejectSubmit()}
+                disabled={rejecting || !rejectReason.trim()}
+                className="bg-red-600 text-white hover:bg-red-700"
+              >
+                {rejecting ? 'Submitting…' : 'Confirm reject'}
               </Button>
             </div>
           </div>

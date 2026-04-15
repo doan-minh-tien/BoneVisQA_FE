@@ -446,7 +446,7 @@ export default function StudentQuizPage() {
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-95"
             >
               <Sparkles className="h-4 w-4" />
-              AI Quiz
+              Practice Quizzes
             </button>
           </div>
         </div>
@@ -454,8 +454,8 @@ export default function StudentQuizPage() {
         {/* ── Tab navigation ── */}
         <div className="mb-6 flex items-center gap-1 border-b border-[#c2c6d4]/30">
           {([
-            ['assigned', 'Assigned Quizzes', Trophy, assignedQuizzes.length] as const,
-            ['practice', 'AI Quizzes', BotMessageSquare, 0] as const,
+            ['assigned', 'Assigned Practice Quizzes', Trophy, assignedQuizzes.length] as const,
+            ['practice', 'Practice Quizzes', BotMessageSquare, 0] as const,
             ['history', 'History', Clock, historyAttempts.filter(a => a.completedAt).length] as const,
           ]).map(([key, label, Icon, count]) => (
             <button
@@ -936,7 +936,7 @@ export default function StudentQuizPage() {
                     <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#006a68]">{historyStats.completed}</p>
                   </div>
                   <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Quiz AI</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Practice Quizzes</p>
                     <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#924e00]">{historyStats.ai}</p>
                   </div>
                   <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
@@ -954,7 +954,7 @@ export default function StudentQuizPage() {
                   </div>
                   {([
                     ['all', 'All'],
-                    ['ai', 'AI Quizzes'],
+                    ['ai', 'Practice Quizzes'],
                     ['assigned', 'Assigned'],
                   ] as [typeof historyFilter, string][]).map(([val, label]) => (
                     <button
@@ -982,7 +982,7 @@ export default function StudentQuizPage() {
                     <h3 className="mt-4 text-lg font-semibold text-[#191c1e]">No quiz history yet</h3>
                     <p className="mt-2 text-sm text-[#424752]">
                       {historyFilter === 'ai'
-                        ? 'You have not created any AI quizzes yet. Try creating one in the "AI Quizzes" tab.'
+                        ? 'You have not created any practice quizzes yet. Try creating one in the "Practice Quizzes" tab.'
                         : 'Your submitted quizzes will appear here.'}
                     </p>
                   </div>

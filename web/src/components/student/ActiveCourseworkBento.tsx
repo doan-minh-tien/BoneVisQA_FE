@@ -1,16 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import {
-  ArrowRight,
-  Brain,
-  HeartPulse,
-  HelpCircle,
-  Microscope,
-  Plus,
-  Scan,
-  Users,
-} from 'lucide-react';
+import { ArrowRight, Brain, HeartPulse, Microscope, Scan, Users } from 'lucide-react';
 import type { StudentClassItem } from '@/lib/api/student';
 
 const FEATURED_XRAY_IMAGE =
@@ -278,13 +268,9 @@ function CourseworkStatsTicker({ classes }: { classes: StudentClassItem[] }) {
 export function ActiveCourseworkBento({
   classes,
   onEnterClass,
-  onArchiveView,
-  onEnrollNew,
 }: {
   classes: StudentClassItem[];
   onEnterClass: (cls: StudentClassItem) => void;
-  onArchiveView?: () => void;
-  onEnrollNew?: () => void;
 }) {
   const maxActivity = Math.max(1, ...classes.map((c) => c.totalQuizzes + c.totalCases));
   const featured = classes[0];
@@ -293,30 +279,11 @@ export function ActiveCourseworkBento({
 
   return (
     <div className="text-foreground">
-      <div className="mb-10 flex flex-col justify-between gap-6 sm:mb-12 md:flex-row md:items-end">
-        <div>
-          <span className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Semester core curriculum</span>
-          <h1 className="mt-2 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Active coursework
-          </h1>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={onArchiveView}
-            className="rounded-full border border-border bg-muted px-6 py-2.5 text-sm font-bold text-primary transition-opacity hover:bg-muted/80"
-          >
-            Archive view
-          </button>
-          <button
-            type="button"
-            onClick={onEnrollNew}
-            className="flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/25 transition-transform hover:bg-primary-hover hover:scale-[1.02] active:scale-95"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-            Enroll new
-          </button>
-        </div>
+      <div className="mb-10 sm:mb-12">
+        <span className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Semester core curriculum</span>
+        <h1 className="mt-2 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+          Active coursework
+        </h1>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
@@ -345,14 +312,6 @@ export function ActiveCourseworkBento({
       </div>
 
       <CourseworkStatsTicker classes={classes} />
-
-      <Link
-        href="/student/qa"
-        className="fixed bottom-8 right-8 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-2xl shadow-primary/30 transition-transform hover:scale-110 hover:bg-primary-hover active:scale-95"
-        aria-label="Help and Q&A"
-      >
-        <HelpCircle className="h-7 w-7" strokeWidth={2} />
-      </Link>
     </div>
   );
 }

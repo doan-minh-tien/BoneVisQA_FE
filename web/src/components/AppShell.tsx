@@ -53,6 +53,11 @@ export function AppShell({
   const pathname = usePathname();
   const [{ token, isGuestOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  /** Avoid pathname-dependent `className` differing on SSR vs first client paint (hydration mismatch). */
+  const [layoutMounted, setLayoutMounted] = useState(false);
+  useEffect(() => {
+    setLayoutMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -75,11 +80,11 @@ export function AppShell({
 
   const sidebarPx = sidebarCollapsed ? 72 : 260;
   const gutterPx = 24;
-  /** Full-height workbench: only inner panels scroll (avoid nested scrollbars). */
-  const shellMainScrollLocked = pathname?.startsWith('/student/qa/image') ?? false;
+  /** Full-height workbench: only inner panels scroll (applied after mount so SSR/client markup match). */
+  const shellMainScrollLocked = layoutMounted && (pathname?.startsWith('/student/qa/image') ?? false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-text-main">
+    <div className="flex min-h-0 h-screen w-full overflow-hidden bg-background text-text-main">
       <AppSidebar
         role={role}
         collapsed={sidebarCollapsed}

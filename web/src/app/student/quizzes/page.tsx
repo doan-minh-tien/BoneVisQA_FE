@@ -10,7 +10,7 @@ import { getAssignedQuizzes } from '@/lib/api/student';
 import type { AssignedQuizItem } from '@/lib/api/types';
 import { BookOpen, ClipboardList, Loader2, Sparkles, Timer } from 'lucide-react';
 
-type QuizTab = 'micro' | 'practice';
+type QuizTab = 'assigned' | 'practice';
 
 function formatDue(closeTime?: string | null, openTime?: string | null) {
   if (closeTime) {
@@ -24,7 +24,7 @@ function formatDue(closeTime?: string | null, openTime?: string | null) {
   return 'Schedule set by your lecturer';
 }
 
-function MicroQuizzesPanel() {
+function AssignedPracticeQuizzesPanel() {
   const toast = useToast();
   const [items, setItems] = useState<AssignedQuizItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ function MicroQuizzesPanel() {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
         <ClipboardList className="mx-auto h-10 w-10 text-muted-foreground" />
-        <h2 className="mt-4 text-lg font-semibold text-foreground">No micro quizzes yet</h2>
+        <h2 className="mt-4 text-lg font-semibold text-foreground">No practice quizzes yet</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
           When your lecturer assigns a quiz to one of your classes, it will appear here. You can still use Practice
           Quizzes to study on your own.
@@ -124,11 +124,11 @@ function MicroQuizzesPanel() {
 
 function QuizzesPageInner() {
   const searchParams = useSearchParams();
-  const initialTab: QuizTab = searchParams.get('tab') === 'practice' ? 'practice' : 'micro';
+  const initialTab: QuizTab = searchParams.get('tab') === 'practice' ? 'practice' : 'assigned';
   const [tab, setTab] = useState<QuizTab>(initialTab);
 
   useEffect(() => {
-    const t = searchParams.get('tab') === 'practice' ? 'practice' : 'micro';
+    const t = searchParams.get('tab') === 'practice' ? 'practice' : 'assigned';
     setTab(t);
   }, [searchParams]);
 
@@ -136,7 +136,7 @@ function QuizzesPageInner() {
     <div className="min-h-screen">
       <Header
         title="Quizzes"
-        subtitle="Micro quizzes are assigned by your lecturer. Practice quizzes are self-paced and AI-assisted."
+        subtitle="Practice quizzes can be assigned by lecturers or self-generated for revision."
       />
       <div className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6">
         <div
@@ -147,16 +147,16 @@ function QuizzesPageInner() {
           <button
             type="button"
             role="tab"
-            aria-selected={tab === 'micro'}
+            aria-selected={tab === 'assigned'}
             className={`flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors ${
-              tab === 'micro'
+              tab === 'assigned'
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
-            onClick={() => setTab('micro')}
+            onClick={() => setTab('assigned')}
           >
             <ClipboardList className="h-4 w-4" />
-            Micro Quizzes
+            Assigned Practice Quizzes
           </button>
           <button
             type="button"
@@ -174,7 +174,7 @@ function QuizzesPageInner() {
           </button>
         </div>
 
-        {tab === 'micro' ? <MicroQuizzesPanel /> : <StudentPracticeQuizContent embedded />}
+        {tab === 'assigned' ? <AssignedPracticeQuizzesPanel /> : <StudentPracticeQuizContent embedded />}
       </div>
     </div>
   );

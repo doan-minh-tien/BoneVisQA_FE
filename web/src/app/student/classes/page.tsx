@@ -59,8 +59,6 @@ export default function StudentClassesPage() {
           <ActiveCourseworkBento
             classes={classes}
             onEnterClass={(cls) => router.push(`/student/classes/${cls.classId}`)}
-            onArchiveView={() => toast.message('Archive view is not available yet.')}
-            onEnrollNew={() => toast.message('Ask your lecturer or admin to add you to a class.')}
           />
         )}
       </div>

@@ -113,7 +113,7 @@ export default function StudentQuizHistoryPage() {
                 <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#006a68]">{stats.completed}</p>
               </div>
               <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">AI Quizzes</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Practice Quizzes</p>
                 <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#924e00]">{stats.ai}</p>
               </div>
               <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
@@ -132,7 +132,7 @@ export default function StudentQuizHistoryPage() {
               </div>
               {([
                 ['all', 'All'],
-                ['ai', 'AI Quizzes'],
+                ['ai', 'Practice Quizzes'],
                 ['assigned', 'Assigned'],
               ] as [FilterMode, string][]).map(([val, label]) => (
                 <button

@@ -50,21 +50,49 @@ export default function CaseCard({
   href,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
-  const normalizedStatus = status?.toLowerCase();
+  const normalizedStatusKey = (status ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const reviewBadge =
-    normalizedStatus === 'approved' || normalizedStatus === 'revised'
+    normalizedStatusKey === 'expertapproved' ||
+    normalizedStatusKey === 'approved' ||
+    normalizedStatusKey === 'revised'
       ? {
-          label: 'Verified by Clinical Expert',
+          label: 'Verified',
           className: 'border-success/30 bg-success/10 text-success',
           icon: CheckCircle2,
         }
-      : normalizedStatus === 'pending' || normalizedStatus === 'pendingexpert'
+      : normalizedStatusKey === 'pendingexpertreview' ||
+          normalizedStatusKey === 'pendinglecturerreview'
         ? {
-            label: 'Under Expert Review',
-            className: 'border-warning/30 bg-warning/10 text-warning',
-            icon: ShieldAlert,
+            label: 'Chờ Chuyên gia duyệt',
+            className:
+              'border-slate-400/35 bg-slate-500/10 text-slate-700 dark:border-slate-500/35 dark:bg-slate-400/10 dark:text-slate-200',
+            icon: Clock,
           }
-        : null;
+        : normalizedStatusKey === 'escalatedtoexpert'
+          ? {
+              label: 'Expert Reviewing',
+              className: 'border-orange-400/40 bg-orange-500/10 text-orange-700 dark:text-orange-200',
+              icon: ShieldAlert,
+            }
+          : normalizedStatusKey === 'active'
+            ? {
+                label: 'Chatting',
+                className: 'border-blue-400/40 bg-blue-500/10 text-blue-700 dark:text-blue-200',
+                icon: Clock,
+              }
+            : normalizedStatusKey === 'rejected'
+              ? {
+                  label: 'Rejected',
+                  className: 'border-destructive/40 bg-destructive/10 text-destructive',
+                  icon: ShieldAlert,
+                }
+          : normalizedStatusKey === 'pending' || normalizedStatusKey === 'pendingexpert'
+            ? {
+                label: 'Chờ Chuyên gia duyệt',
+                className: 'border-warning/30 bg-warning/10 text-warning',
+                icon: Clock,
+              }
+            : null;
   const ReviewIcon = reviewBadge?.icon;
 
   const article = (

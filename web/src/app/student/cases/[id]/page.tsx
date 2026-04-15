@@ -57,12 +57,12 @@ export default function StudentCaseDetailPage() {
   }, [caseId, toast]);
 
   const qaHref = useMemo(() => {
-    if (!item?.imageUrl) return '/student/qa/image';
+    if (!item?.imageUrl) return `/student/qa/image?caseId=${encodeURIComponent(caseId)}`;
     const context = `${item.title} | ${item.location} | ${item.lesionType} | ${item.difficulty}`;
     return `/student/qa/image?catalogImageUrl=${encodeURIComponent(item.imageUrl)}&catalogTitle=${encodeURIComponent(
       item.title,
-    )}&catalogContext=${encodeURIComponent(context)}`;
-  }, [item]);
+    )}&catalogContext=${encodeURIComponent(context)}&caseId=${encodeURIComponent(caseId)}`;
+  }, [caseId, item]);
 
   return (
     <div className="min-h-screen">
