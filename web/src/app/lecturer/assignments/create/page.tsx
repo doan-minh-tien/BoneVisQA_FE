@@ -68,22 +68,6 @@ const assignmentTypes = [
     bg: 'bg-yellow-500/10',
     border: 'border-yellow-500',
   },
-  {
-    value: 'Lab Report',
-    description: 'Students submit lab reports as files',
-    icon: ClipboardList,
-    color: 'text-purple-500',
-    bg: 'bg-purple-500/10',
-    border: 'border-purple-500',
-  },
-  {
-    value: 'Practical Exam',
-    description: 'Hands-on examination with file submission',
-    icon: Stethoscope,
-    color: 'text-green-500',
-    bg: 'bg-green-500/10',
-    border: 'border-green-500',
-  },
 ];
 
   // /** Wizard for assigning existing quiz/case to a class — no question authoring here. */
