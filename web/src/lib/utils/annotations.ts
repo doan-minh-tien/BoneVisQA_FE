@@ -14,6 +14,20 @@ type PixelBounds = PixelPoint & {
   height: number;
 };
 
+export function normalizeClientPointFromRect(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+): { x: number; y: number } | null {
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  const localX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+  const localY = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+  return {
+    x: localX / rect.width,
+    y: localY / rect.height,
+  };
+}
+
 export function clampAnnotationPercent(value: number): number {
   return Math.min(Math.max(value, 0), 100);
 }

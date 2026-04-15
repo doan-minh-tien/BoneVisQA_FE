@@ -25,7 +25,7 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
     return (
       <section>
         <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-          Nguồn tham khảo · Citations
+          References · Citations
         </h3>
         <div className="rounded-xl border border-border-color bg-surface/80 px-5 py-4 text-sm italic text-text-muted">
           {FALLBACK}
@@ -37,7 +37,7 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
   return (
     <section>
       <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-        Nguồn tham khảo · Citations
+        References · Citations
       </h3>
       <ul className="space-y-3 rounded-xl border border-border-color bg-surface p-5 text-sm">
         {visibleCitations.map((citation, index) => {
@@ -68,7 +68,7 @@ export function CitationList({ citations, hideWhenEmpty }: CitationListProps) {
               ) : caseId ? (
                 <Link
                   href={`/student/cases/${caseId}`}
-                  className="font-medium text-emerald-700 underline decoration-emerald-500/50 underline-offset-4 hover:text-emerald-800 dark:text-emerald-300"
+                  className="font-medium text-emerald-700 underline decoration-emerald-500/50 underline-offset-4 hover:text-emerald-800"
                 >
                   {label}
                 </Link>

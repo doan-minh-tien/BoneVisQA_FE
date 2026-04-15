@@ -9,6 +9,7 @@ import {
   cornersNormalizedToBox,
   cornersNormalizedToDraftBox,
   isValidNormalizedBoundingBox,
+  normalizeClientPointFromRect,
 } from '@/lib/utils/annotations';
 
 const MIN = 0.5;
@@ -42,6 +43,7 @@ export function MedicalImageViewer({
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const drawLayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (initialAnnotation === undefined) return;
@@ -73,11 +75,9 @@ export function MedicalImageViewer({
   }, []);
 
   const getNormalizedPoint = useCallback((clientX: number, clientY: number) => {
-    const rect = imgRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-    const lx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-    const ly = Math.min(Math.max(clientY - rect.top, 0), rect.height);
-    return { x: lx / rect.width, y: ly / rect.height };
+    const rect = drawLayerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return normalizeClientPointFromRect(clientX, clientY, rect);
   }, []);
 
   const draftBox =
@@ -207,6 +207,7 @@ export function MedicalImageViewer({
             <RectangleAnnotationOverlay closed={closedBox} draft={draftBox} label="LESION ROI" />
             {isDrawMode ? (
               <div
+                ref={drawLayerRef}
                 role="presentation"
                 className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
                 aria-hidden

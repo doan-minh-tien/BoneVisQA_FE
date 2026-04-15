@@ -8,12 +8,12 @@ import useSWRMutation from 'swr/mutation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationList } from '@/components/shared/CitationList';
-import { VisualQaReflectiveQuestions, VisualQaRichAnswer } from '@/components/student/VisualQaRichAnswer';
+import { VisualQaRichAnswer, VisualQaStructuredAnswer } from '@/components/student/VisualQaRichAnswer';
 import Header from '@/components/Header';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
-import { AlertTriangle, Loader2, MessageCircle, Send, UploadCloud } from 'lucide-react';
+import { AlertTriangle, Loader2, MessageCircle, MoreHorizontal, Send, UploadCloud } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -134,6 +134,7 @@ export default function StudentVisualQaImagePage() {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [requestingLecturerReview, setRequestingLecturerReview] = useState(false);
   const [serverForcedExpired, setServerForcedExpired] = useState(false);
+  const [activeAiMenuKey, setActiveAiMenuKey] = useState<string | null>(null);
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
     'student-visual-qa-draft',
     EMPTY_DRAFT,
@@ -297,8 +298,8 @@ export default function StudentVisualQaImagePage() {
     if (isSessionInteractionLocked) {
       toast.info(
         isExpired
-          ? 'Phiên hỏi đáp đã hết hạn. Vui lòng tạo phiên mới.'
-          : 'Bạn đã đạt giới hạn 3 câu hỏi.',
+          ? 'This Q&A session has expired. Please start a new session.'
+          : 'You have reached the 3-question session limit.',
       );
       return;
     }
@@ -364,25 +365,25 @@ export default function StudentVisualQaImagePage() {
           err.response?.data as { errorCode?: string; code?: string } | undefined
         )?.errorCode;
         if (errCode === 'AI_SERVICE_UNAVAILABLE' || err.response?.status === 503) {
-          toast.info('Hệ thống AI đang bận hoặc quá tải. Lượt hỏi của bạn chưa bị trừ, vui lòng thử lại sau giây lát.');
+          toast.info('The AI service is currently busy. Your question quota was not consumed; please try again shortly.');
           return;
         }
         if (errCode === 'INTERNAL_SERVER_ERROR' || err.response?.status === 500) {
-          toast.error('Hệ thống gặp sự cố xử lý. File của bạn đã được dọn dẹp an toàn. Vui lòng thử lại.');
+          toast.error('A processing error occurred. Your uploaded file was safely cleaned up. Please try again.');
           return;
         }
         if (errCode === 'SESSION_EXPIRED') {
           setServerForcedExpired(true);
-          toast.info('Phiên hỏi đáp đã hết hạn. Vui lòng tạo phiên mới.');
+          toast.info('This Q&A session has expired. Please start a new session.');
           return;
         }
         if (errCode === 'TURN_LIMIT_EXCEEDED') {
-          toast.info('Bạn đã đạt giới hạn 3 câu hỏi.');
+          toast.info('You have reached the 3-question session limit.');
           return;
         }
       }
       if (axios.isAxiosError(err) && err.response?.status === 429) {
-        toast.info('Bạn thao tác quá nhanh. Vui lòng đợi khoảng 1 phút trước khi tiếp tục gửi câu hỏi.');
+        toast.info('Requests are being sent too quickly. Please wait about 1 minute before submitting again.');
         return;
       }
       if (axios.isAxiosError(err)) {
@@ -463,10 +464,10 @@ export default function StudentVisualQaImagePage() {
     : false;
   const isSessionInteractionLocked = isLimitReached || isExpired || serverForcedExpired;
   const composerPlaceholder = isExpired
-    ? 'Phiên chat đã hết hạn (quá 24 giờ).'
+    ? 'This chat session has expired (more than 24 hours).'
     : isLimitReached
-      ? 'Phiên chat đã đạt giới hạn 3 câu hỏi.'
-      : 'Bạn muốn hỏi gì về hình ảnh này? (What do you want to know about this image?)';
+      ? 'This chat session has reached the 3-question limit.'
+      : 'What would you like to ask about this image?';
   const isOngoingSession = Boolean(session) && chatTurns.length > 0;
   const lastSessionMessage = session?.messages?.[session.messages.length - 1];
   const lastSessionRole = (lastSessionMessage?.role ?? '').toLowerCase();
@@ -529,10 +530,10 @@ export default function StudentVisualQaImagePage() {
       if (updated.turns.length > 0) {
         setChatTurns(updated.turns.slice(-MAX_SESSION_TURNS));
       }
-      toast.success('Đã gửi yêu cầu hỗ trợ tới giảng viên.');
+      toast.success('Support request has been sent to your lecturer.');
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
-        toast.info('Phiên này đã được gửi để giảng viên xem xét.');
+        toast.info('This session has already been submitted for lecturer review.');
       } else {
         toast.error(error instanceof Error ? error.message : 'Could not request lecturer support.');
       }
@@ -697,15 +698,12 @@ export default function StudentVisualQaImagePage() {
                                 const isStudentMessage =
                                   (message.role ?? '').toLowerCase() === 'student';
                                 return (
-                                  <div
-                                    key={message.id}
-                                    className={`flex ${isStudentMessage ? 'justify-end' : 'justify-start'}`}
-                                  >
+                                  <div key={message.id} className={`group flex ${isStudentMessage ? 'justify-end' : 'justify-start'}`}>
                                     <div
-                                      className={`max-w-[92%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed ${
+                                      className={`relative max-w-[92%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed ${
                                         isStudentMessage
-                                          ? 'border-border/80 bg-muted/60 text-foreground shadow-sm'
-                                          : 'border-border/60 bg-blue-50/80 text-foreground dark:border-border dark:bg-blue-950/40'
+                                          ? 'border-[#0055ff] bg-[#0055ff] text-white shadow-sm'
+                                          : 'border-border/70 bg-slate-100 text-foreground'
                                       }`}
                                     >
                                       {isStudentMessage ? (
@@ -721,20 +719,49 @@ export default function StudentVisualQaImagePage() {
                                           {message.content}
                                         </ReactMarkdown>
                                       ) : (
-                                        <VisualQaRichAnswer
-                                          markdown={message.content}
+                                        <VisualQaStructuredAnswer
+                                          suggestedDiagnosis={turn.suggestedDiagnosis}
+                                          differentialDiagnoses={turn.differentialDiagnoses}
+                                          keyFindings={turn.keyFindings}
+                                          keyImagingFindings={turn.keyImagingFindings}
+                                          reflectiveQuestions={turn.reflectiveQuestions}
                                           citations={turn.citations ?? []}
                                         />
                                       )}
+                                      {!isStudentMessage ? (
+                                        <div className="absolute right-2 top-2">
+                                          <button
+                                            type="button"
+                                            className="rounded-md p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-slate-200"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveAiMenuKey((prev) => (prev === message.id ? null : message.id));
+                                            }}
+                                            aria-label="More actions"
+                                          >
+                                            <MoreHorizontal className="h-4 w-4" />
+                                          </button>
+                                          {activeAiMenuKey === message.id ? (
+                                            <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-white p-1 shadow-lg">
+                                              <button
+                                                type="button"
+                                                className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-foreground hover:bg-muted"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setActiveAiMenuKey(null);
+                                                  void handleRequestLecturerReview();
+                                                }}
+                                              >
+                                                Request Expert Support
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   </div>
                                 );
                               })}
-                              {turn.reflectiveQuestions?.trim() ? (
-                                <div className="pl-0 pr-2 sm:pr-4">
-                                  <VisualQaReflectiveQuestions text={turn.reflectiveQuestions} />
-                                </div>
-                              ) : null}
                               {reviewerNotes.length > 0 ? (
                                 <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -754,11 +781,11 @@ export default function StudentVisualQaImagePage() {
                                         <p
                                           className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
                                             isExpertNote
-                                              ? 'text-emerald-700 dark:text-emerald-300'
-                                              : 'text-orange-700 dark:text-orange-300'
+                                              ? 'text-emerald-700'
+                                              : 'text-orange-700'
                                           }`}
                                         >
-                                          {isExpertNote ? 'Chuyên gia phản hồi' : 'Giảng viên phản hồi'}
+                                          {isExpertNote ? 'Expert feedback' : 'Lecturer feedback'}
                                         </p>
                                         <ReactMarkdown
                                           remarkPlugins={[remarkGfm]}
@@ -785,7 +812,7 @@ export default function StudentVisualQaImagePage() {
                                 </div>
                               </div>
                               <div className="mt-2 flex justify-start">
-                                <div className="max-w-[92%] rounded-2xl border border-border/60 bg-blue-50/80 px-4 py-3 text-sm leading-relaxed text-foreground dark:border-border dark:bg-blue-950/40">
+                                <div className="max-w-[92%] rounded-2xl border border-border/60 bg-blue-50/80 px-4 py-3 text-sm leading-relaxed text-foreground">
                                   <VisualQaRichAnswer
                                     markdown={turn.answerText?.trim() || ''}
                                     citations={turn.citations ?? []}
@@ -810,7 +837,7 @@ export default function StudentVisualQaImagePage() {
                         disabled={requestingLecturerReview}
                         className="transition-all hover:opacity-80 active:scale-95"
                       >
-                        {requestingLecturerReview ? 'Đang gửi yêu cầu...' : 'Yêu cầu Chuyên gia hỗ trợ'}
+                        {requestingLecturerReview ? 'Sending request...' : 'Request expert support'}
                       </Button>
                     </div>
                   ) : null}
@@ -818,20 +845,29 @@ export default function StudentVisualQaImagePage() {
                     <div className="space-y-3 border-t border-border/60 pt-4">
                       {looksLikeAiFallbackAnswer(report.answerText) ? (
                         <div
-                          className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+                          className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950"
                           role="status"
                         >
                           <p className="font-medium">Assistant could not return a full clinical analysis</p>
                         </div>
                       ) : null}
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Nguồn tham khảo (chi tiết)
+                        References (detailed)
                       </p>
                       <CitationList citations={report.citations} />
                     </div>
                   ) : null}
                 </div>
               )}
+              {loading ? (
+                <div className="mt-3 flex justify-start">
+                  <div className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-slate-100 px-4 py-2 text-sm text-muted-foreground">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.2s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.1s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500" />
+                  </div>
+                </div>
+              ) : null}
             </div>
             {!isReadOnlyMode ? (
               <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-4">
@@ -889,7 +925,7 @@ export default function StudentVisualQaImagePage() {
                   <p className="mt-2 text-sm text-muted-foreground">
                     {isExpired ? (
                       <>
-                        Phiên chat đã hết hạn. Tap <span className="font-medium text-foreground">New Chat</span> để tiếp tục.
+                        This chat session has expired. Tap <span className="font-medium text-foreground">New Chat</span> to continue.
                       </>
                     ) : (
                       <>
@@ -910,7 +946,7 @@ export default function StudentVisualQaImagePage() {
                   <DynamicProgressTracker
                     mode="indeterminate"
                     label="AI thinking"
-                    messages={['Đang tìm kiếm trong tài liệu và thư viện ca lâm sàng...']}
+                    messages={['Searching reference documents and clinical case library...']}
                     className="mt-3"
                   />
                 ) : null}
@@ -929,7 +965,7 @@ export default function StudentVisualQaImagePage() {
               </form>
             ) : (
               <div className="shrink-0 border-t border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
-                Đây là phiên hỏi đáp trong lịch sử. Khung chat đã được đóng.
+                This is a historical Q&A session. The chat composer is now read-only.
               </div>
             )}
           </div>
