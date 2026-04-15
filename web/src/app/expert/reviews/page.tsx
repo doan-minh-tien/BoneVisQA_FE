@@ -14,8 +14,12 @@ import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotat
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
+  approveExpertReview,
   fetchExpertReviewQueue,
   flagRagChunk,
+  postExpertResponse,
+  type PromoteExpertReviewPayload,
+  promoteExpertReview,
   putExpertReview,
 } from '@/lib/api/expert-reviews';
 import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
@@ -35,6 +39,7 @@ import {
   Inbox,
   Link2,
   Save,
+  Send,
   User,
   XCircle,
 } from 'lucide-react';
@@ -88,6 +93,18 @@ export default function ExpertReviewsPage() {
   const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [submittingFlag, setSubmittingFlag] = useState(false);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [sendingResponseSessionId, setSendingResponseSessionId] = useState<string | null>(null);
+  const [approvingSessionId, setApprovingSessionId] = useState<string | null>(null);
+  const [promotingSessionId, setPromotingSessionId] = useState<string | null>(null);
+  const [promoteTargetSessionId, setPromoteTargetSessionId] = useState<string | null>(null);
+  const [promoteModalOpen, setPromoteModalOpen] = useState(false);
+  const [promoteDraft, setPromoteDraft] = useState<PromoteExpertReviewPayload>({
+    description: '',
+    suggestedDiagnosis: '',
+    keyFindings: '',
+    reflectiveQuestions: '',
+  });
   const openedFocusRef = useRef<string | null>(null);
   const { trigger: triggerFlagChunk } = useSWRMutation(
     'expert-flag-chunk',
@@ -124,7 +141,7 @@ export default function ExpertReviewsPage() {
     const focus = searchParams.get('focus')?.trim();
     if (!focus || items.length === 0) return;
     if (openedFocusRef.current === focus) return;
-    const match = items.find((i) => i.id === focus || i.answerId === focus);
+    const match = items.find((i) => i.id === focus || i.sessionId === focus || i.answerId === focus);
     if (match) {
       openedFocusRef.current = focus;
       openEdit(match);
@@ -179,7 +196,7 @@ export default function ExpertReviewsPage() {
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean);
-      await putExpertReview(active.id, {
+      await putExpertReview(active.sessionId, {
         answerText: active.report.answerText || '',
         structuredDiagnosis: diag.trim() || active.report.suggestedDiagnosis || '',
         differentialDiagnoses:
@@ -213,7 +230,7 @@ export default function ExpertReviewsPage() {
   const quickApprove = async (item: ExpertReviewItem) => {
     setSaving(true);
     try {
-      await putExpertReview(item.id, {
+      await putExpertReview(item.sessionId, {
         answerText: item.report.answerText || '',
         structuredDiagnosis: item.report.suggestedDiagnosis || '',
         differentialDiagnoses: item.report.differentialDiagnoses,
@@ -239,7 +256,7 @@ export default function ExpertReviewsPage() {
   const quickReject = async (item: ExpertReviewItem) => {
     setSaving(true);
     try {
-      await putExpertReview(item.id, {
+      await putExpertReview(item.sessionId, {
         answerText: item.report.answerText || '',
         structuredDiagnosis: item.report.suggestedDiagnosis || '',
         differentialDiagnoses: item.report.differentialDiagnoses,
@@ -259,6 +276,145 @@ export default function ExpertReviewsPage() {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const submitExpertReply = async (item: ExpertReviewItem) => {
+    const content = (replyDrafts[item.sessionId] ?? '').trim();
+    if (!content) {
+      toast.error('Please enter feedback before sending.');
+      return;
+    }
+    setSendingResponseSessionId(item.sessionId);
+    try {
+      await postExpertResponse(item.sessionId, content);
+      setReplyDrafts((prev) => ({ ...prev, [item.sessionId]: '' }));
+      setItems((prev) =>
+        prev.map((row) => {
+          if (row.id !== item.id || !row.turns || row.turns.length === 0) return row;
+          const nextTurns = [...row.turns];
+          const lastIdx = nextTurns.length - 1;
+          const lastTurn = nextTurns[lastIdx];
+          const existingMessages = lastTurn.messages ?? [
+            ...(lastTurn.questionText
+              ? [{ role: 'Student', content: lastTurn.questionText, createdAt: lastTurn.createdAt ?? null }]
+              : []),
+            ...(lastTurn.answerText
+              ? [{ role: 'Assistant', content: lastTurn.answerText, createdAt: lastTurn.createdAt ?? null }]
+              : []),
+          ];
+          nextTurns[lastIdx] = {
+            ...lastTurn,
+            messages: [
+              ...existingMessages,
+              { role: 'Expert', content, createdAt: new Date().toISOString() },
+            ],
+          };
+          return { ...row, turns: nextTurns };
+        }),
+      );
+      toast.success('Expert feedback sent to student.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send expert feedback.');
+    } finally {
+      setSendingResponseSessionId(null);
+    }
+  };
+
+  const submitExpertApprove = async (item: ExpertReviewItem) => {
+    setApprovingSessionId(item.sessionId);
+    try {
+      await approveExpertReview(item.sessionId);
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === item.id
+            ? { ...row, status: 'ExpertApproved' }
+            : row,
+        ),
+      );
+      toast.success('Đã duyệt và xác nhận chuyên môn.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to approve this review.');
+    } finally {
+      setApprovingSessionId(null);
+    }
+  };
+
+  const openPromoteModal = (item: ExpertReviewItem) => {
+    const firstStudentQuestion = (() => {
+      const firstTurn = item.turns?.[0];
+      if (!firstTurn) return item.questionText?.trim() || item.question?.trim() || '';
+      const messageQuestion = (firstTurn.messages ?? []).find((message) => {
+        const role = (message.role ?? '').toLowerCase();
+        return role === 'student' || role === 'user';
+      });
+      return (
+        messageQuestion?.content?.trim() ||
+        firstTurn.questionText?.trim() ||
+        item.questionText?.trim() ||
+        item.question?.trim() ||
+        ''
+      );
+    })();
+
+    const lastExpertReply = (() => {
+      const turns = item.turns ?? [];
+      for (let i = turns.length - 1; i >= 0; i -= 1) {
+        const messages = turns[i]?.messages ?? [];
+        for (let j = messages.length - 1; j >= 0; j -= 1) {
+          const msg = messages[j];
+          if ((msg.role ?? '').toLowerCase() === 'expert' && msg.content?.trim()) {
+            return msg.content.trim();
+          }
+        }
+      }
+      return '';
+    })();
+
+    setPromoteTargetSessionId(item.sessionId);
+    setPromoteDraft({
+      description: firstStudentQuestion,
+      suggestedDiagnosis: lastExpertReply,
+      keyFindings: '',
+      reflectiveQuestions: '',
+    });
+    setPromoteModalOpen(true);
+  };
+
+  const submitExpertPromote = async () => {
+    if (!promoteTargetSessionId) return;
+    const payload = {
+      description: promoteDraft.description.trim(),
+      suggestedDiagnosis: promoteDraft.suggestedDiagnosis.trim(),
+      keyFindings: promoteDraft.keyFindings.trim(),
+      reflectiveQuestions: promoteDraft.reflectiveQuestions.trim(),
+    };
+    if (!payload.description || !payload.suggestedDiagnosis || !payload.keyFindings || !payload.reflectiveQuestions) {
+      toast.error('Vui lòng điền đầy đủ 4 trường trước khi publish.');
+      return;
+    }
+
+    setPromotingSessionId(promoteTargetSessionId);
+    try {
+      const promotedCaseId = await promoteExpertReview(promoteTargetSessionId, payload);
+      if (promotedCaseId) {
+        setItems((prev) =>
+          prev.map((row) =>
+            row.sessionId === promoteTargetSessionId
+              ? { ...row, promotedCaseId }
+              : row,
+          ),
+        );
+      } else {
+        await load();
+      }
+      toast.success('Đã đưa ca bệnh vào Thư viện hệ thống!');
+      setPromoteModalOpen(false);
+      setPromoteTargetSessionId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to publish this case.');
+    } finally {
+      setPromotingSessionId(null);
     }
   };
 
@@ -369,6 +525,137 @@ export default function ExpertReviewsPage() {
                                 Left pane · Expert edit mode
                               </p>
                               <p className="mb-4 text-sm leading-relaxed text-text-main">{item.question}</p>
+                              <div className="mb-4 rounded-xl border border-border-color bg-background/40 p-4">
+                                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                                  Session chat history
+                                </p>
+                                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                                  {item.turns && item.turns.length > 0 ? (
+                                    item.turns.map((turn) => {
+                                      const normalizedMessages = (turn.messages ?? [])
+                                        .filter((message) => message.content?.trim())
+                                        .map((message, idx) => ({
+                                          id: `${turn.turnIndex}-m-${idx}`,
+                                          role: (message.role ?? '').toLowerCase(),
+                                          content: message.content.trim(),
+                                        }));
+                                      const fallbackMessages =
+                                        normalizedMessages.length > 0
+                                          ? normalizedMessages
+                                          : [
+                                              {
+                                                id: `${turn.turnIndex}-student`,
+                                                role: 'student',
+                                                content: turn.questionText?.trim() || '—',
+                                              },
+                                              {
+                                                id: `${turn.turnIndex}-assistant`,
+                                                role: 'assistant',
+                                                content: turn.answerText?.trim() || '—',
+                                              },
+                                            ];
+                                      return (
+                                        <div key={`turn-${turn.turnIndex}`} className="space-y-2 rounded-lg border border-border-color/80 p-3">
+                                          {fallbackMessages.map((message) => {
+                                            const role = message.role;
+                                            const isStudent = role === 'student' || role === 'user';
+                                            const isExpert = role === 'expert';
+                                            const isLecturer = role === 'lecturer';
+                                            const label = isExpert
+                                              ? 'Chuyên gia phản hồi'
+                                              : isLecturer
+                                                ? 'Giảng viên phản hồi'
+                                                : isStudent
+                                                  ? 'Sinh viên'
+                                                  : 'AI';
+                                            return (
+                                              <div key={message.id} className={`rounded-lg border px-3 py-2 text-sm ${
+                                                isStudent
+                                                  ? 'border-border-color bg-surface'
+                                                  : isExpert
+                                                    ? 'border-emerald-400/40 bg-emerald-500/10'
+                                                    : isLecturer
+                                                      ? 'border-orange-400/40 bg-orange-500/10'
+                                                      : 'border-cyan-accent/30 bg-cyan-accent/10'
+                                              }`}>
+                                                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                                                  {label}
+                                                </p>
+                                                <p className="whitespace-pre-wrap leading-relaxed text-text-main">
+                                                  {message.content}
+                                                </p>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <p className="text-sm text-text-muted">No session turns available.</p>
+                                  )}
+                                </div>
+                                <div className="mt-4 space-y-2">
+                                  <textarea
+                                    value={replyDrafts[item.sessionId] ?? ''}
+                                    onChange={(e) =>
+                                      setReplyDrafts((prev) => ({
+                                        ...prev,
+                                        [item.sessionId]: e.target.value,
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Nhập phản hồi chuyên gia cho sinh viên..."
+                                    className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+                                  />
+                                  <div className="flex flex-wrap justify-end gap-2">
+                                    {(() => {
+                                      const statusKey = (item.status ?? '').toLowerCase();
+                                      const isApproved = statusKey === 'expertapproved';
+                                      const canApprove = !isApproved;
+                                      const canPromote =
+                                        !item.promotedCaseId && isApproved && Boolean(item.customImageUrl) && !item.imageId;
+                                      return (
+                                        <>
+                                    <Button
+                                      type="button"
+                                      onClick={() => void submitExpertReply(item)}
+                                      isLoading={sendingResponseSessionId === item.sessionId}
+                                      disabled={sendingResponseSessionId === item.sessionId}
+                                    >
+                                      <Send className="h-4 w-4" />
+                                      Gửi phản hồi
+                                    </Button>
+                                    {canApprove ? (
+                                      <Button
+                                        type="button"
+                                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                        onClick={() => void submitExpertApprove(item)}
+                                        isLoading={approvingSessionId === item.sessionId}
+                                        disabled={approvingSessionId === item.sessionId}
+                                      >
+                                        <CheckCircle className="h-4 w-4" />
+                                        Duyệt & Xác nhận chuẩn
+                                      </Button>
+                                    ) : null}
+                                    {canPromote ? (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="border-violet-500/60 text-violet-200 hover:bg-violet-500/15"
+                                        onClick={() => openPromoteModal(item)}
+                                        isLoading={promotingSessionId === item.sessionId}
+                                        disabled={promotingSessionId === item.sessionId}
+                                      >
+                                        <Save className="h-4 w-4" />
+                                        Đưa vào Thư viện
+                                      </Button>
+                                    ) : null}
+                                  </>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
                               <ReportWorkbench
                                 report={item.report}
                                 isEditing={isEditing}
@@ -457,6 +744,24 @@ export default function ExpertReviewsPage() {
         onReasonChange={setFlagReason}
         onClose={closeFlagModal}
         onSubmit={() => void submitFlag()}
+      />
+      <PromoteCaseModal
+        open={promoteModalOpen}
+        value={promoteDraft}
+        submitting={Boolean(promotingSessionId)}
+        canSubmit={
+          Boolean(promoteDraft.description.trim()) &&
+          Boolean(promoteDraft.suggestedDiagnosis.trim()) &&
+          Boolean(promoteDraft.keyFindings.trim()) &&
+          Boolean(promoteDraft.reflectiveQuestions.trim())
+        }
+        onChange={setPromoteDraft}
+        onClose={() => {
+          if (promotingSessionId) return;
+          setPromoteModalOpen(false);
+          setPromoteTargetSessionId(null);
+        }}
+        onSubmit={() => void submitExpertPromote()}
       />
 
     </div>
@@ -589,6 +894,89 @@ function FlagChunkModal({
           <Button type="button" variant="destructive" isLoading={submitting} onClick={onSubmit}>
             <Flag className="h-4 w-4" />
             Submit Flag
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PromoteCaseModal({
+  open,
+  value,
+  submitting,
+  canSubmit,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  value: PromoteExpertReviewPayload;
+  submitting: boolean;
+  canSubmit: boolean;
+  onChange: (next: PromoteExpertReviewPayload) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  const updateField = (key: keyof PromoteExpertReviewPayload, fieldValue: string) => {
+    onChange({ ...value, [key]: fieldValue });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4">
+      <div className="w-full max-w-3xl rounded-2xl border border-border-color bg-surface p-5 shadow-panel">
+        <h3 className="text-lg font-semibold text-text-main">Đưa ca bệnh vào Thư viện</h3>
+        <p className="mt-2 text-sm text-text-muted">
+          Chuyên gia phải rà soát và điền đầy đủ thông tin học tập trước khi publish.
+        </p>
+
+        <div className="mt-4 grid gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">Description</label>
+            <textarea
+              value={value.description}
+              onChange={(e) => updateField('description', e.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">Suggested Diagnosis</label>
+            <textarea
+              value={value.suggestedDiagnosis}
+              onChange={(e) => updateField('suggestedDiagnosis', e.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">Key Findings</label>
+            <textarea
+              value={value.keyFindings}
+              onChange={(e) => updateField('keyFindings', e.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">Reflective Questions</label>
+            <textarea
+              value={value.reflectiveQuestions}
+              onChange={(e) => updateField('reflectiveQuestions', e.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" disabled={submitting} onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="button" disabled={!canSubmit || submitting} isLoading={submitting} onClick={onSubmit}>
+            Xác nhận Publish
           </Button>
         </div>
       </div>
