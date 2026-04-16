@@ -12,9 +12,24 @@ export type VisualQaReferenceRow = {
   label: string;
   href: string;
   documentId?: string;
+  snippet?: string;
+  pageLabel?: string;
   isLegacyUnavailable?: boolean;
   latestHref?: string;
 };
+
+function withPdfPageAnchor(url: string, citation?: VisualQaCitation): string {
+  if (!url) return url;
+  const startPage =
+    (typeof citation?.startPage === 'number' && Number.isFinite(citation.startPage) && citation.startPage > 0
+      ? citation.startPage
+      : undefined) ??
+    (typeof citation?.pageNumber === 'number' && Number.isFinite(citation.pageNumber) && citation.pageNumber > 0
+      ? citation.pageNumber
+      : undefined);
+  if (!startPage) return url;
+  return `${url.replace(/#.*$/, '')}#page=${startPage}`;
+}
 
 function idKey(kind: 'doc' | 'case', id: string): string {
   return `${kind}:${id.toLowerCase()}`;
@@ -55,20 +70,24 @@ export function buildVisualQaReferences(
   };
 
   for (const m of markers) {
+    const cit = citations.find(
+      (c) =>
+        (m.kind === 'doc' &&
+          ((c.documentId && c.documentId.toLowerCase() === m.id.toLowerCase()) ||
+            (c.documentUrl && c.documentUrl.toLowerCase().includes(m.id.replace(/-/g, '').toLowerCase())))) ||
+        (m.kind === 'case' && c.caseId && c.caseId.toLowerCase() === m.id.toLowerCase()),
+    );
     if (m.kind === 'doc') {
-      const cit = citations.find(
-        (c) =>
-          (c.documentId && c.documentId.toLowerCase() === m.id.toLowerCase()) ||
-          (c.documentUrl && c.documentUrl.toLowerCase().includes(m.id.replace(/-/g, '').toLowerCase())),
-      );
       const rawUrl = resolveApiAssetUrl(cit?.documentUrl);
       const href = rawUrl ? withVersionedAssetUrl(rawUrl, cit?.version ?? m.version) : '';
       pushRef({
         key: idKey('doc', m.id),
         kind: 'doc',
-        label: cit?.title?.trim() || `Document ${m.id.slice(0, 8)}...`,
+        label: cit?.displayLabel?.trim() || cit?.label?.trim() || cit?.title?.trim() || `Document ${m.id.slice(0, 8)}...`,
         href,
         documentId: m.id,
+        snippet: cit?.snippet?.trim() || undefined,
+        pageLabel: cit?.pageLabel?.trim() || undefined,
         isLegacyUnavailable: !href,
         latestHref: latestDocumentHref(m.id),
       });
@@ -76,8 +95,10 @@ export function buildVisualQaReferences(
       pushRef({
         key: idKey('case', m.id),
         kind: 'case',
-        label: `Clinical case ${m.id.slice(0, 8)}...`,
-        href: `/student/cases/${m.id}`,
+        label: cit?.displayLabel?.trim() || cit?.label?.trim() || `Clinical case ${m.id.slice(0, 8)}...`,
+        href: cit?.href?.trim() || `/student/cases/${m.id}`,
+        snippet: cit?.snippet?.trim() || undefined,
+        pageLabel: cit?.pageLabel?.trim() || undefined,
       });
     }
   }
@@ -91,13 +112,19 @@ export function buildVisualQaReferences(
       if (seen.has(key)) continue;
       const rawUrl = resolveApiAssetUrl(c.documentUrl);
       if (!rawUrl && !c.title?.trim()) continue;
-      const href = rawUrl ? withVersionedAssetUrl(rawUrl, c.version) : '';
+      const href = rawUrl ? withPdfPageAnchor(withVersionedAssetUrl(rawUrl, c.version), c) : '';
       pushRef({
         key,
         kind: 'doc',
-        label: c.title?.trim() || `Document ${docId.slice(0, 8)}...`,
+        label:
+          c.displayLabel?.trim() ||
+          c.label?.trim() ||
+          c.title?.trim() ||
+          `Document ${docId.slice(0, 8)}...`,
         href,
         documentId: docId,
+        snippet: c.snippet?.trim() || undefined,
+        pageLabel: c.pageLabel?.trim() || undefined,
         isLegacyUnavailable: !href,
         latestHref: latestDocumentHref(docId),
       });
@@ -107,23 +134,29 @@ export function buildVisualQaReferences(
       pushRef({
         key,
         kind: 'case',
-        label: c.title?.trim() || `Clinical case ${caseId.slice(0, 8)}...`,
+        label: c.displayLabel?.trim() || c.label?.trim() || c.title?.trim() || `Clinical case ${caseId.slice(0, 8)}...`,
         href: `/student/cases/${caseId}`,
+        snippet: c.snippet?.trim() || undefined,
+        pageLabel: c.pageLabel?.trim() || undefined,
       });
     } else {
       const rawUrl = resolveApiAssetUrl(c.documentUrl);
       if (!rawUrl?.trim() && !c.title?.trim()) continue;
-      const key = `legacy:${rawUrl || 't'}:${c.chunkOrder ?? structIdx}`;
+      const key = `legacy:${rawUrl || 't'}:${structIdx}`;
       structIdx += 1;
-      const href = rawUrl ? withVersionedAssetUrl(rawUrl, c.version) : '';
+      const href = rawUrl ? withPdfPageAnchor(withVersionedAssetUrl(rawUrl, c.version), c) : '';
       pushRef({
         key,
         kind: 'doc',
         label:
+          c.displayLabel?.trim() ||
+          c.label?.trim() ||
           c.title?.trim() ||
-          (c.chunkOrder != null ? `Excerpt ${c.chunkOrder}` : 'Reference document'),
+          'Reference document',
         href,
         documentId: undefined,
+        snippet: c.snippet?.trim() || undefined,
+        pageLabel: c.pageLabel?.trim() || undefined,
         isLegacyUnavailable: !href,
         latestHref: '',
       });

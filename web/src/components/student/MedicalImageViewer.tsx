@@ -42,6 +42,8 @@ export function MedicalImageViewer({
   const drag = useRef(false);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
+  /** Image + overlay coordinate space (matches cursor / ROI regardless of scroll or outer chrome). */
+  const imageStageRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const drawLayerRef = useRef<HTMLDivElement | null>(null);
 
@@ -75,8 +77,9 @@ export function MedicalImageViewer({
   }, []);
 
   const getNormalizedPoint = useCallback((clientX: number, clientY: number) => {
-    const rect = drawLayerRef.current?.getBoundingClientRect();
-    if (!rect) return null;
+    const rect =
+      imageStageRef.current?.getBoundingClientRect() ?? drawLayerRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
     return normalizeClientPointFromRect(clientX, clientY, rect);
   }, []);
 
@@ -183,6 +186,7 @@ export function MedicalImageViewer({
           }}
         >
           <div
+            ref={imageStageRef}
             className="relative inline-block max-h-full max-w-full"
             style={{
               width: imageSize.width ? `${imageSize.width}px` : undefined,
@@ -281,8 +285,7 @@ export function MedicalImageViewer({
         </div>
       </div>
       <p className="border-t border-border-color bg-black px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Scroll to zoom · Rectangle ROI: select square tool, click-drag on the image, release to commit (normalized x,
-        y, width, height) · Educational preview only
+        Scroll to zoom · Square tool: click-drag on the image to mark a region of interest · Educational preview only
       </p>
     </div>
   );

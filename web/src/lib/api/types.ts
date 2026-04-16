@@ -2,7 +2,16 @@
 export interface VisualQaCitation {
   documentUrl?: string;
   chunkOrder?: number;
+  pageNumber?: number;
+  startPage?: number;
+  endPage?: number;
   title?: string;
+  label?: string;
+  displayLabel?: string;
+  snippet?: string;
+  pageLabel?: string;
+  kind?: 'doc' | 'case' | string;
+  href?: string;
   /** Knowledge-base document id when API provides it (for markers & versioned links). */
   documentId?: string;
   /** Clinical case id when citation points at a case. */
@@ -11,39 +20,60 @@ export interface VisualQaCitation {
   version?: string;
 }
 
+export type VisualQaResponseKind =
+  | 'analysis'
+  | 'refusal'
+  | 'clarification'
+  | 'review_update'
+  | 'system_notice'
+  | string;
+
+export type VisualQaReviewState =
+  | 'none'
+  | 'pending'
+  | 'escalated'
+  | 'reviewed'
+  | 'resolved'
+  | string;
+
 export interface VisualQaReport {
   /** Echoed from the request when the API returns it. */
   questionText?: string;
-  answerText: string;
-  suggestedDiagnosis: string;
-  keyFindings: string[];
-  /** SEPS: radiology-focused learning narrative (may be prose or newline-separated). */
-  keyImagingFindings?: string | null;
-  /** SEPS: educator prompts for self-reflection. */
-  reflectiveQuestions?: string | null;
+  answerText?: string;
+  diagnosis?: string;
+  findings?: string[];
+  reflectiveQuestions?: string[];
   differentialDiagnoses: string[];
-  recommendedReadings: Array<{ title?: string; url?: string } | string>;
   citations: VisualQaCitation[];
   /** Model confidence when provided by the backend (0–100). */
   aiConfidenceScore?: number;
+  responseKind?: VisualQaResponseKind | null;
+  clientRequestId?: string | null;
 }
 
 export interface VisualQaTurn {
+  turnId?: string | null;
   turnIndex: number;
-  questionText: string;
-  answerText: string;
+  questionText?: string;
+  answerText?: string;
   messages?: VisualQaMessage[];
   /** Message-level ROI for this specific Q/A turn (normalized 0-1). */
   roiBoundingBox?: NormalizedImageBoundingBox | null;
-  suggestedDiagnosis: string;
-  keyFindings: string[];
-  keyImagingFindings?: string | null;
-  reflectiveQuestions?: string | null;
+  diagnosis?: string;
+  findings?: string[];
+  reflectiveQuestions?: string[];
   differentialDiagnoses: string[];
-  recommendedReadings: Array<{ title?: string; url?: string } | string>;
   citations: VisualQaCitation[];
   aiConfidenceScore?: number;
   createdAt?: string | null;
+  responseKind?: VisualQaResponseKind | null;
+  clientRequestId?: string | null;
+  userMessageId?: string | null;
+  assistantMessageId?: string | null;
+  reviewState?: VisualQaReviewState | null;
+  lastResponderRole?: string | null;
+  actorRole?: string | null;
+  isReviewTarget?: boolean;
 }
 
 export interface VisualQaMessage {
@@ -54,10 +84,28 @@ export interface VisualQaMessage {
 
 export interface VisualQaSessionReport {
   sessionId: string;
+  clientRequestId?: string | null;
+  responseKind?: VisualQaResponseKind | null;
+  diagnosis?: string;
+  findings?: string[];
+  differentialDiagnoses?: string[];
+  reflectiveQuestions?: string[];
+  citations?: VisualQaCitation[];
   caseId?: string | null;
   imageId?: string | null;
   status?: string | null;
   updatedAt?: string | null;
+  reviewState?: VisualQaReviewState | null;
+  lastResponderRole?: string | null;
+  systemNotice?: string | null;
+  capabilities?: {
+    canAskNext?: boolean;
+    canRequestReview?: boolean;
+    isReadOnly?: boolean;
+    turnsUsed?: number;
+    turnLimit?: number;
+    reason?: string | null;
+  };
   messages?: VisualQaMessage[];
   turns: VisualQaTurn[];
   latest: VisualQaTurn | null;
@@ -405,7 +453,9 @@ export type StudentHistoryKind = 'caseStudy' | 'personalQa';
 
 export interface StudentCaseHistoryItem {
   id: string;
+  sessionId?: string | null;
   title: string;
+  lastQuestionAsked?: string | null;
   thumbnailUrl?: string;
   boneLocation: string;
   lesionType: string;
