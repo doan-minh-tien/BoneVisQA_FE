@@ -5,10 +5,11 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StudentHistoryPageSkeleton } from '@/components/shared/DashboardSkeletons';
+import { SectionCard } from '@/components/shared/SectionCard';
 import CaseCard from '@/components/student/CaseCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fetchStudentHistoryForUi } from '@/lib/api/student';
+import { fetchStudentCaseLibraryHistory, fetchStudentPersonalStudiesHistory } from '@/lib/api/student';
 import type { StudentCaseHistoryItem } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 import { BookOpen, Filter, ImageUp, Search, Upload } from 'lucide-react';
@@ -32,8 +33,10 @@ export default function StudentHistoryPage() {
   const searchParams = useSearchParams();
   const activeTab = tabFromSearch(searchParams.get('tab'));
 
-  const [items, setItems] = useState<StudentCaseHistoryItem[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [caseItems, setCaseItems] = useState<StudentCaseHistoryItem[]>([]);
+  const [personalItems, setPersonalItems] = useState<StudentCaseHistoryItem[]>([]);
+  const [totalCaseCount, setTotalCaseCount] = useState(0);
+  const [totalPersonalCount, setTotalPersonalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<(typeof difficultyFilters)[number]['id']>('all');
@@ -48,10 +51,15 @@ export default function StudentHistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetchStudentHistoryForUi();
+        const [personalResponse, caseResponse] = await Promise.all([
+          fetchStudentPersonalStudiesHistory(),
+          fetchStudentCaseLibraryHistory(),
+        ]);
         if (!cancelled) {
-          setItems(response.items);
-          setTotalCount(response.totalCount);
+          setPersonalItems(personalResponse.items);
+          setCaseItems(caseResponse.items);
+          setTotalPersonalCount(personalResponse.totalCount);
+          setTotalCaseCount(caseResponse.totalCount);
         }
       } catch (error) {
         if (!cancelled) {
@@ -67,10 +75,8 @@ export default function StudentHistoryPage() {
   }, [toast]);
 
   const tabItems = useMemo(() => {
-    return items.filter((item) =>
-      activeTab === 'cases' ? item.historyKind === 'caseStudy' : item.historyKind === 'personalQa',
-    );
-  }, [items, activeTab]);
+    return activeTab === 'cases' ? caseItems : personalItems;
+  }, [activeTab, caseItems, personalItems]);
 
   const filtered = useMemo(() => {
     return tabItems.filter((item) => {
@@ -86,6 +92,8 @@ export default function StudentHistoryPage() {
   }, [difficulty, tabItems, search]);
 
   const headerSubtitle =
+  const backendTotalForActiveTab = activeTab === 'cases' ? totalCaseCount : totalPersonalCount;
+
     activeTab === 'cases'
       ? 'Expert-approved library cases you opened and worked through in Visual QA.'
       : 'Your own X-ray uploads and questions submitted through Visual QA (custom studies).';
@@ -128,7 +136,15 @@ export default function StudentHistoryPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 md:p-5">
+        <SectionCard
+          title={activeTab === 'cases' ? 'Case Library History' : 'Personal Studies'}
+          description={
+            activeTab === 'cases'
+              ? 'Review your interactions on curated case-library studies.'
+              : 'Review your uploaded-study sessions and the last question you asked.'
+          }
+          className="p-4 md:p-5"
+        >
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="w-full md:max-w-md">
               <div className="flex items-center gap-2 rounded-xl border border-border bg-input px-3 py-3 focus-within:ring-2 focus-within:ring-ring">
@@ -164,14 +180,14 @@ export default function StudentHistoryPage() {
               ))}
             </div>
           </div>
-        </div>
+        </SectionCard>
 
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground md:text-sm">
           <span>
             Showing <span className="font-medium text-card-foreground">{filtered.length}</span> entr
             {filtered.length === 1 ? 'y' : 'ies'} in this tab
-            {totalCount > 0 ? (
-              <span className="ml-1 text-muted-foreground/80">(backend total: {totalCount})</span>
+            {backendTotalForActiveTab > 0 ? (
+              <span className="ml-1 text-muted-foreground/80">(backend total: {backendTotalForActiveTab})</span>
             ) : null}
           </span>
           <span className="hidden md:inline">
@@ -190,7 +206,7 @@ export default function StudentHistoryPage() {
                 <ImageUp className="h-6 w-6 text-primary" />
               )
             }
-            title={activeTab === 'cases' ? 'No case study history yet' : 'No personal Q&A yet'}
+            title={activeTab === 'cases' ? 'No case study history yet' : 'No personal studies yet'}
             description={
               activeTab === 'cases'
                 ? 'Open a case from the catalog and run Visual QA to build this timeline. You can also switch to Personal Q&A to see custom uploads.'
@@ -203,12 +219,14 @@ export default function StudentHistoryPage() {
               const detailHref =
                 activeTab === 'cases' && item.catalogCaseId?.trim()
                   ? `/student/cases/${encodeURIComponent(item.catalogCaseId.trim())}`
+                  : activeTab === 'personal' && item.sessionId?.trim()
+                    ? `/student/qa/image?sessionId=${encodeURIComponent(item.sessionId.trim())}`
                   : undefined;
               return (
                 <CaseCard
                   key={item.id}
                   href={detailHref}
-                  title={item.title}
+                  title={item.lastQuestionAsked?.trim() || item.title}
                   thumbnail={item.thumbnailUrl}
                   boneLocation={item.boneLocation}
                   lesionType={item.lesionType}

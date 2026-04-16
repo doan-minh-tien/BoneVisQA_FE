@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import type { VisualQaCitation } from '@/lib/api/types';
 import { buildVisualQaReferences } from '@/lib/utils/visual-qa-references';
-import { AlertTriangle, BookOpen, FileText, Stethoscope } from 'lucide-react';
+import { AlertTriangle, BookOpen, FileText, SearchCheck, Stethoscope, TriangleAlert } from 'lucide-react';
 
 type Props = {
   markdown: string;
@@ -30,12 +30,12 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
           p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
         }}
       >
-        {cleanMarkdown.trim() || '_—_'}
+        {cleanMarkdown.trim() || '—'}
       </ReactMarkdown>
 
       {references.length > 0 ? (
-        <div className="mt-3 rounded-xl border border-cyan-accent/25 bg-cyan-accent/5 px-3 py-2.5">
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-700">
+        <div className="mt-3 rounded-xl border border-cyan-500/40 bg-cyan-50 px-3 py-2.5 shadow-sm">
+          <p className="text-contrast-outline-soft mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-950">
             <BookOpen className="h-3.5 w-3.5" aria-hidden />
             References
           </p>
@@ -45,7 +45,7 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
                 {r.kind === 'case' && r.href ? (
                   <Link
                     href={r.href}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-900 transition-colors hover:bg-emerald-500/20"
+                    className="text-contrast-outline-soft inline-flex items-center gap-2 rounded-lg border border-emerald-500/45 bg-emerald-100 px-2.5 py-1.5 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-200"
                   >
                     <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     {r.label}
@@ -55,7 +55,7 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
                     href={r.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-500/15"
+                    className="text-contrast-outline-soft inline-flex items-center gap-2 rounded-lg border border-sky-500/45 bg-sky-100 px-2.5 py-1.5 text-xs font-medium text-sky-950 transition-colors hover:bg-sky-200"
                   >
                     <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     {r.label}
@@ -69,8 +69,8 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
                       <span className="text-[10px]">—</span>
                     </span>
                     {r.kind === 'doc' && r.isLegacyUnavailable ? (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs">
-                        <p className="flex items-center gap-1.5 font-medium text-amber-800">
+                      <div className="rounded-lg border border-amber-500/45 bg-amber-100 px-2.5 py-2 text-xs text-amber-950 shadow-sm">
+                        <p className="text-contrast-outline-soft flex items-center gap-1.5 font-medium text-amber-950">
                           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
                           This reference belongs to a legacy version.
                         </p>
@@ -79,7 +79,7 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
                             href={r.latestHref}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-1 inline-flex rounded-md border border-amber-500/35 bg-amber-500/15 px-2 py-1 font-medium text-amber-900 transition-colors hover:bg-amber-500/25"
+                            className="text-contrast-outline-soft mt-1 inline-flex rounded-md border border-amber-500/45 bg-amber-200 px-2 py-1 font-medium text-amber-950 transition-colors hover:bg-amber-300"
                           >
                             View latest document
                           </a>
@@ -98,76 +98,112 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
 }
 
 type StructuredAnswerProps = {
-  suggestedDiagnosis?: string | null;
+  markdown?: string;
+  diagnosis?: string | null;
+  findings?: string[];
   differentialDiagnoses?: string[];
-  keyFindings?: string[];
-  keyImagingFindings?: string | null;
-  reflectiveQuestions?: string | null;
+  reflectiveQuestions?: string[];
   citations?: VisualQaCitation[];
 };
 
-function formatReferenceRows(citations: VisualQaCitation[]): string[] {
+type StructuredReferenceRow = {
+  label: string;
+  href?: string;
+  snippet?: string;
+};
+
+function withPageAnchor(url: string, startPage?: number): string {
+  if (!url || !startPage || !Number.isFinite(startPage) || startPage <= 0) return url;
+  const baseUrl = url.replace(/#.*$/, '');
+  return `${baseUrl}#page=${Math.floor(startPage)}`;
+}
+
+function formatReferenceRows(citations: VisualQaCitation[]): StructuredReferenceRow[] {
   if (!citations.length) return [];
-  const grouped = new Map<string, { title: string; pages: number[] }>();
+  const displayReady = citations
+    .map((citation) => {
+      const displayLabel = citation.displayLabel?.trim();
+      const fallbackLabel = citation.label?.trim();
+      const label = displayLabel || fallbackLabel;
+      if (!label) return null;
+      const pageLabel = citation.pageLabel?.trim();
+      const shouldAppendPage =
+        !displayLabel &&
+        Boolean(pageLabel) &&
+        !label.toLowerCase().includes(pageLabel!.toLowerCase());
+      return {
+        label: shouldAppendPage ? `${label} - ${pageLabel}` : label,
+        href: citation.href?.trim() || withPageAnchor(citation.documentUrl?.trim() || '', citation.startPage),
+        snippet: citation.snippet?.trim() || undefined,
+      };
+    })
+    .filter((row): row is StructuredReferenceRow => row !== null);
+  if (displayReady.length > 0) return displayReady;
+  const grouped = new Map<string, { pages: number[]; href?: string; startPage?: number }>();
   citations.forEach((c, idx) => {
     const key = (c.documentId?.trim() || c.documentUrl?.trim() || `ref-${idx}`).toLowerCase();
-    const title = c.title?.trim() || `Reference ${idx + 1}`;
-    const chunk = typeof c.chunkOrder === 'number' && Number.isFinite(c.chunkOrder) ? c.chunkOrder : null;
-    const row = grouped.get(key) ?? { title, pages: [] };
-    if (chunk != null) row.pages.push(chunk);
+    const parsedStartPage =
+      typeof c.startPage === 'number' && Number.isFinite(c.startPage) && c.startPage > 0
+        ? c.startPage
+        : typeof c.pageNumber === 'number' && Number.isFinite(c.pageNumber) && c.pageNumber > 0
+          ? c.pageNumber
+          : undefined;
+    const row = grouped.get(key) ?? {
+      pages: [],
+      href: c.documentUrl?.trim() || undefined,
+      startPage: parsedStartPage,
+    };
+    if (parsedStartPage != null) row.pages.push(parsedStartPage);
+    if (!row.href && c.documentUrl?.trim()) row.href = c.documentUrl.trim();
+    if (!row.startPage && parsedStartPage) row.startPage = parsedStartPage;
     grouped.set(key, row);
   });
-  return Array.from(grouped.values()).map(({ title, pages }) => {
-    if (!pages.length) return `${title}`;
+  return Array.from(grouped.values()).map(({ pages, href, startPage }, index) => {
+    const refNo = index + 1;
+    const normalizedHref = href ? withPageAnchor(href, startPage) : undefined;
+    if (!pages.length) {
+      return {
+        label: `Reference [${refNo}]`,
+        href: normalizedHref,
+      };
+    }
     const sorted = [...pages].sort((a, b) => a - b);
     const start = sorted[0];
     const end = sorted[sorted.length - 1];
-    return `${title} - Page ${start}${end !== start ? `-${end}` : ''}`;
+    return {
+      label: `Reference [${refNo}] - Page ${start}${end !== start ? `-${end}` : ''}`,
+      href: normalizedHref,
+    };
   });
 }
 
 export function VisualQaStructuredAnswer({
-  suggestedDiagnosis,
+  markdown,
+  diagnosis,
+  findings = [],
   differentialDiagnoses = [],
-  keyFindings = [],
-  keyImagingFindings,
-  reflectiveQuestions,
+  reflectiveQuestions = [],
   citations = [],
 }: StructuredAnswerProps) {
   const refs = formatReferenceRows(citations);
-  const normalizedFindings =
-    keyFindings.length > 0
-      ? keyFindings
-      : keyImagingFindings
-        ? keyImagingFindings
-            .split(/\n|;/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
 
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested Diagnosis</p>
-        <p className="mt-1 font-semibold text-foreground">{suggestedDiagnosis?.trim() || 'No diagnosis provided.'}</p>
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Stethoscope className="h-3.5 w-3.5 text-primary" aria-hidden />
+          Diagnosis
+        </p>
+        <p className="mt-1 font-semibold text-slate-950">{diagnosis?.trim() || 'No diagnosis provided.'}</p>
       </div>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Differential Diagnoses</p>
-        {differentialDiagnoses.length > 0 ? (
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <SearchCheck className="h-3.5 w-3.5 text-primary" aria-hidden />
+          Findings
+        </p>
+        {findings.length > 0 ? (
           <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-            {differentialDiagnoses.map((d, idx) => (
-              <li key={`${d}-${idx}`}>{d}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-1 text-sm text-muted-foreground">Not specified.</p>
-        )}
-      </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Imaging Signs</p>
-        {normalizedFindings.length > 0 ? (
-          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-            {normalizedFindings.map((f, idx) => (
+            {findings.map((f, idx) => (
               <li key={`${f}-${idx}`}>{f}</li>
             ))}
           </ul>
@@ -175,17 +211,83 @@ export function VisualQaStructuredAnswer({
           <p className="mt-1 text-sm text-muted-foreground">Not specified.</p>
         )}
       </div>
-      {reflectiveQuestions?.trim() ? (
-        <div className="rounded-lg border border-violet-300/40 bg-violet-50 px-3 py-2 text-sm italic text-violet-900">
-          {reflectiveQuestions}
+      <div>
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <TriangleAlert className="h-3.5 w-3.5 text-primary" aria-hidden />
+          Differential
+        </p>
+        {differentialDiagnoses.length > 0 ? (
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+            {differentialDiagnoses.map((d, idx) => (
+              <li key={`${d}-${idx}`}>{d}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">No differential diagnoses returned.</p>
+        )}
+      </div>
+      {reflectiveQuestions.length > 0 ? (
+        <div className="rounded-lg border border-sky-500/45 bg-sky-100 px-3 py-2 text-sm italic text-sky-950 shadow-sm">
+          <ul className="list-disc space-y-1 pl-5">
+            {reflectiveQuestions.map((q, idx) => (
+              <li key={`${q}-${idx}`} className="text-contrast-outline-soft">{q}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {markdown?.trim() ? (
+        <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-relaxed text-slate-950 shadow-sm">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              ...markdownExternalLinkComponents,
+              h1: ({ children }) => (
+                <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Stethoscope className="h-4 w-4 text-primary" aria-hidden />
+                  {children}
+                </p>
+              ),
+              h2: ({ children }) => (
+                <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <TriangleAlert className="h-4 w-4 text-primary" aria-hidden />
+                  {children}
+                </p>
+              ),
+              p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+            }}
+          >
+            {markdown}
+          </ReactMarkdown>
         </div>
       ) : null}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">References</p>
         {refs.length > 0 ? (
-          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+          <ul className="mt-1 list-disc space-y-2 pl-5 text-sm">
             {refs.map((row, idx) => (
-              <li key={`${row}-${idx}`}>{row}</li>
+              <li key={`${row.label}-${idx}`}>
+                {row.href ? (
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => window.open(row.href, '_blank', 'noopener,noreferrer')}
+                      className="text-contrast-outline-soft text-left text-primary-800 underline underline-offset-2 hover:text-primary-900"
+                    >
+                      {row.label}
+                    </button>
+                    {row.snippet ? (
+                      <p className="text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <span>{row.label}</span>
+                    {row.snippet ? (
+                      <p className="text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
+                    ) : null}
+                  </div>
+                )}
+              </li>
             ))}
           </ul>
         ) : (
@@ -201,11 +303,11 @@ export function VisualQaReflectiveQuestions({ text }: { text: string }) {
   const body = text.trim();
   if (!body) return null;
   return (
-    <div className="mt-3 rounded-xl border border-violet-400/35 bg-violet-50/95 px-3 py-2.5 shadow-sm">
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-violet-800">
+    <div className="mt-3 rounded-xl border border-violet-500/45 bg-violet-100 px-3 py-2.5 shadow-sm">
+      <p className="text-contrast-outline-soft mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-violet-950">
         Reflective Questions
       </p>
-      <div className="text-sm leading-relaxed text-foreground">
+      <div className="text-sm leading-relaxed text-slate-950">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{

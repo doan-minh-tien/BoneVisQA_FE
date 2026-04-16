@@ -2,18 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import useSWRMutation from 'swr/mutation';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { CitationList } from '@/components/shared/CitationList';
-import { VisualQaRichAnswer, VisualQaStructuredAnswer } from '@/components/student/VisualQaRichAnswer';
 import Header from '@/components/Header';
-import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
-import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
+import { ChatComposer } from '@/components/student/ChatComposer';
+import { ChatConversation } from '@/components/student/ChatConversation';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
-import { AlertTriangle, Loader2, MessageCircle, MoreHorizontal, Send, UploadCloud } from 'lucide-react';
+import { Loader2, MessageCircle } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -46,7 +42,11 @@ const MedicalImageViewer = dynamic(
 );
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { postStudentVisualQa, requestStudentVisualQaReview } from '@/lib/api/student-visual-qa';
+import {
+  fetchStudentVisualQaSession,
+  postStudentVisualQa,
+  requestStudentVisualQaReview,
+} from '@/lib/api/student-visual-qa';
 import type {
   NormalizedImageBoundingBox,
   NormalizedPolygonPoint,
@@ -54,7 +54,6 @@ import type {
   VisualQaTurn,
 } from '@/lib/api/types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
-import { looksLikeAiFallbackAnswer } from '@/lib/utils/ai-fallback-message';
 import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { useAuth } from '@/lib/useAuth';
@@ -78,36 +77,44 @@ const EMPTY_DRAFT: VisualQaDraft = {
 };
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
-const MAX_SESSION_TURNS = 3;
 const DRAFT_TTL_MS = 10_800_000;
 
-function turnToReport(turn: VisualQaTurn | null): null | {
-  answerText: string;
-  suggestedDiagnosis: string;
-  keyFindings: string[];
-  keyImagingFindings?: string | null;
-  reflectiveQuestions?: string | null;
-  differentialDiagnoses: string[];
-  recommendedReadings: Array<{ title?: string; url?: string } | string>;
-  citations: Array<{ documentUrl?: string; chunkOrder?: number; title?: string }>;
-  aiConfidenceScore?: number;
-} {
-  if (!turn) return null;
-  return {
-    answerText: turn.answerText,
-    suggestedDiagnosis: turn.suggestedDiagnosis,
-    keyFindings: turn.keyFindings,
-    keyImagingFindings: turn.keyImagingFindings ?? null,
-    reflectiveQuestions: turn.reflectiveQuestions ?? null,
-    differentialDiagnoses: turn.differentialDiagnoses,
-    recommendedReadings: turn.recommendedReadings,
-    citations: turn.citations,
-    aiConfidenceScore: turn.aiConfidenceScore,
-  };
+type PendingOutgoingMessage = {
+  id: string;
+  content: string;
+  status: 'sending' | 'failed';
+};
+
+function turnIdentity(turn: VisualQaTurn): string {
+  if (turn.turnId?.trim()) return `turn:${turn.turnId.trim()}`;
+  if (turn.clientRequestId?.trim()) return `request:${turn.clientRequestId.trim()}`;
+  if (typeof turn.turnIndex === 'number' && Number.isFinite(turn.turnIndex)) return `index:${turn.turnIndex}`;
+  return `fallback:${turn.createdAt ?? ''}:${turn.answerText ?? ''}`;
+}
+
+function mergeTurnsByIdentity(base: VisualQaTurn[], incoming: VisualQaTurn[]): VisualQaTurn[] {
+  const merged = [...base];
+  const identityToIndex = new Map<string, number>();
+  merged.forEach((turn, idx) => identityToIndex.set(turnIdentity(turn), idx));
+  incoming.forEach((turn) => {
+    const key = turnIdentity(turn);
+    const existingIndex = identityToIndex.get(key);
+    if (typeof existingIndex === 'number') {
+      merged[existingIndex] = turn;
+      return;
+    }
+    merged.push(turn);
+    identityToIndex.set(key, merged.length - 1);
+  });
+  return merged.sort((a, b) => {
+    if (a.turnIndex !== b.turnIndex) return a.turnIndex - b.turnIndex;
+    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+  });
 }
 
 export default function StudentVisualQaImagePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
   const toast = useToast();
   const searchParams = useSearchParams();
@@ -123,6 +130,8 @@ export default function StudentVisualQaImagePage() {
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [networkWarning, setNetworkWarning] = useState<string | null>(null);
   const [aiOverload, setAiOverload] = useState(false);
+  const [chatErrorCode, setChatErrorCode] = useState<string | null>(null);
+  const [chatErrorMessage, setChatErrorMessage] = useState<string | null>(null);
   const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
@@ -132,9 +141,11 @@ export default function StudentVisualQaImagePage() {
   const isSubmittingRef = useRef(false);
   /** Remount file input on New Chat so the native picker and preview fully reset. */
   const [fileInputKey, setFileInputKey] = useState(0);
+  const bottomFileInputRef = useRef<HTMLInputElement | null>(null);
   const [requestingLecturerReview, setRequestingLecturerReview] = useState(false);
   const [serverForcedExpired, setServerForcedExpired] = useState(false);
-  const [activeAiMenuKey, setActiveAiMenuKey] = useState<string | null>(null);
+  const [pendingOutgoingMessage, setPendingOutgoingMessage] = useState<PendingOutgoingMessage | null>(null);
+  const [restoringSession, setRestoringSession] = useState(false);
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
     'student-visual-qa-draft',
     EMPTY_DRAFT,
@@ -168,6 +179,7 @@ export default function StudentVisualQaImagePage() {
           caseId?: string | null;
           imageId?: string | null;
           roiBoundingBox?: NormalizedImageBoundingBox | null;
+          clientRequestId?: string | null;
         };
       },
     ) =>
@@ -176,6 +188,7 @@ export default function StudentVisualQaImagePage() {
         caseId: arg.caseId,
         imageId: arg.imageId,
         roiBoundingBox: arg.roiBoundingBox,
+        clientRequestId: arg.clientRequestId,
         onUploadProgress: handleUploadProgress,
       }),
   );
@@ -267,8 +280,36 @@ export default function StudentVisualQaImagePage() {
     setQuestion(`Please analyze this teaching case: ${catalogContext}.`);
   }, [catalogContext, question]);
 
+  useEffect(() => {
+    if (!historySessionId?.trim()) return;
+    let cancelled = false;
+    (async () => {
+      setRestoringSession(true);
+      try {
+        const restored = await fetchStudentVisualQaSession(historySessionId);
+        if (cancelled) return;
+        setSession(restored);
+        setChatTurns(restored.turns);
+        setSelectedTurnIndex(restored.latest?.turnIndex ?? restored.turns[restored.turns.length - 1]?.turnIndex ?? null);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Could not restore the chat session.');
+        }
+      } finally {
+        if (!cancelled) setRestoringSession(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [historySessionId, toast]);
+
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (loading || isSubmittingRef.current) {
+        toast.info('Please wait for the current AI response before changing the image.');
+        return;
+      }
       const f = e.target.files?.[0];
       if (!f) return;
       if (f.size > MAX_IMAGE_SIZE_BYTES) {
@@ -281,10 +322,11 @@ export default function StudentVisualQaImagePage() {
       setSession(null);
       setChatTurns([]);
       setAiOverload(false);
+      setPendingOutgoingMessage(null);
       setFile(f);
       setRoiBoundingBox(null);
     },
-    [],
+    [loading, toast],
   );
 
   const handleUploadProgress = useCallback((pct: number) => {
@@ -292,21 +334,18 @@ export default function StudentVisualQaImagePage() {
     if (pct >= 100) setLoadingPhase('analyzing');
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitQuestion = async (questionOverride?: string) => {
     if (isSubmittingRef.current) return;
     if (isSessionInteractionLocked) {
-      toast.info(
-        isExpired
-          ? 'This Q&A session has expired. Please start a new session.'
-          : 'You have reached the 3-question session limit.',
-      );
+      toast.info(sessionCapabilityReason || 'This chat is read-only for now. Start a new chat to continue.');
       return;
     }
     const requiresFile = !isOngoingSession;
-    if ((requiresFile && !file) || !question.trim()) {
+    const nextQuestion =
+      (typeof questionOverride === 'string' ? questionOverride : question).trim();
+    if ((requiresFile && !file) || !nextQuestion) {
       if (requiresFile && !file) setImageError('Please attach an image before submitting.');
-      if (!question.trim()) setQuestionError('Please enter your question or observations.');
+      if (!nextQuestion) setQuestionError('Please enter your question or observations.');
       return;
     }
     if (file && file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -315,11 +354,18 @@ export default function StudentVisualQaImagePage() {
     }
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    const q = question.trim();
+    const q = nextQuestion;
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `client-${Date.now()}`;
+    setPendingOutgoingMessage({ id: requestId, content: q, status: 'sending' });
     setImageError(null);
     setQuestionError(null);
     setNetworkWarning(null);
     setAiOverload(false);
+    setChatErrorCode(null);
+    setChatErrorMessage(null);
     setLoading(true);
     setLoadingPhase(file ? 'upload' : 'analyzing');
     setUploadPct(0);
@@ -332,57 +378,207 @@ export default function StudentVisualQaImagePage() {
         caseId: catalogCaseId,
         imageId: catalogImageId,
         roiBoundingBox,
+        clientRequestId: requestId,
       });
-      const mergedTurns =
-        res.turns.length > 0
-          ? res.turns
-          : [
-              {
+      const normalizeTurnsWithLivePayload = (): VisualQaTurn[] => {
+        const byServerTurns = res.turns.length > 0 ? mergeTurnsByIdentity(chatTurns, res.turns) : [...chatTurns];
+        const latestTurnFromResponse: VisualQaTurn | null =
+          res.latest ??
+          (res.turns.length === 0
+            ? {
+                turnId: null,
                 turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
                 questionText: q,
-                answerText: res.latest?.answerText ?? '',
-                suggestedDiagnosis: res.latest?.suggestedDiagnosis ?? '',
-                keyFindings: res.latest?.keyFindings ?? [],
-                keyImagingFindings: res.latest?.keyImagingFindings ?? null,
-                reflectiveQuestions: res.latest?.reflectiveQuestions ?? null,
-                differentialDiagnoses: res.latest?.differentialDiagnoses ?? [],
-                recommendedReadings: res.latest?.recommendedReadings ?? [],
-                citations: res.latest?.citations ?? [],
-                aiConfidenceScore: res.latest?.aiConfidenceScore,
+                ...(res.answerText ? { answerText: res.answerText } : {}),
+                diagnosis: res.diagnosis ?? '',
+                findings: res.findings ?? [],
+                reflectiveQuestions: res.reflectiveQuestions ?? [],
+                differentialDiagnoses: res.differentialDiagnoses ?? [],
+                citations: res.citations ?? [],
+                aiConfidenceScore: undefined,
                 createdAt: new Date().toISOString(),
-              },
-            ];
-      setSession(res);
-      const finalTurns = mergedTurns.slice(-MAX_SESSION_TURNS);
-      setChatTurns(finalTurns);
-      setSelectedTurnIndex(finalTurns[finalTurns.length - 1]?.turnIndex ?? null);
+                responseKind: res.responseKind ?? 'analysis',
+                clientRequestId: res.clientRequestId ?? requestId,
+                reviewState: res.reviewState ?? null,
+                lastResponderRole: res.lastResponderRole ?? 'assistant',
+                actorRole: 'assistant',
+                isReviewTarget: true,
+              }
+            : null);
+        const mergedWithLatest = latestTurnFromResponse
+          ? mergeTurnsByIdentity(byServerTurns, [latestTurnFromResponse])
+          : byServerTurns;
+        const systemNotice = res.systemNotice?.trim();
+        if (systemNotice) {
+          const hasNotice = mergedWithLatest.some(
+            (turn) =>
+              turn.responseKind?.toLowerCase() === 'system_notice' &&
+              (turn.answerText?.trim() || turn.diagnosis?.trim()) === systemNotice,
+          );
+          if (!hasNotice) {
+            return mergeTurnsByIdentity(mergedWithLatest, [{
+              turnId: null,
+              turnIndex: (mergedWithLatest[mergedWithLatest.length - 1]?.turnIndex ?? 0) + 1,
+              answerText: systemNotice,
+              diagnosis: '',
+              findings: [],
+              reflectiveQuestions: [],
+              differentialDiagnoses: [],
+              citations: [],
+              createdAt: new Date().toISOString(),
+              responseKind: 'system_notice',
+              actorRole: 'system',
+              lastResponderRole: 'system',
+              isReviewTarget: false,
+            }]);
+          }
+        }
+        return mergedWithLatest;
+      };
+
+      const immediateTurns = normalizeTurnsWithLivePayload();
+      const immediateLatest = res.latest ?? immediateTurns[immediateTurns.length - 1] ?? null;
+      setSession({
+        ...res,
+        turns: immediateTurns,
+        latest: immediateLatest,
+      });
+      if (res.sessionId) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('sessionId', res.sessionId);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }
+      setChatTurns(immediateTurns);
+      setSelectedTurnIndex(immediateTurns[immediateTurns.length - 1]?.turnIndex ?? null);
+      setPendingOutgoingMessage(null);
       setRoiBoundingBox(null);
+      setQuestion('');
       toast.success('Diagnostic report generated.');
       clearDraft();
+      if (res.sessionId?.trim()) {
+        void (async () => {
+          try {
+            const restored = await fetchStudentVisualQaSession(res.sessionId);
+            setSession((prev) => {
+              const mergedTurns = mergeTurnsByIdentity(prev?.turns ?? [], restored.turns);
+              return {
+                ...restored,
+                turns: mergedTurns,
+                latest: restored.latest ?? mergedTurns[mergedTurns.length - 1] ?? null,
+              };
+            });
+            setChatTurns((prev) => mergeTurnsByIdentity(prev, restored.turns));
+            setSelectedTurnIndex(
+              restored.latest?.turnIndex ??
+                restored.turns[restored.turns.length - 1]?.turnIndex ??
+                null,
+            );
+          } catch {
+            // Keep live response as source of truth if thread reconcile fails.
+          }
+        })();
+      }
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        const errCode = (
-          err.response?.data as { errorCode?: string; code?: string } | undefined
-        )?.errorCode;
+        const errCode =
+          (
+            err.response?.data as { errorCode?: string; code?: string } | undefined
+          )?.errorCode ??
+          (
+            err.response?.data as { errorCode?: string; code?: string } | undefined
+          )?.code ??
+          null;
         if (errCode === 'AI_SERVICE_UNAVAILABLE' || err.response?.status === 503) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           toast.info('The AI service is currently busy. Your question quota was not consumed; please try again shortly.');
           return;
         }
+        if (errCode === 'AI_RESPONSE_INVALID_FORMAT') {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setChatErrorCode(errCode);
+          setChatErrorMessage('AI returned an invalid format. Try resending or ask a simpler question.');
+          toast.error('The AI response could not be rendered safely. Please resend or simplify the question.');
+          return;
+        }
         if (errCode === 'INTERNAL_SERVER_ERROR' || err.response?.status === 500) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           toast.error('A processing error occurred. Your uploaded file was safely cleaned up. Please try again.');
           return;
         }
         if (errCode === 'SESSION_EXPIRED') {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           setServerForcedExpired(true);
           toast.info('This Q&A session has expired. Please start a new session.');
           return;
         }
+        if (errCode === 'SESSION_READ_ONLY') {
+          const readOnlyMessage =
+            (
+              err.response?.data as { message?: string; detail?: string } | undefined
+            )?.message?.trim() ||
+            (
+              err.response?.data as { message?: string; detail?: string } | undefined
+            )?.detail?.trim() ||
+            'This session is read-only after requesting expert support. Start a new chat to continue.';
+          const systemTurn: VisualQaTurn = {
+            turnId: null,
+            turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
+            answerText: readOnlyMessage,
+            diagnosis: '',
+            findings: [],
+            reflectiveQuestions: [],
+            differentialDiagnoses: [],
+            citations: [],
+            createdAt: new Date().toISOString(),
+            responseKind: 'system_notice',
+            actorRole: 'system',
+            lastResponderRole: 'system',
+            isReviewTarget: false,
+          };
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setSession((prev) => {
+            if (!prev) return prev;
+            const mergedTurns = mergeTurnsByIdentity(prev.turns, [systemTurn]);
+            return {
+              ...prev,
+              turns: mergedTurns,
+              latest: mergedTurns[mergedTurns.length - 1] ?? prev.latest,
+              capabilities: {
+                ...prev.capabilities,
+                canAskNext: false,
+                isReadOnly: true,
+                reason: readOnlyMessage,
+              },
+            };
+          });
+          setChatTurns((prev) => mergeTurnsByIdentity(prev, [systemTurn]));
+          toast.info(readOnlyMessage);
+          return;
+        }
         if (errCode === 'TURN_LIMIT_EXCEEDED') {
-          toast.info('You have reached the 3-question session limit.');
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setChatErrorCode(errCode);
+          setChatErrorMessage('You have reached the billable analysis-turn limit for this session.');
+          toast.info('You have reached the billable analysis-turn limit for this session.');
           return;
         }
       }
       if (axios.isAxiosError(err) && err.response?.status === 429) {
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
         toast.info('Requests are being sent too quickly. Please wait about 1 minute before submitting again.');
         return;
       }
@@ -395,6 +591,9 @@ export default function StudentVisualQaImagePage() {
           (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
             ?.title;
         if (typeof code === 'string' && code.toUpperCase().includes('INVALID_IMAGE_NOT_XRAY')) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           toast.error('Image rejected: Only Human Bone X-Rays are supported.');
           setImageError('Image rejected: Only Human Bone X-Rays are supported.');
           return;
@@ -402,6 +601,9 @@ export default function StudentVisualQaImagePage() {
       }
       if (isAiModelOverloadError(err)) {
         overloadExit = true;
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
         setAiOverload(true);
         setLoading(false);
         setUploadPct(0);
@@ -412,11 +614,17 @@ export default function StudentVisualQaImagePage() {
         const isNetworkDrop = !err.response;
         const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
         if (isNetworkDrop || isTimeout) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           const warning =
             'Network connection lost. The AI is still processing your request on the server. Please check your History tab in a few minutes to see the result.';
           setNetworkWarning(warning);
           toast.info('Connection interrupted. You can continue safely and check History shortly.');
         } else {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           const maybeData = err.response?.data;
           const apiMessage =
             typeof maybeData === 'string'
@@ -427,6 +635,9 @@ export default function StudentVisualQaImagePage() {
           toast.error(apiMessage || err.message || 'Request failed');
         }
       } else {
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
         toast.error(err instanceof Error ? err.message : 'Request failed');
       }
     } finally {
@@ -439,6 +650,15 @@ export default function StudentVisualQaImagePage() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitQuestion();
+  };
+
+  const handleComposerSubmit = (messageOverride?: string) => {
+    void submitQuestion(messageOverride);
+  };
+
   const selectedTurn = useMemo(
     () =>
       selectedTurnIndex != null
@@ -446,7 +666,6 @@ export default function StudentVisualQaImagePage() {
         : session?.latest ?? null,
     [chatTurns, selectedTurnIndex, session],
   );
-  const report = useMemo(() => turnToReport(selectedTurn), [selectedTurn]);
   const viewerAnnotation = useMemo(
     () =>
       selectedTurn?.roiBoundingBox && isValidNormalizedBoundingBox(selectedTurn.roiBoundingBox)
@@ -454,42 +673,41 @@ export default function StudentVisualQaImagePage() {
         : roiBoundingBox,
     [roiBoundingBox, selectedTurn],
   );
-  const userMessageCountFromSession =
-    session?.messages?.filter((message) => (message.role ?? '').toLowerCase() === 'user').length ??
-    0;
-  const isLimitReached =
-    userMessageCountFromSession >= MAX_SESSION_TURNS || chatTurns.length >= MAX_SESSION_TURNS;
-  const isExpired = session?.updatedAt
-    ? new Date().getTime() - new Date(session.updatedAt).getTime() > 24 * 60 * 60 * 1000
-    : false;
-  const isSessionInteractionLocked = isLimitReached || isExpired || serverForcedExpired;
-  const composerPlaceholder = isExpired
-    ? 'This chat session has expired (more than 24 hours).'
-    : isLimitReached
-      ? 'This chat session has reached the 3-question limit.'
-      : 'What would you like to ask about this image?';
+  const canAskNext = session?.capabilities?.canAskNext ?? true;
+  const isSessionReadOnly = session?.capabilities?.isReadOnly ?? false;
+  const sessionCapabilityReason =
+    session?.capabilities?.reason?.trim() ||
+    (typeof session?.capabilities?.turnsUsed === 'number' &&
+    typeof session?.capabilities?.turnLimit === 'number' &&
+    session.capabilities.turnLimit > 0
+      ? `Analysis-turn limit reached (${session.capabilities.turnsUsed}/${session.capabilities.turnLimit}).`
+      : '');
+  const isSessionInteractionLocked = !canAskNext || isSessionReadOnly || serverForcedExpired;
+  const composerPlaceholder = isSessionInteractionLocked
+    ? sessionCapabilityReason || 'This chat is read-only. Start a new chat to continue.'
+    : 'What would you like to ask about this image?';
   const isOngoingSession = Boolean(session) && chatTurns.length > 0;
-  const lastSessionMessage = session?.messages?.[session.messages.length - 1];
-  const lastSessionRole = (lastSessionMessage?.role ?? '').toLowerCase();
-  const statusKey = (session?.status ?? '').toLowerCase();
-  const hasReviewerFeedback = chatTurns.some((turn) =>
-    (turn.messages ?? []).some((message) => {
-      const role = (message.role ?? '').toLowerCase();
-      return role === 'expert' || role === 'lecturer';
-    }),
-  );
-  const isReadOnlyMode =
-    Boolean(historySessionId?.trim()) ||
-    (Boolean(session?.status) && statusKey !== 'active') ||
-    hasReviewerFeedback;
+  const latestTurn = chatTurns[chatTurns.length - 1] ?? session?.latest ?? null;
+  const latestActorRole = (latestTurn?.actorRole ?? '').toLowerCase();
+  const lastResponderRole = (latestTurn?.lastResponderRole ?? session?.lastResponderRole ?? '').toLowerCase();
+  const latestReviewState = (latestTurn?.reviewState ?? session?.reviewState ?? '').toLowerCase();
+  const isReadOnlyMode = isSessionInteractionLocked;
   const canRequestReview =
     Boolean(session?.sessionId) &&
-    !isExpired &&
+    Boolean(latestTurn?.turnId || latestTurn?.turnIndex) &&
+    canAskNext &&
+    !isSessionReadOnly &&
+    !isSessionInteractionLocked &&
+    (session?.capabilities?.canRequestReview ?? true) &&
     !serverForcedExpired &&
-    statusKey !== 'pendingexpertreview' &&
-    statusKey !== 'escalatedtoexpert' &&
-    lastSessionRole !== 'expert' &&
-    lastSessionRole !== 'lecturer';
+    (latestTurn?.isReviewTarget === true || latestActorRole === 'assistant') &&
+    latestReviewState !== 'pending' &&
+    latestReviewState !== 'escalated' &&
+    latestReviewState !== 'reviewed' &&
+    latestReviewState !== 'resolved' &&
+    lastResponderRole !== 'expert' &&
+    lastResponderRole !== 'lecturer' &&
+    lastResponderRole !== 'system';
   const isGuestUser = useMemo(() => {
     const active = user?.activeRole?.toLowerCase() ?? '';
     const roles = (user?.roles ?? []).map((r) => r.toLowerCase());
@@ -498,6 +716,10 @@ export default function StudentVisualQaImagePage() {
   }, [user]);
 
   const startNewSession = useCallback(() => {
+    if (loading || isSubmittingRef.current) {
+      toast.info('Please wait for the current AI response before starting a new chat.');
+      return;
+    }
     setSession(null);
     setChatTurns([]);
     setSelectedTurnIndex(null);
@@ -513,22 +735,28 @@ export default function StudentVisualQaImagePage() {
     setLoadingPhase('upload');
     setRequestingLecturerReview(false);
     setServerForcedExpired(false);
+    setPendingOutgoingMessage(null);
     clearDraft();
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('sessionId');
+    params.delete('historySessionId');
+    router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
     toast.info('New chat started. Choose an image and ask a question.');
-  }, [clearDraft, toast]);
+  }, [clearDraft, loading, pathname, router, searchParams, toast]);
 
-  const handleRequestLecturerReview = useCallback(async () => {
+  const handleRequestLecturerReview = useCallback(async (turn?: VisualQaTurn | null) => {
     if (!session?.sessionId || requestingLecturerReview) return;
+    const targetTurnId = turn?.turnId?.trim() || latestTurn?.turnId?.trim() || null;
     setRequestingLecturerReview(true);
     try {
-      const updated = await requestStudentVisualQaReview(session.sessionId);
+      const updated = await requestStudentVisualQaReview(session.sessionId, targetTurnId);
       setSession((prev) => ({
         ...(prev ?? session),
         ...updated,
         status: updated.status ?? 'PendingExpertReview',
       }));
       if (updated.turns.length > 0) {
-        setChatTurns(updated.turns.slice(-MAX_SESSION_TURNS));
+        setChatTurns(updated.turns);
       }
       toast.success('Support request has been sent to your lecturer.');
     } catch (error) {
@@ -540,7 +768,7 @@ export default function StudentVisualQaImagePage() {
     } finally {
       setRequestingLecturerReview(false);
     }
-  }, [requestingLecturerReview, session, toast]);
+  }, [latestTurn?.turnId, requestingLecturerReview, session, toast]);
 
   useEffect(() => {
     if (!isGuestUser) return;
@@ -596,11 +824,11 @@ export default function StudentVisualQaImagePage() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-text-main">
       <Header
         title="Visual QA"
-        subtitle="Mark a region on the image, then chat with the AI about what you see."
+        subtitle="Review an imaging study, keep the full chat history, and escalate the current AI turn for lecturer triage when needed."
       />
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2 lg:items-start">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)] lg:min-h-0 lg:self-start lg:border-b-0 lg:border-r">
-          <div className="min-h-0 min-h-[40vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2 lg:items-stretch">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
+          <div className="min-h-0 min-h-[36vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
             <MedicalImageViewer
               key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
               src={previewUrl}
@@ -611,8 +839,8 @@ export default function StudentVisualQaImagePage() {
           </div>
         </aside>
 
-        <main className="min-h-0 flex-1 overflow-hidden bg-background p-4 md:p-6">
-          <div className="mx-auto flex h-full max-w-4xl min-h-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background p-3 md:p-4">
+          <div className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3 md:px-5">
               <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
                 <MessageCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
@@ -623,349 +851,101 @@ export default function StudentVisualQaImagePage() {
                 variant="outline"
                 size="sm"
                 className="shrink-0 transition-all hover:opacity-90 active:scale-95"
+                disabled={loading || restoringSession}
                 onClick={startNewSession}
               >
                 New Chat
               </Button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar md:px-5">
-              {networkWarning ? (
-                <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-                    <p>{networkWarning}</p>
-                  </div>
-                </div>
-              ) : null}
-              {aiOverload ? (
-                <div className="mb-4 rounded-xl border border-sky-400/45 bg-sky-500/15 px-4 py-4 text-sm text-sky-50">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                      <p className="font-medium text-sky-100">
-                        The AI system is experiencing high traffic. Please try again in a few minutes.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAiOverload(false)}
-                      className="shrink-0 rounded-lg border border-sky-400/40 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-100 transition-all hover:opacity-80 active:scale-95"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {chatTurns.length === 0 ? (
-                <div className="flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 py-12 text-center">
-                  <p className="text-sm font-medium text-foreground">No messages yet</p>
-                  <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
-                    Add an image (first message), draw a region if you like, then ask the AI. You can send up to three
-                    questions per session.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="space-y-5">
-                    {chatTurns.map((turn) => {
-                      const isActive = selectedTurnIndex === turn.turnIndex;
-                      const normalizedMessages = (turn.messages ?? [])
-                        .filter((message) => message.content?.trim())
-                        .map((message, idx) => ({
-                          id: `${turn.turnIndex}-m-${idx}`,
-                          role: (message.role ?? '').toLowerCase(),
-                          content: message.content.trim(),
-                        }));
-                      const reviewerNotes = normalizedMessages.filter(
-                        (message) => message.role === 'lecturer' || message.role === 'expert',
-                      );
-                      const baseMessages = normalizedMessages.filter(
-                        (message) => message.role !== 'lecturer' && message.role !== 'expert',
-                      );
-                      const renderFromMessages = normalizedMessages.length > 0;
-                      return (
-                        <button
-                          key={`${turn.turnIndex}-${turn.createdAt ?? ''}`}
-                          type="button"
-                          className={`w-full rounded-xl text-left outline-none transition-colors ${
-                            isActive ? 'ring-2 ring-primary/35 ring-offset-2 ring-offset-background' : ''
-                          }`}
-                          onClick={() => setSelectedTurnIndex(turn.turnIndex)}
-                        >
-                          {renderFromMessages ? (
-                            <div className="space-y-2">
-                              {baseMessages.map((message) => {
-                                const isStudentMessage =
-                                  (message.role ?? '').toLowerCase() === 'student';
-                                return (
-                                  <div key={message.id} className={`group flex ${isStudentMessage ? 'justify-end' : 'justify-start'}`}>
-                                    <div
-                                      className={`relative max-w-[92%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed ${
-                                        isStudentMessage
-                                          ? 'border-[#0055ff] bg-[#0055ff] text-white shadow-sm'
-                                          : 'border-border/70 bg-slate-100 text-foreground'
-                                      }`}
-                                    >
-                                      {isStudentMessage ? (
-                                        <ReactMarkdown
-                                          remarkPlugins={[remarkGfm]}
-                                          components={{
-                                            ...markdownExternalLinkComponents,
-                                            p: ({ children }) => (
-                                              <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                                            ),
-                                          }}
-                                        >
-                                          {message.content}
-                                        </ReactMarkdown>
-                                      ) : (
-                                        <VisualQaStructuredAnswer
-                                          suggestedDiagnosis={turn.suggestedDiagnosis}
-                                          differentialDiagnoses={turn.differentialDiagnoses}
-                                          keyFindings={turn.keyFindings}
-                                          keyImagingFindings={turn.keyImagingFindings}
-                                          reflectiveQuestions={turn.reflectiveQuestions}
-                                          citations={turn.citations ?? []}
-                                        />
-                                      )}
-                                      {!isStudentMessage ? (
-                                        <div className="absolute right-2 top-2">
-                                          <button
-                                            type="button"
-                                            className="rounded-md p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-slate-200"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setActiveAiMenuKey((prev) => (prev === message.id ? null : message.id));
-                                            }}
-                                            aria-label="More actions"
-                                          >
-                                            <MoreHorizontal className="h-4 w-4" />
-                                          </button>
-                                          {activeAiMenuKey === message.id ? (
-                                            <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-white p-1 shadow-lg">
-                                              <button
-                                                type="button"
-                                                className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-foreground hover:bg-muted"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setActiveAiMenuKey(null);
-                                                  void handleRequestLecturerReview();
-                                                }}
-                                              >
-                                                Request Expert Support
-                                              </button>
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {reviewerNotes.length > 0 ? (
-                                <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                    Instructor async feedback notes
-                                  </p>
-                                  {reviewerNotes.map((message) => {
-                                    const isExpertNote = message.role === 'expert';
-                                    return (
-                                      <div
-                                        key={message.id}
-                                        className={`rounded-xl border px-3 py-2 text-sm leading-relaxed ${
-                                          isExpertNote
-                                            ? 'border-emerald-400/60 bg-emerald-500/10'
-                                            : 'border-orange-400/60 bg-orange-500/10'
-                                        }`}
-                                      >
-                                        <p
-                                          className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
-                                            isExpertNote
-                                              ? 'text-emerald-700'
-                                              : 'text-orange-700'
-                                          }`}
-                                        >
-                                          {isExpertNote ? 'Expert feedback' : 'Lecturer feedback'}
-                                        </p>
-                                        <ReactMarkdown
-                                          remarkPlugins={[remarkGfm]}
-                                          components={{
-                                            ...markdownExternalLinkComponents,
-                                            p: ({ children }) => (
-                                              <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                                            ),
-                                          }}
-                                        >
-                                          {message.content}
-                                        </ReactMarkdown>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex justify-end">
-                                <div className="max-w-[92%] rounded-2xl border border-border/80 bg-muted/60 px-4 py-2.5 text-sm leading-relaxed text-foreground shadow-sm">
-                                  {turn.questionText?.trim() || '—'}
-                                </div>
-                              </div>
-                              <div className="mt-2 flex justify-start">
-                                <div className="max-w-[92%] rounded-2xl border border-border/60 bg-blue-50/80 px-4 py-3 text-sm leading-relaxed text-foreground">
-                                  <VisualQaRichAnswer
-                                    markdown={turn.answerText?.trim() || ''}
-                                    citations={turn.citations ?? []}
-                                  />
-                                  {turn.reflectiveQuestions?.trim() ? (
-                                    <VisualQaReflectiveQuestions text={turn.reflectiveQuestions} />
-                                  ) : null}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {session?.sessionId && canRequestReview ? (
-                    <div className="pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void handleRequestLecturerReview()}
-                        disabled={requestingLecturerReview}
-                        className="transition-all hover:opacity-80 active:scale-95"
-                      >
-                        {requestingLecturerReview ? 'Sending request...' : 'Request expert support'}
-                      </Button>
-                    </div>
-                  ) : null}
-                  {report ? (
-                    <div className="space-y-3 border-t border-border/60 pt-4">
-                      {looksLikeAiFallbackAnswer(report.answerText) ? (
-                        <div
-                          className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950"
-                          role="status"
-                        >
-                          <p className="font-medium">Assistant could not return a full clinical analysis</p>
-                        </div>
-                      ) : null}
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        References (detailed)
-                      </p>
-                      <CitationList citations={report.citations} />
-                    </div>
-                  ) : null}
-                </div>
-              )}
-              {loading ? (
-                <div className="mt-3 flex justify-start">
-                  <div className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-slate-100 px-4 py-2 text-sm text-muted-foreground">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.2s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-0.1s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <ChatConversation
+              messages={chatTurns}
+              optimisticMessages={
+                pendingOutgoingMessage
+                  ? [
+                      {
+                        id: pendingOutgoingMessage.id,
+                        content: pendingOutgoingMessage.content,
+                        status: pendingOutgoingMessage.status,
+                      },
+                    ]
+                  : []
+              }
+              isLoading={loading}
+              capabilities={session?.capabilities}
+              isError={Boolean(aiOverload || chatErrorCode)}
+              isRestoring={restoringSession}
+              networkWarning={networkWarning}
+              errorCode={chatErrorCode}
+              errorMessage={
+                chatErrorMessage ??
+                (aiOverload
+                  ? 'The AI system is experiencing high traffic. Please try again in a few minutes.'
+                  : null)
+              }
+              canRequestReview={canRequestReview}
+              requestingExpertSupport={requestingLecturerReview}
+              onRequestExpertSupport={(turn) => void handleRequestLecturerReview(turn)}
+              onSendMessage={async (message) => {
+                handleComposerSubmit(message);
+              }}
+              onClear={startNewSession}
+            />
             {!isReadOnlyMode ? (
-              <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-4">
-                <div>
+              <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-3 md:p-4">
+                {loading && loadingPhase === 'upload' ? (
+                  <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${uploadPct}%` }}
+                    />
+                  </div>
+                ) : null}
+                {imageError ? <p className="mb-2 text-xs text-destructive">{imageError}</p> : null}
+                {isSessionInteractionLocked ? (
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    {sessionCapabilityReason || 'This session is currently read-only. Tap '}
+                    <span className="font-medium text-foreground">New Chat</span>
+                    {' to continue.'}
+                  </p>
+                ) : null}
+                <div className="flex w-full items-center gap-2">
                   {!isOngoingSession && !isSessionInteractionLocked ? (
                     <>
-                      <label className="mb-1.5 block text-sm font-medium text-text-main">Imaging file</label>
                       <input
+                        ref={bottomFileInputRef}
                         key={fileInputKey}
                         type="file"
                         accept="image/*,.dcm,application/dicom"
+                        className="hidden"
                         onChange={onFileChange}
-                        className="block w-full rounded-xl border border-border-color bg-background/70 px-3 py-3 text-sm text-text-main file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white file:transition-all file:hover:opacity-80 file:active:scale-95"
                       />
-                      {imageError ? <p className="mt-2 text-xs text-destructive">{imageError}</p> : null}
-                      {file ? (
-                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                          <UploadCloud className="h-4 w-4 text-cyan-accent" />
-                          <span className="truncate">{file.name}</span>
-                        </div>
-                      ) : null}
-                      {hydratingDraft ? (
-                        <div className="mt-2 text-xs text-text-muted">Restoring your unsent draft...</div>
-                      ) : null}
-                      {!file && prefillLoading ? (
-                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
-                          <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
-                          Preloading selected catalog image...
-                        </div>
-                      ) : null}
                     </>
                   ) : null}
-                {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
-                  <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                    Rectangle ROI saved: x {roiBoundingBox.x.toFixed(3)}, y {roiBoundingBox.y.toFixed(3)}, w{' '}
-                    {roiBoundingBox.width.toFixed(3)}, h {roiBoundingBox.height.toFixed(3)} (normalized 0–1)
+                  <ChatComposer
+                    value={question}
+                    onChange={setQuestion}
+                    onSubmit={handleComposerSubmit}
+                    onChooseFile={() => bottomFileInputRef.current?.click()}
+                    disabled={isSessionInteractionLocked}
+                    isLoading={loading}
+                    canAttachFile={!isOngoingSession && !isSessionInteractionLocked}
+                    placeholder={composerPlaceholder}
+                  />
+                </div>
+                {hydratingDraft && !isOngoingSession ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Restoring your unsent draft…</p>
+                ) : null}
+                {!file && prefillLoading && !isOngoingSession ? (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
+                    Preloading selected catalog image…
                   </div>
                 ) : null}
-                </div>
-                <label htmlFor="q" className="mt-3 block text-sm font-medium text-text-main">
-                  Message
-                </label>
-                <textarea
-                  id="q"
-                  required
-                  rows={3}
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  disabled={isSessionInteractionLocked}
-                  placeholder={composerPlaceholder}
-                  className="mt-1.5 w-full rounded-xl border border-border-color bg-background/70 px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:opacity-70"
-                />
                 {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
-                {isSessionInteractionLocked ? (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {isExpired ? (
-                      <>
-                        This chat session has expired. Tap <span className="font-medium text-foreground">New Chat</span> to continue.
-                      </>
-                    ) : (
-                      <>
-                        Session depth reached. Tap <span className="font-medium text-foreground">New Chat</span> to continue.
-                      </>
-                    )}
-                  </p>
-                ) : null}
-                {loading && loadingPhase === 'upload' ? (
-                  <DynamicProgressTracker
-                    mode="determinate"
-                    label="Uploading image"
-                    progressPercentage={uploadPct}
-                    message="Uploading imaging file..."
-                  />
-                ) : null}
-                {loading && loadingPhase === 'analyzing' ? (
-                  <DynamicProgressTracker
-                    mode="indeterminate"
-                    label="AI thinking"
-                    messages={['Searching reference documents and clinical case library...']}
-                    className="mt-3"
-                  />
-                ) : null}
-                <Button
-                  type="submit"
-                  className="mt-3 w-full sm:w-auto transition-all hover:opacity-80 active:scale-95"
-                  disabled={loading || isSessionInteractionLocked}
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden />
-                  )}
-                  {isSessionInteractionLocked ? 'Session locked' : 'Ask AI'}
-                </Button>
               </form>
             ) : (
               <div className="shrink-0 border-t border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
-                This is a historical Q&A session. The chat composer is now read-only.
+                {sessionCapabilityReason || 'This session is currently read-only.'}
               </div>
             )}
           </div>

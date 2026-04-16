@@ -27,6 +27,16 @@ function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty']
   return 'basic';
 }
 
+function pickStringAny(item: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (value == null) continue;
+    const normalized = String(value).trim();
+    if (normalized.length > 0) return normalized;
+  }
+  return null;
+}
+
 /**
  * Classify history rows for the two student tabs. Prefer explicit API fields; fall back to light heuristics.
  */
@@ -83,30 +93,85 @@ function inferHistoryKind(item: Record<string, unknown>): StudentHistoryKind {
 function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
-  const id = String(item.id ?? item.caseId ?? item.answerId ?? '');
+  const id = String(item.id ?? item.caseId ?? item.case_id ?? item.answerId ?? item.answer_id ?? '');
   if (!id) return null;
 
   const historyKind = inferHistoryKind(item);
-  const catalogRaw = item.catalogCaseId ?? item.publishedCaseId ?? item.caseCatalogId ?? item.libraryCaseId;
+  const catalogRaw =
+    item.catalogCaseId ??
+    item.catalog_case_id ??
+    item.publishedCaseId ??
+    item.caseCatalogId ??
+    item.case_catalog_id ??
+    item.libraryCaseId;
   const catalogCaseId =
     catalogRaw != null && String(catalogRaw).trim() ? String(catalogRaw).trim() : null;
 
+  const qaMessages = Array.isArray(item.qa_messages)
+    ? (item.qa_messages as Array<Record<string, unknown>>)
+    : Array.isArray(item.qaMessages)
+      ? (item.qaMessages as Array<Record<string, unknown>>)
+      : Array.isArray(item.messages)
+        ? (item.messages as Array<Record<string, unknown>>)
+        : [];
+  const sessionStatus = pickStringAny(item, ['status', 'session_status', 'sessionStatus']) ?? '';
+  if (sessionStatus) {
+    const normalizedStatus = sessionStatus.toLowerCase();
+    const hiddenStatuses = new Set(['deleted', 'archived', 'cancelled']);
+    if (hiddenStatuses.has(normalizedStatus)) return null;
+  }
+  const lastUserQuestion =
+    [...qaMessages]
+      .reverse()
+      .find((msg) => {
+        const role = String(msg.role ?? msg.sender ?? '').toLowerCase();
+        return role === 'user' || role === 'student';
+      })?.content ??
+    pickStringAny(item, ['lastQuestion', 'last_question', 'lastQuestionAsked', 'questionText', 'question_text', 'question']);
+  const normalizedLastQuestion =
+    lastUserQuestion != null && String(lastUserQuestion).trim()
+      ? String(lastUserQuestion).trim()
+      : null;
+  const firstQuestionFallback = pickStringAny(item, ['questionText', 'question_text', 'question']);
+  const trimmedQuestionFallback = firstQuestionFallback ? firstQuestionFallback.slice(0, 50).trim() : null;
+  const imageFromMessages =
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.imageUrl ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.image_url ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.thumbnailUrl ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.thumbnail_url;
+
   return {
     id,
-    title: String(item.title ?? item.question ?? item.questionText ?? 'Untitled case'),
+    sessionId: pickStringAny(item, ['sessionId', 'session_id']),
+    title: String(
+      pickStringAny(item, ['title']) ?? normalizedLastQuestion ?? trimmedQuestionFallback ?? 'Untitled case',
+    ),
+    lastQuestionAsked: normalizedLastQuestion,
     thumbnailUrl:
-      item.thumbnailUrl != null
-        ? String(item.thumbnailUrl)
-        : item.imageUrl != null
-          ? String(item.imageUrl)
+      pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']) != null
+        ? String(pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']))
+        : imageFromMessages != null
+            ? String(imageFromMessages)
           : undefined,
-    boneLocation: String(item.boneLocation ?? item.regionName ?? item.region ?? 'Clinical case'),
-    lesionType: String(item.lesionType ?? item.caseType ?? item.categoryName ?? 'Visual QA'),
-    difficulty: normalizeDifficulty(item.difficulty),
-    duration: item.duration != null ? String(item.duration) : undefined,
+    boneLocation: String(pickStringAny(item, ['boneLocation', 'bone_location', 'regionName', 'region']) ?? 'Clinical case'),
+    lesionType: String(pickStringAny(item, ['lesionType', 'lesion_type', 'caseType', 'categoryName']) ?? 'Visual QA'),
+    difficulty: normalizeDifficulty(item.difficulty ?? item.level),
+    duration: pickStringAny(item, ['duration']) ?? undefined,
     progress: typeof item.progress === 'number' ? item.progress : undefined,
-    status: item.status != null ? String(item.status) : undefined,
-    askedAt: item.askedAt != null ? String(item.askedAt) : item.createdAt != null ? String(item.createdAt) : undefined,
+    status: sessionStatus || undefined,
+    askedAt: pickStringAny(item, ['askedAt', 'asked_at', 'createdAt', 'created_at']) ?? undefined,
     keyImagingFindings:
       item.keyImagingFindings != null && item.keyImagingFindings !== ''
         ? String(item.keyImagingFindings)
@@ -473,7 +538,7 @@ export async function submitQuizSession(
 
 export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/student/cases/history');
+    const { data } = await http.get<unknown>('/api/student/visual-qa/history/cases');
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -490,25 +555,30 @@ export interface StudentHistoryPageResult {
   items: StudentCaseHistoryItem[];
 }
 
-/**
- * Optional dedicated upload / custom Visual QA timeline (when backend exposes it).
- * Swallows errors so the UI still works with only `/api/student/cases/history`.
- */
-export async function fetchStudentUploadQaHistory(): Promise<StudentHistoryPageResult> {
+async function fetchStudentHistoryEndpoint(
+  endpoint: string,
+  forcedKind: StudentHistoryKind,
+): Promise<StudentHistoryPageResult> {
   try {
-    const { data } = await http.get<unknown>('/api/student/visual-qa/history', {
-      params: { limit: 20, offset: 0 },
-    });
+    const { data } = await http.get<unknown>(endpoint, { params: { limit: 50, offset: 0 } });
     const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
     const list = Array.isArray(data)
       ? data
       : Array.isArray(payload?.items)
         ? payload.items
+        : Array.isArray(payload?.studies)
+          ? payload.studies
+          : Array.isArray(payload?.results)
+            ? payload.results
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : payload?.data && typeof payload.data === 'object' && Array.isArray((payload.data as { items?: unknown[] }).items)
+            ? ((payload.data as { items?: unknown[] }).items ?? [])
         : [];
     const items = list
       .map(mapStudentCase)
       .filter((item): item is StudentCaseHistoryItem => item !== null)
-      .map((item) => ({ ...item, historyKind: 'personalQa' as const }));
+      .map((item) => ({ ...item, historyKind: forcedKind }));
     const rawTotal = payload?.totalCount ?? payload?.TotalCount;
     const totalCount =
       typeof rawTotal === 'number' && Number.isFinite(rawTotal)
@@ -520,27 +590,17 @@ export async function fetchStudentUploadQaHistory(): Promise<StudentHistoryPageR
   }
 }
 
-/** Merges catalog/case history with optional upload-only feed for the student history UI. */
-export async function fetchStudentHistoryForUi(): Promise<StudentHistoryPageResult> {
-  const [catalogRows, uploadHistory] = await Promise.all([
-    fetchStudentCases(),
-    fetchStudentUploadQaHistory(),
-  ]);
-  const uploadRows = uploadHistory.items;
-  if (uploadRows.length === 0) {
-    return { totalCount: catalogRows.length, items: catalogRows };
-  }
-  const seen = new Set(catalogRows.map((r) => r.id));
-  const merged = [...catalogRows];
-  for (const row of uploadRows) {
-    if (!seen.has(row.id)) {
-      merged.push(row);
-      seen.add(row.id);
-    }
-  }
+export async function fetchStudentPersonalStudiesHistory(): Promise<StudentHistoryPageResult> {
+  return fetchStudentHistoryEndpoint('/api/student/visual-qa/history/personal', 'personalQa');
+}
+
+export async function fetchStudentCaseLibraryHistory(): Promise<StudentHistoryPageResult> {
+  const primary = await fetchStudentHistoryEndpoint('/api/student/visual-qa/history/cases', 'caseStudy');
+  if (primary.items.length > 0) return primary;
+  const fallbackRows = await fetchStudentCases();
   return {
-    totalCount: Math.max(merged.length, catalogRows.length + uploadHistory.totalCount),
-    items: merged,
+    totalCount: fallbackRows.length,
+    items: fallbackRows.map((item) => ({ ...item, historyKind: 'caseStudy' as const })),
   };
 }
 
