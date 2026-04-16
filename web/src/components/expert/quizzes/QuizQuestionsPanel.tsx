@@ -32,9 +32,13 @@ function ModalShell({
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
-        {children}
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="shrink-0 border-b border-border p-6">
+          <h3 className="text-lg font-semibold text-card-foreground">{title}</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -214,9 +218,9 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       // Khi edit: chỉ cần questionText, correctAnswer. CaseId và ImageUrl có thể giữ nguyên
       return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
     }
-    // Khi create: bắt buộc chọn case, có questionText, correctAnswer và imageUrl
-    return Boolean(form.caseId && form.questionText.trim() && form.type.trim() && form.correctAnswer.trim() && form.imageUrl.trim());
-  }, [mode, form.caseId, form.questionText, form.type, form.correctAnswer, form.imageUrl]);
+    // Khi create: bắt buộc questionText, correctAnswer. CaseId có thể empty (sẽ fallback). ImageUrl KHÔNG bắt buộc
+    return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
+  }, [mode, form.questionText, form.type, form.correctAnswer]);
 
   // Computed pagination values
   const qTotalPages = Math.max(1, Math.ceil(questions.length / Q_PAGE_SIZE));
@@ -233,8 +237,10 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     setIsSaving(true);
     try {
       if (mode === 'create') {
+        // Nếu không chọn case, dùng case đầu tiên
+        const resolvedCaseId = form.caseId || cases[0]?.id;
         await createExpertQuizQuestion(quizId, {
-          caseId: form.caseId,
+          caseId: resolvedCaseId,
           questionText: form.questionText.trim(),
           type: form.type.trim(),
           optionA: form.optionA.trim() || undefined,
@@ -371,7 +377,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
           {/* ========== IMAGE UPLOAD SECTION ========== */}
           <div className="md:col-span-2 mb-4">
             <label className="block text-sm font-medium text-card-foreground mb-1.5">
-              Question Image <span className="text-destructive">*</span>
+              Question Image
             </label>
             {form.imagePreview ? (
               <div className="relative inline-block">
@@ -415,19 +421,25 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Case</label>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Case (optional)</label>
               <select
                 value={form.caseId}
                 onChange={(e) => setForm((p) => ({ ...p, caseId: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
               >
-                {isCasesLoading ? <option value="">Loading...</option> : null}
+                <option value="">-- No Case --</option>
+                {isCasesLoading ? <option value="" disabled>Loading cases...</option> : null}
                 {cases.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title} {c.categoryName ? `(${c.categoryName})` : ''}
                   </option>
                 ))}
               </select>
+              {form.caseId && !cases.find(c => c.id === form.caseId) && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Note: Selected case is not in your case library. It will remain linked.
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-2">
