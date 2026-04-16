@@ -51,15 +51,25 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [{ token, isGuestOrUnassigned }] = useState<AuthSnapshot>(readAuthSnapshot);
+  const [mounted, setMounted] = useState(false);
+  /** Stable SSR + first client frame — real auth is applied only after mount. */
+  const [auth, setAuth] = useState<AuthSnapshot>({
+    token: null,
+    isGuestOrUnassigned: false,
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  /** Avoid pathname-dependent `className` differing on SSR vs first client paint (hydration mismatch). */
-  const [layoutMounted, setLayoutMounted] = useState(false);
   useEffect(() => {
-    setLayoutMounted(true);
+    const timer = window.setTimeout(() => {
+      setMounted(true);
+      setAuth(readAuthSnapshot());
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
+  const { token, isGuestOrUnassigned } = auth;
+
   useEffect(() => {
+    if (!mounted) return;
     if (!token) {
       const redirect = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
       router.replace(`/auth/sign-in${redirect}`);
@@ -68,7 +78,11 @@ export function AppShell({
     if (isGuestOrUnassigned) {
       router.replace('/pending-approval');
     }
-  }, [isGuestOrUnassigned, pathname, router, token]);
+  }, [isGuestOrUnassigned, mounted, pathname, router, token]);
+
+  if (!mounted) {
+    return <SessionGateSkeleton />;
+  }
 
   if (!token) {
     return <SessionGateSkeleton />;
@@ -81,7 +95,7 @@ export function AppShell({
   const sidebarPx = sidebarCollapsed ? 72 : 260;
   const gutterPx = 24;
   /** Full-height workbench: only inner panels scroll (applied after mount so SSR/client markup match). */
-  const shellMainScrollLocked = layoutMounted && (pathname?.startsWith('/student/qa/image') ?? false);
+  const shellMainScrollLocked = mounted && (pathname?.startsWith('/student/qa/image') ?? false);
 
   return (
     <div className="flex min-h-0 h-screen w-full overflow-hidden bg-background text-text-main">

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
@@ -99,7 +99,15 @@ export function AppSidebar({
   const pathname = usePathname();
   const logout = useLogout();
   const { user } = useAuth();
-  const resolvedRole = mapBackendRoleToRoleKey(user?.activeRole) ?? role ?? null;
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHasMounted(true);
+  }, []);
+  /** Until mount, ignore localStorage/API-backed `user` so SSR and first paint match. */
+  const resolvedRole = hasMounted
+    ? mapBackendRoleToRoleKey(user?.activeRole) ?? role ?? null
+    : role ?? null;
   const { dashboardItem, otherItems } = useMemo(() => {
     if (!resolvedRole) return { dashboardItem: null, otherItems: [] as NavItem[] };
     const base = navByRole[resolvedRole] ?? [];
@@ -114,6 +122,17 @@ export function AppSidebar({
   const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-blue-100 bg-[#f0f7ff] text-[#1e293b] shadow-sm transition-[width] duration-200 ease-out ${
     collapsed ? 'w-[72px]' : 'w-[260px]'
   }`;
+
+  if (!hasMounted) {
+    return (
+      <aside className={shellClass}>
+        <div className="h-14 border-b border-blue-100 px-2" />
+        <div className="flex-1 px-2 py-3">
+          <div className="h-9 rounded-lg bg-blue-100/60" />
+        </div>
+      </aside>
+    );
+  }
 
   if (!resolvedRole || !meta) {
     return (
