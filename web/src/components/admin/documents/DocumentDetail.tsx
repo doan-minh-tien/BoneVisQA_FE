@@ -6,7 +6,6 @@ import {
   getDocuments,
   getAdminDocumentById,
   normalizeIndexingStatus,
-  reindexAdminDocument,
   type AdminDocumentDetail,
 } from '@/lib/api/admin-documents';
 import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
@@ -16,14 +15,12 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  FileUp,
   RefreshCw,
   XCircle,
   Calendar,
   FolderOpen,
   ExternalLink,
   Download,
-  DatabaseZap,
   Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -48,10 +45,9 @@ export default function DocumentDetail({ id }: { id: string }) {
   const [liveStatus, setLiveStatus] = useState<IngestionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isReindexing, setIsReindexing] = useState(false);
   const [hasOtherProcessingTask, setHasOtherProcessingTask] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
-  const [reindexMessage, setReindexMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [replaceModalAction, setReplaceModalAction] = useState<'replace' | 'reindex'>('replace');
 
   const applyIngestionSnapshot = (
     next: Omit<IngestionSnapshot, 'source'> & { source: IngestionSnapshot['source'] },
@@ -225,35 +221,6 @@ export default function DocumentDetail({ id }: { id: string }) {
       ? Math.min(100, Math.max(0, Math.round((currentProgressIndex / totalChunks) * 100)))
       : 0;
 
-  const handleReindex = async () => {
-    try {
-      setIsReindexing(true);
-      setReindexMessage(null);
-      const response = await reindexAdminDocument(id);
-      setReindexMessage({ type: 'success', text: response.message || 'Reindexing started.' });
-      
-      // Refetch doc to see updated status
-      const data = await getAdminDocumentById(id);
-      setDoc(data);
-      applyIngestionSnapshot({
-        source: 'rest',
-        status: data.indexingStatus,
-        currentPageIndexing: data.currentPageIndexing,
-        totalPages: data.totalPages,
-        totalChunks: undefined,
-        currentOperation: undefined,
-      });
-    } catch (err: unknown) {
-      console.error('Error reindexing document:', err);
-      setReindexMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to start reindexing.',
-      });
-    } finally {
-      setIsReindexing(false);
-    }
-  };
-
   const centerStatusUi = (() => {
     if (normalizedStatus === 'completed') {
       return {
@@ -414,38 +381,20 @@ export default function DocumentDetail({ id }: { id: string }) {
                 </div>
               ) : null}
 
-              {reindexMessage && (
-                <div className={`flex items-start gap-3 p-4 rounded-xl text-left w-full max-w-md mx-auto border ${
-                  reindexMessage.type === 'success' 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100 animate-in fade-in slide-in-from-top-2' 
-                    : 'bg-red-50 text-red-700 border-red-100 animate-in fade-in slide-in-from-top-2'
-                }`}>
-                  {reindexMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />}
-                  <p className="text-sm font-medium leading-relaxed">{reindexMessage.text}</p>
-                </div>
-              )}
-
               <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 pt-4 w-full">
-                <Button
-                  onClick={handleReindex}
-                  disabled={isReindexing || interactionLocked}
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                >
-                  {isReindexing ? <Loader2 className="w-5 h-5 animate-spin" /> : <DatabaseZap className="w-5 h-5" />}
-                  Reindex Document
-                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   disabled={interactionLocked}
-                  onClick={() => setReplaceOpen(true)}
+                  onClick={() => {
+                    setReplaceModalAction('replace');
+                    setReplaceOpen(true);
+                  }}
                   className="w-full sm:w-auto"
                 >
-                  <FileUp className="w-5 h-5" />
-                  Upload New Version
+                  <RefreshCw className="h-5 w-5" />
+                  Update/Manage Version
                 </Button>
 
                 <Button
@@ -486,6 +435,7 @@ export default function DocumentDetail({ id }: { id: string }) {
       </div>
       <AdminDocumentReplaceFileModal
         open={replaceOpen}
+        defaultAction={replaceModalAction}
         documentId={doc.id}
         documentTitle={doc.title}
         onClose={() => setReplaceOpen(false)}

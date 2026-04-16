@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Header from '@/components/Header';
 import AdminDocumentsUploadModal from '@/components/admin/documents/AdminDocumentsUploadModal';
 import AdminDocumentReplaceFileModal from '@/components/admin/documents/AdminDocumentReplaceFileModal';
@@ -22,7 +23,7 @@ import {
   normalizeIndexingStatus,
 } from '@/lib/api/admin-documents';
 import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
-import type { CategoryOption, DocumentStatusResponse, TagOption } from '@/lib/api/types';
+import type { CategoryOption, DocumentIngestionStatusDto, DocumentStatusResponse, TagOption } from '@/lib/api/types';
 import {
   ExternalLink,
   FileText,
@@ -35,6 +36,7 @@ import {
 export default function AdminDocumentsPage() {
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [tags, setTags] = useState<TagOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -91,6 +93,19 @@ export default function AdminDocumentsPage() {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    const onIndexing = (ev: Event) => {
+      const d = (ev as CustomEvent<DocumentIngestionStatusDto>).detail;
+      const s = String(d?.status ?? '').toLowerCase();
+      if (s === 'completed' || s === 'failed') {
+        void loadDocuments({ silent: true });
+        void queryClient.invalidateQueries();
+      }
+    };
+    window.addEventListener('DocumentIndexingProgressUpdated', onIndexing);
+    return () => window.removeEventListener('DocumentIndexingProgressUpdated', onIndexing);
+  }, [loadDocuments, queryClient]);
 
   const listPollMs = useMemo(() => {
     if (!documentListNeedsActivePolling(documents)) return 0;
@@ -260,10 +275,10 @@ export default function AdminDocumentsPage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="px-4 py-3 font-semibold text-muted-foreground">Document</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Category</th>
+                      <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Category</th>
                       <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Indexing</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Version</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground">Created</th>
+                      <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Version</th>
+                      <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Created</th>
                       <th className="px-4 py-3 text-right font-semibold text-muted-foreground">
                         Actions
                       </th>
@@ -297,7 +312,7 @@ export default function AdminDocumentsPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-4 py-3 text-center text-muted-foreground">
                           {doc.categoryId
                             ? categoryNameById.get(doc.categoryId) ?? doc.categoryId
                             : '—'}
@@ -311,12 +326,12 @@ export default function AdminDocumentsPage() {
                             />
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="px-4 py-3 text-center text-muted-foreground">
                           {doc.version != null ? `v${doc.version}` : '—'}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{formatCreated(doc.createdAt)}</td>
-                        <td className="px-4 py-3 align-middle text-right">
-                          <div className="flex flex-row flex-wrap items-center justify-end gap-2">
+                        <td className="px-4 py-3 text-center text-muted-foreground">{formatCreated(doc.createdAt)}</td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <div className="flex flex-row flex-nowrap items-center justify-center gap-2">
                             <Button
                               type="button"
                               variant="outline"
@@ -392,7 +407,7 @@ export default function AdminDocumentsPage() {
         documentId={replaceTarget?.id ?? ''}
         documentTitle={replaceTarget?.title ?? ''}
         onClose={() => setReplaceTarget(null)}
-        onSuccess={(_result) => void loadDocuments()}
+        onSuccess={() => void loadDocuments()}
       />
     </div>
   );

@@ -122,18 +122,19 @@ export function useSignalR() {
 
     const token = localStorage.getItem('token');
     if (!user || !token) {
-      setConnectionStatus('disconnected');
       return;
     }
 
     const base = getPublicApiOrigin();
     if (!base) {
-      setConnectionStatus('disconnected');
       return;
     }
 
     const hubUrl = `${base}/hubs/notifications`;
-    setConnectionStatus('connecting');
+    let aborted = false;
+    const connectingTimer = window.setTimeout(() => {
+      if (!aborted) setConnectionStatus('connecting');
+    }, 0);
 
     const connection = new HubConnectionBuilder()
       .withUrl(hubUrl, {
@@ -163,20 +164,29 @@ export function useSignalR() {
       setConnectionStatus(mapHubState(connection.state));
     });
 
-    void connection
-      .start()
-      .then(() => {
-        setConnectionStatus(mapHubState(connection.state));
-      })
-      .catch(() => {
+    const startConnection = async () => {
+      try {
+        if (connection.state === HubConnectionState.Disconnected) {
+          await connection.start();
+        }
+        if (!aborted) {
+          setConnectionStatus(mapHubState(connection.state));
+        }
+      } catch (error) {
+        if (aborted) return;
+        console.warn('SignalR start failed:', error);
         setConnectionStatus('disconnected');
-      });
+      }
+    };
+
+    void startConnection();
 
     return () => {
+      aborted = true;
+      window.clearTimeout(connectingTimer);
       connection.off('ReceiveNotification');
       connection.off('DocumentIndexingProgressUpdated');
       void connection.stop();
-      setConnectionStatus('disconnected');
     };
   }, [user, onNotification]);
 
