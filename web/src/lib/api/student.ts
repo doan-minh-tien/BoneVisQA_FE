@@ -352,6 +352,7 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     closeTime: item.closeTime != null ? String(item.closeTime) : null,
     isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
     score: typeof item.score === 'number' ? item.score : null,
+    attemptId: item.attemptId != null ? String(item.attemptId) : item.AttemptId != null ? String(item.AttemptId) : null,
   };
 }
 

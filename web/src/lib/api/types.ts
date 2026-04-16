@@ -351,6 +351,8 @@ export interface AssignedQuizItem {
   closeTime: string | null;
   isCompleted: boolean;
   score: number | null;
+  /** Attempt ID của lần làm gần nhất (dùng để review) */
+  attemptId?: string | null;
 }
 
 export interface QuizSessionDto {
@@ -544,6 +546,8 @@ export interface ClassQuizDto {
   openTime?: string | null;
   closeTime?: string | null;
   questionCount?: number;
+  /** Quiz từ Expert Library hay do lecturer tạo */
+  isFromExpertLibrary?: boolean;
 }
 
 export interface CreateQuizRequest {
@@ -561,6 +565,22 @@ export interface CreateQuizRequest {
 }
 
 export interface QuizQuestionDto {
+  id: string;
+  quizId: string;
+  quizTitle: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  questionText: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  imageUrl?: string | null;
+}
+
+export interface ExpertQuizQuestion {
   id: string;
   quizId: string;
   quizTitle: string | null;

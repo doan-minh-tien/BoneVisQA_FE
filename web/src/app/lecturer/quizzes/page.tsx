@@ -24,7 +24,7 @@ import {
   Trash,
   BookOpen,
 } from 'lucide-react';
-import { getLecturerQuizzes, deleteQuiz } from '@/lib/api/lecturer-quiz';
+import { getLecturerQuizzes, deleteQuiz, removeQuizFromClass } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassQuizDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
@@ -42,6 +42,8 @@ interface EnrichedQuiz extends ClassQuizDto {
   compactOpen: string;
   compactClose: string;
   compactAssigned: string;
+  /** True = quiz từ Expert Library, chỉ được "Remove from class" */
+  isExpertQuiz: boolean;
 }
 
 const PAGE_SIZE = 5;
@@ -200,6 +202,7 @@ export default function QuizListPage() {
           compactOpen: formatQuizCompact(q.openTime),
           compactClose: formatQuizCompact(q.closeTime),
           compactAssigned: formatAssignedCompact(q.assignedAt ?? null),
+          isExpertQuiz: q.isFromExpertLibrary ?? false,
         };
       });
       setQuizzes(enriched);

@@ -14,6 +14,7 @@ import {
   LogOut,
   Stethoscope,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 
 const studentMenuItems = [
@@ -22,6 +23,7 @@ const studentMenuItems = [
   { icon: ClipboardList, label: 'History', href: '/student/history' },
   { icon: BotMessageSquare, label: 'AI Q&A', href: '/student/qa' },
   { icon: Trophy, label: 'Quizzes', href: '/student/quiz' },
+  { icon: Eye, label: 'Review', href: '/student/quiz/history' },
   { icon: Sparkles, label: 'AI Quiz', href: '/student/ai-quiz' },
   { icon: UserCircle, label: 'Profile', href: '/student/profile' },
   { icon: Settings, label: 'Settings', href: '/student/settings' },

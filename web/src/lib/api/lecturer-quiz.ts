@@ -273,6 +273,17 @@ export async function deleteQuiz(quizId: string): Promise<void> {
   }
 }
 
+/**
+ * Remove a quiz from a class (only removes ClassQuizSession, keeps the quiz in Expert Library)
+ */
+export async function removeQuizFromClass(classId: string, quizId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/classes/${classId}/quizzes/${quizId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 // ========== AI Quiz Functions ==========
 
 import type {

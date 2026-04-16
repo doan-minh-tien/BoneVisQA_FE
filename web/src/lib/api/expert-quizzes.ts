@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
+import type { ExpertQuizQuestion } from './types';
 
 export type ExpertQuizDifficulty = 'Easy' | 'Medium' | 'Hard';
 
@@ -417,6 +418,172 @@ export async function fetchExpertUsersPaged(pageIndex = 1, pageSize = 100): Prom
       id: String(u.id ?? u.Id ?? u.userId ?? u.UserId ?? ''),
       fullName: String(u.fullName ?? u.FullName ?? u.name ?? u.Name ?? 'Unknown Expert'),
     }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Expert Quiz Library ==========
+
+export interface ExpertQuizLibraryItem {
+  id: string;
+  title: string;
+  topic: string | null;
+  openTime: string;
+  closeTime: string;
+  timeLimit: number;
+  passingScore: number;
+  isAiGenerated: boolean;
+  difficulty: string;
+  classification: string | null;
+  createdAt: string;
+  expertName: string;
+  questionCount: number;
+}
+
+interface ExpertQuizLibraryResponse {
+  items?: unknown[];
+  totalCount?: number;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+export interface ExpertQuizLibraryPagedResponse {
+  items: ExpertQuizLibraryItem[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
+function mapExpertQuizLibraryItem(row: unknown, fallbackId?: string): ExpertQuizLibraryItem | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+
+  const id = String(r.id ?? r.Id ?? fallbackId ?? '');
+  if (!id) return null;
+
+  return {
+    id,
+    title: String(r.title ?? r.Title ?? 'Untitled quiz'),
+    topic: r.topic != null ? String(r.topic) : r.Topic != null ? String(r.Topic) : null,
+    openTime: String(r.openTime ?? r.OpenTime ?? ''),
+    closeTime: String(r.closeTime ?? r.CloseTime ?? ''),
+    timeLimit: Number(r.timeLimit ?? r.TimeLimit ?? 0),
+    passingScore: Number(r.passingScore ?? r.PassingScore ?? 0),
+    isAiGenerated: normalizeBoolean(r.isAiGenerated ?? r.IsAiGenerated),
+    difficulty: String(r.difficulty ?? r.Difficulty ?? 'Easy'),
+    classification: r.classification != null
+      ? String(r.classification)
+      : r.Classification != null
+        ? String(r.Classification)
+        : null,
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? ''),
+    expertName: r.expertName != null ? String(r.expertName) : r.ExpertName != null ? String(r.ExpertName) : 'Unknown',
+    questionCount: Number(r.questionCount ?? r.QuestionCount ?? 0),
+  };
+}
+
+export async function fetchExpertQuizLibrary(
+  pageIndex = 1,
+  pageSize = 10,
+  topic?: string | null,
+  difficulty?: string | null,
+  classification?: string | null,
+): Promise<ExpertQuizLibraryPagedResponse> {
+  try {
+    const params = new URLSearchParams();
+    params.append('pageIndex', String(pageIndex));
+    params.append('pageSize', String(pageSize));
+    if (topic) params.append('topic', topic);
+    if (difficulty) params.append('difficulty', difficulty);
+    if (classification) params.append('classification', classification);
+
+    const { data } = await http.get<ExpertQuizLibraryResponse>(`/api/expert/library/quizzes?${params.toString()}`);
+
+    const itemsRaw = data?.items;
+    const totalCount = Number(data?.totalCount ?? 0);
+    const pageIndexOut = Number(data?.pageIndex ?? pageIndex);
+    const pageSizeOut = Number(data?.pageSize ?? pageSize);
+
+    const items = Array.isArray(itemsRaw)
+      ? itemsRaw.map((row) => mapExpertQuizLibraryItem(row)).filter((q): q is ExpertQuizLibraryItem => q !== null)
+      : [];
+
+    return { items, totalCount, pageIndex: pageIndexOut, pageSize: pageSizeOut };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchExpertQuizLibraryQuestions(quizId: string): Promise<ExpertQuizQuestion[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/library/quizzes/${quizId}/questions`);
+    const rawQuestions = data?.questions ?? data?.result ?? [];
+    return (Array.isArray(rawQuestions) ? rawQuestions : []).map((q: any) => ({
+      id: String(q.id ?? q.Id ?? q.questionId ?? q.QuestionId ?? ''),
+      quizId: String(q.quizId ?? q.QuizId ?? quizId),
+      quizTitle: q.quizTitle ?? q.QuizTitle ?? null,
+      caseId: q.caseId ?? q.CaseId ?? null,
+      caseTitle: q.caseTitle ?? q.CaseTitle ?? null,
+      questionText: String(q.questionText ?? q.QuestionText ?? ''),
+      type: String(q.type ?? q.Type ?? 'selection-choice'),
+      optionA: q.optionA ?? q.OptionA ?? null,
+      optionB: q.optionB ?? q.OptionB ?? null,
+      optionC: q.optionC ?? q.OptionC ?? null,
+      optionD: q.optionD ?? q.OptionD ?? null,
+      correctAnswer: String(q.correctAnswer ?? q.CorrectAnswer ?? ''),
+      imageUrl: q.imageUrl ?? q.ImageUrl ?? null,
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function assignExpertQuizFromLibrary(
+  classId: string,
+  quizId: string,
+  options?: {
+    openTime?: string;
+    closeTime?: string;
+    passingScore?: number;
+    timeLimitMinutes?: number;
+  },
+): Promise<AssignQuizResult> {
+  try {
+    const payload = {
+      openTime: options?.openTime ?? null,
+      closeTime: options?.closeTime ?? null,
+      passingScore: options?.passingScore ?? null,
+      timeLimitMinutes: options?.timeLimitMinutes ?? null,
+    };
+    const { data } = await http.post<unknown>(`/api/expert/classes/${classId}/library-quizzes/${quizId}`, payload);
+    const row = (data as any)?.result ?? data;
+    return mapAssignQuizResult(row);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Quiz Assignment Status ==========
+
+export interface QuizAssignmentStatus {
+  isAssigned: boolean;
+  assignedClassCount: number;
+  message: string;
+}
+
+/**
+ * Kiểm tra xem quiz đã được gán vào lớp nào chưa.
+ * Dùng để hiển thị warning cho Expert khi edit quiz.
+ */
+export async function fetchQuizAssignmentStatus(quizId: string): Promise<QuizAssignmentStatus> {
+  try {
+    const { data } = await http.get<QuizAssignmentStatus>(`/api/expert/quizzes/${quizId}/assignment-status`);
+    return {
+      isAssigned: Boolean(data?.isAssigned ?? false),
+      assignedClassCount: Number(data?.assignedClassCount ?? 0),
+      message: String(data?.message ?? ''),
+    };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -109,12 +109,31 @@ function MicroQuizzesPanel() {
             {q.score != null ? (
               <span className="text-sm font-semibold text-foreground">Last score: {Math.round(q.score)}%</span>
             ) : null}
-            <Link
-              href={`/student/quiz/${q.quizId}`}
-              className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-primary bg-primary px-4 text-sm font-medium text-white hover:opacity-95 sm:w-auto"
-            >
-              {q.isCompleted ? 'Review / retake' : 'Start quiz'}
-            </Link>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              {q.isCompleted ? (
+                <>
+                  <Link
+                    href={`/student/quiz/${q.quizId}`}
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-500 bg-emerald-50 px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/30 sm:w-auto"
+                  >
+                    Review
+                  </Link>
+                  <Link
+                    href={`/student/quiz/${q.quizId}?retake=true`}
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-primary bg-primary px-4 text-sm font-medium text-white hover:opacity-95 sm:w-auto"
+                  >
+                    Retake
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href={`/student/quiz/${q.quizId}`}
+                  className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-primary bg-primary px-4 text-sm font-medium text-white hover:opacity-95 sm:w-auto"
+                >
+                  Start quiz
+                </Link>
+              )}
+            </div>
           </div>
         </li>
       ))}

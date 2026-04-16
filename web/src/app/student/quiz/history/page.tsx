@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { StudentAppChrome, StudentDashboardFab } from '@/components/student/StudentAppChrome';
 import { fetchStudentQuizHistory } from '@/lib/api/student';
 import type { StudentQuizAttemptSummary } from '@/lib/api/student';
@@ -22,11 +23,20 @@ import {
 type FilterMode = 'all' | 'ai' | 'assigned';
 
 export default function StudentQuizHistoryPage() {
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [attempts, setAttempts] = useState<StudentQuizAttemptSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Auto-expand attempt when ?review=<attemptId> is present
+  useEffect(() => {
+    const reviewId = searchParams.get('review');
+    if (reviewId) {
+      setExpanded(reviewId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;

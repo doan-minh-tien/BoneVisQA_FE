@@ -168,7 +168,6 @@ export default function StudentQuestionsPage() {
       setSelectedQuestion(null);
     }
   };
-  const [expertSubmitting, setExpertSubmitting] = useState(false);
 
   useEffect(() => {
     loadClasses();

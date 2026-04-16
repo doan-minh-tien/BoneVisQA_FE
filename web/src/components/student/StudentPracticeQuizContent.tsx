@@ -276,13 +276,13 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
               </>
             )}
           </div>
-          <div className="relative z-10 mt-8 flex gap-4">
+          <div className="relative z-10 mt-8 space-y-3">
             {quiz ? (
               <>
                 <Button
                   type="button"
                   onClick={() => router.push(`/student/quiz/${quiz.attemptId}`)}
-                  className="rounded-full bg-gradient-to-r from-primary to-[#007BFF]/90 px-6 py-3 text-sm font-bold text-white shadow-xl transition-all active:scale-95"
+                  className="w-full rounded-full bg-gradient-to-r from-primary to-[#007BFF]/90 px-6 py-3 text-sm font-bold text-white shadow-xl transition-all active:scale-95 sm:w-auto"
                 >
                   Continue quiz
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -291,7 +291,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                   type="button"
                   variant="ghost"
                   onClick={handleReset}
-                  className="rounded-full bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur-md transition-all hover:bg-white/20"
+                  className="w-full rounded-full bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur-md transition-all hover:bg-white/20 sm:w-auto"
                 >
                   Reset session
                 </Button>

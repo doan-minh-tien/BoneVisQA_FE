@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation';
+'use client';
 
+import { redirect } from 'next/navigation';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';

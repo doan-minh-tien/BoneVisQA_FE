@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/ui/toast';
 import {
   Loader2,
@@ -21,6 +22,7 @@ import {
   Contrast,
   Ruler,
   Mail,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview, requestRetake } from '@/lib/api/student';
@@ -61,6 +63,8 @@ export default function QuizSessionPage({
 }) {
   const { id: quizId } = use(params);
   const toast = useToast();
+  const searchParams = useSearchParams();
+  const isRetakeRequested = searchParams.get('retake') === 'true';
 
   const [quizInfo, setQuizInfo] = useState<AssignedQuizItem | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
@@ -84,6 +88,7 @@ export default function QuizSessionPage({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const timeUpAutoSubmitTriggered = useRef(false);
 
   // Reload quiz info from server to get updated status (isCompleted, score)
@@ -118,6 +123,14 @@ export default function QuizSessionPage({
       void reloadQuizInfo();
     }
   }, [submitted, reloadQuizInfo]);
+
+  // Handle retake request from URL parameter
+  useEffect(() => {
+    if (isRetakeRequested && quizInfo?.isCompleted) {
+      void handleRetakeAndStart();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRetakeRequested, quizInfo]);
 
   const questions: QuizModeQuestion[] = session?.questions ?? [];
   const currentQ = questions[currentIndex];
@@ -234,6 +247,20 @@ export default function QuizSessionPage({
     }
   };
 
+  const handleRetakeAndStart = async () => {
+    setRequestingRetake(true);
+    try {
+      await requestRetake(quizId);
+      setRetakeSent(true);
+      toast.success('Retake request sent! Starting quiz...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await handleStart();
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+      setRequestingRetake(false);
+    }
+  };
+
   const handleSelect = (option: string) => {
     if (submitted || showFeedback) return;
     setAnswers((prev) => ({ ...prev, [currentQ.questionId]: option }));
@@ -285,7 +312,7 @@ export default function QuizSessionPage({
         <AlertCircle className="h-12 w-12 text-destructive" />
         <h1 className="text-xl font-bold">Quiz not found</h1>
         <p className="text-muted-foreground">This quiz may no longer be available.</p>
-        <Link href="/student/quiz">
+        <Link href="/student/quizzes">
           <Button>Back to quizzes</Button>
         </Link>
       </div>
@@ -318,7 +345,7 @@ export default function QuizSessionPage({
               <p className="text-sm leading-relaxed text-on-surface break-words">{startError}</p>
             </div>
             {(notOpenHint || closedHint) && (
-              <Link href="/student/quiz" className="w-full">
+              <Link href="/student/quizzes" className="w-full">
                 <Button variant="outline" className="w-full mt-2 h-11 rounded-xl font-bold">
                   Quay lại danh sách quiz
                 </Button>
@@ -364,7 +391,7 @@ export default function QuizSessionPage({
                 )}
               </>
             ) : null}
-            <Link href="/student/quiz">
+            <Link href="/student/quizzes">
               <Button variant="outline" className="h-11 w-full rounded-xl font-bold">
                 Back to quiz list
               </Button>
@@ -413,7 +440,7 @@ export default function QuizSessionPage({
               {!loadingSession && <PlayCircle className="h-5 w-5" />}
               {loadingSession ? 'Preparing…' : 'Begin assessment'}
             </Button>
-            <Link href="/student/quiz">
+            <Link href="/student/quizzes">
               <Button variant="outline" className="h-12 w-full rounded-xl border-outline-variant/30 font-bold">
                 <ArrowLeft className="h-4 w-4" />
                 Back to quizzes
@@ -430,7 +457,7 @@ export default function QuizSessionPage({
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-on-surface-variant">This quiz has no questions.</p>
-        <Link href="/student/quiz">
+        <Link href="/student/quizzes">
           <Button variant="outline">Back to quizzes</Button>
         </Link>
       </div>
@@ -516,7 +543,7 @@ export default function QuizSessionPage({
             <UserRound className="h-5 w-5 text-primary" />
           </div>
           <Link
-            href="/student/quiz"
+            href="/student/quizzes"
             className="flex items-center gap-2 rounded-xl border border-outline-variant/30 px-3 py-2 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high sm:text-sm"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -525,7 +552,7 @@ export default function QuizSessionPage({
         </div>
       </header>
 
-      <section className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:px-10 lg:py-10">
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:px-10 lg:py-10">
         <div className="mb-8 lg:mb-10">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
@@ -607,35 +634,11 @@ export default function QuizSessionPage({
                       </div>
                     </div>
                   )}
-
-                  {currentQ.imageUrl && (
-                    <>
-                      <svg
-                        className="pointer-events-none absolute inset-0 h-full w-full"
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                      >
-                        <ellipse
-                          cx="50"
-                          cy="55"
-                          rx="10"
-                          ry="7"
-                          transform="rotate(-25, 50, 55)"
-                          className="fill-secondary-container/15 stroke-secondary-container"
-                          strokeWidth="0.6"
-                        />
-                      </svg>
-                      <div className="pointer-events-none absolute left-[40%] top-[45%]">
-                        <div className="relative">
-                          <div className="absolute inset-0 animate-ping rounded-full bg-secondary-container opacity-60" />
-                          <div className="relative h-4 w-4 rounded-full border-2 border-white bg-secondary-container shadow-sm" />
-                        </div>
-                      </div>
-                    </>
-                  )}
                 </div>
+              </div>
+            </div>
 
-                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
+              <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
                   <button
                     type="button"
                     onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
@@ -682,7 +685,6 @@ export default function QuizSessionPage({
                   >
                     {ZOOM_LEVELS[zoomIndex]}x
                   </button>
-                </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -727,7 +729,6 @@ export default function QuizSessionPage({
                   </div>
                 </div>
               </div>
-            </div>
           </div>
 
           {/* Right: question + answers */}
@@ -956,33 +957,97 @@ export default function QuizSessionPage({
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-center gap-3">
-                  <Link href="/student/quiz">
+                  <Link href="/student/quizzes">
                     <Button variant="outline" className="rounded-xl font-bold">
                       Back to quizzes
                     </Button>
                   </Link>
-                  <Link href="/student/quiz/history">
-                    <Button className="rounded-xl font-bold">Quiz history</Button>
-                  </Link>
+                  {/* Review Answers Button - DISABLED
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewModal(true)}
+                    className="flex items-center gap-2 rounded-xl border border-secondary/30 bg-secondary/10 px-4 py-2.5 text-sm font-bold text-secondary transition-colors hover:bg-secondary/20"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Review Answers
+                  </button>
+                  */}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Review answers */}
-        {submitted && quizReview && quizReview.questions.length > 0 && (
-          <div>
-            <div className="mb-6 flex items-center gap-3">
-              <span className="h-1 w-6 rounded-full bg-primary" />
-              <h4 className="font-headline text-base font-bold text-on-surface">
-                Review answers
-              </h4>
-              <span className="ml-auto text-xs text-on-surface-variant">
-                {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
-              </span>
+
+        {/* Question navigation */}
+        <div className="mt-10 border-t border-outline-variant/10 pt-10">
+          <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
+            <span className="h-1 w-6 rounded-full bg-primary" />
+            Question navigation
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {questions.map((q, i) => {
+              const state = answerStates[q.questionId];
+              const isCurrent = i === currentIndex;
+              const reviewQ = quizReview?.questions.find(rq => rq.questionId === q.questionId);
+              let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
+              if (reviewQ) {
+                cls = reviewQ.isCorrect
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (state === 'correct') {
+                cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
+              } else if (state === 'incorrect') {
+                cls = 'border-destructive/40 bg-destructive/10 text-destructive';
+              } else if (answers[q.questionId]) {
+                cls = 'border-primary/40 bg-primary/10 text-primary';
+              }
+              if (isCurrent) {
+                cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+              }
+              return (
+                <button
+                  key={q.questionId}
+                  type="button"
+                  onClick={() => {
+                    setCurrentIndex(i);
+                    setShowFeedback(false);
+                  }}
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 text-sm font-bold transition-all ${cls}`}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================
+          REVIEW ANSWERS MODAL - DISABLED
+          ============================================
+      */}
+      {/*
+      {showReviewModal && quizReview && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl mt-8 mb-8 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 px-6 py-4 bg-gradient-to-r from-primary/5 to-transparent">
+              <div>
+                <h3 className="font-headline text-lg font-bold text-on-surface">Review Answers</h3>
+                <p className="text-xs text-on-surface-variant">
+                  {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="rounded-full p-2 text-on-surface-variant hover:bg-surface-container-high transition-colors"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
             </div>
-            <div className="space-y-3">
+
+            <div className="max-h-[70vh] overflow-y-auto p-6 space-y-4">
               {quizReview.questions.map((q, i) => {
                 const studentChoice = q.studentAnswer?.toUpperCase();
                 const correctChoice = q.correctAnswer?.toUpperCase();
@@ -1011,7 +1076,6 @@ export default function QuizSessionPage({
                         </p>
                       </div>
                       {q.imageUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={resolveApiAssetUrl(q.imageUrl)}
                           alt="case"
@@ -1066,52 +1130,21 @@ export default function QuizSessionPage({
                 );
               })}
             </div>
-          </div>
-        )}
 
-        {/* Question navigation */}
-        <div className="mt-10 border-t border-outline-variant/10 pt-10">
-          <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
-            <span className="h-1 w-6 rounded-full bg-primary" />
-            Question navigation
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {questions.map((q, i) => {
-              const state = answerStates[q.questionId];
-              const isCurrent = i === currentIndex;
-              const reviewQ = quizReview?.questions.find(rq => rq.questionId === q.questionId);
-              let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
-              if (reviewQ) {
-                cls = reviewQ.isCorrect
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
-                  : 'border-destructive/40 bg-destructive/10 text-destructive';
-              } else if (state === 'correct') {
-                cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
-              } else if (state === 'incorrect') {
-                cls = 'border-destructive/40 bg-destructive/10 text-destructive';
-              } else if (answers[q.questionId]) {
-                cls = 'border-primary/40 bg-primary/10 text-primary';
-              }
-              if (isCurrent) {
-                cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
-              }
-              return (
-                <button
-                  key={q.questionId}
-                  type="button"
-                  onClick={() => {
-                    setCurrentIndex(i);
-                    setShowFeedback(false);
-                  }}
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl border-2 text-sm font-bold transition-all ${cls}`}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
+            <div className="border-t border-outline-variant/20 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="w-full rounded-xl bg-primary py-3 font-bold text-white transition-colors hover:bg-primary/90"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </section>
+      )}
+      */}
+      {/* ============================================ */}
 
       <footer className="mt-auto border-t border-outline-variant/10 px-6 py-8 text-center">
         <p className="mx-auto max-w-2xl text-xs font-medium text-on-surface-variant">
@@ -1119,10 +1152,10 @@ export default function QuizSessionPage({
           standards; not a substitute for clinical supervision.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-6">
-          <Link href="/student/quiz" className="text-xs font-bold text-on-surface-variant hover:text-primary">
+          <Link href="/student/quizzes" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Back to quizzes
           </Link>
-          <Link href="/student/quiz/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
+          <Link href="/student/quizzes/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Quiz history
           </Link>
         </div>
