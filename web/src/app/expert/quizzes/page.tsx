@@ -442,7 +442,7 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
                 }))}
                 className="text-xs text-primary hover:underline cursor-pointer"
               >
-                {form.topicMode === 'select' ? 'Tu nhap topic' : 'Chon tu danh sach'}
+                {form.topicMode === 'select' ? 'Enter custom topic' : 'Select from list'}
               </button>
             </div>
             {form.topicMode === 'select' ? (
@@ -451,7 +451,7 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
                 onChange={(e) => setForm((p) => ({ ...p, topic: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
               >
-                <option value="">-- Chon Topic --</option>
+                <option value="">-- Select Topic --</option>
                 {PREDEFINED_TOPICS.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
@@ -461,7 +461,7 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
                 type="text"
                 value={form.topic}
                 onChange={(e) => setForm((p) => ({ ...p, topic: e.target.value }))}
-                placeholder="Nhập topic moi..."
+                placeholder="Enter new topic..."
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             )}
@@ -474,14 +474,14 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
                 <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="space-y-1">
                   <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                    Warning: Quiz da duoc gan vao lop hoc
+                    Warning: Quiz has been assigned to classes
                   </h4>
                   <p className="text-sm text-amber-700 dark:text-amber-300">
-                    Quiz nay da duoc gan vao <strong>{assignmentStatus.assignedClassCount} lop</strong>.
+                    This quiz has been assigned to <strong>{assignmentStatus.assignedClassCount} classes</strong>.
                   </p>
                   <p className="text-sm text-amber-700 dark:text-amber-300">
-                    Cac lop da gan se <strong>KHONG</strong> bi anh huong boi thay doi nay.
-                    Chi cac lop moi gan sau nay moi dung gia tri moi.
+                    Assigned classes will <strong>NOT</strong> be affected by this change.
+                    Only newly assigned classes after this will use the new values.
                   </p>
                 </div>
               </div>
