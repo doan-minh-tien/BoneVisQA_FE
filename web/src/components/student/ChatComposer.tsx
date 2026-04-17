@@ -1,7 +1,7 @@
 'use client';
 
 import { LayoutGroup, motion } from 'framer-motion';
-import { Loader2, Send, UploadCloud } from 'lucide-react';
+import { Send, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type Props = {
@@ -35,8 +35,8 @@ export function ChatComposer({
             <Button
               type="button"
               variant="outline"
-              size="icon"
-              className="h-11 w-11 shrink-0 rounded-full"
+              size="sm"
+              className="h-11 w-11 shrink-0 rounded-full p-0"
               disabled={isDisabled}
               aria-label="Attach imaging file"
               onClick={onChooseFile}
@@ -68,13 +68,20 @@ export function ChatComposer({
             className="h-11 w-11 shrink-0 rounded-full px-0 transition-all hover:opacity-90 active:scale-95"
             disabled={isDisabled}
             aria-label={isDisabled ? 'Sending message' : 'Send message'}
+            aria-busy={isLoading}
             onClick={onSubmit}
           >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <span
+                aria-hidden
+                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white"
+              />
             ) : (
               <Send className="h-4 w-4" aria-hidden />
             )}
+            <span className="sr-only" aria-live="polite">
+              {isLoading ? 'Sending message' : 'Send message'}
+            </span>
           </Button>
         </motion.div>
       </motion.div>

@@ -268,6 +268,7 @@ textarea::placeholder {
   height: 6px;
   border-radius: 9999px;
   background: rgb(100 116 139);
+  will-change: transform, opacity;
   animation: messenger-dot-bounce 1.15s ease-in-out infinite;
 }
 .messenger-typing-dot:nth-child(2) {
@@ -296,6 +297,7 @@ textarea::placeholder {
   height: 6px;
   border-radius: 9999px;
   background: rgb(100 116 139);
+  will-change: transform, opacity;
   animation: wave-dots 1.1s ease-in-out infinite;
 }
 .wave-typing-dot:nth-child(2) {
@@ -317,7 +319,16 @@ textarea::placeholder {
 }
 
 .chat-send-rise {
+  will-change: transform, opacity;
   animation: chat-send-rise 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messenger-typing-dot,
+  .wave-typing-dot,
+  .chat-send-rise {
+    animation: none !important;
+  }
 }
 
 /* Improve readability when text sits on strong/colored surfaces. */

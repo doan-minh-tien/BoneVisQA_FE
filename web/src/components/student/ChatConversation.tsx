@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AlertTriangle, Loader2, MoreHorizontal, Stethoscope } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Loader2, MoreHorizontal, Stethoscope } from 'lucide-react';
 import { ChatErrorBoundary } from '@/components/student/ChatErrorBoundary';
 import { VisualQaStructuredAnswer } from '@/components/student/VisualQaRichAnswer';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
@@ -26,6 +26,8 @@ type Props = {
   isRestoring?: boolean;
   networkWarning?: string | null;
   errorCode?: string | null;
+  policyReason?: string | null;
+  systemNoticeCode?: string | null;
   errorMessage?: string | null;
   canRequestReview?: boolean;
   requestingExpertSupport?: boolean;
@@ -53,6 +55,13 @@ function formatReviewStateLabel(reviewState?: string | null): string | null {
   return reviewState ?? null;
 }
 
+function formatTurnTimestamp(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
 export function ChatConversation({
   messages,
   capabilities,
@@ -62,6 +71,7 @@ export function ChatConversation({
   isRestoring = false,
   networkWarning,
   errorCode,
+  systemNoticeCode,
   errorMessage,
   canRequestReview = false,
   requestingExpertSupport = false,
@@ -108,6 +118,8 @@ export function ChatConversation({
             turn.findings?.find((item) => item.trim()) ||
             '',
           responseKind: normalizeResponseKind(turn.responseKind),
+          policyReason: turn.policyReason?.trim() ?? '',
+          systemNoticeCode: turn.systemNoticeCode?.trim() ?? '',
           reviewStateLabel: formatReviewStateLabel(turn.reviewState),
           reviewerNotes: normalizedMessages.filter(
             (message) => message.role === 'lecturer' || message.role === 'expert',
@@ -115,13 +127,17 @@ export function ChatConversation({
       };
     });
     const seenSystemNotice = new Set<string>();
-    return mapped.filter((row) => {
+    const dedupedRows = mapped.filter((row) => {
       if (row.responseKind !== 'system_notice') return true;
       const fingerprint = `${row.turn.turnId ?? row.turn.turnIndex}:${row.assistantText.trim().toLowerCase()}`;
       if (seenSystemNotice.has(fingerprint)) return false;
       seenSystemNotice.add(fingerprint);
       return true;
     });
+    return dedupedRows.map((row, idx) => ({
+      ...row,
+      sequenceNo: idx + 1,
+    }));
   }, [messages]);
 
   useEffect(() => {
@@ -135,6 +151,13 @@ export function ChatConversation({
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setIsPinnedToBottom(distanceFromBottom < 96);
+  };
+
+  const scrollToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setIsPinnedToBottom(true);
   };
 
   return (
@@ -196,12 +219,17 @@ export function ChatConversation({
                   ))}
                 </AnimatePresence>
 
-                {renderedTurns.map(({ turn, reviewerNotes, studentMessage, assistantText, responseKind, reviewStateLabel }) => (
+                {renderedTurns.map(({ turn, reviewerNotes, studentMessage, assistantText, responseKind, systemNoticeCode: turnSystemNoticeCode, reviewStateLabel, sequenceNo }) => (
                   <div
                     key={turn.turnId ?? `${turn.turnIndex}-${turn.createdAt ?? ''}`}
                     className="w-full rounded-xl text-left"
                   >
                     <div className="space-y-2">
+                      <div className="flex justify-center">
+                        <span className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {formatTurnTimestamp(turn.createdAt) ?? `Turn #${sequenceNo}`}
+                        </span>
+                      </div>
                       {studentMessage ? (
                         <motion.div
                           className="chat-send-rise flex justify-end"
@@ -210,7 +238,7 @@ export function ChatConversation({
                           transition={{ type: 'spring', stiffness: 320, damping: 24 }}
                           layout
                         >
-                          <div className="max-w-[92%] rounded-2xl border border-[#003ebd] bg-[#0055ff] px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
+                          <div className="max-w-[92%] overflow-hidden break-words rounded-2xl border border-[#003ebd] bg-[#0055ff] px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               components={{
@@ -233,7 +261,7 @@ export function ChatConversation({
                         transition={{ type: 'spring', stiffness: 320, damping: 24 }}
                         layout
                       >
-                        <div className="relative max-w-[92%] rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm leading-relaxed text-slate-950 shadow-sm">
+                        <div className="relative max-w-[92%] overflow-hidden break-words rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm leading-relaxed text-slate-950 shadow-sm [&_a]:break-all [&_pre]:overflow-x-auto">
                           {responseKind === 'analysis' ? (
                             <VisualQaStructuredAnswer
                               markdown={turn.answerText}
@@ -244,15 +272,17 @@ export function ChatConversation({
                               citations={turn.citations ?? []}
                             />
                           ) : responseKind === 'clarification' || responseKind === 'refusal' ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                ...markdownExternalLinkComponents,
-                                p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                              }}
-                            >
-                              {assistantText || 'The assistant returned a non-analysis response.'}
-                            </ReactMarkdown>
+                            <div className="space-y-2">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  ...markdownExternalLinkComponents,
+                                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                                }}
+                              >
+                                {assistantText || 'The assistant returned a non-analysis response.'}
+                              </ReactMarkdown>
+                            </div>
                           ) : responseKind === 'system_notice' ? (
                             <div className="space-y-2">
                               <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
@@ -268,6 +298,11 @@ export function ChatConversation({
                               >
                                 {assistantText || 'This session has a new system notice.'}
                               </ReactMarkdown>
+                              {turnSystemNoticeCode ? (
+                                <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Notice code: {turnSystemNoticeCode}
+                                </div>
+                              ) : null}
                             </div>
                           ) : (
                             <div className="space-y-2">
@@ -390,9 +425,9 @@ export function ChatConversation({
                     layout
                   >
                     <div className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-slate-100 px-4 py-3" aria-hidden>
-                      <span className="wave-typing-dot" />
-                      <span className="wave-typing-dot" />
-                      <span className="wave-typing-dot" />
+                      <span className="messenger-typing-dot" />
+                      <span className="messenger-typing-dot" />
+                      <span className="messenger-typing-dot" />
                     </div>
                   </motion.div>
                 ) : null}
@@ -414,6 +449,11 @@ export function ChatConversation({
                     <p className="mt-2 leading-relaxed">
                       {displayedErrorMessage || capabilityReason}
                     </p>
+                    {systemNoticeCode ? (
+                      <p className="mt-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Notice code: {systemNoticeCode}
+                      </p>
+                    ) : null}
                     {isError && displayedErrorMessage ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {retryMessage && !isTurnLimitError ? (
@@ -438,6 +478,16 @@ export function ChatConversation({
           </LayoutGroup>
         )}
       </ChatErrorBoundary>
+      {!isPinnedToBottom && renderedTurns.length > 0 ? (
+        <button
+          type="button"
+          onClick={scrollToLatest}
+          className="sticky bottom-3 ml-auto flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+        >
+          Latest
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -112,6 +112,15 @@ function mergeTurnsByIdentity(base: VisualQaTurn[], incoming: VisualQaTurn[]): V
   });
 }
 
+function hasQuestionText(turn: VisualQaTurn): boolean {
+  if (turn.questionText?.trim()) return true;
+  if (!Array.isArray(turn.messages)) return false;
+  return turn.messages.some((msg) => {
+    const role = (msg.role ?? '').toLowerCase();
+    return (role === 'student' || role === 'user') && Boolean(msg.content?.trim());
+  });
+}
+
 export default function StudentVisualQaImagePage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -132,6 +141,8 @@ export default function StudentVisualQaImagePage() {
   const [aiOverload, setAiOverload] = useState(false);
   const [chatErrorCode, setChatErrorCode] = useState<string | null>(null);
   const [chatErrorMessage, setChatErrorMessage] = useState<string | null>(null);
+  const [chatPolicyReason, setChatPolicyReason] = useState<string | null>(null);
+  const [chatSystemNoticeCode, setChatSystemNoticeCode] = useState<string | null>(null);
   const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
@@ -146,8 +157,10 @@ export default function StudentVisualQaImagePage() {
   const [serverForcedExpired, setServerForcedExpired] = useState(false);
   const [pendingOutgoingMessage, setPendingOutgoingMessage] = useState<PendingOutgoingMessage | null>(null);
   const [restoringSession, setRestoringSession] = useState(false);
+  const localQuestionByRequestIdRef = useRef<Record<string, string>>({});
+  const draftStorageKey = `student-visual-qa-draft:${user?.email ?? 'anonymous'}:${pathname}`;
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
-    'student-visual-qa-draft',
+    draftStorageKey,
     EMPTY_DRAFT,
     { ttlMs: DRAFT_TTL_MS },
   );
@@ -288,9 +301,17 @@ export default function StudentVisualQaImagePage() {
       try {
         const restored = await fetchStudentVisualQaSession(historySessionId);
         if (cancelled) return;
-        setSession(restored);
-        setChatTurns(restored.turns);
-        setSelectedTurnIndex(restored.latest?.turnIndex ?? restored.turns[restored.turns.length - 1]?.turnIndex ?? null);
+        const restoredTurns = withLocalQuestionFallback(restored.turns);
+        pruneResolvedLocalQuestions(restoredTurns);
+        setSession({
+          ...restored,
+          turns: restoredTurns,
+          latest: restored.latest ?? restoredTurns[restoredTurns.length - 1] ?? null,
+        });
+        setChatTurns(restoredTurns);
+        setSelectedTurnIndex(
+          restored.latest?.turnIndex ?? restoredTurns[restoredTurns.length - 1]?.turnIndex ?? null,
+        );
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Could not restore the chat session.');
@@ -334,18 +355,87 @@ export default function StudentVisualQaImagePage() {
     if (pct >= 100) setLoadingPhase('analyzing');
   }, []);
 
+  const appendLocalSystemNotice = useCallback((message: string, systemNoticeCode?: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const makeSystemTurn = (nextTurnIndex: number): VisualQaTurn => ({
+      turnId: null,
+      turnIndex: nextTurnIndex,
+      answerText: trimmed,
+      diagnosis: '',
+      findings: [],
+      reflectiveQuestions: [],
+      differentialDiagnoses: [],
+      citations: [],
+      createdAt: new Date().toISOString(),
+      responseKind: 'system_notice',
+      systemNoticeCode: systemNoticeCode?.trim() || null,
+      actorRole: 'system',
+      lastResponderRole: 'system',
+      isReviewTarget: false,
+    });
+    setChatTurns((prev) => {
+      const nextTurnIndex = (prev[prev.length - 1]?.turnIndex ?? 0) + 1;
+      return mergeTurnsByIdentity(prev, [makeSystemTurn(nextTurnIndex)]);
+    });
+    setSession((prev) => {
+      if (!prev) return prev;
+      const nextTurnIndex = (prev.turns[prev.turns.length - 1]?.turnIndex ?? 0) + 1;
+      const systemTurn = makeSystemTurn(nextTurnIndex);
+      const mergedTurns = mergeTurnsByIdentity(prev.turns, [systemTurn]);
+      return {
+        ...prev,
+        turns: mergedTurns,
+        latest: mergedTurns[mergedTurns.length - 1] ?? prev.latest,
+      };
+    });
+  }, []);
+
+  function withLocalQuestionFallback(turns: VisualQaTurn[]): VisualQaTurn[] {
+    return turns.map((turn) => {
+      const requestId = turn.clientRequestId?.trim();
+      if (!requestId || hasQuestionText(turn)) return turn;
+      const fallbackQuestion = localQuestionByRequestIdRef.current[requestId];
+      if (!fallbackQuestion?.trim()) return turn;
+      return {
+        ...turn,
+        questionText: fallbackQuestion,
+      };
+    });
+  }
+
+  function pruneResolvedLocalQuestions(turns: VisualQaTurn[]) {
+    turns.forEach((turn) => {
+      const requestId = turn.clientRequestId?.trim();
+      if (!requestId) return;
+      if (hasQuestionText(turn)) {
+        delete localQuestionByRequestIdRef.current[requestId];
+      }
+    });
+  }
+
   const submitQuestion = async (questionOverride?: string) => {
     if (isSubmittingRef.current) return;
     if (isSessionInteractionLocked) {
-      toast.info(sessionCapabilityReason || 'This chat is read-only for now. Start a new chat to continue.');
+      const lockMessage = sessionCapabilityReason || 'This chat is read-only for now. Start a new chat to continue.';
+      appendLocalSystemNotice(lockMessage, session?.systemNoticeCode ?? 'SESSION_LOCKED');
+      toast.info(lockMessage);
       return;
     }
     const requiresFile = !isOngoingSession;
     const nextQuestion =
       (typeof questionOverride === 'string' ? questionOverride : question).trim();
     if ((requiresFile && !file) || !nextQuestion) {
-      if (requiresFile && !file) setImageError('Please attach an image before submitting.');
-      if (!nextQuestion) setQuestionError('Please enter your question or observations.');
+      if (requiresFile && !file) {
+        const msg = 'Please attach an image before submitting.';
+        setImageError(msg);
+        appendLocalSystemNotice(msg, 'MISSING_IMAGE');
+      }
+      if (!nextQuestion) {
+        const msg = 'Please enter your question or observations.';
+        setQuestionError(msg);
+        appendLocalSystemNotice(msg, 'MISSING_QUESTION');
+      }
       return;
     }
     if (file && file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -359,13 +449,17 @@ export default function StudentVisualQaImagePage() {
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `client-${Date.now()}`;
+    localQuestionByRequestIdRef.current[requestId] = q;
     setPendingOutgoingMessage({ id: requestId, content: q, status: 'sending' });
+    setQuestion('');
     setImageError(null);
     setQuestionError(null);
     setNetworkWarning(null);
     setAiOverload(false);
     setChatErrorCode(null);
     setChatErrorMessage(null);
+    setChatPolicyReason(null);
+    setChatSystemNoticeCode(null);
     setLoading(true);
     setLoadingPhase(file ? 'upload' : 'analyzing');
     setUploadPct(0);
@@ -399,6 +493,8 @@ export default function StudentVisualQaImagePage() {
                 createdAt: new Date().toISOString(),
                 responseKind: res.responseKind ?? 'analysis',
                 clientRequestId: res.clientRequestId ?? requestId,
+                policyReason: res.policyReason ?? null,
+                systemNoticeCode: res.systemNoticeCode ?? null,
                 reviewState: res.reviewState ?? null,
                 lastResponderRole: res.lastResponderRole ?? 'assistant',
                 actorRole: 'assistant',
@@ -427,6 +523,8 @@ export default function StudentVisualQaImagePage() {
               citations: [],
               createdAt: new Date().toISOString(),
               responseKind: 'system_notice',
+              policyReason: res.policyReason ?? null,
+              systemNoticeCode: res.systemNoticeCode ?? null,
               actorRole: 'system',
               lastResponderRole: 'system',
               isReviewTarget: false,
@@ -436,8 +534,11 @@ export default function StudentVisualQaImagePage() {
         return mergedWithLatest;
       };
 
-      const immediateTurns = normalizeTurnsWithLivePayload();
+      const immediateTurns = withLocalQuestionFallback(normalizeTurnsWithLivePayload());
+      pruneResolvedLocalQuestions(immediateTurns);
       const immediateLatest = res.latest ?? immediateTurns[immediateTurns.length - 1] ?? null;
+      setChatPolicyReason(res.policyReason ?? null);
+      setChatSystemNoticeCode(res.systemNoticeCode ?? null);
       setSession({
         ...res,
         turns: immediateTurns,
@@ -452,7 +553,6 @@ export default function StudentVisualQaImagePage() {
       setSelectedTurnIndex(immediateTurns[immediateTurns.length - 1]?.turnIndex ?? null);
       setPendingOutgoingMessage(null);
       setRoiBoundingBox(null);
-      setQuestion('');
       toast.success('Diagnostic report generated.');
       clearDraft();
       if (res.sessionId?.trim()) {
@@ -460,14 +560,21 @@ export default function StudentVisualQaImagePage() {
           try {
             const restored = await fetchStudentVisualQaSession(res.sessionId);
             setSession((prev) => {
-              const mergedTurns = mergeTurnsByIdentity(prev?.turns ?? [], restored.turns);
+              const mergedTurns = withLocalQuestionFallback(
+                mergeTurnsByIdentity(prev?.turns ?? [], restored.turns),
+              );
+              pruneResolvedLocalQuestions(mergedTurns);
               return {
                 ...restored,
                 turns: mergedTurns,
                 latest: restored.latest ?? mergedTurns[mergedTurns.length - 1] ?? null,
               };
             });
-            setChatTurns((prev) => mergeTurnsByIdentity(prev, restored.turns));
+            setChatTurns((prev) => {
+              const mergedTurns = withLocalQuestionFallback(mergeTurnsByIdentity(prev, restored.turns));
+              pruneResolvedLocalQuestions(mergedTurns);
+              return mergedTurns;
+            });
             setSelectedTurnIndex(
               restored.latest?.turnIndex ??
                 restored.turns[restored.turns.length - 1]?.turnIndex ??
@@ -480,6 +587,22 @@ export default function StudentVisualQaImagePage() {
       }
     } catch (err) {
       if (axios.isAxiosError(err)) {
+        const errorPayload = err.response?.data as
+          | {
+              errorCode?: string;
+              code?: string;
+              policyReason?: string;
+              policy_reason?: string;
+              systemNoticeCode?: string;
+              system_notice_code?: string;
+              message?: string;
+              detail?: string;
+            }
+          | undefined;
+        const payloadPolicyReason =
+          errorPayload?.policyReason?.trim() || errorPayload?.policy_reason?.trim() || null;
+        const payloadSystemNoticeCode =
+          errorPayload?.systemNoticeCode?.trim() || errorPayload?.system_notice_code?.trim() || null;
         const errCode =
           (
             err.response?.data as { errorCode?: string; code?: string } | undefined
@@ -501,6 +624,8 @@ export default function StudentVisualQaImagePage() {
           );
           setChatErrorCode(errCode);
           setChatErrorMessage('AI returned an invalid format. Try resending or ask a simpler question.');
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
           toast.error('The AI response could not be rendered safely. Please resend or simplify the question.');
           return;
         }
@@ -539,6 +664,8 @@ export default function StudentVisualQaImagePage() {
             citations: [],
             createdAt: new Date().toISOString(),
             responseKind: 'system_notice',
+            policyReason: payloadPolicyReason,
+            systemNoticeCode: payloadSystemNoticeCode,
             actorRole: 'system',
             lastResponderRole: 'system',
             isReviewTarget: false,
@@ -562,6 +689,8 @@ export default function StudentVisualQaImagePage() {
             };
           });
           setChatTurns((prev) => mergeTurnsByIdentity(prev, [systemTurn]));
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
           toast.info(readOnlyMessage);
           return;
         }
@@ -571,6 +700,8 @@ export default function StudentVisualQaImagePage() {
           );
           setChatErrorCode(errCode);
           setChatErrorMessage('You have reached the billable analysis-turn limit for this session.');
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
           toast.info('You have reached the billable analysis-turn limit for this session.');
           return;
         }
@@ -736,6 +867,9 @@ export default function StudentVisualQaImagePage() {
     setRequestingLecturerReview(false);
     setServerForcedExpired(false);
     setPendingOutgoingMessage(null);
+    setChatPolicyReason(null);
+    setChatSystemNoticeCode(null);
+    localQuestionByRequestIdRef.current = {};
     clearDraft();
     const params = new URLSearchParams(searchParams.toString());
     params.delete('sessionId');
@@ -750,14 +884,41 @@ export default function StudentVisualQaImagePage() {
     setRequestingLecturerReview(true);
     try {
       const updated = await requestStudentVisualQaReview(session.sessionId, targetTurnId);
-      setSession((prev) => ({
-        ...(prev ?? session),
-        ...updated,
-        status: updated.status ?? 'PendingExpertReview',
-      }));
+      const shouldLockAfterReview =
+        updated.capabilities?.isReadOnly === true ||
+        updated.capabilities?.canAskNext === false ||
+        (updated.reviewState ?? '').toLowerCase() === 'pending' ||
+        (updated.status ?? '').toLowerCase().includes('pending');
+      setSession((prev) => {
+        const base = prev ?? session;
+        const mergedTurns =
+          updated.turns.length > 0 ? mergeTurnsByIdentity(base.turns, updated.turns) : base.turns;
+        return {
+          ...base,
+          ...updated,
+          turns: mergedTurns,
+          latest: updated.latest ?? mergedTurns[mergedTurns.length - 1] ?? base.latest,
+          status: updated.status ?? 'PendingExpertReview',
+          capabilities: {
+            ...(base.capabilities ?? {}),
+            ...(updated.capabilities ?? {}),
+            ...(shouldLockAfterReview
+              ? {
+                  isReadOnly: true,
+                  canAskNext: false,
+                }
+              : {}),
+          },
+        };
+      });
       if (updated.turns.length > 0) {
-        setChatTurns(updated.turns);
+        setChatTurns((prev) => mergeTurnsByIdentity(prev, updated.turns));
       }
+      const reviewNotice = updated.systemNotice?.trim();
+      if (reviewNotice) {
+        appendLocalSystemNotice(reviewNotice, updated.systemNoticeCode ?? 'REVIEW_REQUESTED');
+      }
+      setChatSystemNoticeCode(updated.systemNoticeCode ?? null);
       toast.success('Support request has been sent to your lecturer.');
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -768,7 +929,7 @@ export default function StudentVisualQaImagePage() {
     } finally {
       setRequestingLecturerReview(false);
     }
-  }, [latestTurn?.turnId, requestingLecturerReview, session, toast]);
+  }, [appendLocalSystemNotice, latestTurn?.turnId, requestingLecturerReview, session, toast]);
 
   useEffect(() => {
     if (!isGuestUser) return;
@@ -876,6 +1037,8 @@ export default function StudentVisualQaImagePage() {
               isRestoring={restoringSession}
               networkWarning={networkWarning}
               errorCode={chatErrorCode}
+              policyReason={chatPolicyReason ?? session?.policyReason ?? null}
+              systemNoticeCode={chatSystemNoticeCode ?? session?.systemNoticeCode ?? null}
               errorMessage={
                 chatErrorMessage ??
                 (aiOverload

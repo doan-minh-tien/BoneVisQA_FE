@@ -22,7 +22,7 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
   );
 
   return (
-    <div className={className}>
+    <div className={`${className} break-words [&_a]:break-all [&_pre]:overflow-x-auto`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -121,7 +121,7 @@ function withPageAnchor(url: string, startPage?: number): string {
 function formatReferenceRows(citations: VisualQaCitation[]): StructuredReferenceRow[] {
   if (!citations.length) return [];
   const displayReady = citations
-    .map((citation) => {
+    .map((citation): StructuredReferenceRow | null => {
       const displayLabel = citation.displayLabel?.trim();
       const fallbackLabel = citation.label?.trim();
       const label = displayLabel || fallbackLabel;
@@ -236,7 +236,7 @@ export function VisualQaStructuredAnswer({
         </div>
       ) : null}
       {markdown?.trim() ? (
-        <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-relaxed text-slate-950 shadow-sm">
+        <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-relaxed text-slate-950 shadow-sm break-words [&_a]:break-all [&_pre]:overflow-x-auto">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -276,14 +276,14 @@ export function VisualQaStructuredAnswer({
                       {row.label}
                     </button>
                     {row.snippet ? (
-                      <p className="text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
+                      <p className="break-words text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
                     ) : null}
                   </div>
                 ) : (
                   <div className="space-y-1">
                     <span>{row.label}</span>
                     {row.snippet ? (
-                      <p className="text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
+                      <p className="break-words text-xs leading-relaxed text-muted-foreground">{row.snippet}</p>
                     ) : null}
                   </div>
                 )}
