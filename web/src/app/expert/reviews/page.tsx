@@ -17,7 +17,9 @@ import {
   approveExpertReview,
   fetchExpertReviewQueue,
   flagRagChunk,
+  hasExpertReviewSelectedPairMismatch,
   postExpertResponse,
+  REVIEW_WORKFLOW_CONFLICT,
   type PromoteExpertReviewPayload,
   promoteExpertReview,
   putExpertReview,
@@ -25,6 +27,7 @@ import {
 import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
 import { splitLearningBullets } from '@/lib/utils/learning-text';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
+import { canExpertApprove, getWorkflowStatusMeta, isExpertApproved } from '@/lib/visual-qa-workflow';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast as sonnerToast } from 'sonner';
@@ -38,6 +41,7 @@ import {
   Flag,
   Inbox,
   Link2,
+  RefreshCw,
   Save,
   Send,
   User,
@@ -76,6 +80,28 @@ function ExpertImagingOverlays({ item }: { item: ExpertReviewItem }) {
   } catch {
     return null;
   }
+}
+
+function toWorkflowFriendlyError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message === REVIEW_WORKFLOW_CONFLICT) {
+    return 'This review state was already updated by another action. Please refresh the queue.';
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+/** `VisualQaReport.reflectiveQuestions` may be string or string[] from the API. */
+function reflectiveQuestionsToEditText(
+  report: VisualQaReport,
+  itemFallback: string | null | undefined,
+): string {
+  const r = report.reflectiveQuestions;
+  if (r != null) {
+    if (Array.isArray(r)) {
+      return r.map((x) => String(x).trim()).filter(Boolean).join('\n');
+    }
+    return String(r).trim();
+  }
+  return itemFallback?.trim() ?? '';
 }
 
 export default function ExpertReviewsPage() {
@@ -133,7 +159,7 @@ export default function ExpertReviewsPage() {
     setDiag(item.report.suggestedDiagnosis || '');
     setKeyText(item.report.keyFindings.join('\n'));
     setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
-    setReflectiveEdit(item.report.reflectiveQuestions?.trim() ?? item.reflectiveQuestions?.trim() ?? '');
+    setReflectiveEdit(reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions));
     setExpanded(item.id);
   }, []);
 
@@ -182,7 +208,7 @@ export default function ExpertReviewsPage() {
       toast.success('Chunk flagged for data quality review.');
       closeFlagModal();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to flag RAG chunk.');
+      toast.error(toWorkflowFriendlyError(error, 'Failed to flag RAG chunk.'));
     } finally {
       setSubmittingFlag(false);
     }
@@ -190,6 +216,10 @@ export default function ExpertReviewsPage() {
 
   const submit = async (status: 'Approved' | 'Rejected') => {
     if (!active) return;
+    if (hasExpertReviewSelectedPairMismatch(active)) {
+      toast.error('Selected pair mismatch. Refresh the queue and open this case again.');
+      return;
+    }
     setSaving(true);
     try {
       const normalizedFindings = keyText
@@ -228,6 +258,10 @@ export default function ExpertReviewsPage() {
   };
 
   const quickApprove = async (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before approving.');
+      return;
+    }
     setSaving(true);
     try {
       await putExpertReview(item.sessionId, {
@@ -236,7 +270,8 @@ export default function ExpertReviewsPage() {
         differentialDiagnoses: item.report.differentialDiagnoses,
         reviewNote: 'Approved by expert reviewer.',
         keyImagingFindings: item.report.keyImagingFindings ?? null,
-        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
+        reflectiveQuestions:
+          reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions) || null,
       });
       const rid = item.id;
       setItems((prev) => prev.filter((i) => i.id !== rid));
@@ -254,6 +289,10 @@ export default function ExpertReviewsPage() {
   };
 
   const quickReject = async (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before rejecting.');
+      return;
+    }
     setSaving(true);
     try {
       await putExpertReview(item.sessionId, {
@@ -262,7 +301,8 @@ export default function ExpertReviewsPage() {
         differentialDiagnoses: item.report.differentialDiagnoses,
         reviewNote: 'Rejected by expert reviewer.',
         keyImagingFindings: item.report.keyImagingFindings ?? null,
-        reflectiveQuestions: item.report.reflectiveQuestions ?? null,
+        reflectiveQuestions:
+          reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions) || null,
       });
       const jid = item.id;
       setItems((prev) => prev.filter((i) => i.id !== jid));
@@ -280,6 +320,10 @@ export default function ExpertReviewsPage() {
   };
 
   const submitExpertReply = async (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before sending feedback.');
+      return;
+    }
     const content = (replyDrafts[item.sessionId] ?? '').trim();
     if (!content) {
       toast.error('Please enter feedback before sending.');
@@ -315,13 +359,17 @@ export default function ExpertReviewsPage() {
       );
       toast.success('Expert feedback sent to student.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to send expert feedback.');
+      toast.error(toWorkflowFriendlyError(error, 'Failed to send expert feedback.'));
     } finally {
       setSendingResponseSessionId(null);
     }
   };
 
   const submitExpertApprove = async (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before validating.');
+      return;
+    }
     setApprovingSessionId(item.sessionId);
     try {
       await approveExpertReview(item.sessionId);
@@ -334,13 +382,17 @@ export default function ExpertReviewsPage() {
       );
       toast.success('Review approved and clinically validated.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to approve this review.');
+      toast.error(toWorkflowFriendlyError(error, 'Failed to approve this review.'));
     } finally {
       setApprovingSessionId(null);
     }
   };
 
   const openPromoteModal = (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before promoting.');
+      return;
+    }
     const firstStudentQuestion = (() => {
       const firstTurn = item.turns?.[0];
       if (!firstTurn) return item.questionText?.trim() || item.question?.trim() || '';
@@ -383,6 +435,11 @@ export default function ExpertReviewsPage() {
 
   const submitExpertPromote = async () => {
     if (!promoteTargetSessionId) return;
+    const promoteItem = items.find((i) => i.sessionId === promoteTargetSessionId);
+    if (promoteItem && hasExpertReviewSelectedPairMismatch(promoteItem)) {
+      toast.error('Selected pair mismatch. Refresh the queue before promoting.');
+      return;
+    }
     const payload = {
       description: promoteDraft.description.trim(),
       suggestedDiagnosis: promoteDraft.suggestedDiagnosis.trim(),
@@ -412,7 +469,7 @@ export default function ExpertReviewsPage() {
       setPromoteModalOpen(false);
       setPromoteTargetSessionId(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to publish this case.');
+      toast.error(toWorkflowFriendlyError(error, 'Failed to publish this case.'));
     } finally {
       setPromotingSessionId(null);
     }
@@ -424,6 +481,18 @@ export default function ExpertReviewsPage() {
     <div className="min-h-screen bg-background text-text-main">
       <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
+        <div className="mb-4 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh queue
+          </Button>
+        </div>
         {loading ? (
           <ExpertReviewQueueSkeleton />
         ) : (
@@ -439,6 +508,7 @@ export default function ExpertReviewsPage() {
                 const isExp = expanded === item.id;
                 const confidence = getConfidenceScore(item);
                 const isEditing = active?.id === item.id;
+                const pairMismatch = hasExpertReviewSelectedPairMismatch(item);
                 return (
                   <div
                     key={item.id}
@@ -494,6 +564,26 @@ export default function ExpertReviewsPage() {
 
                     {isExp && (
                       <div className="border-t border-border-color px-5 py-5">
+                        {pairMismatch ? (
+                          <div className="mb-4 rounded-xl border border-amber-400/60 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                            <p className="font-semibold text-amber-50">Selected pair mismatch</p>
+                            <p className="mt-1 text-amber-100/90">
+                              Review message IDs do not match the loaded session turns. Refresh the queue before saving,
+                              approving, or promoting.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 border-amber-400/70 text-amber-50 hover:bg-amber-500/20"
+                              disabled={loading}
+                              onClick={() => void load()}
+                            >
+                              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                              Reload queue
+                            </Button>
+                          </div>
+                        ) : null}
                         <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                           <section className="space-y-4">
                             <div className="rounded-xl border border-border-color bg-black p-3">
@@ -604,14 +694,15 @@ export default function ExpertReviewsPage() {
                                       }))
                                     }
                                     rows={3}
+                                    disabled={pairMismatch}
                                     placeholder="Enter expert feedback for the student..."
-                                    className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+                                    className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
                                   />
                                   <div className="flex flex-wrap justify-end gap-2">
                                     {(() => {
-                                      const statusKey = (item.status ?? '').toLowerCase();
-                                      const isApproved = statusKey === 'expertapproved';
-                                      const canApprove = !isApproved;
+                                      const statusMeta = getWorkflowStatusMeta(item.status);
+                                      const isApproved = isExpertApproved(item.status);
+                                      const canApprove = canExpertApprove(item.status);
                                       const canPromote =
                                         !item.promotedCaseId && isApproved && Boolean(item.customImageUrl) && !item.imageId;
                                       return (
@@ -620,7 +711,9 @@ export default function ExpertReviewsPage() {
                                       type="button"
                                       onClick={() => void submitExpertReply(item)}
                                       isLoading={sendingResponseSessionId === item.sessionId}
-                                      disabled={sendingResponseSessionId === item.sessionId}
+                                      disabled={
+                                        pairMismatch || sendingResponseSessionId === item.sessionId
+                                      }
                                     >
                                       <Send className="h-4 w-4" />
                                       Send feedback
@@ -631,7 +724,9 @@ export default function ExpertReviewsPage() {
                                         className="bg-emerald-600 text-white hover:bg-emerald-700"
                                         onClick={() => void submitExpertApprove(item)}
                                         isLoading={approvingSessionId === item.sessionId}
-                                        disabled={approvingSessionId === item.sessionId}
+                                        disabled={
+                                          pairMismatch || approvingSessionId === item.sessionId
+                                        }
                                       >
                                         <CheckCircle className="h-4 w-4" />
                                         Approve and validate
@@ -644,7 +739,9 @@ export default function ExpertReviewsPage() {
                                         className="border-violet-500/60 text-violet-200 hover:bg-violet-500/15"
                                         onClick={() => openPromoteModal(item)}
                                         isLoading={promotingSessionId === item.sessionId}
-                                        disabled={promotingSessionId === item.sessionId}
+                                        disabled={
+                                          pairMismatch || promotingSessionId === item.sessionId
+                                        }
                                       >
                                         <Save className="h-4 w-4" />
                                         Add to Library
@@ -659,6 +756,7 @@ export default function ExpertReviewsPage() {
                               <ReportWorkbench
                                 report={item.report}
                                 isEditing={isEditing}
+                                lockFields={pairMismatch}
                                 diag={diag}
                                 keyText={keyText}
                                 keyImagingText={keyImagingEdit}
@@ -673,7 +771,11 @@ export default function ExpertReviewsPage() {
                           </section>
 
                           <section className="xl:sticky xl:top-5">
-                            <EvidencePanel citations={item.citations ?? []} onFlag={openFlagModal} />
+                            <EvidencePanel
+                              citations={item.citations ?? []}
+                              onFlag={openFlagModal}
+                              flagsDisabled={pairMismatch}
+                            />
                           </section>
                         </div>
 
@@ -688,7 +790,7 @@ export default function ExpertReviewsPage() {
                                 <Button
                                   type="button"
                                   variant="secondary"
-                                  disabled={saving}
+                                  disabled={saving || pairMismatch}
                                   onClick={() => openEdit(item)}
                                 >
                                   <Edit3 className="h-4 w-4" />
@@ -698,7 +800,7 @@ export default function ExpertReviewsPage() {
                                 <Button
                                   type="button"
                                   variant="secondary"
-                                  disabled={saving}
+                                  disabled={saving || pairMismatch}
                                   onClick={() => void submit('Approved')}
                                 >
                                   <Save className="h-4 w-4" />
@@ -708,7 +810,7 @@ export default function ExpertReviewsPage() {
                               <Button
                                 type="button"
                                 className="min-w-[220px]"
-                                disabled={saving}
+                                disabled={saving || pairMismatch}
                                 isLoading={saving}
                                 onClick={() => (isEditing ? void submit('Approved') : void quickApprove(item))}
                               >
@@ -719,7 +821,7 @@ export default function ExpertReviewsPage() {
                                 type="button"
                                 variant="outline"
                                 className="border-danger text-danger hover:bg-danger/10"
-                                disabled={saving}
+                                disabled={saving || pairMismatch}
                                 onClick={() => (isEditing ? void submit('Rejected') : void quickReject(item))}
                               >
                                 <XCircle className="h-4 w-4" />
@@ -771,9 +873,11 @@ export default function ExpertReviewsPage() {
 function EvidencePanel({
   citations,
   onFlag,
+  flagsDisabled,
 }: {
   citations: ExpertReviewCitation[];
   onFlag: (chunkId: string) => void;
+  flagsDisabled?: boolean;
 }) {
   return (
     <section className="rounded-xl border border-border-color bg-surface p-4">
@@ -821,10 +925,22 @@ function EvidencePanel({
                   type="button"
                   size="sm"
                   variant={citation.flagged ? 'outline' : 'destructive'}
-                  disabled={citation.flagged}
+                  disabled={citation.flagged || flagsDisabled}
                   onClick={() => onFlag(citation.chunkId)}
-                  title={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
-                  aria-label={citation.flagged ? 'Issue already flagged' : 'Flag this chunk'}
+                  title={
+                    citation.flagged
+                      ? 'Issue already flagged'
+                      : flagsDisabled
+                        ? 'Refresh the queue to continue'
+                        : 'Flag this chunk'
+                  }
+                  aria-label={
+                    citation.flagged
+                      ? 'Issue already flagged'
+                      : flagsDisabled
+                        ? 'Refresh the queue to continue'
+                        : 'Flag this chunk'
+                  }
                   className="!px-2.5"
                 >
                   <Flag className="h-4 w-4" />
@@ -996,29 +1112,28 @@ function getConfidenceScore(item: ExpertReviewItem): number | null {
 }
 
 function isTerminal(status: string) {
-  const s = status.toLowerCase();
-  return s === 'approved' || s === 'rejected';
+  return getWorkflowStatusMeta(status).terminal;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
-  if (s === 'approved') {
+  const meta = getWorkflowStatusMeta(status);
+  if (meta.tone === 'success') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
-        <CheckCircle className="h-3 w-3" /> Approved
+        <CheckCircle className="h-3 w-3" /> {meta.label}
       </span>
     );
   }
-  if (s === 'rejected') {
+  if (meta.tone === 'danger') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-        <XCircle className="h-3 w-3" /> Rejected
+        <XCircle className="h-3 w-3" /> {meta.label}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-      <Clock className="h-3 w-3" /> Pending expert
+      <Clock className="h-3 w-3" /> {meta.label}
     </span>
   );
 }
@@ -1079,21 +1194,21 @@ function ReportSections({ report }: { report: VisualQaReport }) {
           </ul>
         </section>
       ) : null}
-      {report.reflectiveQuestions?.trim() ? (
-        <section className="rounded-xl border border-amber-400/35 bg-amber-500/5 px-4 py-4">
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
-            Reflective questions
-          </h4>
-          <div className="text-sm leading-relaxed text-text-main">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{ ...markdownExternalLinkComponents }}
-            >
-              {report.reflectiveQuestions.trim()}
-            </ReactMarkdown>
-          </div>
-        </section>
-      ) : null}
+      {(() => {
+        const rq = reflectiveQuestionsToEditText(report, null);
+        return rq ? (
+          <section className="rounded-xl border border-amber-400/35 bg-amber-500/5 px-4 py-4">
+            <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
+              Reflective questions
+            </h4>
+            <div className="text-sm leading-relaxed text-text-main">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+                {rq}
+              </ReactMarkdown>
+            </div>
+          </section>
+        ) : null;
+      })()}
     </div>
   );
 }
@@ -1101,6 +1216,7 @@ function ReportSections({ report }: { report: VisualQaReport }) {
 function ReportWorkbench({
   report,
   isEditing,
+  lockFields,
   diag,
   keyText,
   keyImagingText,
@@ -1113,6 +1229,7 @@ function ReportWorkbench({
 }: {
   report: VisualQaReport;
   isEditing: boolean;
+  lockFields?: boolean;
   diag: string;
   keyText: string;
   keyImagingText: string;
@@ -1148,7 +1265,8 @@ function ReportWorkbench({
           <button
             type="button"
             onClick={onBeginEdit}
-            className="text-xs font-medium text-text-muted hover:text-text-main"
+            disabled={lockFields}
+            className="text-xs font-medium text-text-muted hover:text-text-main disabled:cursor-not-allowed disabled:opacity-50"
           >
             Editing
           </button>
@@ -1157,7 +1275,8 @@ function ReportWorkbench({
           value={diag}
           onChange={(e) => onDiagChange(e.target.value)}
           rows={4}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-base font-semibold text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          disabled={lockFields}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-base font-semibold text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
         />
       </section>
 
@@ -1169,7 +1288,8 @@ function ReportWorkbench({
           value={keyText}
           onChange={(e) => onKeyTextChange(e.target.value)}
           rows={8}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          disabled={lockFields}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
           placeholder="One key finding per line"
         />
       </section>
@@ -1185,7 +1305,8 @@ function ReportWorkbench({
           value={keyImagingText}
           onChange={(e) => onKeyImagingChange(e.target.value)}
           rows={6}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+          disabled={lockFields}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70 disabled:cursor-not-allowed disabled:opacity-60"
           placeholder="e.g. Cortical thickening along the diaphysis..."
         />
       </section>
@@ -1201,7 +1322,8 @@ function ReportWorkbench({
           value={reflectiveText}
           onChange={(e) => onReflectiveChange(e.target.value)}
           rows={5}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          disabled={lockFields}
+          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-amber-400/50 disabled:cursor-not-allowed disabled:opacity-60"
           placeholder="What features would you look for on the next view?"
         />
       </section>

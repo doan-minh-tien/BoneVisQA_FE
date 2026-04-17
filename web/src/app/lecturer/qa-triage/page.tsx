@@ -8,22 +8,27 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock3,
-  Edit3,
+  RefreshCw,
   Send,
   Sparkles,
   User,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import axios from 'axios';
-import { getLecturerClasses, getStudentQuestions, rejectTriageAnswer } from '@/lib/api/lecturer';
-import { http, getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
-import { respondToQuestion } from '@/lib/api/lecturer-triage';
+import {
+  fetchLecturerVisualQaTriageQueue,
+  getLecturerClasses,
+  rejectTriageAnswer,
+} from '@/lib/api/lecturer';
+import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
+import { TRIAGE_ALREADY_ESCALATED, WORKFLOW_CONFLICT, respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
 import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
+import type { VisualQaTurn } from '@/lib/api/types';
+import { isEscalationBlocked } from '@/lib/visual-qa-workflow';
 
 function scoreLabel(score: number | null | undefined) {
   if (score == null || Number.isNaN(score)) {
@@ -56,14 +61,7 @@ function triageStudyImageSrc(item: LectStudentQuestionDto): string {
 
 function isEscalationBlockedByStatus(item: LectStudentQuestionDto): boolean {
   if (item.escalatedById != null && String(item.escalatedById).trim() !== '') return true;
-  const raw = (item.answerStatus ?? '').trim();
-  if (!raw) return false;
-  const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return (
-    key === 'escalated' ||
-    key === 'escalatedtoexpert' ||
-    key === 'expertapproved'
-  );
+  return isEscalationBlocked(item.answerStatus ?? null);
 }
 
 function escalateButtonTitle(
@@ -86,6 +84,51 @@ function confidencePercent(score: number | null | undefined): number | null {
   return Math.round(Math.min(100, Math.max(0, pct)));
 }
 
+function resolveSelectedTurn(item: LectStudentQuestionDto | null): VisualQaTurn | null {
+  if (!item?.turns || item.turns.length === 0) return null;
+  const requestedReviewMessageId = item.requestedReviewMessageId?.trim();
+  const selectedAssistantMessageId = item.selectedAssistantMessageId?.trim();
+  const selectedUserMessageId = item.selectedUserMessageId?.trim();
+
+  const matchedByMessage = item.turns.find((turn) => {
+    const assistantId = turn.assistantMessageId?.trim();
+    const userId = turn.userMessageId?.trim();
+    if (selectedAssistantMessageId && assistantId && selectedAssistantMessageId === assistantId) return true;
+    if (selectedUserMessageId && userId && selectedUserMessageId === userId) return true;
+    if (requestedReviewMessageId) {
+      if (assistantId && assistantId === requestedReviewMessageId) return true;
+      if (userId && userId === requestedReviewMessageId) return true;
+    }
+    return false;
+  });
+  if (matchedByMessage) return matchedByMessage;
+  return item.turns[item.turns.length - 1] ?? null;
+}
+
+function hasSelectedPairMismatch(item: LectStudentQuestionDto | null): boolean {
+  if (!item?.turns || item.turns.length === 0) return false;
+  const requestedReviewMessageId = item.requestedReviewMessageId?.trim();
+  if (!requestedReviewMessageId) return false;
+  const selected = resolveSelectedTurn(item);
+  if (!selected) return true;
+  const userId = selected.userMessageId?.trim();
+  const assistantId = selected.assistantMessageId?.trim();
+  const selectedUserMessageId = item.selectedUserMessageId?.trim();
+  const selectedAssistantMessageId = item.selectedAssistantMessageId?.trim();
+
+  if (selectedUserMessageId && userId && selectedUserMessageId !== userId) return true;
+  if (selectedAssistantMessageId && assistantId && selectedAssistantMessageId !== assistantId) return true;
+
+  if (
+    requestedReviewMessageId &&
+    requestedReviewMessageId !== userId &&
+    requestedReviewMessageId !== assistantId
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export default function QATriagePage() {
   const toast = useToast();
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -96,12 +139,6 @@ export default function QATriagePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [escalatingId, setEscalatingId] = useState<string | null>(null);
 
-  const [showModifyDialog, setShowModifyDialog] = useState(false);
-  const [editAnswerText, setEditAnswerText] = useState('');
-  const [editStructuredDiagnosis, setEditStructuredDiagnosis] = useState('');
-  const [editDifferentialDiagnoses, setEditDifferentialDiagnoses] = useState('');
-  const [modifying, setModifying] = useState(false);
-  const [modifyError, setModifyError] = useState<string | null>(null);
   const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -127,9 +164,14 @@ export default function QATriagePage() {
 
   const selectedTurn = useMemo(() => {
     if (!selectedQuestion?.turns || selectedQuestion.turns.length === 0) return null;
-    if (selectedTurnIndex == null) return selectedQuestion.turns[selectedQuestion.turns.length - 1];
-    return selectedQuestion.turns.find((t) => t.turnIndex === selectedTurnIndex) ?? selectedQuestion.turns[selectedQuestion.turns.length - 1];
+    const defaultTurn = resolveSelectedTurn(selectedQuestion);
+    if (selectedTurnIndex == null) return defaultTurn;
+    return selectedQuestion.turns.find((t) => t.turnIndex === selectedTurnIndex) ?? defaultTurn;
   }, [selectedQuestion, selectedTurnIndex]);
+  const selectedPairMismatch = useMemo(
+    () => hasSelectedPairMismatch(selectedQuestion),
+    [selectedQuestion],
+  );
 
   useEffect(() => {
     const userId = getStoredUserId();
@@ -148,7 +190,7 @@ export default function QATriagePage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getStudentQuestions(classId);
+      const data = await fetchLecturerVisualQaTriageQueue(classId);
       setQuestions(data);
       setSelectedQuestionId(data[0]?.id ?? null);
       setSelectedTurnIndex(data[0]?.turns?.[data[0].turns.length - 1]?.turnIndex ?? null);
@@ -171,11 +213,15 @@ export default function QATriagePage() {
       setSelectedTurnIndex(null);
       return;
     }
-    const latestTurn = selectedQuestion.turns?.[selectedQuestion.turns.length - 1] ?? null;
-    setSelectedTurnIndex(latestTurn?.turnIndex ?? null);
+    const defaultTurn = resolveSelectedTurn(selectedQuestion);
+    setSelectedTurnIndex(defaultTurn?.turnIndex ?? null);
   }, [selectedQuestionId, selectedQuestion]);
 
   const handleEscalate = async (item: LectStudentQuestionDto) => {
+    if (hasSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch detected. Refresh queue data and try again.');
+      return;
+    }
     const targetId = resolveEscalationAnswerRowId(item);
     if (!targetId) {
       toast.error('Cannot escalate: AI answer is missing or incomplete.');
@@ -188,15 +234,37 @@ export default function QATriagePage() {
 
     setEscalatingId(item.id);
     try {
-      // `http` is the shared axios instance (base URL + auth).
-      await http.put(`/api/lecturer/reviews/${encodeURIComponent(targetId)}/escalate`);
+      await respondToQuestion(selectedClassId, item.id, {
+        answerText:
+          item.turns?.find((turn) => {
+            const assistantId = turn.assistantMessageId?.trim();
+            const selectedAssistantId = item.selectedAssistantMessageId?.trim();
+            const requestedReviewMessageId = item.requestedReviewMessageId?.trim();
+            if (selectedAssistantId && assistantId === selectedAssistantId) return true;
+            if (requestedReviewMessageId && assistantId === requestedReviewMessageId) return true;
+            return false;
+          })?.answerText?.trim() ||
+          item.answerText?.trim() ||
+          '',
+        approve: true,
+        decision: 'approve_and_escalate',
+        requestedReviewMessageId: item.requestedReviewMessageId ?? null,
+        selectedUserMessageId: item.selectedUserMessageId ?? null,
+        selectedAssistantMessageId: item.selectedAssistantMessageId ?? null,
+      });
       setQuestions((prev) =>
         prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'lecturer' } : q)),
       );
       toast.success('Escalated successfully');
       if (selectedClassId) void loadQuestions(selectedClassId);
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 409) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === TRIAGE_ALREADY_ESCALATED) {
+        toast.info('This case has already been escalated.');
+        setQuestions((prev) =>
+          prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'prior' } : q)),
+        );
+      } else if (message === WORKFLOW_CONFLICT || (axios.isAxiosError(error) && error.response?.status === 409)) {
         toast.info('This case has already been escalated.');
         setQuestions((prev) =>
           prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'prior' } : q)),
@@ -209,43 +277,6 @@ export default function QATriagePage() {
     }
   };
 
-  const openModifyDialog = () => {
-    if (!selectedQuestion) return;
-    const latestAnswer = selectedQuestion.turns?.[selectedQuestion.turns.length - 1]?.answerText;
-    setEditAnswerText(latestAnswer ?? selectedQuestion.answerText ?? '');
-    setEditStructuredDiagnosis('');
-    setEditDifferentialDiagnoses('');
-    setModifyError(null);
-    setShowModifyDialog(true);
-  };
-
-  const handleModifySubmit = async () => {
-    if (!selectedQuestion || !selectedClassId || !editAnswerText.trim()) return;
-    setModifying(true);
-    setModifyError(null);
-    try {
-      await respondToQuestion(selectedClassId, selectedQuestion.id, {
-        answerText: editAnswerText.trim(),
-        structuredDiagnosis: editStructuredDiagnosis.trim() || undefined,
-        differentialDiagnoses: editDifferentialDiagnoses.trim() || undefined,
-        approve: false,
-      });
-      setShowModifyDialog(false);
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === selectedQuestion.id
-            ? { ...q, answerText: editAnswerText.trim(), answerStatus: 'Edited' }
-            : q,
-        ),
-      );
-      toast.success('Changes saved.');
-    } catch (e) {
-      setModifyError(e instanceof Error ? e.message : 'Failed to save changes');
-    } finally {
-      setModifying(false);
-    }
-  };
-
   const openRejectDialog = () => {
     setRejectReason('');
     setRejectError(null);
@@ -254,6 +285,10 @@ export default function QATriagePage() {
 
   const handleRejectSubmit = async () => {
     if (!selectedQuestion) return;
+    if (hasSelectedPairMismatch(selectedQuestion)) {
+      setRejectError('Selected pair mismatch detected. Please reload queue data before rejecting.');
+      return;
+    }
     const reason = rejectReason.trim();
     if (!reason) {
       setRejectError('Please provide a rejection reason.');
@@ -296,22 +331,35 @@ export default function QATriagePage() {
               Select a class, review the AI answer, then escalate when the case should reach the expert workbench.
             </p>
           </div>
-          <div className="w-full max-w-sm">
+          <div className="flex w-full flex-col gap-2 sm:max-w-sm">
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Class
             </label>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              {classes.length === 0 ? <option value="">No classes found</option> : null}
-              {classes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.className} ({item.semester})
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                {classes.length === 0 ? <option value="">No classes found</option> : null}
+                {classes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.className} ({item.semester})
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 shrink-0 p-0"
+                disabled={!selectedClassId || loading}
+                title="Reload Visual QA triage queue"
+                onClick={() => selectedClassId && void loadQuestions(selectedClassId)}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -502,7 +550,9 @@ export default function QATriagePage() {
                     ) : null}
                     <article className="rounded-lg border border-border bg-background p-4">
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Student question</p>
-                      <p className="mt-2 text-sm leading-relaxed text-foreground">{selectedQuestion.questionText}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-foreground">
+                        {selectedTurn?.questionText?.trim() || selectedQuestion.questionText}
+                      </p>
                     </article>
 
                     <article className="rounded-lg border border-border bg-background p-4">
@@ -510,7 +560,7 @@ export default function QATriagePage() {
                         AI Final Assessment (latest session turn)
                       </p>
                       <p className="mt-2 text-sm leading-relaxed text-foreground/90">
-                        {(selectedQuestion.turns?.[selectedQuestion.turns.length - 1]?.answerText ||
+                        {(selectedTurn?.answerText ||
                           selectedQuestion.answerText ||
                           '').trim() || 'No generated answer available.'}
                       </p>
@@ -527,22 +577,40 @@ export default function QATriagePage() {
                         </span>
                       </div>
                     </article>
+                    {selectedPairMismatch ? (
+                      <article className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                          Selected pair mismatch
+                        </p>
+                        <p className="mt-2 text-sm text-amber-950">
+                          The selected review message IDs no longer match this loaded turn after refresh/reload. Reload queue data before rejecting or escalating.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 border-amber-600 text-amber-900 hover:bg-amber-100"
+                          disabled={!selectedClassId || loading}
+                          onClick={() => selectedClassId && void loadQuestions(selectedClassId)}
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                          Reload queue
+                        </Button>
+                      </article>
+                    ) : null}
                   </div>
 
                   <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                     <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Edit the draft or escalate to expert clinical auditing. Direct approval is not available.
+                      Reject with reason or escalate to expert clinical auditing. Direct approval is not available.
                     </p>
                     <div className="relative z-20 flex flex-wrap items-center gap-2">
-                      <Button type="button" variant="outline" onClick={openModifyDialog}>
-                        <Edit3 className="h-4 w-4" />
-                        Modify answer
-                      </Button>
                       <Button
                         type="button"
                         variant="outline"
                         className="border-red-300 text-red-700 hover:bg-red-50"
+                        disabled={selectedPairMismatch}
                         onClick={openRejectDialog}
                       >
                         Reject
@@ -559,6 +627,7 @@ export default function QATriagePage() {
                           type="button"
                           disabled={
                             escalatingId === selectedQuestion.id ||
+                            selectedPairMismatch ||
                             isEscalationBlockedByStatus(selectedQuestion) ||
                             !hasAnswerIdForEscalateUi(selectedQuestion)
                           }
@@ -585,76 +654,6 @@ export default function QATriagePage() {
           </div>
         )}
       </div>
-
-      {showModifyDialog && selectedQuestion ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => !modifying && setShowModifyDialog(false)}
-            aria-label="Close"
-          />
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-            <div className="border-b border-border px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Edit3 className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-card-foreground">Modify AI answer</h3>
-                    <p className="text-sm text-muted-foreground">Edit before saving. Escalate from the workbench when expert review is required.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={modifying}
-                  onClick={() => setShowModifyDialog(false)}
-                  className="rounded-lg p-2 hover:bg-muted"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-            <div className="max-h-[min(70vh,600px)] overflow-y-auto px-6 py-4">
-              <div className="mb-4 rounded-xl border border-border bg-muted/30 p-4">
-                <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Student question</p>
-                <p className="text-sm text-card-foreground">{selectedQuestion.questionText}</p>
-              </div>
-              <label className="mb-1 block text-sm font-medium text-card-foreground">Response text</label>
-              <textarea
-                value={editAnswerText}
-                onChange={(e) => setEditAnswerText(e.target.value)}
-                rows={6}
-                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              />
-              <label className="mb-1 block text-sm font-medium text-muted-foreground">Structured diagnosis</label>
-              <input
-                type="text"
-                value={editStructuredDiagnosis}
-                onChange={(e) => setEditStructuredDiagnosis(e.target.value)}
-                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              />
-              <label className="mb-1 block text-sm font-medium text-muted-foreground">Differential diagnoses</label>
-              <textarea
-                value={editDifferentialDiagnoses}
-                onChange={(e) => setEditDifferentialDiagnoses(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              />
-              {modifyError ? <p className="mt-3 text-sm text-destructive">{modifyError}</p> : null}
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
-              <Button variant="outline" onClick={() => setShowModifyDialog(false)} disabled={modifying}>
-                Cancel
-              </Button>
-              <Button onClick={() => void handleModifySubmit()} disabled={modifying || !editAnswerText.trim()}>
-                {modifying ? 'Saving…' : 'Save changes'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       {showRejectDialog && selectedQuestion ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
           <button
@@ -690,7 +689,7 @@ export default function QATriagePage() {
               </Button>
               <Button
                 onClick={() => void handleRejectSubmit()}
-                disabled={rejecting || !rejectReason.trim()}
+                disabled={rejecting || !rejectReason.trim() || selectedPairMismatch}
                 className="bg-red-600 text-white hover:bg-red-700"
               >
                 {rejecting ? 'Submitting…' : 'Confirm reject'}
