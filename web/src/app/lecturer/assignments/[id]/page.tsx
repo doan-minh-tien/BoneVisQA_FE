@@ -189,8 +189,12 @@ export default function AssignmentDetailPage({
         },
         {
           title: 'Avg. Score',
-          value: assignment.gradedCount > 0 && assignment.avgScore != null ? `${Math.round(assignment.avgScore)}%` : '—',
-          change: assignment.gradedCount > 0 && assignment.avgScore != null ? `Out of ${assignment.passingScore ?? assignment.maxScore ?? 100}` : 'No grades yet',
+          value: assignment.gradedCount > 0 && assignment.avgScore != null
+            ? `${Math.round(assignment.avgScore)}/${assignment.maxScore ?? 100}`
+            : '—',
+          change: assignment.gradedCount > 0 && assignment.avgScore != null
+            ? `Passing: ${assignment.passingScore != null ? `${assignment.passingScore}%` : '—'}`
+            : 'No grades yet',
           changeType: 'neutral' as const,
           icon: Award,
           iconColor: 'bg-accent/10 text-accent',
@@ -493,7 +497,7 @@ export default function AssignmentDetailPage({
                   ) : (
                     submissions.map((sub) => {
                       const sConfig = submissionStatusConfig[sub.status];
-                      const maxScore = assignment.maxScore ?? assignment.passingScore ?? 100;
+                      const maxScore = assignment.maxScore ?? 100;
                       return (
                         <tr key={sub.studentId} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="px-5 py-4">

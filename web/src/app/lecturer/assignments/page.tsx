@@ -41,6 +41,7 @@ export default function LecturerAssignmentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [newAssignmentIds, setNewAssignmentIds] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) => {
     setSelectMode(true);
@@ -80,6 +81,20 @@ export default function LecturerAssignmentsPage() {
       try {
         const data = await getAllLecturerAssignments(userId);
         if (!cancelled) setAssignments(data);
+
+        // Highlight new assignments from sessionStorage
+        const storedIds = sessionStorage.getItem('newAssignmentIds');
+        if (storedIds) {
+          const ids = JSON.parse(storedIds) as string[];
+          if (!cancelled) setNewAssignmentIds(new Set(ids));
+
+          // Auto-clear highlight after 30 seconds
+          setTimeout(() => {
+            sessionStorage.removeItem('newAssignmentIds');
+            sessionStorage.removeItem('newAssignmentType');
+            setNewAssignmentIds(new Set());
+          }, 30000);
+        }
       } catch (e) {
         if (!cancelled) toast.error(e instanceof Error ? e.message : 'Failed to load assignments.');
       } finally {
@@ -276,6 +291,7 @@ export default function LecturerAssignmentsPage() {
                 selectable={selectMode}
                 selected={selectedIds.has(a.id)}
                 onSelect={toggleSelect}
+                isNew={newAssignmentIds.has(`${a.classId}_${a.id}`)}
               />
             ))}
           </div>

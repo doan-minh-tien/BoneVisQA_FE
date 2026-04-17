@@ -172,6 +172,7 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
         const label = annotationLabel.trim() || 'Lesion';
         medicalImages = [
           {
+            id: '',
             imageUrl,
             modality: modality.trim() || null,
             annotations: coordinates ? [{ label, coordinates }] : [],

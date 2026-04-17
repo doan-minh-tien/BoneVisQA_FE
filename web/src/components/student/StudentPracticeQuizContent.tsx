@@ -78,7 +78,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
   const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
   const [page, setPage] = useState(quizDraft.page || 1);
 
-  // AI Quiz State
+  // Trạng thái Quiz AI
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<Array<{
     questionText: string;
@@ -129,7 +129,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
         setAiQuestions(data.questions);
         toast.success(`AI generated ${data.questions.length} questions for you!`);
       } else {
-        toast.error(data.message || 'Không thể tạo câu hỏi. Vui lòng thử lại.');
+        toast.error(data.message || 'Failed to create question. Please try again.');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate AI quiz.');
@@ -483,7 +483,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                             type="button"
                             onClick={() => window.open(resolveApiAssetUrl(question.imageUrl), '_blank')}
                             className="rounded-full bg-primary/10 p-2 text-primary hover:bg-primary/20"
-                            title="Xem hình ảnh"
+                            title="View image"
                           >
                             <ImageIcon className="h-4 w-4" />
                           </button>
@@ -495,7 +495,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={resolveApiAssetUrl(question.imageUrl)}
-                          alt={`Hình ảnh cho câu ${index + 1}`}
+                          alt={`Image for question ${index + 1}`}
                           className="max-h-64 w-full object-contain"
                         />
                       </div>

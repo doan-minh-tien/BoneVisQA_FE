@@ -34,14 +34,20 @@ import {
   assignCasesToClass,
   assignQuizToClass,
   getLecturerCases,
+  getQuizDetailsForAssignment,
   isValidGuidString,
 } from '@/lib/api/lecturer';
 import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
-import type { ClassItem } from '@/lib/api/types';
+import type { ClassItem, QuizWithQuestionsDto, QuizQuestionDto } from '@/lib/api/types';
 
 type CasePickItem = { id: string; title: string };
-type QuizPickItem = { quizId: string; label: string };
+type QuizPickItem = {
+  quizId: string;
+  label: string;
+  timeLimit?: number;
+  passingScore?: number;
+};
 
 function normalizeCaseRow(row: unknown): CasePickItem | null {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
@@ -174,15 +180,20 @@ function CreateAssignmentPageContent({
           .filter((c): c is CasePickItem => Boolean(c))
           .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 
-        const quizMap = new Map<string, string>();
+        const quizMap = new Map<string, { id: string; label: string; timeLimit?: number; passingScore?: number }>();
         for (const row of Array.isArray(quizzesRaw) ? quizzesRaw : []) {
           const qid = String(row.quizId ?? '').trim();
           if (!qid || quizMap.has(qid)) continue;
           const name = [row.quizName, row.topic].filter(Boolean).join(' · ');
-          quizMap.set(qid, name || `${qid.slice(0, 8)}…`);
+          quizMap.set(qid, {
+            id: qid,
+            label: name || `${qid.slice(0, 8)}…`,
+            timeLimit: row.timeLimit != null ? Number(row.timeLimit) : undefined,
+            passingScore: row.passingScore != null ? Number(row.passingScore) : undefined,
+          });
         }
         const quizList = Array.from(quizMap.entries())
-          .map(([quizId, label]) => ({ quizId, label }))
+          .map(([quizId, data]) => ({ quizId, label: data.label, timeLimit: data.timeLimit, passingScore: data.passingScore }))
           .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
         setAssignmentCases(casesList);
@@ -583,7 +594,18 @@ function CreateAssignmentPageContent({
                       ) : (
                         <select
                           value={formData.quizId}
-                          onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
+                          onChange={(e) => {
+                            setFormData((prev) => {
+                              const selectedQuiz = assignmentQuizzes.find(q => q.quizId === e.target.value);
+                              return {
+                                ...prev,
+                                quizId: e.target.value,
+                                // Auto-fill timeLimit và passingScore từ quiz
+                                timeLimitMinutes: selectedQuiz?.timeLimit ?? prev.timeLimitMinutes,
+                                passingScore: selectedQuiz?.passingScore ?? prev.passingScore,
+                              };
+                            });
+                          }}
                           className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
                         >
                           <option value="">Select a quiz…</option>
@@ -716,6 +738,11 @@ function CreateAssignmentPageContent({
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">min</span>
                         </div>
+                        {formData.quizId && assignmentQuizzes.find(q => q.quizId === formData.quizId)?.timeLimit && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Suggested: {assignmentQuizzes.find(q => q.quizId === formData.quizId)?.timeLimit} min from quiz
+                          </p>
+                        )}
                       </div>
                     )}
                     {isQuiz && (
@@ -732,6 +759,11 @@ function CreateAssignmentPageContent({
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">%</span>
                         </div>
+                        {formData.quizId && assignmentQuizzes.find(q => q.quizId === formData.quizId)?.passingScore && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Suggested: {assignmentQuizzes.find(q => q.quizId === formData.quizId)?.passingScore}% from quiz
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

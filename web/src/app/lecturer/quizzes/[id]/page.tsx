@@ -452,7 +452,8 @@ export default function QuizDetailPage() {
                 {questions.length} diagnostic item{questions.length === 1 ? '' : 's'} currently in this quiz.
               </p>
             </div>
-            <button
+            {/* Add and Import buttons commented out - only Delete allowed for Expert quiz questions */}
+            {/* <button
               type="button"
               onClick={handleAddQuestion}
               className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
@@ -467,7 +468,7 @@ export default function QuizDetailPage() {
             >
               <UploadCloud className="h-4 w-4" />
               Import
-            </button>
+            </button> */}
           </div>
 
           {questions.length === 0 ? (
@@ -482,12 +483,12 @@ export default function QuizDetailPage() {
                 Add questions to build this quiz.
               </p>
               <div className="flex gap-3">
-                <Button onClick={handleAddQuestion}>
+                {/* <Button onClick={handleAddQuestion}>
                   <Plus className="h-4 w-4" /> Add First Question
                 </Button>
                 <Button variant="outline" onClick={() => setImportOpen(true)}>
                   <UploadCloud className="h-4 w-4" /> Import from File
-                </Button>
+                </Button> */}
               </div>
             </div>
           ) : (
@@ -502,7 +503,7 @@ export default function QuizDetailPage() {
                     variant="curated"
                     topicCategory={TOPIC_ROTATION[idx % TOPIC_ROTATION.length]}
                     points={POINTS_ROTATION[idx % POINTS_ROTATION.length]}
-                    onEdit={handleEditQuestion}
+                    // onEdit={handleEditQuestion} // Commented out - editing not allowed
                     onDelete={handleDeleteQuestion}
                   />
                 );

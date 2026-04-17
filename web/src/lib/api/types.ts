@@ -125,7 +125,7 @@ export interface ClassAssignment {
   id: string;
   classId: string;
   className: string;
-  /** "case" hoặc "quiz" */
+  /** "case" or "quiz" */
   type: string;
   title: string;
   dueDate: string | null;
@@ -143,7 +143,7 @@ export interface AssignmentDetail {
   classId: string;
   className: string;
   classCode?: string | null;
-  /** "case" hoặc "quiz" */
+  /** "case" or "quiz" */
   type: string;
   title: string;
   description?: string | null;
@@ -342,7 +342,7 @@ export interface AssignedQuizItem {
   quizName: string;
   classId: string;
   className: string;
-  /** Topic/chủ đề của quiz */
+  /** Topic of the quiz */
   topic?: string | null;
   totalQuestions: number;
   timeLimit: number | null;
@@ -351,7 +351,7 @@ export interface AssignedQuizItem {
   closeTime: string | null;
   isCompleted: boolean;
   score: number | null;
-  /** Attempt ID của lần làm gần nhất (dùng để review) */
+  /** Attempt ID of the most recent attempt (used for review) */
   attemptId?: string | null;
 }
 
@@ -361,7 +361,7 @@ export interface QuizSessionDto {
   title: string;
   topic: string | null;
   timeLimit?: number | null;
-  /** Thời gian đóng quiz (ISO string) - dùng để auto submit khi đến giờ */
+  /** Quiz closing time (ISO string) - used for auto-submit when time is up */
   closeTime?: string | null;
   questions: StudentSessionQuestion[];
 }
@@ -535,19 +535,29 @@ export interface QuizDto {
   quizName?: string | null;
 }
 
+export interface QuizWithQuestionsDto {
+  quiz: QuizDto;
+  questions: QuizQuestionDto[];
+  totalQuestions: number;
+}
+
 export interface ClassQuizDto {
   classId: string;
   quizId: string;
   quizName: string | null;
   className: string | null;
-  /** Chủ đề quiz (khác tên lớp). */
+  /** Quiz topic (different from class name). */
   topic?: string | null;
   assignedAt: string | null;
   openTime?: string | null;
   closeTime?: string | null;
   questionCount?: number;
-  /** Quiz từ Expert Library hay do lecturer tạo */
+  /** Quiz from Expert Library or created by lecturer */
   isFromExpertLibrary?: boolean;
+  /** Time limit in minutes (set by Expert or Lecturer) */
+  timeLimit?: number | null;
+  /** Passing score percentage (set by Expert or Lecturer) */
+  passingScore?: number | null;
 }
 
 export interface CreateQuizRequest {
@@ -808,4 +818,33 @@ export interface UpdateAnswerDto {
   answerId: string;
   studentAnswer?: string | null;
   isCorrect?: boolean | null;
+}
+
+// ── Assignment DTOs ───────────────────────────────────────────────────────────
+
+export interface ClassCaseAssignmentDto {
+  classId: string;
+  caseId: string;
+  caseTitle: string;
+  assignedAt: string | null;
+  dueDate: string | null;
+  isMandatory: boolean;
+}
+
+export interface ClassQuizSessionDto {
+  id: string;
+  classId: string;
+  quizId: string;
+  quizTitle: string;
+  openTime: string | null;
+  closeTime: string | null;
+  timeLimitMinutes: number | null;
+  passingScore: number | null;
+  createdAt: string | null;
+  shuffleQuestions: boolean;
+  allowRetake: boolean;
+  allowLate: boolean;
+  showResultsAfterSubmission: boolean;
+  retakeResetAt: string | null;
+  warning?: string | null;
 }

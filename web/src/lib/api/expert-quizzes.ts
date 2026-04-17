@@ -41,8 +41,8 @@ export interface CreateExpertQuizRequest {
   topic: string | null;
   openTime: string; // ISO
   closeTime: string; // ISO
-  timeLimit: number;
-  passingScore: number;
+  timeLimit?: number; // Optional - Lecturer sẽ override khi gán vào lớp
+  passingScore?: number; // Optional - Lecturer sẽ override khi gán vào lớp
   isAiGenerated: boolean;
   difficulty: ExpertQuizDifficulty | string;
   classification: string | null;

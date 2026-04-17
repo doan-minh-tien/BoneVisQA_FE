@@ -17,12 +17,15 @@ import type {
   AssignmentSubmission,
   UpdateAssignmentRequest,
   UpdateAssignmentSubmissionRequest,
+  QuizWithQuestionsDto,
+  ClassCaseAssignmentDto,
+  ClassQuizSessionDto,
   // ExpertOption, // DISABLED: Expert assignment
 } from './types';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Chuẩn hóa JSON từ BE (camelCase hoặc PascalCase) + gắn classId khi thiếu. */
+/** Normalize JSON from BE (camelCase or PascalCase) + attach classId when missing. */
 export function normalizeAnnouncement(row: unknown, fallbackClassId: string): Announcement {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
   const id = String(r.id ?? r.Id ?? '').trim();
@@ -46,7 +49,7 @@ function assertValidGuid(label: string, value: string) {
   return v;
 }
 
-/** Dùng để lọc bản ghi không đủ id trước khi gọi API update/delete. */
+/** Used to filter records with insufficient id before calling update/delete API. */
 export function isValidGuidString(value: string | undefined | null): boolean {
   return GUID_RE.test(String(value ?? '').trim());
 }
@@ -169,9 +172,9 @@ export async function getLecturerCases(): Promise<CaseDto[]> {
 export async function assignCasesToClass(
   classId: string,
   payload: { caseIds: string[]; dueDate?: string; isMandatory: boolean },
-): Promise<CaseDto[]> {
+): Promise<ClassCaseAssignmentDto[]> {
   try {
-    const { data } = await http.post<CaseDto[]>(
+    const { data } = await http.post<ClassCaseAssignmentDto[]>(
       `/api/lecturer/classes/${classId}/assignments/cases`,
       {
       caseIds: payload.caseIds,
@@ -212,8 +215,8 @@ export async function assignQuizToClass(
   }
 }
 
-// DISABLED: getExperts — Lecturer không gán expert
-// /** Lấy danh sách Expert để gán vào lớp học. */
+// ĐÃ TẮT: getExperts — Giảng viên không gán chuyên gia
+// /** Lấy danh sách Chuyên gia để gán cho một lớp. */
 // export async function getExperts(): Promise<ExpertOption[]> {
 //   try {
 //     const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
@@ -223,8 +226,8 @@ export async function assignQuizToClass(
 //   }
 // }
 
-// DISABLED: assignExpertToClass — Lecturer không gán expert
-// /** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
+// ĐÃ TẮT: assignExpertToClass — Giảng viên không gán chuyên gia
+// /** Gán (hoặc xóa) một Chuyên gia khỏi một lớp. expertId = null → xóa chuyên gia. */
 // export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
 //   try {
 //     await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
@@ -331,7 +334,7 @@ export async function getAllLecturerAssignments(lecturerId: string): Promise<Cla
     const normalized = list
       .map(normalizeAssignment)
       .filter((a): a is ClassAssignment => a !== null);
-    // Deduplicate by id (defensive: guard against backend returning duplicates)
+    // Loại bỏ trùng lặp theo id (phòng thủ: đề phòng backend trả về dữ liệu trùng lặp)
     const seen = new Set<string>();
     return normalized.filter((a) => {
       if (seen.has(a.id)) return false;
@@ -420,7 +423,7 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     explicitRowId &&
     explicitQuestionId !== explicitRowId
   ) {
-    // Common list DTO: `id` is the answer row, `questionId` is the parent question.
+    // DTO danh sách chung: `id` là hàng câu trả lời, `questionId` là câu hỏi cha.
     answerId = explicitRowId;
   }
 
@@ -614,10 +617,10 @@ export async function getClassStudentProgress(
   }
 }
 
-// ── Quiz Review API ────────────────────────────────────────────────────────────
+// ── API Đánh giá Quiz ────────────────────────────────────────────────────────────
 
 /**
- * Lấy danh sách bài quiz attempts của tất cả sinh viên trong lớp cho 1 quiz cụ thể.
+ * Get list of all quiz attempts for all students in the class for a specific quiz.
  */
 export async function getClassQuizAttempts(
   classId: string,
@@ -634,7 +637,7 @@ export async function getClassQuizAttempts(
 }
 
 /**
- * Lấy chi tiết bài làm của 1 sinh viên (câu hỏi + câu trả lời + điểm).
+ * Get the quiz attempt details for one student (questions + answers + score).
  */
 export async function getQuizAttemptDetail(
   classId: string,
@@ -652,7 +655,7 @@ export async function getQuizAttemptDetail(
 }
 
 /**
- * Cập nhật điểm / câu trả lời của 1 bài quiz (lecturer chỉnh sửa).
+ * Update score / answers for a quiz attempt (lecturer editing).
  */
 export async function updateQuizAttempt(
   classId: string,
@@ -672,7 +675,7 @@ export async function updateQuizAttempt(
 }
 
 /**
- * Cho phép một sinh viên làm lại quiz (reset attempt).
+ * Allow one student to retake a quiz (reset attempt).
  */
 export async function allowRetakeForAttempt(
   classId: string,
@@ -690,7 +693,7 @@ export async function allowRetakeForAttempt(
 }
 
 /**
- * Cho phép TẤT CẢ sinh viên trong lớp đã nộp quiz được làm lại.
+ * Allow ALL students in the class who have submitted the quiz to retake it.
  */
 export async function allowRetakeAll(classId: string, quizId: string): Promise<void> {
   try {
@@ -703,9 +706,9 @@ export async function allowRetakeAll(classId: string, quizId: string): Promise<v
   }
 }
 
-// ========== Assignment CRUD API ==========
+// ========== CRUD API cho Assignment ==========
 
-/** Normalize assignment detail row from BE (camelCase or PascalCase). */
+/** Chuẩn hóa hàng chi tiết assignment từ BE (camelCase hoặc PascalCase). */
 function normalizeAssignmentDetail(row: unknown): AssignmentDetail | null {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
   const id = String(r.id ?? r.Id ?? '').trim();
@@ -750,7 +753,7 @@ function normalizeSubmission(row: unknown): AssignmentSubmission | null {
 }
 
 /**
- * Lấy chi tiết của một assignment cụ thể.
+ * Get details of a specific assignment.
  */
 export async function getAssignmentById(assignmentId: string): Promise<AssignmentDetail> {
   const id = assertValidGuid('Assignment', assignmentId);
@@ -765,7 +768,7 @@ export async function getAssignmentById(assignmentId: string): Promise<Assignmen
 }
 
 /**
- * Cập nhật thông tin assignment.
+ * Update assignment information.
  */
 export async function updateAssignment(
   assignmentId: string,
@@ -786,7 +789,7 @@ export async function updateAssignment(
 }
 
 /**
- * Xóa một assignment.
+ * Delete an assignment.
  */
 export async function deleteAssignment(assignmentId: string): Promise<void> {
   const id = assertValidGuid('Assignment', assignmentId);
@@ -798,7 +801,7 @@ export async function deleteAssignment(assignmentId: string): Promise<void> {
 }
 
 /**
- * Lấy danh sách submissions của một assignment.
+ * Get list of submissions for an assignment.
  */
 export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
   const id = assertValidGuid('Assignment', assignmentId);
@@ -814,7 +817,22 @@ export async function getAssignmentSubmissions(assignmentId: string): Promise<As
 }
 
 /**
- * Cập nhật điểm cho một hoặc nhiều submissions.
+ * Get quiz details including question list — used when selecting quiz to create assignment.
+ */
+export async function getQuizDetailsForAssignment(quizId: string): Promise<QuizWithQuestionsDto> {
+  const id = assertValidGuid('Quiz', quizId);
+  try {
+    const { data } = await http.get<QuizWithQuestionsDto>(
+      `/api/lecturer/quizzes/${encodeURIComponent(id)}/details`,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Update scores for one or multiple submissions.
  */
 export async function updateAssignmentSubmissions(
   assignmentId: string,

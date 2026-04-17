@@ -91,7 +91,7 @@ export default function QuizSessionPage({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const timeUpAutoSubmitTriggered = useRef(false);
 
-  // Reload quiz info from server to get updated status (isCompleted, score)
+  // Tải lại thông tin quiz từ server để lấy trạng thái cập nhật (isCompleted, score)
   const reloadQuizInfo = useCallback(async () => {
     try {
       const list = await getAssignedQuizzes();
@@ -117,14 +117,14 @@ export default function QuizSessionPage({
     })();
   }, [quizId]);
 
-  // Reload quiz info after submit to reflect updated isCompleted/score status
+  // Tải lại thông tin quiz sau khi nộp để cập nhật trạng thái isCompleted/score
   useEffect(() => {
     if (submitted) {
       void reloadQuizInfo();
     }
   }, [submitted, reloadQuizInfo]);
 
-  // Handle retake request from URL parameter
+  // Xử lý yêu cầu làm lại quiz từ tham số URL
   useEffect(() => {
     if (isRetakeRequested && quizInfo?.isCompleted) {
       void handleRetakeAndStart();
@@ -142,10 +142,10 @@ export default function QuizSessionPage({
   const timeLimitMinutes =
     rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
 
-  // Close time in ms (null if no close time)
+  // Thời gian đóng (ms) - null nếu không có thời gian đóng
   const sessionCloseTimeMs = session?.closeTime ? new Date(session.closeTime).getTime() : null;
 
-  // Countdown: always counts down from timeLimit; clamped by closeTime so it never exceeds remaining time before quiz closes
+  // Đếm ngược: luôn đếm từ timeLimit; được giới hạn bởi closeTime nên không bao giờ vượt quá thời gian còn lại trước khi quiz đóng
   const getSecondsRemaining = (): number | null => {
     if (submitted || timeLimitMinutes == null) return null;
     const timeLimitSeconds = timeLimitMinutes * 60;
@@ -177,11 +177,11 @@ export default function QuizSessionPage({
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(tick);
-    // Intentionally track session?.closeTime — closeTime may be absent at start but arrive mid-session
+    // Chủ ý theo dõi session?.closeTime — closeTime có thể vắng mặt ở đầu nhưng xuất hiện giữa phiên
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.attemptId, timeLimitMinutes, submitted, session?.closeTime]);
 
-  // Dedicated auto-submit: fires when either time limit or close time runs out
+  // Tự động nộp khi hết giờ: chạy khi timeLimit hoặc closeTime hết hạn
   useEffect(() => {
     if (secondsLeft !== 0) return;
     if (submitted || submitting || timeLimitMinutes == null || !session) return;
@@ -205,7 +205,7 @@ export default function QuizSessionPage({
         const review = await fetchQuizAttemptReview(session.attemptId);
         setQuizReview(review);
       } catch {
-        // Review load failure is non-critical
+        // Việc tải review thất bại là không quan trọng
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -230,18 +230,17 @@ export default function QuizSessionPage({
       if (
         msg.includes('already submitted') ||
         msg.includes('cannot retake') ||
-        msg.includes('nộp bài') ||
-        msg.includes('làm lại') ||
-        msg.includes('đã nộp') ||
-        msg.includes('chưa mở') ||
-        msg.includes('thời gian mở') ||
-        msg.includes('đã đóng')
+        msg.includes('submitted') ||
+        msg.includes('retake') ||
+        msg.includes('not open') ||
+        msg.includes('open time') ||
+        msg.includes('closed')
       ) {
         setStartError(msg);
       } else {
         toast.error(`Cannot start quiz: ${msg}`);
       }
-      console.error('[QuizSession] start error:', e);
+      console.error('[QuizSession] lỗi khi bắt đầu:', e);
     } finally {
       setLoadingSession(false);
     }
@@ -318,14 +317,14 @@ export default function QuizSessionPage({
     );
   }
 
-  // Pre-start screen
+  // Màn hình trước khi bắt đầu
   if (!session) {
     if (startError) {
       const retakeHint =
-        /nộp bài|làm lại|đã nộp|retake|submitted/i.test(startError) ||
+        /submitted|retake/i.test(startError) ||
         startError.toLowerCase().includes('lecturer');
-      const notOpenHint = startError.includes('chưa mở') || startError.includes('thời gian mở');
-      const closedHint = startError.includes('đã đóng');
+      const notOpenHint = startError.includes('not open') || startError.includes('open time');
+      const closedHint = startError.includes('closed');
       return (
         <div className="flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center px-4 py-10">
           <div className="w-full max-w-md space-y-5 rounded-2xl border border-destructive/30 bg-surface-container-low p-8 text-center shadow-lg">
@@ -334,10 +333,10 @@ export default function QuizSessionPage({
             </div>
             <div>
               <h2 className="font-headline text-lg font-bold text-on-surface">
-                {notOpenHint ? 'Quiz chưa mở' : closedHint ? 'Quiz đã đóng' : retakeHint ? 'Quiz đã nộp' : 'Cannot start quiz'}
+                {notOpenHint ? 'Quiz not yet open' : closedHint ? 'Quiz closed' : retakeHint ? 'Quiz already submitted' : 'Cannot start quiz'}
               </h2>
               <p className="mt-1 text-xs text-on-surface-variant">
-                {notOpenHint ? 'Quiz sẽ tự động mở khi đến giờ.' : closedHint ? 'Quiz đã hết thời gian làm bài.' : retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
+                {notOpenHint ? 'Quiz will open automatically at the scheduled time.' : closedHint ? 'Quiz time has expired.' : retakeHint ? 'Retake has not been enabled yet' : 'Unable to open this quiz'}
               </p>
             </div>
             <div className="rounded-xl bg-muted/50 px-4 py-3 text-left">
@@ -346,7 +345,7 @@ export default function QuizSessionPage({
             {(notOpenHint || closedHint) && (
               <Link href="/student/quizzes" className="w-full">
                 <Button variant="outline" className="w-full mt-2 h-11 rounded-xl font-bold">
-                  Quay lại danh sách quiz
+                  Back to quiz list
                 </Button>
               </Link>
             )}
@@ -436,7 +435,9 @@ export default function QuizSessionPage({
                   This quiz has already been completed
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Score: {quizInfo.score != null ? `${Math.round(quizInfo.score)}%` : 'N/A'}
+                  Score: {quizInfo.score != null && quizInfo.totalQuestions != null
+                    ? `${Math.round(quizInfo.score * quizInfo.totalQuestions / 100)}/${quizInfo.totalQuestions}`
+                    : 'N/A'}
                 </p>
               </div>
               <div className="flex flex-col gap-3">
@@ -511,7 +512,7 @@ export default function QuizSessionPage({
     );
   }
 
-  // Quiz Mode: no questions
+  // Chế độ Quiz: không có câu hỏi
   if (!currentQ || totalQ === 0) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
@@ -864,16 +865,7 @@ export default function QuizSessionPage({
             </div>
 
             {!submitted && (
-              <div className="flex flex-col gap-4">
-                <button
-                  type="button"
-                  onClick={handleReveal}
-                  disabled={!currentAnswer || showFeedback}
-                  className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-high py-3.5 font-bold text-on-surface transition-colors hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  Check answer
-                </button>
-
+              <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
                   <button
                     type="button"
@@ -992,6 +984,25 @@ export default function QuizSessionPage({
 
             {submitted && quizResult && (
               <div className="space-y-6 rounded-2xl border border-primary/25 bg-primary/5 p-8">
+                {/* Hiển thị điểm - thang điểm 100 */}
+                <div className="flex flex-col items-center justify-center rounded-xl bg-surface p-6">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Your Score</p>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className={`text-5xl font-black ${quizResult.passed ? 'text-success' : 'text-destructive'}`}>
+                      {quizResult.score != null ? quizResult.score.toFixed(1) : '—'}
+                    </span>
+                    <span className="text-2xl font-bold text-on-surface-variant">/100</span>
+                  </div>
+                  <p className={`mt-2 rounded-full px-4 py-1 text-sm font-bold ${quizResult.passed ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
+                    {quizResult.passed ? '✓ PASSED' : '✗ NEEDS IMPROVEMENT'}
+                  </p>
+                  {quizResult.passingScore != null && (
+                    <p className="mt-2 text-sm text-on-surface-variant">
+                      Passing: {quizResult.passingScore}%
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <p className="text-center font-headline text-lg font-bold text-on-surface">Quiz submitted</p>
                   <p className="mt-1 text-center text-sm text-on-surface-variant">
@@ -1002,9 +1013,9 @@ export default function QuizSessionPage({
                 <div className="grid grid-cols-2 gap-4 rounded-2xl bg-surface-container-low/80 p-4">
                   <div className="text-center">
                     <p className="text-3xl font-black text-primary">
-                      {quizResult.score != null ? `${Math.round(quizResult.score)}%` : '—'}
+                      {quizResult.correctAnswers}/{quizResult.totalQuestions}
                     </p>
-                    <p className="text-xs text-on-surface-variant">Your score</p>
+                    <p className="text-xs text-on-surface-variant">Correct answers</p>
                   </div>
                   <div className="text-center">
                     <p
@@ -1013,7 +1024,7 @@ export default function QuizSessionPage({
                       {quizResult.passed ? 'PASSED' : 'RETRY'}
                     </p>
                     <p className="text-xs text-on-surface-variant">
-                      {quizResult.correctAnswers}/{quizResult.totalQuestions} correct
+                      {quizResult.totalQuestions} total questions
                     </p>
                   </div>
                 </div>
@@ -1033,7 +1044,7 @@ export default function QuizSessionPage({
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
           <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
             <span className="h-1 w-6 rounded-full bg-primary" />
-            Question navigation
+            Điều hướng câu hỏi
           </h4>
           <div className="flex flex-wrap gap-2">
             {questions.map((q, i) => {

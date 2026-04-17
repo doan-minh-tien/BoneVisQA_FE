@@ -47,7 +47,7 @@ function ScoreBadge({ score, maxScore }: { score: number | null; maxScore: numbe
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>
       <Award className="h-3 w-3" />
-      {score.toFixed(1)}
+      {score.toFixed(1)}/{maxScore}
     </span>
   );
 }
@@ -129,7 +129,7 @@ function AttemptDetailModal({
   onClose: () => void;
 }) {
   if (!detail) return null;
-  const maxScore = detail.passingScore ?? 100;
+  const maxScore = 100; // Score is percentage (0-100)
 
   return (
     <Modal open={!!detail} onClose={onClose} title={`Quiz Review: ${detail.studentName}`} size="xl">
@@ -154,7 +154,7 @@ function AttemptDetailModal({
           {detail.passingScore && (
             <div>
               <span className="text-muted-foreground">Passing:</span>{' '}
-              <span className="font-medium">{detail.passingScore}</span>
+              <span className="font-medium">{detail.passingScore}%</span>
             </div>
           )}
         </div>
@@ -501,7 +501,7 @@ export default function QuizResultsPage({
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <ScoreBadge score={a.score} maxScore={quiz?.passingScore ?? 100} />
+                      <ScoreBadge score={a.score} maxScore={100} />
                     </td>
                     <td className="px-4 py-3 text-center text-muted-foreground">
                       {a.totalQuestions > 0

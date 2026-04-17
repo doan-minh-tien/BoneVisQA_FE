@@ -121,8 +121,10 @@ function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undef
   for (const row of raw) {
     if (!row || typeof row !== 'object') continue;
     const o = row as Record<string, unknown>;
+    const id = o.id != null ? String(o.id) : o.Id != null ? String(o.Id) : o.imageId != null ? String(o.imageId) : o.ImageId != null ? String(o.ImageId) : undefined;
     const imageUrl = String(o.imageUrl ?? o.ImageUrl ?? '');
     if (!imageUrl.trim()) continue;
+    const label = o.label ?? o.Label ?? o.fileName ?? o.FileName ?? null;
     const modality = o.modality ?? o.Modality;
     const annRaw = o.annotations ?? o.Annotations;
     let annotations: ExpertCaseMedicalImageAnnotationJson[] | null = null;
@@ -138,7 +140,9 @@ function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undef
         .filter((x): x is ExpertCaseMedicalImageAnnotationJson => x != null);
     }
     out.push({
+      ...(id !== undefined ? { id } : {}),
       imageUrl,
+      label: label != null ? String(label) : undefined,
       modality: modality != null ? String(modality) : undefined,
       annotations,
     });
@@ -287,8 +291,8 @@ async function getExpertListPayload(primaryPath: string, fallbackPath: string): 
 export async function fetchExpertCategories(): Promise<ExpertCategory[]> {
   try {
     const data = await getExpertListPayload(
-      `/api/expert/categories?pageIndex=1&pageSize=100`,
       `/api/expert/category?pageIndex=1&pageSize=100`,
+      `/api/categories?pageIndex=1&pageSize=100`,
     );
     const listRaw = (data as any)?.items ?? (data as any)?.result?.items ?? data;
     const list = Array.isArray(listRaw) ? listRaw : [];
@@ -322,7 +326,9 @@ export interface ExpertCaseMedicalImageAnnotationJson {
 }
 
 export interface ExpertCaseMedicalImageJson {
+  id?: string;
   imageUrl: string;
+  label?: string | null;
   modality?: string | null;
   annotations?: ExpertCaseMedicalImageAnnotationJson[] | null;
 }
@@ -569,6 +575,52 @@ export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10): Prom
       pageIndex: Number(d?.pageIndex ?? res?.pageIndex ?? pageIndex),
       pageSize: Number(d?.pageSize ?? res?.pageSize ?? pageSize),
     };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Upload a new medical image for an expert case.
+ * POST /api/expert/images (multipart/form-data)
+ */
+export async function createExpertCaseImage(
+  caseId: string,
+  file: File,
+  modality?: string
+): Promise<{ id: string; imageUrl: string; modality: string }> {
+  const form = new FormData();
+  form.append('CaseId', caseId);
+  form.append('Image', file);
+  if (modality && modality.trim()) {
+    form.append('Modality', modality.trim());
+  }
+
+  try {
+    const { data } = await http.post('/api/expert/images', form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    // Backend returns: { message, result: { id, imageUrl, modality, caseTitle, annotations } }
+    const result = (data as any)?.result || data;
+    return {
+      id: String(result?.id ?? ''),
+      imageUrl: String(result?.imageUrl ?? ''),
+      modality: String(result?.modality ?? ''),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete a medical image from an expert case.
+ * DELETE /api/expert/images/{imageId}
+ */
+export async function deleteExpertCaseImage(imageId: string): Promise<void> {
+  try {
+    await http.delete(`/api/expert/images/${encodeURIComponent(imageId)}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

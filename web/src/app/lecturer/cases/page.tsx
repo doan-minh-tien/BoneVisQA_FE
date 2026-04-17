@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { LecturerCasesPageSkeleton } from '@/components/shared/DashboardSkeletons';
 import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
@@ -18,11 +19,14 @@ import {
   getLecturerClasses,
   approveCase,
 } from '@/lib/api/lecturer';
-import type { CaseDto, ClassItem } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
+import type { CaseDto, ClassItem, ClassCaseAssignmentDto } from '@/lib/api/types';
 
 type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
 
 export default function LecturerCasesPage() {
+  const router = useRouter();
+  const toast = useToast();
   const [cases, setCases] = useState<CaseDto[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,9 +75,20 @@ export default function LecturerCasesPage() {
     }
   };
 
-  const handleAssignSuccess = () => {
+  const handleAssignSuccess = (assignments: ClassCaseAssignmentDto[]) => {
     setShowAssign(false);
     setSelectedCases(new Set());
+
+    // Lưu composite keys (classId_caseId) để highlight trong trang Assignments
+    const newKeys = assignments.map(a => `${a.classId}_${a.caseId}`);
+    sessionStorage.setItem('newAssignmentIds', JSON.stringify(newKeys));
+
+    toast.success('Cases assigned successfully!', {
+      action: {
+        label: 'View',
+        onClick: () => router.push(`/lecturer/assignments?new=${newKeys.join(',')}`)
+      }
+    });
   };
 
   const toggleCaseSelection = (id: string) => {

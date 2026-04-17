@@ -270,7 +270,7 @@ function QuizMeta({ quiz }: { quiz: ExpertQuiz }) {
       </div>
       <div>
         <p className="text-muted-foreground">Passing score</p>
-        <p className="font-medium text-card-foreground">{quiz.passingScore}</p>
+        <p className="font-medium text-card-foreground">{quiz.passingScore}%</p>
       </div>
       <div className="sm:col-span-2">
         <p className="text-muted-foreground">Window</p>
@@ -350,13 +350,13 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
       const closeTime = new Date(`${form.closeDate}T${form.closeTime}`).toISOString();
 
       if (isEditMode && editQuiz) {
-        // Update existing quiz - use UpdateExpertQuizRequest (Partial)
+        // Update existing quiz - Expert can update Title, Topic, Open/Close, Difficulty, TimeLimit, PassingScore
         const request: UpdateExpertQuizRequest = {
           title: form.title.trim(),
           topic: form.topic.trim() || null,
           difficulty: form.difficulty,
-          timeLimit: form.timeLimit,
-          passingScore: form.passingScore,
+          timeLimit: form.timeLimit ?? null,
+          passingScore: form.passingScore ?? null,
           openTime,
           closeTime,
           classification: form.classification.trim() || null,
@@ -370,8 +370,8 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
           title: form.title.trim(),
           topic: form.topic.trim() || null,
           difficulty: form.difficulty,
-          timeLimit: form.timeLimit,
-          passingScore: form.passingScore,
+          timeLimit: form.timeLimit ?? 30, // Default 30 if not set
+          passingScore: form.passingScore ?? 70, // Default 70 if not set
           openTime,
           closeTime,
           classification: form.classification.trim() || null,
@@ -475,50 +475,45 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
             </div>
           )}
 
-          {/* ===== TIME LIMIT & PASSING SCORE - ALWAYS EDITABLE ===== */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1">
-                Time Limit (phut)
-                {isEditMode && assignmentStatus?.isAssigned && (
-                  <span className="text-amber-600 ml-1">(lop cu: giu nguyen)</span>
-                )}
-              </label>
-              <input
-                type="number"
-                value={form.timeLimit}
-                onChange={(e) => setForm((p) => ({ ...p, timeLimit: Number(e.target.value) }))}
-                min={5}
-                max={180}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {isEditMode && assignmentStatus?.isAssigned
-                  ? 'Co thay doi: lop moi dung gia tri nay, lop cu giu nguyen.'
-                  : 'Thoi gian lam quiz. Co the override khi assign vao lop.'}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1">
-                Passing Score (0-100)
-                {isEditMode && assignmentStatus?.isAssigned && (
-                  <span className="text-amber-600 ml-1">(lop cu: giu nguyen)</span>
-                )}
-              </label>
-              <input
-                type="number"
-                value={form.passingScore}
-                onChange={(e) => setForm((p) => ({ ...p, passingScore: Number(e.target.value) }))}
-                min={0}
-                max={100}
-                step={1}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {isEditMode && assignmentStatus?.isAssigned
-                  ? 'Co thay doi: lop moi dung gia tri nay, lop cu giu nguyen.'
-                  : 'Diem can dat de qua. Co the override khi assign vao lop.'}
-              </p>
+          {/* ===== TIME LIMIT & PASSING SCORE - FOR EXPERT TO SET ===== */}
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Quiz Configuration (for your reference - these will be used as defaults when lecturers assign this quiz)
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1">
+                  Time Limit (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={form.timeLimit}
+                  onChange={(e) => setForm((p) => ({ ...p, timeLimit: Number(e.target.value) }))}
+                  min={5}
+                  max={180}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default time limit for this quiz (5-180 min)
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1">
+                  Passing Score (0-100)
+                </label>
+                <input
+                  type="number"
+                  value={form.passingScore}
+                  onChange={(e) => setForm((p) => ({ ...p, passingScore: Number(e.target.value) }))}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default passing score (lecturers can adjust ±10%)
+                </p>
+              </div>
             </div>
           </div>
 

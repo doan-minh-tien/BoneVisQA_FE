@@ -25,6 +25,7 @@ import {
   BookOpen,
   UserCheck,
   AlertCircle,
+  Check,
 } from 'lucide-react';
 
 // ========== TYPES ==========
@@ -236,11 +237,24 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
   const [classes, setClasses] = useState<{ id: string; className: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
   const [openTime, setOpenTime] = useState('');
   const [closeTime, setCloseTime] = useState('');
   const [timeLimit, setTimeLimit] = useState<number | ''>(quiz.timeLimit ?? '');
   const [passingScore, setPassingScore] = useState<number | ''>(quiz.passingScore ?? '');
+
+  const toggleClass = (classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId)
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId]
+    );
+  };
+
+  const removeClass = (classId: string) => {
+    setSelectedClassIds((prev) => prev.filter((id) => id !== classId));
+  };
 
   useEffect(() => {
     loadClasses();
@@ -251,7 +265,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
     try {
       const data = await fetchLecturerClasses();
       setClasses(data);
-      if (data.length > 0) setSelectedClassId(data[0].id);
+      // Không preset lớp nào, để user tự chọn
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load classes.');
     } finally {
@@ -260,23 +274,78 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
   };
 
   const handleAssign = async () => {
-    if (!selectedClassId) {
-      toast.error('Vui lòng chọn lớp học.');
+    if (selectedClassIds.length === 0) {
+      toast.error('Please select at least one class.');
       return;
     }
     setAssigning(true);
+
+    // ============================================
+    // CLAMP LOGIC - Tương tự backend
+    // ============================================
+    let effectiveTimeLimit = typeof timeLimit === 'number' ? timeLimit : null;
+    let effectivePassingScore = typeof passingScore === 'number' ? passingScore : null;
+    const warnings: string[] = [];
+
+    if (quiz.timeLimit != null && effectiveTimeLimit != null) {
+      const minTimeLimit = Math.max(5, Math.floor(quiz.timeLimit * 0.5));
+      const maxTimeLimit = Math.min(180, Math.ceil(quiz.timeLimit * 1.5));
+
+      if (effectiveTimeLimit < minTimeLimit) {
+        effectiveTimeLimit = minTimeLimit;
+        warnings.push(`Time limit adjusted to ${minTimeLimit} min (min allowed)`);
+      } else if (effectiveTimeLimit > maxTimeLimit) {
+        effectiveTimeLimit = maxTimeLimit;
+        warnings.push(`Time limit adjusted to ${maxTimeLimit} min (max allowed)`);
+      }
+    } else if (effectiveTimeLimit == null) {
+      // Nếu lecturer không nhập → dùng giá trị Expert
+      effectiveTimeLimit = quiz.timeLimit ?? 30;
+    }
+
+    if (quiz.passingScore != null && effectivePassingScore != null) {
+      const minPassingScore = Math.max(0, quiz.passingScore - 10);
+      const maxPassingScore = Math.min(100, quiz.passingScore + 10);
+
+      if (effectivePassingScore < minPassingScore) {
+        effectivePassingScore = minPassingScore;
+        warnings.push(`Passing score adjusted to ${minPassingScore}% (min allowed)`);
+      } else if (effectivePassingScore > maxPassingScore) {
+        effectivePassingScore = maxPassingScore;
+        warnings.push(`Passing score adjusted to ${maxPassingScore}% (max allowed)`);
+      }
+    } else if (effectivePassingScore == null) {
+      // Nếu lecturer không nhập → dùng giá trị Expert
+      effectivePassingScore = quiz.passingScore ?? 70;
+    }
+
     try {
-      await assignExpertQuizToClass(selectedClassId, quiz.id, {
-        openTime: openTime || null,
-        closeTime: closeTime || null,
-        timeLimitMinutes: typeof timeLimit === 'number' ? timeLimit : null,
-        passingScore: typeof passingScore === 'number' ? passingScore : null,
-      });
-      toast.success('Gán quiz thành công!');
+      const selectedClassNames = selectedClassIds
+        .map((id) => classes.find((c) => c.id === id)?.className)
+        .filter(Boolean)
+        .join(', ');
+
+      await Promise.all(
+        selectedClassIds.map((classId) =>
+          assignExpertQuizToClass(classId, quiz.id, {
+            openTime: openTime || null,
+            closeTime: closeTime || null,
+            timeLimitMinutes: effectiveTimeLimit,
+            passingScore: effectivePassingScore,
+          })
+        )
+      );
+
+      let successMsg = `Quiz assigned successfully to ${selectedClassIds.length} classes`;
+      if (warnings.length > 0) {
+        successMsg += ` (${warnings.join('; ')})`;
+      }
+
+      toast.success(successMsg);
       onAssigned();
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gán quiz thất bại.');
+      toast.error(e instanceof Error ? e.message : 'Failed to assign quiz.');
     } finally {
       setAssigning(false);
     }
@@ -311,36 +380,95 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
                 Đang tải...
               </div>
             ) : (
-              <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
-              >
-                {classes.length === 0 && <option value="">Không có lớp học nào</option>}
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.className}
-                  </option>
-                ))}
-              </select>
+              <>
+                {/* Selected classes tags */}
+                {selectedClassIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2 p-2 bg-primary/5 border border-primary/20 rounded-lg">
+                    {selectedClassIds.map((classId) => {
+                      const cls = classes.find((c) => c.id === classId);
+                      if (!cls) return null;
+                      return (
+                        <span
+                          key={classId}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-primary text-white rounded-full text-xs font-medium"
+                        >
+                          {cls.className}
+                          <button
+                            onClick={() => removeClass(classId)}
+                            className="hover:bg-primary-foreground/20 rounded-full p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Class dropdown */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowClassDropdown(!showClassDropdown)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring text-left cursor-pointer flex items-center justify-between"
+                  >
+                    <span className={selectedClassIds.length > 0 ? 'text-card-foreground' : 'text-muted-foreground'}>
+                      {selectedClassIds.length === 0
+                        ? 'Select classes...'
+                        : `${selectedClassIds.length} classes selected`}
+                    </span>
+                    <span className="text-muted-foreground">▼</span>
+                  </button>
+
+                  {showClassDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {classes.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">No classes available</p>
+                      ) : (
+                        classes.map((cls) => {
+                          const isSelected = selectedClassIds.includes(cls.id);
+                          return (
+                            <button
+                              key={cls.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleClass(cls.id);
+                              }}
+                              className={`w-full px-3 py-2 text-sm text-left cursor-pointer transition-colors flex items-center justify-between ${
+                                isSelected
+                                  ? 'bg-primary/5 text-primary'
+                                  : 'hover:bg-muted/50 text-card-foreground'
+                              }`}
+                            >
+                              <span>{cls.className}</span>
+                              {isSelected && <Check className="w-4 h-4 text-primary" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
           {/* Quiz Info */}
           <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <p className="text-sm font-medium text-card-foreground">Thông tin Quiz</p>
+            <p className="text-sm font-medium text-card-foreground">Quiz Info</p>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
               <div>
-                <span className="font-medium">Số câu hỏi:</span> {quiz.questionCount}
+                <span className="font-medium">Questions:</span> {quiz.questionCount}
               </div>
               <div>
-                <span className="font-medium">Độ khó:</span> {quiz.difficulty ?? '—'}
+                <span className="font-medium">Difficulty:</span> {quiz.difficulty ?? '—'}
               </div>
               <div>
                 <span className="font-medium">Expert:</span> {quiz.expertName ?? '—'}
               </div>
               <div>
-                <span className="font-medium">Chủ đề:</span> {quiz.topic ?? '—'}
+                <span className="font-medium">Topic:</span> {quiz.topic ?? '—'}
               </div>
             </div>
           </div>
@@ -348,7 +476,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
           {/* Time Settings */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Thời gian mở</label>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Open Time</label>
               <input
                 type="datetime-local"
                 value={openTime}
@@ -357,7 +485,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Thời gian đóng</label>
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Close Time</label>
               <input
                 type="datetime-local"
                 value={closeTime}
@@ -369,24 +497,38 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Thời gian làm bài (phút)</label>
-              <input
-                type="number"
-                value={timeLimit}
-                onChange={(e) => setTimeLimit(e.target.value ? Number(e.target.value) : '')}
-                placeholder={String(quiz.timeLimit ?? 30)}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Time Limit (minutes)</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={timeLimit}
+                  onChange={(e) => setTimeLimit(e.target.value ? Number(e.target.value) : '')}
+                  placeholder={String(quiz.timeLimit ?? 30)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                {quiz.timeLimit != null && (
+                  <div className="absolute -bottom-5 left-0 text-xs text-muted-foreground">
+                    Expert default: {quiz.timeLimit} min (allowed: {Math.max(5, Math.floor(quiz.timeLimit * 0.5))}-{Math.min(180, Math.ceil(quiz.timeLimit * 1.5))} min)
+                  </div>
+                )}
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Điểm đạt</label>
-              <input
-                type="number"
-                value={passingScore}
-                onChange={(e) => setPassingScore(e.target.value ? Number(e.target.value) : '')}
-                placeholder={String(quiz.passingScore ?? 5)}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+              <label className="block text-sm font-medium text-card-foreground mb-1.5">Passing Score</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={passingScore}
+                  onChange={(e) => setPassingScore(e.target.value ? Number(e.target.value) : '')}
+                  placeholder={String(quiz.passingScore ?? 70)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                {quiz.passingScore != null && (
+                  <div className="absolute -bottom-5 left-0 text-xs text-muted-foreground">
+                    Expert default: {quiz.passingScore}% (allowed: {Math.max(0, quiz.passingScore - 10)}-{Math.min(100, quiz.passingScore + 10)}%)
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -396,15 +538,15 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             onClick={onClose}
             className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
           >
-            Hủy
+            Cancel
           </button>
           <button
             onClick={handleAssign}
-            disabled={assigning || !selectedClassId}
+            disabled={assigning || selectedClassIds.length === 0}
             className="px-6 py-2.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-2"
           >
             {assigning && <Loader2 className="h-4 w-4 animate-spin" />}
-            Gán Quiz
+            Assign to {selectedClassIds.length} classes
           </button>
         </div>
       </div>
@@ -505,7 +647,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                 setSearchTerm(e.target.value);
                 setPage(1);
               }}
-              placeholder="Tìm kiếm quiz, chủ đề, Expert..."
+              placeholder="Search quizzes, topics, Expert..."
               className="h-10 w-full rounded-full border border-border bg-input pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -519,7 +661,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
           >
             {difficultyOptions.map((d) => (
               <option key={d} value={d}>
-                {d === 'all' ? 'Tất cả độ khó' : d}
+                {d === 'all' ? 'All difficulties' : d}
               </option>
             ))}
           </select>

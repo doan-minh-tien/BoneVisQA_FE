@@ -15,45 +15,17 @@ import { ImagePlus, X, Loader2, UploadCloud } from 'lucide-react';
 import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
 import ExpertQuestionImportDialog, { type ExpertParsedQuestion } from './ExpertQuestionImportDialog';
 
-// Note: component này được dùng ngay trong trang expert quiz (expand theo quiz),
-// nên xử lý UI modal nội bộ để thao tác question dễ hơn.
-
 type QuestionModalMode = 'create' | 'edit';
-
-function ModalShell({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: any;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-        <div className="shrink-0 border-b border-border p-6">
-          <h3 className="text-lg font-semibold text-card-foreground">{title}</h3>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const Q_PAGE_SIZE = 5;
 
-export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
+function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const toast = useToast();
 
   const [questions, setQuestions] = useState<ExpertQuizQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Pagination state for questions
   const [qPage, setQPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,7 +38,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const [isCasesLoading, setIsCasesLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Import dialog state
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -97,7 +68,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const loadCases = async () => {
     setIsCasesLoading(true);
     try {
-      // Dùng API expert-cases để lấy danh sách cases (có id và case title)
       const res = await fetchExpertCasesPaged(1, 100);
       setCases(res.items);
     } catch (e) {
@@ -114,7 +84,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     try {
       const list = await fetchExpertQuizQuestions(quizId);
       setQuestions(list);
-      setQPage(1); // reset về trang 1 khi load lại
+      setQPage(1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load questions.';
       setError(msg);
@@ -126,7 +96,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
   useEffect(() => {
     loadQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizId]);
 
   const openCreate = async () => {
@@ -178,8 +147,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   const openEdit = async (q: ExpertQuizQuestion) => {
     setMode('edit');
     setEditingQuestionId(q.questionId);
-
-    // Đảm bảo load cases xong, dùng giá trị trả về thay vì đọc state (tránh race condition)
     let resolvedCases = cases;
     if (!cases.length) {
       setIsCasesLoading(true);
@@ -214,15 +181,9 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
   };
 
   const canSubmit = useMemo(() => {
-    if (mode === 'edit') {
-      // Khi edit: chỉ cần questionText, correctAnswer. CaseId và ImageUrl có thể giữ nguyên
-      return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
-    }
-    // Khi create: bắt buộc questionText, correctAnswer. CaseId có thể empty (sẽ fallback). ImageUrl KHÔNG bắt buộc
     return Boolean(form.questionText.trim() && form.type.trim() && form.correctAnswer.trim());
-  }, [mode, form.questionText, form.type, form.correctAnswer]);
+  }, [form.questionText, form.type, form.correctAnswer]);
 
-  // Computed pagination values
   const qTotalPages = Math.max(1, Math.ceil(questions.length / Q_PAGE_SIZE));
   const pagedQuestions = useMemo(() => {
     const start = (qPage - 1) * Q_PAGE_SIZE;
@@ -237,7 +198,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     setIsSaving(true);
     try {
       if (mode === 'create') {
-        // Nếu không chọn case, dùng case đầu tiên
         const resolvedCaseId = form.caseId || cases[0]?.id;
         await createExpertQuizQuestion(quizId, {
           caseId: resolvedCaseId,
@@ -299,7 +259,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     }
   };
 
-  // Handle bulk import questions
   const handleBulkImport = async (importedQuestions: ExpertParsedQuestion[]) => {
     if (!cases.length) await loadCases();
 
@@ -309,22 +268,18 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
     for (const q of importedQuestions) {
       try {
-        // Find case by title if provided
         let caseId: string | undefined = undefined;
         if (q.caseTitle) {
           const matchedCase = cases.find((c) => c.title === q.caseTitle);
           caseId = matchedCase?.id;
         }
-        // Fallback to first case if no case matched
         if (!caseId && cases.length > 0) {
           caseId = cases[0].id;
         }
-
-        // Skip if missing required fields
         if (!q.questionText || !q.correctAnswer) continue;
 
         await createExpertQuizQuestion(quizId, {
-          caseId,  // undefined if not found
+          caseId,
           questionText: q.questionText,
           type: q.type || 'selection-choice',
           optionA: q.optionA?.trim() || undefined,
@@ -332,7 +287,7 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
           optionC: q.optionC?.trim() || undefined,
           optionD: q.optionD?.trim() || undefined,
           correctAnswer: q.correctAnswer,
-          imageUrl: undefined, // Bulk import skips image requirement
+          imageUrl: undefined,
         });
         successCount++;
       } catch {
@@ -360,7 +315,6 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
 
   return (
     <>
-      {/* Import Dialog */}
       <ExpertQuestionImportDialog
         open={isImportOpen}
         onClose={() => setIsImportOpen(false)}
@@ -368,166 +322,138 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       />
 
       {isModalOpen && (
-        <ModalShell
-          title={mode === 'edit' ? 'Edit Quiz Question' : 'Create Quiz Question'}
-          onClose={() => {
-            if (!isSaving) setIsModalOpen(false);
-          }}
-        >
-          {/* ========== IMAGE UPLOAD SECTION ========== */}
-          <div className="md:col-span-2 mb-4">
-            <label className="block text-sm font-medium text-card-foreground mb-1.5">
-              Question Image
-            </label>
-            {form.imagePreview ? (
-              <div className="relative inline-block">
-                <img
-                  src={form.imagePreview}
-                  alt="Question preview"
-                  className="max-h-48 rounded-lg border border-border object-contain"
-                />
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-white shadow-md hover:bg-destructive/90 cursor-pointer"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
-                {isUploading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span className="text-sm">Uploading...</span>
+        <div className="fixed inset-0 z-100 flex items-start justify-center pt-[2vh] pb-4 px-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { if (!isSaving) setIsModalOpen(false); }} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="shrink-0 border-b border-border px-6 py-4 flex items-center justify-between bg-card rounded-t-2xl">
+              <h3 className="text-lg font-bold text-card-foreground">
+                {mode === 'edit' ? 'Edit Quiz Question' : 'Create Quiz Question'}
+              </h3>
+              <button
+                onClick={() => { if (!isSaving) setIsModalOpen(false); }}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* Image */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-card-foreground mb-2">Question Image</label>
+                {form.imagePreview ? (
+                  <div className="relative inline-block">
+                    <img src={form.imagePreview} alt="Preview" className="max-h-48 rounded-lg border border-border object-contain" />
+                    <button type="button" onClick={removeImage} className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-white flex items-center justify-center hover:bg-destructive/90">
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
                 ) : (
-                  <>
-                    <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
-                    <span className="text-sm text-muted-foreground">Click to upload image</span>
-                    <span className="text-xs text-muted-foreground/70">PNG, JPG, GIF up to 10MB</span>
-                  </>
+                  <label className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30">
+                    {isUploading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <>
+                        <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
+                        <span className="text-sm text-muted-foreground">Click to upload image</span>
+                        <span className="text-xs text-muted-foreground/70">PNG, JPG up to 10MB</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" disabled={isUploading} />
+                  </label>
                 )}
+              </div>
+
+              {/* Case */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">Clinical Case (optional)</label>
+                <select
+                  value={form.caseId}
+                  onChange={(e) => setForm((p) => ({ ...p, caseId: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">-- No Case --</option>
+                  {isCasesLoading ? <option disabled>Loading...</option> : null}
+                  {cases.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title} {c.categoryName ? `(${c.categoryName})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Question Text */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-card-foreground mb-1.5">Question Text <span className="text-destructive">*</span></label>
                 <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
-                  disabled={isUploading}
+                  value={form.questionText}
+                  onChange={(e) => setForm((p) => ({ ...p, questionText: e.target.value }))}
+                  placeholder="Enter question..."
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
-              </label>
-            )}
-          </div>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Case (optional)</label>
-              <select
-                value={form.caseId}
-                onChange={(e) => setForm((p) => ({ ...p, caseId: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+              {/* Type & Answer */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Question Type</label>
+                  <select
+                    value={form.type}
+                    onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="selection-choice">Multiple Choice</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-card-foreground mb-1.5">Correct Answer <span className="text-destructive">*</span></label>
+                  <input
+                    value={form.correctAnswer}
+                    onChange={(e) => setForm((p) => ({ ...p, correctAnswer: e.target.value.toUpperCase() }))}
+                    placeholder="A/B/C/D"
+                    maxLength={1}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm uppercase text-center font-bold focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Options */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-card-foreground mb-2">Answer Options</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(['A', 'B', 'C', 'D'] as const).map((key) => (
+                    <div key={key}>
+                      <label className="block text-xs text-card-foreground mb-1">
+                        Option {key} {key === form.correctAnswer && <span className="text-success">✓</span>}
+                      </label>
+                      <input
+                        value={form[`option${key}` as keyof typeof form] as string}
+                        onChange={(e) => setForm((p) => ({ ...p, [`option${key}`]: e.target.value }))}
+                        placeholder={`Option ${key}`}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-border px-6 py-4 flex gap-3 justify-end bg-muted/10 rounded-b-2xl">
+              <button
+                disabled={isSaving || isImporting}
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
-                <option value="">-- No Case --</option>
-                {isCasesLoading ? <option value="" disabled>Loading cases...</option> : null}
-                {cases.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title} {c.categoryName ? `(${c.categoryName})` : ''}
-                  </option>
-                ))}
-              </select>
-              {form.caseId && !cases.find(c => c.id === form.caseId) && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Note: Selected case is not in your case library. It will remain linked.
-                </p>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Question Text</label>
-              <input
-                value={form.questionText}
-                onChange={(e) => setForm((p) => ({ ...p, questionText: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Type</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+                Cancel
+              </button>
+              <button
+                disabled={isSaving || isImporting || !canSubmit}
+                onClick={handleSave}
+                className="px-5 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
               >
-                <option value="selection-choice">selection-choice</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Correct Answer</label>
-              <input
-                value={form.correctAnswer}
-                onChange={(e) => setForm((p) => ({ ...p, correctAnswer: e.target.value }))}
-                placeholder="e.g., b"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            {/* Options – always shown */}
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option A</label>
-              <input
-                value={form.optionA}
-                onChange={(e) => setForm((p) => ({ ...p, optionA: e.target.value }))}
-                placeholder="Option A..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option B</label>
-              <input
-                value={form.optionB}
-                onChange={(e) => setForm((p) => ({ ...p, optionB: e.target.value }))}
-                placeholder="Option B..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option C</label>
-              <input
-                value={form.optionC}
-                onChange={(e) => setForm((p) => ({ ...p, optionC: e.target.value }))}
-                placeholder="Option C..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1.5">Option D</label>
-              <input
-                value={form.optionD}
-                onChange={(e) => setForm((p) => ({ ...p, optionD: e.target.value }))}
-                placeholder="Option D..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {mode === 'edit' ? 'Update' : 'Create'}
+              </button>
             </div>
           </div>
-
-          <div className="flex gap-3 mt-5">
-            <button
-              disabled={isSaving || isImporting}
-              onClick={() => setIsModalOpen(false)}
-              className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              disabled={isSaving || isImporting || !canSubmit}
-              onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
-            >
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : mode === 'edit' ? 'Update' : 'Create'}
-            </button>
-          </div>
-        </ModalShell>
+        </div>
       )}
 
       {deleteDialog && (
@@ -559,124 +485,122 @@ export default function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       )}
 
       <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-card-foreground">
-          Questions
-          {questions.length > 0 && (
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              ({questions.length} total)
-            </span>
-          )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-card-foreground">
+            Questions
+            {questions.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ({questions.length} total)
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              disabled={isSaving || isImporting}
+              onClick={() => setIsImportOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/10 text-secondary text-xs font-medium hover:bg-secondary/20 disabled:opacity-50 cursor-pointer transition-colors"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              Import
+            </button>
+            <button
+              disabled={isSaving || isImporting}
+              onClick={openCreate}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"
+            >
+              + Add Question
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            disabled={isSaving || isImporting}
-            onClick={() => setIsImportOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/10 text-secondary text-xs font-medium hover:bg-secondary/20 disabled:opacity-50 cursor-pointer transition-colors"
-          >
-            <UploadCloud className="h-3.5 w-3.5" />
-            Import
-          </button>
-          <button
-            disabled={isSaving || isImporting}
-            onClick={openCreate}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-50 cursor-pointer transition-colors"
-          >
-            + Add Question
-          </button>
-        </div>
-      </div>
 
-      {error ? (
-        <div className="text-sm text-destructive">{error}</div>
-      ) : questions.length === 0 ? (
-        <div className="text-sm text-muted-foreground">No questions yet.</div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            {pagedQuestions.map((q, idx) => {
-              const globalIdx = (qPage - 1) * Q_PAGE_SIZE + idx + 1;
-              return (
-                <div key={q.questionId} className="p-3 rounded-lg border border-border bg-input/20">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      {/* Hiển thị ảnh nếu có */}
-                      {q.imageUrl && (
-                        <img
-                          src={q.imageUrl}
-                          alt="Question"
-                          className="max-h-24 rounded-lg border border-border mb-2 object-contain"
-                        />
-                      )}
-                      <div className="text-xs text-muted-foreground mb-0.5">
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary font-bold text-[10px] mr-1.5">{globalIdx}</span>
-                        Case: <span className="text-card-foreground font-medium">{q.caseTitle ?? '-'}</span>
-                      </div>
-                      <div className="text-sm font-medium text-card-foreground mt-1">{q.questionText}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Type: <span className="text-card-foreground font-medium">{q.type}</span>
-                      </div>
-                      {q.optionA || q.optionB || q.optionC || q.optionD ? (
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          {q.optionA ? <div>A: {q.optionA}</div> : null}
-                          {q.optionB ? <div>B: {q.optionB}</div> : null}
-                          {q.optionC ? <div>C: {q.optionC}</div> : null}
-                          {q.optionD ? <div>D: {q.optionD}</div> : null}
+        {error ? (
+          <div className="text-sm text-destructive">{error}</div>
+        ) : questions.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No questions yet.</div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {pagedQuestions.map((q, idx) => {
+                const globalIdx = (qPage - 1) * Q_PAGE_SIZE + idx + 1;
+                return (
+                  <div key={q.questionId} className="p-3 rounded-lg border border-border bg-input/20">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        {q.imageUrl && (
+                          <img
+                            src={q.imageUrl}
+                            alt="Question"
+                            className="max-h-24 rounded-lg border border-border mb-2 object-contain"
+                          />
+                        )}
+                        <div className="text-xs text-muted-foreground mb-0.5">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/15 text-primary font-bold text-[10px] mr-1.5">{globalIdx}</span>
+                          Case: <span className="text-card-foreground font-medium">{q.caseTitle ?? '-'}</span>
                         </div>
-                      ) : null}
-                      <div className="text-xs text-muted-foreground mt-2">
-                        Correct: <span className="text-card-foreground font-medium">{q.correctAnswer}</span>
+                        <div className="text-sm font-medium text-card-foreground mt-1">{q.questionText}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Type: <span className="text-card-foreground font-medium">{q.type}</span>
+                        </div>
+                        {q.optionA || q.optionB || q.optionC || q.optionD ? (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {q.optionA ? <div>A: {q.optionA}</div> : null}
+                            {q.optionB ? <div>B: {q.optionB}</div> : null}
+                            {q.optionC ? <div>C: {q.optionC}</div> : null}
+                            {q.optionD ? <div>D: {q.optionD}</div> : null}
+                          </div>
+                        ) : null}
+                        <div className="text-xs text-muted-foreground mt-2">
+                          Correct: <span className="text-card-foreground font-medium">{q.correctAnswer}</span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        disabled={isSaving || isImporting}
-                        onClick={() => openEdit(q)}
-                        className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        disabled={isSaving || isImporting}
-                        onClick={() => handleDelete(q.questionId)}
-                        className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          disabled={isSaving || isImporting}
+                          onClick={() => openEdit(q)}
+                          className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-50 cursor-pointer transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          disabled={isSaving || isImporting}
+                          onClick={() => handleDelete(q.questionId)}
+                          className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 disabled:opacity-50 cursor-pointer transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Question Pagination */}
-          {qTotalPages > 1 && (
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
-              <button
-                disabled={qPage <= 1 || isSaving || isImporting}
-                onClick={() => setQPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
-              >
-                ← Prev
-              </button>
-              <span className="text-xs text-muted-foreground">
-                Page <span className="text-card-foreground font-semibold">{qPage}</span> / {qTotalPages}
-              </span>
-              <button
-                disabled={qPage >= qTotalPages || isSaving || isImporting}
-                onClick={() => setQPage((p) => Math.min(qTotalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
-              >
-                Next →
-              </button>
+                );
+              })}
             </div>
-          )}
-        </>
-      )}
+
+            {qTotalPages > 1 && (
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+                <button
+                  disabled={qPage <= 1 || isSaving || isImporting}
+                  onClick={() => setQPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Page <span className="text-card-foreground font-semibold">{qPage}</span> / {qTotalPages}
+                </span>
+                <button
+                  disabled={qPage >= qTotalPages || isSaving || isImporting}
+                  onClick={() => setQPage((p) => Math.min(qTotalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-input disabled:opacity-40 cursor-pointer transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </>
   );
 }
 
+export default QuizQuestionsPanel;

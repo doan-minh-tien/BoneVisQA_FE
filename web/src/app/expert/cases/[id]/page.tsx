@@ -1,15 +1,30 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import { useToast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
 import { fetchExpertCase, formatCaseDateForDisplay, type CaseStatus } from '@/lib/api/expert-cases';
 import { getApiProblemDetails, resolveApiAssetUrl } from '@/lib/api/client';
-import { Pencil, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import {
+  Pencil,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Target,
+  FileText,
+  ImageIcon,
+  Stethoscope,
+  Lightbulb,
+  Brain,
+  Info,
+  ChevronDown,
+  ChevronRight
+} from 'lucide-react';
 
 const statusBadge: Record<
   CaseStatus,
@@ -17,25 +32,60 @@ const statusBadge: Record<
 > = {
   draft: {
     label: 'Draft',
-    className: 'border-border bg-muted/60 text-muted-foreground',
+    className: 'bg-slate-100 text-slate-700 border-slate-200',
     Icon: Clock,
   },
   pending: {
-    label: 'Pending',
-    className: 'border-warning/30 bg-warning/10 text-warning',
+    label: 'Pending Review',
+    className: 'bg-amber-50 text-amber-700 border-amber-200',
     Icon: AlertCircle,
   },
   approved: {
     label: 'Approved',
-    className: 'border-success/30 bg-success/10 text-success',
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     Icon: CheckCircle,
   },
   rejected: {
     label: 'Rejected',
-    className: 'border-destructive/30 bg-destructive/10 text-destructive',
+    className: 'bg-red-50 text-red-700 border-red-200',
     Icon: AlertCircle,
   },
 };
+
+// Accordion Section Component
+function AccordionSection({
+  title,
+  icon: Icon,
+  children,
+  defaultOpen = true
+}: {
+  title: string;
+  icon: typeof Info;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border hover:bg-muted/40 transition-colors"
+      >
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+          <Icon className="h-4 w-4" />
+          {title}
+        </h2>
+        {isOpen ? (
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        )}
+      </button>
+      {isOpen && <div className="p-5">{children}</div>}
+    </div>
+  );
+}
 
 export default function ExpertCaseDetailPage() {
   const params = useParams();
@@ -81,133 +131,229 @@ export default function ExpertCaseDetailPage() {
   const st = caseRow ? statusBadge[caseRow.status] : null;
   const StatusIcon = st?.Icon ?? Clock;
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Header title={caseRow?.title ?? 'Case detail'} subtitle={headerSubtitle || undefined} />
+  if (isPending) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header title="Case detail" subtitle="Loading case…" />
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left: Image area */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="rounded-xl border border-border bg-muted/20 p-8 animate-pulse">
+                <div className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <div className="mx-auto mb-3 h-16 w-16 bg-slate-200 rounded-lg animate-pulse" />
+                    <div className="h-4 w-32 mx-auto bg-slate-200 rounded" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Right: Details */}
+            <div className="space-y-4">
+              <SkeletonBlock className="h-40 w-full rounded-xl" />
+              <SkeletonBlock className="h-48 w-full rounded-xl" />
+              <SkeletonBlock className="h-32 w-full rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-      <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-        {isPending ? (
-          <PageLoadingSkeleton>
-            <SkeletonBlock className="h-8 w-2/3 max-w-md" />
-            <SkeletonBlock className="mt-4 h-24 w-full rounded-xl" />
-            <SkeletonBlock className="mt-4 h-40 w-full rounded-xl" />
-          </PageLoadingSkeleton>
-        ) : isError ? (
+  if (isError || !caseRow) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header title="Error" subtitle="Failed to load case" />
+        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
           <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
             {errorMsg}
           </div>
-        ) : caseRow ? (
-          <article className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <div className="min-w-0 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {st ? (
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${st.className}`}
-                    >
-                      <StatusIcon className="h-3.5 w-3.5" aria-hidden />
-                      {st.label}
-                    </span>
-                  ) : null}
-                  <span className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-semibold text-foreground">
-                    {caseRow.difficulty}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Header title={caseRow.title} subtitle={headerSubtitle || undefined} />
+
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        {/* Top action bar */}
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            {st && (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${st.className}`}
+              >
+                <StatusIcon className="h-3.5 w-3.5" aria-hidden />
+                {st.label}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs font-semibold">
+              <Target className="h-3.5 w-3.5" />
+              {caseRow.difficulty}
+            </span>
+          </div>
+          <Link href={`/expert/cases/${caseRow.id}/edit`}>
+            <Button variant="outline" size="sm">
+              <Pencil className="h-4 w-4" />
+              Edit Case
+            </Button>
+          </Link>
+        </div>
+
+        {/* Tags */}
+        {caseRow.tags && caseRow.tags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {caseRow.tags.map((t) => (
+              <span
+                key={t.id}
+                className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                {t.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Main layout: Left Image - Right Details */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* LEFT: Medical Images (2/3 width) */}
+          <div className="lg:col-span-2">
+            {caseRow.medicalImages && caseRow.medicalImages.length > 0 ? (
+              <div className="sticky top-6 space-y-4">
+                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 border-b border-border bg-muted/30">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+                      <ImageIcon className="h-4 w-4" />
+                      Medical Images
+                    </h2>
+                  </div>
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 gap-4">
+                      {caseRow.medicalImages.map((img, idx) => {
+                        const src = resolveApiAssetUrl(img.imageUrl);
+                        return (
+                          <div key={`${img.imageUrl}-${idx}`} className="rounded-lg border border-border bg-muted/5 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                <ImageIcon className="h-3 w-3" />
+                                {img.modality?.trim() || 'Medical Imaging'}
+                              </p>
+                              <span className="text-xs text-muted-foreground">Image {idx + 1}</span>
+                            </div>
+                            {src ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={src}
+                                alt=""
+                                className="max-h-[min(550px,65vh)] w-full rounded-lg border border-border bg-background object-contain mx-auto"
+                              />
+                            ) : (
+                              <div className="flex h-72 items-center justify-center rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
+                                Image not available
+                              </div>
+                            )}
+                            {img.annotations && img.annotations.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                {img.annotations.map((a, aIdx) =>
+                                  a.label ? (
+                                    <span
+                                      key={aIdx}
+                                      className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                                    >
+                                      {a.label}
+                                    </span>
+                                  ) : null
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border bg-muted/20 p-12 text-center">
+                <ImageIcon className="mx-auto mb-3 h-16 w-16 text-muted-foreground/50" />
+                <p className="text-muted-foreground">No medical images uploaded</p>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: Details (1/3 width) */}
+          <div className="space-y-4">
+            {/* Basic Info - always open */}
+            <div className="rounded-xl border border-border bg-card shadow-sm">
+              <div className="px-4 py-3 border-b border-border bg-muted/30">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+                  <Info className="h-4 w-4" />
+                  Basic Information
+                </h2>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="flex justify-between items-start border-b border-border/50 pb-3 last:border-0">
+                  <span className="text-xs font-medium text-muted-foreground">Bone / Region</span>
+                  <span className="text-sm text-right max-w-[60%] text-card-foreground">
+                    {caseRow.boneLocation === '—' ? 'Not specified' : caseRow.boneLocation}
                   </span>
                 </div>
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Created {formatCaseDateForDisplay(caseRow.addedDate)}
-                </p>
-              </div>
-              <Link
-                href={`/expert/cases/${caseRow.id}/edit`}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-all hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:scale-[0.98]"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Link>
-            </div>
-
-            {caseRow.tags && caseRow.tags.length > 0 ? (
-              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-card-foreground">Tags</h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {caseRow.tags.map((t) => (
-                    <span
-                      key={t.id}
-                      className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                    >
-                      {t.name}
-                    </span>
-                  ))}
+                <div className="flex justify-between items-start border-b border-border/50 pb-3">
+                  <span className="text-xs font-medium text-muted-foreground">Category</span>
+                  <span className="text-sm text-right max-w-[60%] text-card-foreground">{caseRow.categoryName}</span>
+                </div>
+                <div className="flex justify-between items-start border-b border-border/50 pb-3">
+                  <span className="text-xs font-medium text-muted-foreground">Expert</span>
+                  <span className="text-sm text-right max-w-[60%] text-card-foreground">
+                    {caseRow.expertName === '—' ? 'Not assigned' : caseRow.expertName}
+                  </span>
+                </div>
+                <div className="flex justify-between items-start border-b border-border/50 pb-3">
+                  <span className="text-xs font-medium text-muted-foreground">Created</span>
+                  <span className="text-sm text-right max-w-[60%] text-card-foreground">{formatCaseDateForDisplay(caseRow.addedDate)}</span>
                 </div>
               </div>
-            ) : null}
+            </div>
 
-            {caseRow.medicalImages && caseRow.medicalImages.length > 0 ? (
-              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-card-foreground">Medical images</h2>
-                <ul className="mt-4 space-y-4">
-                  {caseRow.medicalImages.map((img, idx) => {
-                    const src = resolveApiAssetUrl(img.imageUrl);
-                    return (
-                      <li key={`${img.imageUrl}-${idx}`} className="rounded-xl border border-border bg-muted/20 p-3">
-                        <p className="mb-2 text-xs font-medium text-muted-foreground">
-                          {img.modality?.trim() || 'Imaging'} · Image {idx + 1}
-                        </p>
-                        {src ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={src}
-                            alt=""
-                            className="max-h-[min(420px,55vh)] w-full rounded-lg border border-border bg-background object-contain"
-                          />
-                        ) : null}
-                        {img.annotations && img.annotations.length > 0 ? (
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            Annotations:{' '}
-                            {img.annotations.map((a) => a.label).filter(Boolean).join(', ') || '—'}
-                          </p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
+            {/* Description */}
+            {caseRow.description && (
+              <AccordionSection title="Description" icon={FileText} defaultOpen={false}>
+                <p className="text-sm whitespace-pre-wrap text-card-foreground leading-relaxed">
+                  {caseRow.description}
+                </p>
+              </AccordionSection>
+            )}
 
-            <dl className="space-y-4 rounded-2xl border border-border bg-card p-6 text-sm shadow-sm">
-              <div>
-                <dt className="font-medium text-muted-foreground">Bone / region</dt>
-                <dd className="mt-1 text-card-foreground">
-                  {caseRow.boneLocation === '—' ? '—' : caseRow.boneLocation}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Category</dt>
-                <dd className="mt-1 text-card-foreground">{caseRow.categoryName}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Expert</dt>
-                <dd className="mt-1 text-card-foreground">{caseRow.expertName}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Description</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-card-foreground">{caseRow.description || '—'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Suggested diagnosis</dt>
-                <dd className="mt-1 text-card-foreground">{caseRow.suggestedDiagnosis || '—'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Key findings</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-card-foreground">{caseRow.keyFindings || '—'}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-muted-foreground">Reflective questions</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-card-foreground">{caseRow.reflectiveQuestions || '—'}</dd>
-              </div>
-            </dl>
-          </article>
-        ) : null}
+            {/* Suggested Diagnosis */}
+            {caseRow.suggestedDiagnosis && (
+              <AccordionSection title="Suggested Diagnosis" icon={Stethoscope} defaultOpen={true}>
+                <p className="text-sm whitespace-pre-wrap text-card-foreground leading-relaxed">
+                  {caseRow.suggestedDiagnosis}
+                </p>
+              </AccordionSection>
+            )}
+
+            {/* Key Findings */}
+            {caseRow.keyFindings && (
+              <AccordionSection title="Key Findings" icon={Lightbulb} defaultOpen={false}>
+                <p className="text-sm whitespace-pre-wrap text-card-foreground leading-relaxed">
+                  {caseRow.keyFindings}
+                </p>
+              </AccordionSection>
+            )}
+
+            {/* Reflective Questions */}
+            {caseRow.reflectiveQuestions && (
+              <AccordionSection title="Reflective Questions" icon={Brain} defaultOpen={false}>
+                <p className="text-sm whitespace-pre-wrap text-card-foreground leading-relaxed">
+                  {caseRow.reflectiveQuestions}
+                </p>
+              </AccordionSection>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

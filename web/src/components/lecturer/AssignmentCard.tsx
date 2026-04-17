@@ -20,6 +20,8 @@ export interface AssignmentCardProps {
   selectable?: boolean;
   selected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
+  /** Highlight assignment vừa được assign */
+  isNew?: boolean;
 }
 
 function computeStatus(
@@ -58,6 +60,7 @@ export default function AssignmentCard({
   selectable = false,
   selected = false,
   onSelect,
+  isNew = false,
 }: AssignmentCardProps) {
   const status = computeStatus(dueDate ?? null, submitted, totalStudents);
 
@@ -81,11 +84,22 @@ export default function AssignmentCard({
     <Link
       href={`/lecturer/assignments/${id}?type=${type ?? 'quiz'}`}
       className={`block bg-card rounded-xl border p-5 hover:shadow-md transition-all duration-200 ${
-        selected ? 'border-primary ring-2 ring-primary/20' : 'border-border hover:border-primary/30'
+        selected ? 'border-primary ring-2 ring-primary/20' :
+        isNew ? 'border-green-500 ring-2 ring-green-500/20 shadow-green-500/10 shadow-lg' :
+        'border-border hover:border-primary/30'
       }`}
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
+        {/* NEW Badge */}
+        {isNew && (
+          <div className="flex-shrink-0">
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-500 text-white animate-pulse">
+              NEW
+            </span>
+          </div>
+        )}
+
         {/* Checkbox for selection */}
         {selectable && (
           <button

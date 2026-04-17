@@ -169,10 +169,10 @@ export default function StudentQuizHistoryPage() {
         {/* Summary bar */}
         <div className="flex items-center gap-6 border-b border-[#eceef0] px-6 py-3 text-sm">
           <span className="font-semibold text-[#191c1e]">
-            {review.score != null ? `${Math.round(review.score)}%` : '—'}
+            {review.score != null ? `${review.correctAnswers}/${review.totalQuestions}` : '—'}
           </span>
           <span className="text-[#727783]">
-            {review.correctAnswers}/{review.totalQuestions} correct
+            {review.score != null ? `${Math.round(review.score)}%` : '—'}
           </span>
           <span className={`rounded-full px-3 py-0.5 text-xs font-bold ${
             review.passed
@@ -402,10 +402,10 @@ export default function StudentQuizHistoryPage() {
                             {attempt.score != null ? (
                               <>
                                 <p className={`text-xl font-black ${scoreColor(attempt.score)}`}>
-                                  {Math.round(attempt.score)}%
+                                  {attempt.correctAnswers}/{attempt.totalQuestions}
                                 </p>
                                 <p className="text-xs text-[#727783]">
-                                  {attempt.correctAnswers}/{attempt.totalQuestions} correct
+                                  {Math.round(attempt.score)}%
                                 </p>
                               </>
                             ) : (
