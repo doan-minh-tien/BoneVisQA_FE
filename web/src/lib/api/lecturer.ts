@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type {
   Announcement,
@@ -16,7 +17,7 @@ import type {
   ExpertOption,
   VisualQaTurn,
 } from './types';
-import { parseNormalizedBoundingBox } from '@/lib/utils/annotations';
+import { parseNormalizedBoundingBox, parsePercentageBoundingBox } from '@/lib/utils/annotations';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -385,6 +386,15 @@ export function extractAnswerIdFromQuestionRow(r: Record<string, unknown>): stri
   return null;
 }
 
+function normalizeQuestionSource(raw: unknown): LectStudentQuestionDto['questionSource'] {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const u = s.replace(/\s+/g, '');
+  if (u === 'CaseQA' || u.toLowerCase() === 'caseqa') return 'CaseQA';
+  if (u === 'VisualQA' || u.toLowerCase() === 'visualqa') return 'VisualQA';
+  return null;
+}
+
 /**
  * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
  * `answerId` is populated when the backend sends PascalCase or alternate keys.
@@ -481,24 +491,52 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
         t.CustomPolygon,
     );
     return {
+      turnId: String(t.turnId ?? t.TurnId ?? '').trim() || null,
       turnIndex,
       questionText: q,
       answerText: a,
       roiBoundingBox,
-      suggestedDiagnosis: String(t.suggestedDiagnosis ?? t.SuggestedDiagnosis ?? ''),
-      keyFindings: Array.isArray(t.keyFindings) ? t.keyFindings.map((x) => String(x)) : [],
-      keyImagingFindings: String(t.keyImagingFindings ?? t.KeyImagingFindings ?? '').trim() || null,
-      reflectiveQuestions: String(t.reflectiveQuestions ?? t.ReflectiveQuestions ?? '').trim() || null,
+      diagnosis: String(
+        t.diagnosis ?? t.Diagnosis ?? t.suggestedDiagnosis ?? t.SuggestedDiagnosis ?? '',
+      ).trim(),
+      findings: Array.isArray(t.findings)
+        ? t.findings.map((x) => String(x))
+        : Array.isArray(t.keyFindings)
+          ? t.keyFindings.map((x) => String(x))
+          : [],
+      reflectiveQuestions: Array.isArray(t.reflectiveQuestions)
+        ? t.reflectiveQuestions.map((x) => String(x))
+        : String(t.reflectiveQuestions ?? t.ReflectiveQuestions ?? '')
+            .split('\n')
+            .map((x) => x.trim())
+            .filter(Boolean),
       differentialDiagnoses: Array.isArray(t.differentialDiagnoses)
         ? t.differentialDiagnoses.map((x) => String(x))
         : [],
-      recommendedReadings: [],
-      citations: [],
+      citations: Array.isArray(t.citations)
+        ? t.citations
+            .map((entry) => {
+              if (!entry || typeof entry !== 'object') return null;
+              const c = entry as Record<string, unknown>;
+              return {
+                href: String(c.href ?? c.Href ?? c.referenceUrl ?? '').trim() || undefined,
+                displayLabel: String(c.displayLabel ?? c.DisplayLabel ?? c.label ?? c.title ?? '').trim() || undefined,
+                snippet: String(c.snippet ?? c.Snippet ?? '').trim() || undefined,
+                pageLabel: String(c.pageLabel ?? c.PageLabel ?? '').trim() || undefined,
+                kind: String(c.kind ?? c.Kind ?? '').trim() || undefined,
+              };
+            })
+            .filter((entry) => entry !== null)
+        : [],
       aiConfidenceScore:
         typeof (t.aiConfidenceScore ?? t.AiConfidenceScore) === 'number'
           ? Number(t.aiConfidenceScore ?? t.AiConfidenceScore)
           : undefined,
       createdAt: String(t.createdAt ?? t.CreatedAt ?? '').trim() || null,
+      responseKind: String(t.responseKind ?? t.ResponseKind ?? '').trim() || null,
+      clientRequestId: String(t.clientRequestId ?? t.ClientRequestId ?? '').trim() || null,
+      assistantMessageId: String(t.assistantMessageId ?? t.AssistantMessageId ?? '').trim() || null,
+      userMessageId: String(t.userMessageId ?? t.UserMessageId ?? '').trim() || null,
     };
   };
 
@@ -535,6 +573,40 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     customImageUrl,
     imageUrl: imageUrlExplicit,
     turns,
+    requestedReviewMessageId:
+      String(r.requestedReviewMessageId ?? r.RequestedReviewMessageId ?? '').trim() || null,
+    selectedUserMessageId:
+      String(r.selectedUserMessageId ?? r.SelectedUserMessageId ?? '').trim() || null,
+    selectedAssistantMessageId:
+      String(r.selectedAssistantMessageId ?? r.SelectedAssistantMessageId ?? '').trim() || null,
+    customCoordinates: parsePercentageBoundingBox(
+      r.customCoordinates ?? r.CustomCoordinates ?? r.coordinates ?? r.Coordinates,
+    ),
+    citations: Array.isArray(r.citations)
+      ? r.citations
+          .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const c = entry as Record<string, unknown>;
+            const chunkId = String(c.chunkId ?? c.id ?? c.ChunkId ?? '').trim();
+            const sourceText = String(c.sourceText ?? c.text ?? c.SourceText ?? '').trim();
+            if (!chunkId || !sourceText) return null;
+            return {
+              chunkId,
+              sourceText,
+              referenceUrl: String(c.referenceUrl ?? c.href ?? c.ReferenceUrl ?? '').trim() || undefined,
+              pageNumber:
+                typeof (c.pageNumber ?? c.PageNumber) === 'number'
+                  ? Number(c.pageNumber ?? c.PageNumber)
+                  : undefined,
+              flagged:
+                typeof (c.flagged ?? c.Flagged) === 'boolean'
+                  ? Boolean(c.flagged ?? c.Flagged)
+                  : undefined,
+            };
+          })
+          .filter((entry) => entry !== null)
+      : [],
+    questionSource: normalizeQuestionSource(r.questionSource ?? r.QuestionSource),
   };
 }
 
@@ -543,7 +615,7 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
  */
 export async function getStudentQuestions(
   classId: string,
-  options?: { caseId?: string; studentId?: string },
+  options?: { caseId?: string; studentId?: string; source?: 'visual-qa' | 'case-qa' | 'all' },
 ): Promise<LectStudentQuestionDto[]> {
   try {
     const { data } = await http.get<unknown[]>(
@@ -552,6 +624,7 @@ export async function getStudentQuestions(
         params: {
           caseId: options?.caseId,
           studentId: options?.studentId,
+          source: options?.source,
         },
       },
     );
@@ -560,6 +633,27 @@ export async function getStudentQuestions(
       .map(normalizeLectStudentQuestionDto)
       .filter((row): row is LectStudentQuestionDto => row !== null);
   } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Visual QA–only triage queue (BE: GET /api/lecturer/triage/visual-qa?classId=...).
+ * Falls back to class questions with source=visual-qa when the dedicated route is unavailable.
+ */
+export async function fetchLecturerVisualQaTriageQueue(classId: string): Promise<LectStudentQuestionDto[]> {
+  try {
+    const { data } = await http.get<unknown[]>(`/api/lecturer/triage/visual-qa`, {
+      params: { classId },
+    });
+    if (!Array.isArray(data)) return [];
+    return data
+      .map(normalizeLectStudentQuestionDto)
+      .filter((row): row is LectStudentQuestionDto => row !== null);
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      return getStudentQuestions(classId, { source: 'visual-qa' });
+    }
     throw new Error(getApiErrorMessage(e));
   }
 }

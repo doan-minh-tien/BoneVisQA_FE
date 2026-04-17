@@ -2,6 +2,8 @@ import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type { ClassItem, LecturerTriageRow } from './types';
 
+export const WORKFLOW_CONFLICT = 'WORKFLOW_CONFLICT';
+
 export async function fetchLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
     const { data } = await http.get<ClassItem[]>('/api/lecturer/classes', {
@@ -43,7 +45,11 @@ export async function respondToQuestion(
     answerText: string;
     structuredDiagnosis?: string;
     differentialDiagnoses?: string;
-    approve: boolean;
+    approve?: boolean;
+    decision?: 'hold' | 'approve_and_escalate' | 'approve_finalize' | 'approve';
+    selectedUserMessageId?: string | null;
+    selectedAssistantMessageId?: string | null;
+    requestedReviewMessageId?: string | null;
   },
 ): Promise<unknown> {
   try {
@@ -53,6 +59,9 @@ export async function respondToQuestion(
     );
     return data;
   } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(WORKFLOW_CONFLICT);
+    }
     throw new Error(getApiErrorMessage(e));
   }
 }
@@ -87,6 +96,9 @@ export async function escalateToExpert(answerId: string): Promise<void> {
     await http.post(`/api/lecturer/triage/${id}/escalate`);
     return;
   } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(WORKFLOW_CONFLICT);
+    }
     if (axios.isAxiosError(e) && e.response?.status === 409) {
       throw new Error(TRIAGE_ALREADY_ESCALATED);
     }

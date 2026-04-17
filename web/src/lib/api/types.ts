@@ -40,15 +40,20 @@ export interface VisualQaReport {
   /** Echoed from the request when the API returns it. */
   questionText?: string;
   answerText?: string;
+  suggestedDiagnosis?: string;
+  keyFindings: string[];
+  keyImagingFindings?: string | null;
   diagnosis?: string;
   findings?: string[];
-  reflectiveQuestions?: string[];
+  reflectiveQuestions?: string[] | string | null;
   differentialDiagnoses: string[];
   citations: VisualQaCitation[];
   /** Model confidence when provided by the backend (0–100). */
   aiConfidenceScore?: number;
   responseKind?: VisualQaResponseKind | null;
   clientRequestId?: string | null;
+  policyReason?: string | null;
+  systemNoticeCode?: string | null;
 }
 
 export interface VisualQaTurn {
@@ -74,6 +79,8 @@ export interface VisualQaTurn {
   lastResponderRole?: string | null;
   actorRole?: string | null;
   isReviewTarget?: boolean;
+  policyReason?: string | null;
+  systemNoticeCode?: string | null;
 }
 
 export interface VisualQaMessage {
@@ -86,6 +93,8 @@ export interface VisualQaSessionReport {
   sessionId: string;
   clientRequestId?: string | null;
   responseKind?: VisualQaResponseKind | null;
+  /** Root-level analysis text from the API when not only present on `latest` / `turns`. */
+  answerText?: string | null;
   diagnosis?: string;
   findings?: string[];
   differentialDiagnoses?: string[];
@@ -98,6 +107,8 @@ export interface VisualQaSessionReport {
   reviewState?: VisualQaReviewState | null;
   lastResponderRole?: string | null;
   systemNotice?: string | null;
+  policyReason?: string | null;
+  systemNoticeCode?: string | null;
   capabilities?: {
     canAskNext?: boolean;
     canRequestReview?: boolean;
@@ -165,6 +176,9 @@ export interface LecturerTriageRow {
   askedAt: string;
   similarityScore: number;
   escalated?: boolean;
+  requestedReviewMessageId?: string | null;
+  selectedUserMessageId?: string | null;
+  selectedAssistantMessageId?: string | null;
 }
 
 export interface ClassItem {
@@ -224,6 +238,13 @@ export interface LectStudentQuestionDto {
   customImageUrl?: string | null;
   /** Session chat history for this question; latest turn drives final assessment. */
   turns?: VisualQaTurn[];
+  requestedReviewMessageId?: string | null;
+  selectedUserMessageId?: string | null;
+  selectedAssistantMessageId?: string | null;
+  customCoordinates?: PercentageBoundingBox | null;
+  citations?: Citation[];
+  /** Present when `GET .../questions` is called with an explicit `source` query (not legacy). */
+  questionSource?: 'CaseQA' | 'VisualQA' | null;
 }
 
 export interface Announcement {
@@ -469,6 +490,8 @@ export interface StudentCaseHistoryItem {
   historyKind: StudentHistoryKind;
   /** Published catalog case id when this row is tied to the case library (deep link to `/student/cases/[id]`). */
   catalogCaseId?: string | null;
+  /** Lecturer rejection message when session status is Rejected (BE: VisualQaSessionHistoryItemDto). */
+  rejectionReason?: string | null;
 }
 
 export interface StudentCaseCatalogItem {
@@ -561,6 +584,9 @@ export interface ExpertReviewItem {
   report: VisualQaReport;
   turns?: VisualQaTurn[];
   latestTurnIndex?: number | null;
+  requestedReviewMessageId?: string | null;
+  selectedUserMessageId?: string | null;
+  selectedAssistantMessageId?: string | null;
   citations?: Citation[];
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;

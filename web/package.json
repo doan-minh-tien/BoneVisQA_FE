@@ -7,7 +7,8 @@
     "dev:open": "next dev && start http://localhost:3000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:main-flow": "node ./scripts/main-flow-signoff.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",

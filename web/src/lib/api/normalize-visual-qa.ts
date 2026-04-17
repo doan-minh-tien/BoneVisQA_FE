@@ -55,6 +55,15 @@ function normalizeRootPayload(raw: unknown): Record<string, unknown> {
   return base;
 }
 
+function reflectiveQuestionsReportToTurnArray(
+  rq: VisualQaReport['reflectiveQuestions'],
+): string[] | undefined {
+  if (rq == null) return undefined;
+  if (Array.isArray(rq)) return rq.map((x) => String(x).trim()).filter(Boolean);
+  const s = String(rq).trim();
+  return s ? [s] : undefined;
+}
+
 function normalizeVisualQaMessage(raw: unknown): VisualQaMessage | null {
   if (!raw || typeof raw !== 'object') return null;
   const m = raw as Record<string, unknown>;
@@ -74,6 +83,9 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   const questionText = asString(pick(o, ['questionText'])).trim();
   const answer = asString(pick(o, ['answerText'])).trim();
   const diagnosis = asString(pick(o, ['diagnosis'])).trim();
+  const suggestedDiagnosis = asString(pick(o, ['suggestedDiagnosis', 'suggested_diagnosis'])).trim();
+  const keyFindings = asStringArray(pick(o, ['keyFindings', 'key_findings']));
+  const keyImagingFindings = asString(pick(o, ['keyImagingFindings', 'key_imaging_findings'])).trim();
   const findings = asStringArray(pick(o, ['findings']));
   const differentialDiagnoses = asStringArray(pick(o, ['differentialDiagnoses']));
   const reflectiveQuestions = asStringArray(pick(o, ['reflectiveQuestions']));
@@ -122,6 +134,9 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   return {
     ...(questionText ? { questionText } : {}),
     ...(answer ? { answerText: answer } : {}),
+    ...(suggestedDiagnosis ? { suggestedDiagnosis } : {}),
+    keyFindings,
+    ...(keyImagingFindings ? { keyImagingFindings } : {}),
     ...(diagnosis ? { diagnosis } : {}),
     ...(findings.length > 0 ? { findings } : {}),
     ...(reflectiveQuestions.length > 0 ? { reflectiveQuestions } : {}),
@@ -130,6 +145,8 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
     ...(aiConfidenceScore !== undefined ? { aiConfidenceScore } : {}),
     responseKind: asNullableString(pick(o, ['responseKind', 'response_kind'])),
     clientRequestId: asNullableString(pick(o, ['clientRequestId', 'client_request_id'])),
+    policyReason: asNullableString(pick(o, ['policyReason', 'policy_reason'])),
+    systemNoticeCode: asNullableString(pick(o, ['systemNoticeCode', 'system_notice_code'])),
   };
 }
 
@@ -151,6 +168,7 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
         .map((row): VisualQaMessage | null => normalizeVisualQaMessage(row))
         .filter((message): message is VisualQaMessage => message !== null)
     : [];
+  const reflectiveTurn = reflectiveQuestionsReportToTurnArray(report.reflectiveQuestions);
   return {
     turnId: asNullableString(pick(o, ['turnId', 'turn_id'])),
     turnIndex,
@@ -160,7 +178,7 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
     roiBoundingBox: parseNormalizedBoundingBox(roiRaw),
     diagnosis: report.diagnosis ?? '',
     ...(report.findings ? { findings: report.findings } : {}),
-    ...(report.reflectiveQuestions ? { reflectiveQuestions: report.reflectiveQuestions } : {}),
+    ...(reflectiveTurn && reflectiveTurn.length > 0 ? { reflectiveQuestions: reflectiveTurn } : {}),
     differentialDiagnoses: report.differentialDiagnoses,
     citations: report.citations,
     aiConfidenceScore: report.aiConfidenceScore,
@@ -179,6 +197,9 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
       typeof pick(o, ['isReviewTarget', 'is_review_target']) === 'boolean'
         ? Boolean(pick(o, ['isReviewTarget', 'is_review_target']))
         : undefined,
+    policyReason: report.policyReason ?? asNullableString(pick(o, ['policyReason', 'policy_reason'])),
+    systemNoticeCode:
+      report.systemNoticeCode ?? asNullableString(pick(o, ['systemNoticeCode', 'system_notice_code'])),
   };
 }
 
@@ -242,11 +263,21 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
             pick(systemNoticeRaw as Record<string, unknown>, ['message', 'content', 'text', 'notice']),
           )
         : null;
+  const systemNoticePolicyReason =
+    systemNoticeRaw && typeof systemNoticeRaw === 'object'
+      ? asNullableString(pick(systemNoticeRaw as Record<string, unknown>, ['policyReason', 'policy_reason']))
+      : null;
+  const systemNoticeCode =
+    systemNoticeRaw && typeof systemNoticeRaw === 'object'
+      ? asNullableString(pick(systemNoticeRaw as Record<string, unknown>, ['systemNoticeCode', 'system_notice_code', 'code']))
+      : null;
   const topLevelReport = normalizeVisualQaReport(o);
+  const sessionReflective = reflectiveQuestionsReportToTurnArray(topLevelReport.reflectiveQuestions);
   return {
     sessionId: sessionId || 'session-local',
     clientRequestId: asNullableString(pick(o, ['clientRequestId', 'client_request_id'])),
     responseKind: asNullableString(pick(o, ['responseKind', 'response_kind'])),
+    ...(topLevelReport.answerText ? { answerText: topLevelReport.answerText } : {}),
     ...(topLevelReport.diagnosis ? { diagnosis: topLevelReport.diagnosis } : {}),
     ...(topLevelReport.findings && topLevelReport.findings.length > 0
       ? { findings: topLevelReport.findings }
@@ -254,9 +285,7 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
     ...(topLevelReport.differentialDiagnoses.length > 0
       ? { differentialDiagnoses: topLevelReport.differentialDiagnoses }
       : {}),
-    ...(topLevelReport.reflectiveQuestions && topLevelReport.reflectiveQuestions.length > 0
-      ? { reflectiveQuestions: topLevelReport.reflectiveQuestions }
-      : {}),
+    ...(sessionReflective && sessionReflective.length > 0 ? { reflectiveQuestions: sessionReflective } : {}),
     ...(topLevelReport.citations.length > 0 ? { citations: topLevelReport.citations } : {}),
     caseId,
     imageId,
@@ -265,6 +294,9 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
     reviewState: asNullableString(pick(o, ['reviewState', 'review_state'])),
     lastResponderRole: asNullableString(pick(o, ['lastResponderRole', 'last_responder_role'])),
     systemNotice,
+    policyReason: asNullableString(pick(o, ['policyReason', 'policy_reason'])) ?? systemNoticePolicyReason,
+    systemNoticeCode:
+      asNullableString(pick(o, ['systemNoticeCode', 'system_notice_code'])) ?? systemNoticeCode,
     ...(capabilities ? { capabilities } : {}),
     ...(messages.length > 0 ? { messages } : {}),
     turns,

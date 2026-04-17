@@ -182,6 +182,12 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
         : null,
     historyKind,
     catalogCaseId,
+    rejectionReason: pickStringAny(item, [
+      'rejectionReason',
+      'RejectionReason',
+      'rejection_reason',
+      'lecturerRejectionReason',
+    ]),
   };
 }
 
