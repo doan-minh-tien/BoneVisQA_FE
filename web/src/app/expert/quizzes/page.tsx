@@ -9,6 +9,25 @@ import { Loader2, Plus, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { fetchExpertQuizzesPaged, createExpertQuiz, updateExpertQuiz, deleteExpertQuiz, fetchQuizAssignmentStatus, type ExpertQuiz, type CreateExpertQuizRequest, type UpdateExpertQuizRequest } from '@/lib/api/expert-quizzes';
 import { useToast } from '@/components/ui/toast';
 
+// ========== HELPERS ==========
+
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // Convert UTC to local timezone (UTC+7 for Vietnam)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
 export default function ExpertQuizzesPage() {
   const { data, isLoading, error, mutate } = useSWR('expert-quizzes-manage', () => fetchExpertQuizzesPaged(1, 500), {
     revalidateOnFocus: true,
@@ -306,8 +325,6 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
 
   const getInitialForm = () => {
     if (editQuiz) {
-      const openDate = new Date(editQuiz.openTime);
-      const closeDate = new Date(editQuiz.closeTime);
       return {
         title: editQuiz.title,
         topic: editQuiz.topic || '',
@@ -315,10 +332,8 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
         difficulty: editQuiz.difficulty,
         timeLimit: editQuiz.timeLimit,
         passingScore: editQuiz.passingScore,
-        openDate: openDate.toISOString().split('T')[0],
-        openTime: openDate.toTimeString().slice(0, 5),
-        closeDate: closeDate.toISOString().split('T')[0],
-        closeTime: closeDate.toTimeString().slice(0, 5),
+        openDateTime: utcToLocalDatetimeLocal(editQuiz.openTime),
+        closeDateTime: utcToLocalDatetimeLocal(editQuiz.closeTime),
         classification: editQuiz.classification || '',
       };
     }
@@ -329,25 +344,23 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
       difficulty: 'Medium',
       timeLimit: 30,
       passingScore: 70,
-      openDate: '',
-      openTime: '09:00',
-      closeDate: '',
-      closeTime: '18:00',
+      openDateTime: '',
+      closeDateTime: '',
       classification: '',
     };
   };
 
   const [form, setForm] = useState(getInitialForm);
 
-  const canSubmit = form.title.trim().length > 0 && form.openDate && form.closeDate;
+  const canSubmit = form.title.trim().length > 0 && form.openDateTime && form.closeDateTime;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
     setIsSubmitting(true);
     try {
-      const openTime = new Date(`${form.openDate}T${form.openTime}`).toISOString();
-      const closeTime = new Date(`${form.closeDate}T${form.closeTime}`).toISOString();
+      const openTime = localDatetimeLocalToIso(form.openDateTime);
+      const closeTime = localDatetimeLocalToIso(form.closeDateTime);
 
       if (isEditMode && editQuiz) {
         // Update existing quiz - Expert can update Title, Topic, Open/Close, Difficulty, TimeLimit, PassingScore
@@ -545,44 +558,23 @@ function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: Cre
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-card-foreground mb-1">
-                Open Date <span className="text-destructive">*</span>
+                Open Time <span className="text-destructive">*</span>
               </label>
               <input
-                type="date"
-                value={form.openDate}
-                onChange={(e) => setForm((p) => ({ ...p, openDate: e.target.value }))}
+                type="datetime-local"
+                value={form.openDateTime}
+                onChange={(e) => setForm((p) => ({ ...p, openDateTime: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1">Open Time</label>
-              <input
-                type="time"
-                value={form.openTime}
-                onChange={(e) => setForm((p) => ({ ...p, openTime: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-card-foreground mb-1">
-                Close Date <span className="text-destructive">*</span>
+                Close Time <span className="text-destructive">*</span>
               </label>
               <input
-                type="date"
-                value={form.closeDate}
-                onChange={(e) => setForm((p) => ({ ...p, closeDate: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-card-foreground mb-1">Close Time</label>
-              <input
-                type="time"
-                value={form.closeTime}
-                onChange={(e) => setForm((p) => ({ ...p, closeTime: e.target.value }))}
+                type="datetime-local"
+                value={form.closeDateTime}
+                onChange={(e) => setForm((p) => ({ ...p, closeDateTime: e.target.value }))}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>

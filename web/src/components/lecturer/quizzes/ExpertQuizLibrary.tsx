@@ -37,6 +37,23 @@ interface EnrichedQuiz extends ExpertQuizForLecturer {
 
 // ========== HELPERS ==========
 
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // Convert UTC to local timezone (UTC+7)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -239,8 +256,12 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
   const [assigning, setAssigning] = useState(false);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [showClassDropdown, setShowClassDropdown] = useState(false);
-  const [openTime, setOpenTime] = useState('');
-  const [closeTime, setCloseTime] = useState('');
+  const [openTime, setOpenTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.openTime)
+  );
+  const [closeTime, setCloseTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.closeTime)
+  );
   const [timeLimit, setTimeLimit] = useState<number | ''>(quiz.timeLimit ?? '');
   const [passingScore, setPassingScore] = useState<number | ''>(quiz.passingScore ?? '');
 
@@ -328,8 +349,8 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
       await Promise.all(
         selectedClassIds.map((classId) =>
           assignExpertQuizToClass(classId, quiz.id, {
-            openTime: openTime || null,
-            closeTime: closeTime || null,
+            openTime: openTime ? localDatetimeLocalToIso(openTime) : null,
+            closeTime: closeTime ? localDatetimeLocalToIso(closeTime) : null,
             timeLimitMinutes: effectiveTimeLimit,
             passingScore: effectivePassingScore,
           })

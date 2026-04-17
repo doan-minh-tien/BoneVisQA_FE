@@ -41,6 +41,16 @@ import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
 import type { ClassItem, QuizWithQuestionsDto, QuizQuestionDto } from '@/lib/api/types';
 
+// ========== HELPERS ==========
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
 type CasePickItem = { id: string; title: string };
 type QuizPickItem = {
   quizId: string;
@@ -311,7 +321,7 @@ function CreateAssignmentPageContent({
           isQuiz
             ? assignQuizToClass(classId, {
                 quizId: formData.quizId.trim(),
-                closeTime: formData.dueDate || undefined,
+                closeTime: formData.dueDate ? localDatetimeLocalToIso(formData.dueDate) : undefined,
                 timeLimitMinutes: formData.timeLimitMinutes || undefined,
                 passingScore: formData.passingScore || undefined,
                 shuffleQuestions: formData.shuffleQuestions,
@@ -319,7 +329,7 @@ function CreateAssignmentPageContent({
               })
             : assignCasesToClass(classId, {
                 caseIds: validCaseGuids,
-                dueDate: formData.dueDate || undefined,
+                dueDate: formData.dueDate ? localDatetimeLocalToIso(formData.dueDate) : undefined,
                 isMandatory: formData.isMandatory,
               }),
         ),

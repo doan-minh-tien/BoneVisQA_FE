@@ -39,6 +39,16 @@ import {
   fetchLecturerQuizLibrary,
 } from '@/lib/api/lecturer-classes';
 
+// ========== HELPERS ==========
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
 type DetailTab = 'students' | 'cases' | 'quizzes' | 'announcements';
 
 function initials(name: string): string {
@@ -151,7 +161,7 @@ export default function LecturerClassDetailPage({
       const ids = Array.from(selectedCaseIds);
       const result = await assignCasesToLecturerClass(classId, {
         caseIds: ids,
-        dueDate: caseDueDate || undefined,
+        dueDate: caseDueDate ? localDatetimeLocalToIso(caseDueDate) : undefined,
         isMandatory: caseMandatory,
       });
 
@@ -196,8 +206,8 @@ export default function LecturerClassDetailPage({
     try {
       const result = await assignQuizToLecturerClass(classId, {
         quizId: selectedQuizId,
-        openTime: quizOpenTime || undefined,
-        closeTime: quizCloseTime || undefined,
+        openTime: quizOpenTime ? localDatetimeLocalToIso(quizOpenTime) : undefined,
+        closeTime: quizCloseTime ? localDatetimeLocalToIso(quizCloseTime) : undefined,
         timeLimitMinutes: Number(quizTimeLimit) || undefined,
         passingScore: Number(quizPassingScore) || undefined,
       });
@@ -489,7 +499,7 @@ export default function LecturerClassDetailPage({
                         <div>
                           <p className="font-medium text-foreground">{item.title || 'Untitled quiz'}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {item.topic || 'General topic'} — Pass score {item.passingScore ?? 70}%
+                            {item.topic || 'General topic'} — Time: {item.timeLimit ?? '—'} min — Pass score {item.passingScore ?? 70}%
                           </p>
                         </div>
                       </div>
