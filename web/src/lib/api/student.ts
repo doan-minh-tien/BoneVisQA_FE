@@ -146,13 +146,18 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
   const base = mapStudentCaseCatalog(row);
   if (!base) return null;
   const item = row as Record<string, unknown>;
-  const rawFindings = Array.isArray(item.keyFindings)
-    ? item.keyFindings
-    : Array.isArray(item.findings)
-      ? item.findings
-      : [];
+
+  // 获取 CategoryName 作为基础
+  const categoryName = item.categoryName != null ? String(item.categoryName) : '';
+
   return {
     ...base,
+    // imageUrl: 优先使用 base 已有的 imageUrl (来自 imageUrl/thumbnailUrl)，否则使用 PrimaryImageUrl
+    imageUrl: base.imageUrl ?? (item.primaryImageUrl != null ? String(item.primaryImageUrl) : undefined),
+    // location: 从 CategoryName 或从 base 继承
+    location: categoryName || base.location,
+    // lesionType: 由于后端没有明确的 lesionType，使用 CategoryName 或默认值
+    lesionType: categoryName || base.lesionType,
     description: item.description != null ? String(item.description) : undefined,
     expertSummary:
       item.expertSummary != null
@@ -160,9 +165,11 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
         : item.summary != null
           ? String(item.summary)
           : undefined,
-    keyFindings: rawFindings
-      .map((entry) => String(entry ?? '').trim())
-      .filter((entry) => entry.length > 0),
+    keyFindings: Array.isArray(item.keyFindings)
+      ? (item.keyFindings as unknown[]).map((f) => String(f ?? '').trim()).filter((s) => s.length > 0)
+      : typeof item.keyFindings === 'string' && item.keyFindings
+        ? item.keyFindings.split(/[\n,;]/).map((s) => s.trim()).filter((s) => s.length > 0)
+        : [],
     approvedAt:
       item.approvedAt != null
         ? String(item.approvedAt)
