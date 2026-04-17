@@ -16,6 +16,8 @@ interface CaseCardProps {
   /** SEPS learning fields when returned by history API */
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
+  /** Lecturer rejection explanation when session was rejected (history list). */
+  rejectionReason?: string | null;
   /** When set, the whole card links (e.g. catalog case detail). */
   href?: string;
 }
@@ -47,6 +49,7 @@ export default function CaseCard({
   askedAt,
   keyImagingFindings,
   reflectiveQuestions,
+  rejectionReason,
   href,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
@@ -145,6 +148,16 @@ export default function CaseCard({
             <ReviewIcon className="h-3.5 w-3.5" />
             {reviewBadge.label}
           </div>
+        ) : null}
+
+        {rejectionReason?.trim() ? (
+          <p
+            className="mb-3 line-clamp-4 rounded-lg border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-xs leading-relaxed text-destructive"
+            title={rejectionReason.trim()}
+          >
+            <span className="font-semibold text-destructive/90">Lecturer note: </span>
+            {rejectionReason.trim()}
+          </p>
         ) : null}
 
         {/* Tags */}

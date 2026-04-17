@@ -78,7 +78,18 @@ export default function StudentHistoryPage() {
     return activeTab === 'cases' ? caseItems : personalItems;
   }, [activeTab, caseItems, personalItems]);
 
+  useEffect(() => {
+    if (activeTab !== 'cases') {
+      setDifficulty('all');
+      setSearch('');
+    }
+  }, [activeTab]);
+
   const filtered = useMemo(() => {
+    if (activeTab === 'personal') {
+      // Personal Q&A rows come from session/chat history and do not carry case-library difficulty metadata.
+      return tabItems;
+    }
     return tabItems.filter((item) => {
       const matchesDifficulty = difficulty === 'all' || item.difficulty === difficulty;
       const needle = search.trim().toLowerCase();
@@ -89,11 +100,11 @@ export default function StudentHistoryPage() {
         item.lesionType.toLowerCase().includes(needle);
       return matchesDifficulty && matchesSearch;
     });
-  }, [difficulty, tabItems, search]);
+  }, [activeTab, difficulty, tabItems, search]);
 
-  const headerSubtitle =
   const backendTotalForActiveTab = activeTab === 'cases' ? totalCaseCount : totalPersonalCount;
 
+  const headerSubtitle =
     activeTab === 'cases'
       ? 'Expert-approved library cases you opened and worked through in Visual QA.'
       : 'Your own X-ray uploads and questions submitted through Visual QA (custom studies).';
@@ -137,49 +148,53 @@ export default function StudentHistoryPage() {
         </div>
 
         <SectionCard
-          title={activeTab === 'cases' ? 'Case Library History' : 'Personal Studies'}
+          title={activeTab === 'cases' ? 'Case Library History' : 'Personal Q&A History'}
           description={
             activeTab === 'cases'
               ? 'Review your interactions on curated case-library studies.'
-              : 'Review your uploaded-study sessions and the last question you asked.'
+              : 'Review your custom Visual QA sessions, including your latest student question.'
           }
           className="p-4 md:p-5"
         >
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="w-full md:max-w-md">
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-input px-3 py-3 focus-within:ring-2 focus-within:ring-ring">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-auto grow border-0 bg-transparent p-0 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  placeholder="Search by title, region, or lesion type..."
-                />
+          {activeTab === 'cases' ? (
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="w-full md:max-w-md">
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-input px-3 py-3 focus-within:ring-2 focus-within:ring-ring">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-auto grow border-0 bg-transparent p-0 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    placeholder="Search by title, region, or lesion type..."
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <Filter className="h-3 w-3" />
-              Difficulty
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {difficultyFilters.map((filter) => (
-                <Button
-                  key={filter.id}
-                  type="button"
-                  size="sm"
-                  variant={filter.id === difficulty ? 'primary' : 'outline'}
-                  onClick={() => setDifficulty(filter.id)}
-                  className="rounded-full"
-                >
-                  {filter.label}
-                </Button>
-              ))}
+          {activeTab === 'cases' ? (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Filter className="h-3 w-3" />
+                Difficulty
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {difficultyFilters.map((filter) => (
+                  <Button
+                    key={filter.id}
+                    type="button"
+                    size="sm"
+                    variant={filter.id === difficulty ? 'primary' : 'outline'}
+                    onClick={() => setDifficulty(filter.id)}
+                    className="rounded-full"
+                  >
+                    {filter.label}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </SectionCard>
 
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground md:text-sm">
@@ -210,7 +225,7 @@ export default function StudentHistoryPage() {
             description={
               activeTab === 'cases'
                 ? 'Open a case from the catalog and run Visual QA to build this timeline. You can also switch to Personal Q&A to see custom uploads.'
-                : 'Upload an image and ask a question in Visual QA to see your custom studies here. Library cases appear under Case studies.'
+                : 'Upload an image and ask a question in Visual QA to see your personal Q&A sessions here. Library cases appear under Case studies.'
             }
           />
         ) : (
@@ -237,6 +252,7 @@ export default function StudentHistoryPage() {
                   askedAt={item.askedAt}
                   keyImagingFindings={item.keyImagingFindings}
                   reflectiveQuestions={item.reflectiveQuestions}
+                  rejectionReason={item.rejectionReason}
                 />
               );
             })}

@@ -25,6 +25,8 @@ import { useToast } from '@/components/ui/toast';
 const XRAY_PLACEHOLDER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCINRzGp6z40Z2fsIZBJEM-zldyzpS3z_ih-Bfgh4mig52ts5MniL-9e43XYgucFN-WgwCWVHHmb6ZmiKWBe1o5U38a_alK5WfGZVT6MDhkHtaegScow4-aHvPzDfZMToJd55FiQox63njJi0VcktL5yJKoYeuQo47pBabw2NzpMgmK7qNcyKcxZbFP9puiQVdiuUDTOokGV-Hy573lajieFijGkk9MGyb0Mcz6zVto6MmqVxXgStDewXjMh4rzuqAcWxG1RyRzYiY';
 
+type QuestionsSourceMode = 'legacy' | 'all' | 'visual-qa' | 'case-qa';
+
 interface StudentQuestion {
   id: string;
   /** Answer row id for POST/PUT escalation when provided by API */
@@ -40,6 +42,8 @@ interface StudentQuestion {
   status: 'pending' | 'answered' | 'escalated';
   thumbnailUrl?: string;
   studyImageUrl?: string | null;
+  /** Set when API is called with explicit `source` (not legacy). */
+  questionSource?: 'CaseQA' | 'VisualQA' | null;
 }
 
 function initials(name: string | null): string {
@@ -66,6 +70,12 @@ function formatTime(dateStr: string): string {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function sourceBadgeLabel(source: StudentQuestion['questionSource']): string | null {
+  if (source === 'VisualQA') return 'Visual QA';
+  if (source === 'CaseQA') return 'Case QA';
+  return null;
+}
+
 function QuestionCard({
   question,
   isActive,
@@ -78,17 +88,31 @@ function QuestionCard({
   const badgeClass = isActive
     ? 'border-l-4 border-primary bg-surface-container-lowest'
     : 'bg-surface-container-low hover:bg-surface-container transition-all';
+  const sourceLabel = sourceBadgeLabel(question.questionSource);
   return (
     <div
       onClick={onClick}
       className={`group rounded-xl p-5 cursor-pointer ${badgeClass}`}
       role="button"
     >
-      <div className="flex justify-between items-start mb-2">
-        <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-          CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
-        </span>
-        <span className="text-[10px] text-muted-foreground">{formatTime(question.askedAt)}</span>
+      <div className="flex justify-between items-start mb-2 gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+            CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
+          </span>
+          {sourceLabel ? (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                sourceLabel === 'Visual QA'
+                  ? 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                  : 'bg-violet-500/15 text-violet-800 dark:text-violet-200'
+              }`}
+            >
+              {sourceLabel}
+            </span>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(question.askedAt)}</span>
       </div>
       <h4 className="font-bold text-foreground text-sm mb-1 line-clamp-2">{question.questionText}</h4>
       <p className="text-xs text-muted-foreground line-clamp-2">{question.caseTitle}</p>
@@ -111,6 +135,8 @@ export default function StudentQuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedQuestion, setSelectedQuestion] = useState<StudentQuestion | null>(null);
+  /** `legacy` = no `source` query (Case QA only, BE). Other modes send explicit `source`. */
+  const [questionsSourceMode, setQuestionsSourceMode] = useState<QuestionsSourceMode>('legacy');
   const [escalateText, setEscalateText] = useState('');
   const [highPriority, setHighPriority] = useState(false);
   const [notifyHead, setNotifyHead] = useState(false);
@@ -138,7 +164,14 @@ export default function StudentQuestionsPage() {
     if (!selectedClass) return;
     setLoading(true);
     try {
-      const data = await getStudentQuestions(selectedClass, {});
+      const sourceParam =
+        questionsSourceMode === 'legacy'
+          ? undefined
+          : (questionsSourceMode as 'all' | 'visual-qa' | 'case-qa');
+      const data = await getStudentQuestions(
+        selectedClass,
+        sourceParam ? { source: sourceParam } : {},
+      );
       const mapped: StudentQuestion[] = data.map((item: LectStudentQuestionDto) => ({
         id: item.id,
         answerId: item.answerId?.trim() || null,
@@ -157,11 +190,14 @@ export default function StudentQuestionsPage() {
             : 'pending',
         thumbnailUrl: item.aiConfidenceScore != null ? undefined : undefined,
         studyImageUrl: item.customImageUrl?.trim() || null,
+        questionSource: item.questionSource ?? null,
       }));
       setQuestions(mapped);
-      if (!selectedQuestion && mapped.length > 0) {
-        setSelectedQuestion(mapped[0]);
-      }
+      setSelectedQuestion((prev) => {
+        if (mapped.length === 0) return null;
+        if (prev && mapped.some((q) => q.id === prev.id)) return prev;
+        return mapped[0];
+      });
     } catch {
       setQuestions([
         {
@@ -205,7 +241,7 @@ export default function StudentQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedClass, selectedQuestion]);
+  }, [selectedClass, questionsSourceMode]);
 
   useEffect(() => {
     if (selectedClass) loadStudentQuestions();
@@ -295,11 +331,26 @@ export default function StudentQuestionsPage() {
         <div className="grid grid-cols-12 gap-8 items-start">
           {/* Left: Question List */}
           <div className="col-span-12 space-y-4 lg:col-span-4">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                {pendingCount} Pending
-              </span>
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                  {pendingCount} Pending
+                </span>
+              </div>
+              <label className="flex flex-col gap-1.5 text-xs font-semibold text-muted-foreground">
+                <span>List source</span>
+                <select
+                  value={questionsSourceMode}
+                  onChange={(e) => setQuestionsSourceMode(e.target.value as QuestionsSourceMode)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="legacy">Case QA only (legacy, no source filter)</option>
+                  <option value="all">All — Case QA + Visual QA (shows source badges)</option>
+                  <option value="visual-qa">Visual QA only</option>
+                  <option value="case-qa">Case QA only (explicit)</option>
+                </select>
+              </label>
             </div>
             <div className="space-y-3">
               {loading ? (
@@ -336,9 +387,22 @@ export default function StudentQuestionsPage() {
                     {/* Left: text */}
                     <div className="p-8 space-y-6">
                       <div>
-                        <span className="inline-block rounded bg-secondary/15 px-2 py-1 text-[10px] font-black uppercase tracking-tighter text-secondary">
-                          Active Inquiry
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-block rounded bg-secondary/15 px-2 py-1 text-[10px] font-black uppercase tracking-tighter text-secondary">
+                            Active Inquiry
+                          </span>
+                          {sourceBadgeLabel(selectedQuestion.questionSource) ? (
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                selectedQuestion.questionSource === 'VisualQA'
+                                  ? 'bg-cyan-500/10 text-cyan-800 dark:text-cyan-200'
+                                  : 'bg-violet-500/10 text-violet-800 dark:text-violet-200'
+                              }`}
+                            >
+                              {sourceBadgeLabel(selectedQuestion.questionSource)}
+                            </span>
+                          ) : null}
+                        </div>
                         <h2 className="mt-4 text-2xl font-extrabold tracking-tight text-foreground leading-tight">
                           {selectedQuestion.questionText}
                         </h2>
