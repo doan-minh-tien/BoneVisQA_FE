@@ -533,6 +533,8 @@ export interface QuizDto {
   /** Present when API returns aggregate question count. */
   questionCount?: number | null;
   quizName?: string | null;
+  /** True nếu quiz này từ Expert Library (CreatedByExpertId != null). */
+  isFromExpertLibrary?: boolean;
 }
 
 export interface QuizWithQuestionsDto {
@@ -553,11 +555,25 @@ export interface ClassQuizDto {
   closeTime?: string | null;
   questionCount?: number;
   /** Quiz from Expert Library or created by lecturer */
-  isFromExpertLibrary?: boolean;
+  isFromExpertLibrary: boolean;
   /** Time limit in minutes (set by Expert or Lecturer) */
   timeLimit?: number | null;
   /** Passing score percentage (set by Expert or Lecturer) */
   passingScore?: number | null;
+}
+
+export interface AssignedQuizDto {
+  assignmentId: string; // ClassQuizSession.Id
+  classId: string;
+  quizId: string;
+  quizName: string | null;
+  className: string | null;
+  topic?: string | null;
+  assignedAt: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  questionCount: number;
+  isFromExpertLibrary: boolean;
 }
 
 export interface CreateQuizRequest {
@@ -615,7 +631,8 @@ export interface CreateQuizQuestionRequest {
   optionB?: string;
   optionC?: string;
   optionD?: string;
-  correctAnswer: string;
+  correctAnswer?: string;
+  essayAnswer?: string;
   imageUrl?: string;
 }
 
@@ -623,6 +640,7 @@ export interface UpdateQuizQuestionRequest {
   questionText: string;
   type?: string;
   correctAnswer?: string;
+  essayAnswer?: string;
   optionA?: string;
   optionB?: string;
   optionC?: string;
@@ -640,6 +658,7 @@ export interface AIQuizQuestion {
   optionC: string;
   optionD: string;
   correctAnswer: string;
+  essayAnswer?: string;
   caseId?: string;
   caseTitle?: string;
   explanation?: string;

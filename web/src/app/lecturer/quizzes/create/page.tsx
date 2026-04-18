@@ -10,7 +10,6 @@ import {
   PlusCircle,
   Timer,
   Percent,
-  Upload,
   Save,
   X,
   FilePenLine,
@@ -19,15 +18,12 @@ import {
   Eye,
   Send,
   Lightbulb,
-  ShieldCheck,
   GripVertical,
   Trash2,
   Pencil,
   ArrowLeft,
   Sparkles,
   UploadCloud,
-  Image as ImageIcon,
-  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -89,7 +85,8 @@ function classificationToBand(c: string): 'RESIDENT' | 'SPECIALIST' | 'FELLOW' {
 function typeLabel(type: string | null | undefined): string {
   const t = (type || 'MultipleChoice').toLowerCase();
   if (t === 'truefalse' || t === 'true/false') return 'True / False';
-  if (t === 'annotation' || t === 'draw') return 'Annotation';
+  if (t === 'annotation' || t === 'draw') return 'Identification (Point)';
+  if (t === 'essay') return 'Essay';
   return 'Multiple Choice';
 }
 
@@ -117,6 +114,7 @@ function CreateQuizQuestionPreview({
 }) {
   const t = (question.type || 'MultipleChoice').toLowerCase();
   const isTf = t === 'truefalse' || t === 'true/false';
+  const isEssay = t === 'essay';
   const opts = isTf
     ? [
         { key: 'True', text: 'True' },
@@ -129,6 +127,7 @@ function CreateQuizQuestionPreview({
     if (u === 'A') correct = 'True';
     if (u === 'B') correct = 'False';
   }
+  const essayAnswer = (question as any).essayAnswer || (question as any).EssayAnswer;
 
   return (
     <div className="group relative mb-4 rounded-xl border border-border/60 bg-muted/30 p-6 transition-all last:mb-0 hover:border-primary/30">
@@ -165,34 +164,43 @@ function CreateQuizQuestionPreview({
       >
         {question.questionText}
       </button>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {opts.map(({ key, text }) => {
-          const isCorrect = isTf
-            ? correct.toLowerCase() === key.toLowerCase()
-            : correct === key;
-          return (
-            <div
-              key={key}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
-                isCorrect
-                  ? 'border-primary/40 bg-primary/5'
-                  : 'border-border/60 bg-card hover:bg-muted/50'
-              }`}
-              onClick={onEdit}
-              role="presentation"
-            >
+      {isEssay && essayAnswer ? (
+        <div className="rounded-lg border border-border/60 bg-card p-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Model Answer / Guidelines
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-card-foreground">{essayAnswer}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {opts.map(({ key, text }) => {
+            const isCorrect = isTf
+              ? correct.toLowerCase() === key.toLowerCase()
+              : correct === key;
+            return (
               <div
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                  isCorrect ? 'border-primary' : 'border-muted-foreground/30'
+                key={key}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                  isCorrect
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border/60 bg-card hover:bg-muted/50'
                 }`}
+                onClick={onEdit}
+                role="presentation"
               >
-                {isCorrect ? <div className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
+                <div
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                    isCorrect ? 'border-primary' : 'border-muted-foreground/30'
+                  }`}
+                >
+                  {isCorrect ? <div className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
+                </div>
+                <span className="text-sm font-medium text-card-foreground">{text}</span>
               </div>
-              <span className="text-sm font-medium text-card-foreground">{text}</span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -258,14 +266,8 @@ export default function CreateQuizPage() {
   const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>(
     'Resident Year 1',
   );
-  const [tags, setTags] = useState<string[]>(['Radiology', 'Cardiology']);
-  const [tagInput, setTagInput] = useState('');
   const [randomizeQuestions, setRandomizeQuestions] = useState(true);
   const [allowRetakes, setAllowRetakes] = useState(false);
-  const [immediateResults, setImmediateResults] = useState(true);
-  const [isVerifiedCurriculum, setIsVerifiedCurriculum] = useState(false);
-  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string } | null>(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
   const [casePickerOpen, setCasePickerOpen] = useState(false);
@@ -347,23 +349,7 @@ export default function CreateQuizPage() {
     );
   };
 
-  const addTag = () => {
-    const t = tagInput.trim();
-    if (!t || tags.includes(t)) return;
-    setTags([...tags, t]);
-    setTagInput('');
-  };
-
-  const removeTag = (t: string) => setTags(tags.filter((x) => x !== t));
-
   const band = classificationToBand(classification);
-
-  const insightsText = useMemo(() => {
-    const level =
-      band === 'SPECIALIST' ? 'Level 3 Specialist' : band === 'FELLOW' ? 'Fellowship' : 'Residency';
-    const diff = band === 'SPECIALIST' ? 'High' : band === 'FELLOW' ? 'Very high' : 'Moderate';
-    return `This quiz structure aligns with ${level} standards. Topics: ${tags.slice(0, 3).join(', ') || 'general'}. Predicted difficulty: ${diff}.`;
-  }, [band, tags]);
 
   const scrollTo = (ref: { current: HTMLElement | null }, step: 1 | 2) => {
     setActiveStep(step);
@@ -384,7 +370,6 @@ export default function CreateQuizPage() {
     difficulty: formData.difficulty || undefined,
     classification: classification,
     isAiGenerated: false,
-    isVerifiedCurriculum: isVerifiedCurriculum,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
     openTime: toUTC(formData.openTime),
     closeTime: toUTC(formData.closeTime),
@@ -479,6 +464,7 @@ export default function CreateQuizPage() {
       optionC: q.optionC,
       optionD: q.optionD,
       correctAnswer: q.correctAnswer,
+      essayAnswer: q.essayAnswer,
       caseId: q.caseId,
     }));
 
@@ -525,6 +511,7 @@ export default function CreateQuizPage() {
         optionC: q.optionC,
         optionD: q.optionD,
         correctAnswer: q.correctAnswer,
+        essayAnswer: q.essayAnswer,
         caseId: q.caseId,
       }));
       await addQuizQuestionsBatched(quiz.id, payloads);
@@ -592,38 +579,6 @@ export default function CreateQuizPage() {
     setEditingQuestion(null);
     setEditingTempIndex(null);
     setEditorOpen(true);
-  };
-
-  const handleDicomUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingImage(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await axios.post<{ url: string }>(
-        `${API_BASE_URL}/api/upload/dicom`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-
-      if (response.data.url) {
-        setAttachedImage({ file, preview: response.data.url });
-        toast.success('DICOM image uploaded successfully');
-      }
-    } catch (err) {
-      const message = axios.isAxiosError(err) ? err.response?.data?.message : 'Upload failed';
-      toast.error(message || 'Failed to upload DICOM image');
-    } finally {
-      setIsUploadingImage(false);
-      e.target.value = '';
-    }
   };
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
@@ -869,58 +824,6 @@ export default function CreateQuizPage() {
                   className="rounded-lg border-0 bg-muted/60 p-4 font-medium text-card-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border transition-colors hover:bg-muted/50">
-                  {attachedImage ? (
-                    <div className="flex flex-col items-center gap-1">
-                      <Check className="h-6 w-6 text-green-500" />
-                      <span className="text-[10px] font-bold text-green-500">Uploaded</span>
-                    </div>
-                  ) : isUploadingImage ? (
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  ) : (
-                    <>
-                      <Upload className="h-6 w-6 text-muted-foreground" />
-                      <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept=".dcm,.dicom,.jpg,.jpeg,.png"
-                    className="hidden"
-                    disabled={isUploadingImage}
-                    onChange={handleDicomUpload}
-                  />
-                </label>
-                <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4 dark:bg-secondary/10">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary">
-                    <ShieldCheck className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-secondary">Verified curriculum</h3>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={isVerifiedCurriculum}
-                        onClick={() => setIsVerifiedCurriculum(!isVerifiedCurriculum)}
-                        className={`relative h-6 w-12 rounded-full transition-colors ${
-                          isVerifiedCurriculum ? 'bg-cyan-500' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-1 h-4 w-4 rounded-full border border-border bg-white shadow-sm transition-all ${
-                            isVerifiedCurriculum ? 'right-1' : 'left-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Aligns with standard radiology board learning objectives for this track.
-                    </p>
-                  </div>
-                </div>
-              </div>
 
               <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                 <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -1110,40 +1013,10 @@ export default function CreateQuizPage() {
                   Advanced quiz options
                 </summary>
                 <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {tags.map((t) => (
-                      <span
-                        key={t}
-                        className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-3 py-1 text-xs font-bold text-secondary"
-                      >
-                        {t}
-                        <button type="button" onClick={() => removeTag(t)} className="rounded hover:opacity-70">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                      placeholder="Topic tag"
-                      className="min-w-0 flex-1 rounded-full border border-border bg-card px-3 py-2 text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={addTag}
-                      className="rounded-full bg-muted px-3 py-2 text-xs font-bold"
-                    >
-                      Add
-                    </button>
-                  </div>
                   <ToggleRow label="Randomize questions" on={randomizeQuestions} onChange={setRandomizeQuestions} />
                   <ToggleRow label="Allow retakes" on={allowRetakes} onChange={setAllowRetakes} />
-                  <ToggleRow label="Immediate results" on={immediateResults} onChange={setImmediateResults} />
                   <p className="text-[11px] text-muted-foreground">
-                    Tags and toggles are local to this screen until the API supports them.
+                    These options are applied when the quiz is published.
                   </p>
                 </div>
               </details>
@@ -1363,22 +1236,8 @@ export default function CreateQuizPage() {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 Finalize &amp; publish
               </button>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-cyan-500/10 p-6 dark:bg-cyan-950/30">
-            <div className="flex gap-3">
-              <Lightbulb className="h-5 w-5 shrink-0 text-cyan-800 dark:text-cyan-200" />
-              <div>
-                <h4 className="text-sm font-bold text-cyan-950 dark:text-cyan-100">Clinical tip</h4>
-                <p className="mt-1 text-xs leading-relaxed text-cyan-900/80 dark:text-cyan-100/80">
-                  Include differential diagnoses for every question to improve resident critical thinking.
-                  {tags.length > 0 ? ` Topics: ${tags.slice(0, 3).join(', ')}.` : ''}
-                </p>
-                <p className="mt-2 text-[11px] text-muted-foreground">{insightsText}</p>
-              </div>
-            </div>
-          </div>
+        </div>
+      </div>
         </div>
       </div>
 

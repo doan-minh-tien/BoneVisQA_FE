@@ -7,6 +7,7 @@ import type {
   QuizQuestionDto,
   CreateQuizQuestionRequest,
   UpdateQuizQuestionRequest,
+  AssignedQuizDto,
 } from './types';
 
 /** BE có thể trả camelCase hoặc PascalCase tùy cấu hình JSON. */
@@ -38,6 +39,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     OpenTime?: string | null;
     CloseTime?: string | null;
     QuestionCount?: number;
+    IsFromExpertLibrary?: boolean;
   };
   return {
     classId: raw.classId ?? r.ClassId ?? '',
@@ -49,6 +51,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     openTime: raw.openTime ?? r.OpenTime ?? null,
     closeTime: raw.closeTime ?? r.CloseTime ?? null,
     questionCount: raw.questionCount ?? r.QuestionCount,
+    isFromExpertLibrary: raw.isFromExpertLibrary ?? r.IsFromExpertLibrary ?? false,
   };
 }
 
@@ -62,6 +65,34 @@ export async function getLecturerQuizzes(lecturerId: string): Promise<ClassQuizD
     });
     const list = Array.isArray(data) ? data : [];
     return list.map((row) => normalizeClassQuizDto(row as ClassQuizDto & Record<string, unknown>));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get unassigned quizzes created by lecturer (My Quizzes tab)
+ */
+export async function getUnassignedLecturerQuizzes(lecturerId: string): Promise<QuizDto[]> {
+  try {
+    const { data } = await http.get<QuizDto[]>('/api/lecturer/quizzes/my', {
+      params: { lecturerId },
+    });
+    return data.map(normalizeQuizDto);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get assigned quizzes (Assigned Quizzes tab)
+ */
+export async function getAssignedQuizzes(lecturerId: string): Promise<AssignedQuizDto[]> {
+  try {
+    const { data } = await http.get<AssignedQuizDto[]>('/api/lecturer/quizzes/assigned', {
+      params: { lecturerId },
+    });
+    return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -93,6 +124,7 @@ export function normalizeQuizDto(raw: unknown): QuizDto {
     createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
     questionCount: (r.questionCount ?? r.QuestionCount ?? undefined) as number | undefined,
     quizName: (r.quizName ?? r.QuizName ?? null) as string | null,
+    isFromExpertLibrary: Boolean(r.isFromExpertLibrary ?? r.IsFromExpertLibrary ?? false),
   };
 }
 

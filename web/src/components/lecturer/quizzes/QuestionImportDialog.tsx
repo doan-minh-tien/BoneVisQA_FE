@@ -17,7 +17,7 @@ import {
 
 export interface ParsedQuestion {
   questionText: string;
-  type: 'MultipleChoice' | 'TrueFalse' | 'Annotation';
+  type: 'MultipleChoice' | 'TrueFalse' | 'Annotation' | 'Essay';
   optionA?: string;
   optionB?: string;
   optionC?: string;
@@ -73,6 +73,7 @@ function detectType(text: string): ParsedQuestion['type'] {
   const lower = text.toLowerCase();
   if (lower.includes('true or false') || lower.includes('t/f')) return 'TrueFalse';
   if (lower.includes('identify') || lower.includes('label') || lower.includes('point')) return 'Annotation';
+  if (lower.includes('essay') || lower.includes('tự luận') || lower.includes('viết')) return 'Essay';
   return 'MultipleChoice';
 }
 
@@ -116,11 +117,12 @@ function parsePaste(raw: string): ParsedQuestion[] {
       correctAnswer = ansRaw.charAt(0).toUpperCase();
     }
 
-    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|true[\s\/]?false|annotation)/i);
+    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|true[\s\/]?false|annotation|essay)/i);
     if (mcMatch) {
       const t = mcMatch[1].toLowerCase().replace(/\s/g, '');
       if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
       else if (t.includes('annotation')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
     }
 
@@ -188,6 +190,7 @@ function parseCSV(raw: string): ParseResult {
     const t = typeVal.toLowerCase().replace(/\s/g, '');
     if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
     else if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({
@@ -218,6 +221,7 @@ function parseJSON(raw: string): ParseResult {
       const t = String(typeVal).toLowerCase().replace(/\s/g, '');
       if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
       else if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
       questions.push({
         questionText: qText,
@@ -275,6 +279,7 @@ function parseExcel(workbook: XLSX.WorkBook): ParseResult {
     const t = typeVal.toLowerCase().replace(/\s/g, '');
     if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
     else if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({

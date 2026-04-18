@@ -16,6 +16,7 @@ import {
   Timer,
   PlusCircle,
   UploadCloud,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -288,17 +289,38 @@ export default function QuizDetailPage() {
           >
             Preview Quiz
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Save Changes
-          </button>
+          {quiz && !quiz.isFromExpertLibrary && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Save Changes
+            </button>
+          )}
         </div>
       </section>
+
+      {/* Expert Library Notice Banner */}
+      {quiz && quiz.isFromExpertLibrary && (
+        <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+          <div className="flex items-start gap-3">
+            <BookOpen className="h-5 w-5 text-purple-600 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-purple-700 dark:text-purple-300">
+                Expert Library Quiz
+              </h4>
+              <p className="mt-1 text-xs text-purple-600 dark:text-purple-400">
+                This quiz is from the Expert Library. You can view questions and assign it to classes,
+                but you cannot edit or modify its content. Changes to time limits and passing scores
+                only apply to new class assignments.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bento Layout — câu hỏi trái (rộng), cài đặt + stats phải */}
       <div className="grid grid-cols-12 gap-8">
@@ -452,26 +474,30 @@ export default function QuizDetailPage() {
                 {questions.length} diagnostic item{questions.length === 1 ? '' : 's'} currently in this quiz.
               </p>
             </div>
-            {/* Add and Import buttons commented out - only Delete allowed for Expert quiz questions */}
-            {/* <button
-              type="button"
-              onClick={handleAddQuestion}
-              className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
-            >
-              <PlusCircle className="h-5 w-5" />
-              Add New Question
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
-            >
-              <UploadCloud className="h-4 w-4" />
-              Import
-            </button> */}
+            {/* Action buttons - conditionally rendered based on quiz source */}
+          {quiz && !quiz.isFromExpertLibrary && (
+            <>
+              <button
+                type="button"
+                onClick={handleAddQuestion}
+                className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
+              >
+                <PlusCircle className="h-5 w-5" />
+                Add New Question
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
+              >
+                <UploadCloud className="h-4 w-4" />
+                Import
+              </button>
+            </>
+          )}
           </div>
 
-          {questions.length === 0 ? (
+              {questions.length === 0 ? (
             <div className="flex min-h-[280px] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/20 p-8">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <PlusCircle className="h-8 w-8 text-muted-foreground" />
@@ -480,16 +506,28 @@ export default function QuizDetailPage() {
                 No questions yet
               </h3>
               <p className="mb-4 text-center text-sm text-muted-foreground">
-                Add questions to build this quiz.
+                {quiz && !quiz.isFromExpertLibrary
+                  ? 'Add questions to build this quiz.'
+                  : 'This expert quiz has no questions.'}
               </p>
-              <div className="flex gap-3">
-                {/* <Button onClick={handleAddQuestion}>
-                  <Plus className="h-4 w-4" /> Add First Question
-                </Button>
-                <Button variant="outline" onClick={() => setImportOpen(true)}>
-                  <UploadCloud className="h-4 w-4" /> Import from File
-                </Button> */}
-              </div>
+              {quiz && !quiz.isFromExpertLibrary && (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleAddQuestion}
+                    className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4" /> Add First Question
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportOpen(true)}
+                    className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-card-foreground hover:bg-muted"
+                  >
+                    <UploadCloud className="h-4 w-4" /> Import from File
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -503,7 +541,7 @@ export default function QuizDetailPage() {
                     variant="curated"
                     topicCategory={TOPIC_ROTATION[idx % TOPIC_ROTATION.length]}
                     points={POINTS_ROTATION[idx % POINTS_ROTATION.length]}
-                    // onEdit={handleEditQuestion} // Commented out - editing not allowed
+                    onEdit={quiz && !quiz.isFromExpertLibrary ? handleEditQuestion : undefined}
                     onDelete={handleDeleteQuestion}
                   />
                 );
