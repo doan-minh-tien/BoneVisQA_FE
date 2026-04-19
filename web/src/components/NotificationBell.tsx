@@ -1,22 +1,15 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Bell, Check } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { getPublicApiOrigin } from '@/lib/api/client';
-
-interface NotificationItem {
-  id: string;
-  userId: string;
-  title: string;
-  message: string;
-  type: string;
-  targetUrl?: string;
-  isRead: boolean;
-  createdAt: string;
-}
+import { fetchNotifications, markNotificationRead } from '@/lib/api/notifications';
+import { notificationTargetToAppPath } from '@/lib/notification-app-path';
+import type { AppNotificationItem } from '@/lib/api/types';
 
 const PANEL_WIDTH = 320;
 const PANEL_GAP = 8;
@@ -24,7 +17,8 @@ const PANEL_GAP = 8;
 export type NotificationBellVariant = 'sidebar' | 'header';
 
 export function NotificationBell({ variant = 'sidebar' }: { variant?: NotificationBellVariant }) {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<AppNotificationItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -33,36 +27,49 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
   const panelRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const unreadCount = notifications.filter((n) => !n.isRead).length;
-  const lastFetch = useRef<number>(0);
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications].sort((a, b) => {
+        const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+        const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
+        return tb - ta;
+      }),
+    [notifications],
+  );
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  function handleNotificationNavigate(item: AppNotificationItem) {
+    if (item.type === 'quiz_assigned') {
+      router.push('/student/quiz');
+      setOpen(false);
+      return;
+    }
+    if (item.route?.trim()) {
+      router.push(notificationTargetToAppPath(item.route));
+      setOpen(false);
+    }
+  }
+
   async function fetchNotifs(silent = false) {
     if (!silent) setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const base = getPublicApiOrigin();
-      if (!base) return;
-      const res = await fetch(`${base}/api/notifications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data: NotificationItem[] = await res.json();
-        setNotifications(data);
-        lastFetch.current = Date.now();
-        if (!silent && data.some((n) => !n.isRead)) {
-          if (!open) {
-            const newNotif = data.find((n) => !n.isRead);
-            if (newNotif) {
-              toast.info(`${newNotif.title}: ${newNotif.message}`);
-            }
+      if (!getPublicApiOrigin()) return;
+      const data = await fetchNotifications();
+      setNotifications(data);
+      if (!silent && data.some((n) => !n.isRead)) {
+        if (!open) {
+          const newNotif = data.find((n) => !n.isRead);
+          if (newNotif) {
+            const body = newNotif.message?.trim();
+            toast.info(body ? `${newNotif.title}: ${body}` : newNotif.title);
           }
         }
       }
     } catch {
-      // silently ignore
+      if (!silent) setNotifications([]);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -113,13 +120,8 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
 
   async function markRead(id: string) {
     try {
-      const token = localStorage.getItem('token');
-      const base = getPublicApiOrigin();
-      if (!base) return;
-      await fetch(`${base}/api/notifications/${id}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!getPublicApiOrigin()) return;
+      await markNotificationRead(id);
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
       );
@@ -128,12 +130,15 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
     }
   }
 
-  function timeAgo(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
+  function timeAgo(iso: string | undefined): string {
+    if (!iso?.trim()) return '—';
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return '—';
+    const diff = Date.now() - t;
     if (diff < 60_000) return 'Just now';
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`;
-    return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   }
 
   const isHeader = variant === 'header';
@@ -178,39 +183,50 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
       </div>
 
       <div className="max-h-80 overflow-y-auto">
-        {notifications.length === 0 ? (
+        {sortedNotifications.length === 0 ? (
           <div className={emptyClass}>No notifications yet</div>
         ) : (
-          notifications.slice(0, 20).map((n) => (
-            <div
-              key={n.id}
-              className={`group flex gap-3 ${itemBorder} px-4 py-3 transition-colors ${!n.isRead ? unreadBg : ''} ${itemHover}`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm ${!n.isRead ? `font-semibold ${textMain}` : textSecondary}`}>
-                    {n.title}
-                  </p>
-                  {!n.isRead && (
+          sortedNotifications.slice(0, 20).map((n) => {
+            const navigable = n.type === 'quiz_assigned' || Boolean(n.route?.trim());
+            return (
+              <div
+                key={n.id}
+                className={`group flex gap-3 ${itemBorder} px-4 py-3 transition-colors ${!n.isRead ? unreadBg : ''} ${itemHover}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => void markRead(n.id)}
-                      className={`shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${isHeader ? 'text-text-muted hover:text-text-main' : 'text-slate-400 hover:text-white'}`}
-                      title="Mark as read"
+                      disabled={!navigable}
+                      onClick={() => handleNotificationNavigate(n)}
+                      className={`min-w-0 flex-1 text-left ${!navigable ? 'cursor-default' : 'cursor-pointer'} ${!n.isRead ? `font-semibold ${textMain}` : textSecondary} text-sm`}
                     >
-                      <Check className="h-3.5 w-3.5" />
+                      {n.title}
                     </button>
-                  )}
+                    {!n.isRead && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void markRead(n.id);
+                        }}
+                        className={`shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 ${isHeader ? 'text-text-muted hover:text-text-main' : 'text-slate-400 hover:text-white'}`}
+                        title="Mark as read"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {n.message ? <p className={msgClass}>{n.message}</p> : null}
+                  <p className={timeClass}>{timeAgo(n.createdAt)}</p>
                 </div>
-                <p className={msgClass}>{n.message}</p>
-                <p className={timeClass}>{timeAgo(n.createdAt)}</p>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      {notifications.length > 0 && (
+      {sortedNotifications.length > 0 && (
         <div className={`${footerBorder} px-4 py-2 text-center`}>
           <Link href="/notifications" className={linkClass} onClick={() => setOpen(false)}>
             View all notifications

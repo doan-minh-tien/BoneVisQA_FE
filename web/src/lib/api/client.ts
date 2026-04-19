@@ -76,6 +76,23 @@ type ProblemDetailsPayload = {
   errors?: unknown;
 };
 
+/**
+ * ASP.NET / EF Core often returns ProblemDetails with a multi-line LINQ translation error.
+ * End users should not see DbSet / Where stack text in toasts — the fix belongs in the API.
+ */
+export function polishUserFacingApiErrorMessage(message: string): string {
+  const s = message.trim();
+  if (!s) return message;
+  if (/LINQ expression/i.test(s) && /could not be translated/i.test(s)) {
+    return (
+      'The server could not run this admin query (Entity Framework cannot translate it to SQL). ' +
+      'A backend change is required, for example rewriting filters that call application code inside IQueryable.Where. ' +
+      'Reloading the page will not fix it.'
+    );
+  }
+  return message;
+}
+
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token');
@@ -99,17 +116,20 @@ http.interceptors.response.use(
 );
 
 export function getApiErrorMessage(err: unknown): string {
+  let raw = 'Request failed';
+
   if (axios.isAxiosError(err)) {
     if (!err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error')) {
       const origin = getPublicApiOrigin();
       const hint =
         origin ||
         '(set NEXT_PUBLIC_API_URL in .env.local, e.g. http://localhost:5046 — see .env.example)';
-      return `Cannot reach the API at ${hint}. Start the backend and ensure the URL matches its host and port.`;
+      raw = `Cannot reach the API at ${hint}. Start the backend and ensure the URL matches its host and port.`;
+      return raw;
     }
     const data = err.response?.data as unknown;
-    if (typeof data === 'string' && data.trim()) return data;
-    if (data && typeof data === 'object') {
+    if (typeof data === 'string' && data.trim()) raw = data.trim();
+    else if (data && typeof data === 'object') {
       const o = data as ProblemDetailsPayload;
       // ASP.NET Core / .NET 8 validation: RFC 7807 + `errors` map.
       const errMap = o.errors;
@@ -125,23 +145,25 @@ export function getApiErrorMessage(err: unknown): string {
           }
         }
         if (lines.length > 0) {
-          return lines.join(' ');
+          raw = lines.join(' ');
         }
       }
 
-      // ProblemDetails priority: detail (specific) -> title (summary).
-      if (typeof o.detail === 'string' && o.detail.trim()) return o.detail.trim();
-      if (typeof o.title === 'string' && o.title.trim()) return o.title.trim();
-
-      // Backward compatibility for legacy API shapes.
-      if (typeof o.message === 'string' && o.message.trim()) return o.message.trim();
-      if (typeof o.error === 'string' && o.error.trim()) return o.error.trim();
-      if (Array.isArray(o.errors) && o.errors[0]) return String(o.errors[0]);
+      if (raw === 'Request failed') {
+        // ProblemDetails priority: detail (specific) -> title (summary).
+        if (typeof o.detail === 'string' && o.detail.trim()) raw = o.detail.trim();
+        else if (typeof o.title === 'string' && o.title.trim()) raw = o.title.trim();
+        // Backward compatibility for legacy API shapes.
+        else if (typeof o.message === 'string' && o.message.trim()) raw = o.message.trim();
+        else if (typeof o.error === 'string' && o.error.trim()) raw = o.error.trim();
+        else if (Array.isArray(o.errors) && o.errors[0]) raw = String(o.errors[0]);
+      }
     }
-    if (err.message) return err.message;
+    if (raw === 'Request failed' && err.message) raw = err.message;
+    return polishUserFacingApiErrorMessage(raw);
   }
-  if (err instanceof Error) return err.message;
-  return 'Request failed';
+  if (err instanceof Error) return polishUserFacingApiErrorMessage(err.message);
+  return polishUserFacingApiErrorMessage(raw);
 }
 
 /** RFC 7807 / ASP.NET ProblemDetails — use for toasts and inline error copy. */
@@ -157,13 +179,14 @@ export function getApiProblemDetails(err: unknown): {
       const o = data as ProblemDetailsPayload;
       const title =
         typeof o.title === 'string' && o.title.trim()
-          ? o.title.trim()
+          ? polishUserFacingApiErrorMessage(o.title.trim())
           : status === 404
             ? 'Not found'
             : status === 500
               ? 'Server error'
               : 'Request failed';
-      const detail = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined;
+      const detailRaw = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined;
+      const detail = detailRaw ? polishUserFacingApiErrorMessage(detailRaw) : undefined;
       if (detail || title) return { title, detail, status };
     }
     return { title: getApiErrorMessage(err), status };

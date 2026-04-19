@@ -8,6 +8,7 @@ import { useAuth, type BackendRole } from '@/lib/useAuth';
 import { useLogout } from '@/lib/useLogout';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchNotifications } from '@/lib/api/notifications';
+import { notificationTargetToAppPath } from '@/lib/notification-app-path';
 import type { AppNotificationItem, NotificationDto } from '@/lib/api/types';
 import { useSignalR } from '@/hooks/useSignalR';
 import {
@@ -22,12 +23,15 @@ import {
 type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
 
 function notificationDtoToAppItem(d: NotificationDto): AppNotificationItem {
+  const route =
+    d.route?.trim() ||
+    (d.targetUrl?.trim() ? notificationTargetToAppPath(d.targetUrl) : undefined);
   return {
     id: d.id,
     type: d.type,
     title: d.title,
     message: d.message,
-    route: d.targetUrl,
+    ...(route ? { route } : {}),
     createdAt: d.createdAt,
     isRead: d.isRead,
   };
@@ -149,7 +153,7 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
       return;
     }
     if (item.route) {
-      router.push(item.route);
+      router.push(notificationTargetToAppPath(item.route));
       setOpenNotifications(false);
     }
   };

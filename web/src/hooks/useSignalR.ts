@@ -7,23 +7,29 @@ import { toast } from 'sonner';
 import { getPublicApiOrigin } from '@/lib/api/client';
 import type { DocumentIngestionStatusDto, NotificationDto } from '@/lib/api/types';
 import { useAuth } from '@/lib/useAuth';
+import { notificationTargetToAppPath } from '@/lib/notification-app-path';
 
 function mapReceivePayload(raw: unknown): NotificationDto | null {
   if (raw == null || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const id = String(r.id ?? r.Id ?? '').trim();
   if (!id) return null;
+  const routeRaw = r.route ?? r.Route;
+  const route = routeRaw != null && String(routeRaw).trim() ? String(routeRaw).trim() : undefined;
+  const targetRaw =
+    r.targetUrl != null
+      ? String(r.targetUrl)
+      : r.TargetUrl != null
+        ? String(r.TargetUrl)
+        : undefined;
+
   return {
     id,
     title: String(r.title ?? r.Title ?? 'Notification'),
     message: String(r.message ?? r.Message ?? ''),
     type: String(r.type ?? r.Type ?? 'general'),
-    targetUrl:
-      r.targetUrl != null
-        ? String(r.targetUrl)
-        : r.TargetUrl != null
-          ? String(r.TargetUrl)
-          : undefined,
+    ...(route ? { route } : {}),
+    ...(targetRaw?.trim() ? { targetUrl: targetRaw.trim() } : {}),
     isRead: Boolean(r.isRead ?? r.IsRead ?? false),
     createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
   };
@@ -104,12 +110,23 @@ export function useSignalR() {
         return next;
       });
 
+      const typeLc = n.type.trim().toLowerCase();
+      let openLabel = 'Open';
+      if (typeLc === 'visual_qa_review_request') {
+        openLabel = 'Open triage';
+      } else if (typeLc === 'visual_qa_lecturer_reply' || (typeLc.includes('visual_qa') && typeLc.includes('lecturer'))) {
+        openLabel = 'Open chat';
+      } else if (typeLc.includes('visual_qa')) {
+        openLabel = 'Open';
+      }
+
+      const navRaw = (n.route?.trim() || n.targetUrl?.trim()) ?? '';
       toast.info(n.title, {
         description: n.message || undefined,
-        action: n.targetUrl
+        action: navRaw
           ? {
-              label: 'Open',
-              onClick: () => router.push(n.targetUrl!),
+              label: openLabel,
+              onClick: () => router.push(notificationTargetToAppPath(navRaw)),
             }
           : undefined,
       });

@@ -17,13 +17,13 @@ import {
   Stethoscope,
   ClipboardList,
   Users,
-  ShieldCheck,
   FileQuestion,
   BarChart3,
   Megaphone,
   Settings,
   ChevronLeft,
   ChevronRight,
+  GraduationCap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -40,10 +40,9 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
-    { label: 'Medical Verifications', href: '/admin/verifications', icon: ShieldCheck },
+    { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
-    { label: 'System Logs', href: '/admin/logs', icon: ClipboardList },
   ],
   lecturer: [
     { label: 'Dashboard', href: '/lecturer/dashboard', icon: LayoutDashboard },
