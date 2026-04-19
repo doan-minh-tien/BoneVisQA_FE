@@ -23,6 +23,8 @@ import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast as sonnerToast } from 'sonner';
+import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   AlertCircle,
   CheckCircle,
@@ -342,11 +344,11 @@ export default function ExpertReviewsPage() {
                                 {item.imageUrl ? (
                                   <div className="relative mx-auto w-fit">
                                     <Image
-                                      src={item.imageUrl}
+                                      src={resolveApiAssetUrl(item.imageUrl)}
                                       alt="Study"
                                       width={1200}
                                       height={900}
-                                      unoptimized
+                                      unoptimized={!isNextImageRemoteOptimized(resolveApiAssetUrl(item.imageUrl))}
                                       className="mx-auto max-h-[420px] max-w-full object-contain"
                                     />
                                     <ExpertImagingOverlays item={item} />

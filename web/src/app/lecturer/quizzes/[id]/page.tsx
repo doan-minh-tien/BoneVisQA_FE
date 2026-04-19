@@ -45,6 +45,7 @@ function isoToDatetimeLocal(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
+  // Use local time components to display in user's timezone
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -59,7 +60,8 @@ function datetimeLocalToIso(local: string): string | null {
 export default function QuizDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const quizId = params.id as string;
+  const rawQuizId = params.id;
+  const quizId = typeof rawQuizId === 'string' ? rawQuizId : Array.isArray(rawQuizId) ? rawQuizId[0] : '';
   const toast = useToast();
 
   const [quiz, setQuiz] = useState<QuizDto | null>(null);
@@ -87,6 +89,23 @@ export default function QuizDetailPage() {
   const [savedDialogOpen, setSavedDialogOpen] = useState(false);
 
   const loadData = useCallback(async () => {
+    // Validate quizId format
+    if (!quizId) {
+      setLoading(false);
+      setError('Quiz ID is missing');
+      return;
+    }
+
+    // Check if quizId is a valid GUID
+    const guidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!guidRegex.test(quizId)) {
+      setLoading(false);
+      setError(`Invalid quiz ID format: ${quizId}`);
+      // Redirect to quizzes list after a short delay
+      setTimeout(() => router.push('/lecturer/quizzes'), 3000);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -110,7 +129,7 @@ export default function QuizDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [quizId]);
+  }, [quizId, router]);
 
   useEffect(() => {
     loadData();
@@ -156,15 +175,19 @@ export default function QuizDetailPage() {
       });
       setQuiz(updated);
       if (selectedClassId && selectedClassId !== originalClassId) {
-        await assignQuizToClass(selectedClassId, quizId);
+        const result = await assignQuizToClass(selectedClassId, quizId);
         const refreshed = await getQuiz(quizId);
         setQuiz(refreshed);
         setOriginalClassId(refreshed.classId || selectedClassId);
         setSelectedClassId(refreshed.classId || selectedClassId);
+
+        // Show notification if assignment card needs to be created manually
+        // Note: Regular quiz assignment doesn't return a message; expert quiz assignment does
+        toast.success('Quiz saved and assigned to class successfully.');
       } else {
         setOriginalClassId(updated.classId || originalClassId);
+        toast.success('Quiz saved successfully.');
       }
-      toast.success('Quiz saved successfully.');
       setSavedDialogOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save quiz');
@@ -180,6 +203,8 @@ export default function QuizDetailPage() {
   };
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
+    console.log('[page.tsx] handleEditQuestion called with:', question);
+    console.log('[page.tsx] question.imageUrl:', question.imageUrl);
     setEditingQuestion(question);
     setEditorOpen(true);
   };
@@ -289,7 +314,7 @@ export default function QuizDetailPage() {
           >
             Preview Quiz
           </button>
-          {quiz && !quiz.isFromExpertLibrary && (
+          {quiz && (
             <button
               type="button"
               onClick={handleSave}
@@ -474,27 +499,27 @@ export default function QuizDetailPage() {
                 {questions.length} diagnostic item{questions.length === 1 ? '' : 's'} currently in this quiz.
               </p>
             </div>
-            {/* Action buttons - conditionally rendered based on quiz source */}
-          {quiz && !quiz.isFromExpertLibrary && (
-            <>
-              <button
-                type="button"
-                onClick={handleAddQuestion}
-                className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
-              >
-                <PlusCircle className="h-5 w-5" />
-                Add New Question
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportOpen(true)}
-                className="flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
-              >
-                <UploadCloud className="h-4 w-4" />
-                Import
-              </button>
-            </>
-          )}
+            {/* Action buttons - always show for editing */}
+            {quiz && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleAddQuestion}
+                  className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
+                >
+                  <PlusCircle className="h-5 w-5" />
+                  Add New Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Import
+                </button>
+              </>
+            )}
           </div>
 
               {questions.length === 0 ? (
@@ -506,34 +531,32 @@ export default function QuizDetailPage() {
                 No questions yet
               </h3>
               <p className="mb-4 text-center text-sm text-muted-foreground">
-                {quiz && !quiz.isFromExpertLibrary
-                  ? 'Add questions to build this quiz.'
-                  : 'This expert quiz has no questions.'}
+                Add questions to build this quiz.
               </p>
-              {quiz && !quiz.isFromExpertLibrary && (
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleAddQuestion}
-                    className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90"
-                  >
-                    <Plus className="h-4 w-4" /> Add First Question
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setImportOpen(true)}
-                    className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-card-foreground hover:bg-muted"
-                  >
-                    <UploadCloud className="h-4 w-4" /> Import from File
-                  </button>
-                </div>
-              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleAddQuestion}
+                  className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4" /> Add First Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-bold text-card-foreground hover:bg-muted"
+                >
+                  <UploadCloud className="h-4 w-4" /> Import from File
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
               {displayedQuestions.map((q) => {
                 const i = questions.findIndex((x) => x.id === q.id);
                 const idx = i >= 0 ? i : 0;
+                // Debug: log imageUrl
+                console.log('Question:', q.id, 'imageUrl:', q.imageUrl);
                 return (
                   <QuestionCard
                     key={q.id}

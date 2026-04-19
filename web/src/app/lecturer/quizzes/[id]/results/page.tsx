@@ -219,7 +219,7 @@ export default function QuizResultsPage({
   }
 
   async function confirmRetakeDialog() {
-    if (!classId || !retakeDialog) return;
+    if (!classId || !retakeDialog || !quizId) return;
     if (retakeDialog.kind === 'single') {
       const attempt = retakeDialog.attempt;
       setRetakingId(attempt.attemptId);
@@ -252,6 +252,11 @@ export default function QuizResultsPage({
 
   useEffect(() => {
     async function load() {
+      if (!quizId) {
+        setQuizLoading(false);
+        setError('Quiz ID is missing');
+        return;
+      }
       setQuizLoading(true);
       try {
         const q = await getQuiz(quizId);
@@ -266,7 +271,7 @@ export default function QuizResultsPage({
   }, [quizId]);
 
   useEffect(() => {
-    if (!classId) return;
+    if (!classId || !quizId) return;
     async function load() {
       setLoading(true);
       setError('');
@@ -283,7 +288,7 @@ export default function QuizResultsPage({
   }, [classId, quizId]);
 
   async function openAttemptDetail(attempt: StudentQuizAttemptDto) {
-    if (!classId) return;
+    if (!classId || !quizId) return;
     setSelectedAttempt(attempt);
     setDetailLoading(true);
     setDetailModalOpen(true);

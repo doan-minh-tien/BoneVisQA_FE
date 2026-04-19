@@ -42,6 +42,11 @@ export default function QuestionManagerPage() {
   const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
 
   const loadData = useCallback(async () => {
+    if (!quizId) {
+      setLoading(false);
+      setError('Quiz ID is missing');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {

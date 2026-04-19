@@ -14,6 +14,7 @@ import type { ExpertQuizQuestion } from '@/lib/api/expert-quiz-questions';
 import { ImagePlus, X, Loader2, UploadCloud } from 'lucide-react';
 import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
 import ExpertQuestionImportDialog, { type ExpertParsedQuestion } from './ExpertQuestionImportDialog';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 type QuestionModalMode = 'create' | 'edit';
 
@@ -125,7 +126,8 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     setIsUploading(true);
     try {
       const url = await uploadExpertWorkbenchImage(file);
-      setForm((p) => ({ ...p, imageUrl: url, imagePreview: url }));
+      const resolvedUrl = resolveApiAssetUrl(url);
+      setForm((p) => ({ ...p, imageUrl: url, imagePreview: resolvedUrl }));
       toast.success('Image uploaded successfully.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Upload failed.';
@@ -175,7 +177,7 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       optionD: q.optionD ?? '',
       correctAnswer: q.correctAnswer ?? '',
       imageUrl: q.imageUrl ?? '',
-      imagePreview: q.imageUrl ?? null,
+      imagePreview: resolveApiAssetUrl(q.imageUrl) ?? null,
     });
     setIsModalOpen(true);
   };
@@ -528,7 +530,7 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
                       <div className="min-w-0 flex-1">
                         {q.imageUrl && (
                           <img
-                            src={q.imageUrl}
+                            src={resolveApiAssetUrl(q.imageUrl)}
                             alt="Question"
                             className="max-h-24 rounded-lg border border-border mb-2 object-contain"
                           />

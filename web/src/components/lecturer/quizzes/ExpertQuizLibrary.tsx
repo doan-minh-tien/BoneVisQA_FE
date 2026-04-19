@@ -10,6 +10,7 @@ import {
   type ExpertQuizQuestion,
 } from '@/lib/api/lecturer-expert-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-classes';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   Search,
   ChevronLeft,
@@ -161,7 +162,7 @@ function PreviewModal({
                   {q.imageUrl && (
                     <div className="bg-muted/50 p-4 border-b border-border">
                       <img
-                        src={q.imageUrl}
+                        src={resolveApiAssetUrl(q.imageUrl)}
                         alt={`Question ${idx + 1}`}
                         className="max-h-64 mx-auto rounded-lg object-contain"
                       />

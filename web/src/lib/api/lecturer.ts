@@ -113,9 +113,7 @@ function normalizeClassItem(raw: unknown): ClassItem | null {
 
 export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<unknown[]>('/api/lecturer/classes', {
-      params: { lecturerId },
-    });
+    const { data } = await http.get<unknown[]>('/api/lecturer/classes');
     const list = Array.isArray(data) ? data : [];
     return list.map(normalizeClassItem).filter((c): c is ClassItem => c !== null);
   } catch (e) {

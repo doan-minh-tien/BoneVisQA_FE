@@ -560,6 +560,10 @@ export interface ClassQuizDto {
   timeLimit?: number | null;
   /** Passing score percentage (set by Expert or Lecturer) */
   passingScore?: number | null;
+  /** Whether assignment card was auto-created (now false - manual creation required) */
+  isAutoCreated?: boolean;
+  /** Message about manual assignment card creation */
+  message?: string;
 }
 
 export interface AssignedQuizDto {
@@ -574,6 +578,8 @@ export interface AssignedQuizDto {
   closeTime?: string | null;
   questionCount: number;
   isFromExpertLibrary: boolean;
+  creatorName?: string | null;
+  creatorType?: string | null; // "Expert" or "Lecturer"
 }
 
 export interface CreateQuizRequest {

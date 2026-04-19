@@ -23,27 +23,47 @@ import {
   Check,
   Trash,
   BookOpen,
+  User,
+  UserCheck,
+  Eye,
+  X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
-import { deleteQuiz, removeQuizFromClass, getUnassignedLecturerQuizzes, getAssignedQuizzes } from '@/lib/api/lecturer-quiz';
+import { deleteQuiz, removeQuizFromClass, getUnassignedLecturerQuizzes, getAssignedQuizzes, getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassQuizDto, AssignedQuizDto } from '@/lib/api/types';
+import type { ClassQuizDto, AssignedQuizDto, QuizDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import ExpertQuizLibrary from '@/components/lecturer/quizzes/ExpertQuizLibrary';
+import { fetchExpertQuizQuestions, assignExpertQuizToClass } from '@/lib/api/lecturer-expert-quiz';
+import { fetchLecturerClasses } from '@/lib/api/lecturer-classes';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 type QuizStatus = 'Active' | 'Draft' | 'Completed';
 type TabType = 'my-quizzes' | 'expert-library' | 'assigned-quizzes';
 
-interface EnrichedQuiz extends ClassQuizDto {
+interface EnrichedQuiz {
+  quizId: string;
+  classId: string;
+  quizName: string | null;
+  className: string | null;
+  topic: string | null;
+  assignedAt: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  questionCount?: number | null;
+  isFromExpertLibrary: boolean;
   status: QuizStatus;
   topicLabel: string;
-  formattedAssignedAt: string;
   formattedOpen: string;
   formattedClose: string;
   compactOpen: string;
   compactClose: string;
-  compactAssigned: string;
   isExpertQuiz: boolean;
+  difficulty?: string | null;
+  timeLimit?: number | null;
+  passingScore?: number | null;
 }
 
 interface EnrichedAssignedQuiz extends AssignedQuizDto {
@@ -54,6 +74,8 @@ interface EnrichedAssignedQuiz extends AssignedQuizDto {
   compactOpen: string;
   compactClose: string;
   compactAssigned: string;
+  creatorName?: string | null;
+  creatorType?: string | null;
 }
 
 const PAGE_SIZE = 5;
@@ -121,6 +143,8 @@ export default function QuizListPage() {
   const [selectedQuizIds, setSelectedQuizIds] = useState<Set<string>>(new Set());
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<Set<string> | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [previewQuiz, setPreviewQuiz] = useState<EnrichedQuiz | null>(null);
+  const [assignQuiz, setAssignQuiz] = useState<EnrichedQuiz | null>(null);
 
   const toggleSelect = (quizId: string) => {
     setSelectedQuizIds((prev) => {
@@ -145,7 +169,13 @@ export default function QuizListPage() {
         failedCount = results.length - successCount;
         await loadMyQuizzes();
       } else if (activeTab === 'assigned-quizzes') {
-        const results = await Promise.allSettled(ids.map((id) => removeQuizFromClass(id)));
+        const results = await Promise.allSettled(
+          ids.map((id) => {
+            const quiz = assignedQuizzes.find((q) => q.quizId === id);
+            if (!quiz) return Promise.reject(new Error('Quiz not found'));
+            return removeQuizFromClass(quiz.classId, quiz.quizId);
+          })
+        );
         successCount = results.filter((r) => r.status === 'fulfilled').length;
         failedCount = results.length - successCount;
         await loadAssignedQuizzes();
@@ -186,7 +216,8 @@ export default function QuizListPage() {
         await loadMyQuizzes();
         toast.success('Quiz deleted permanently.');
       } else if (activeTab === 'assigned-quizzes') {
-        await removeQuizFromClass(deleteTarget.assignmentId);
+        const target = deleteTarget as EnrichedAssignedQuiz;
+        await removeQuizFromClass(target.classId, target.quizId);
         await loadAssignedQuizzes();
         toast.success('Quiz unassigned from class.');
       }
@@ -207,7 +238,7 @@ export default function QuizListPage() {
         setError('Not logged in. Please log in again.');
         return;
       }
-      const data = await getUnassignedLecturerQuizzes(lecturerId);
+      const data = await getLecturerQuizzes(lecturerId);
       const enriched: EnrichedQuiz[] = data.map((q) => {
         const now = new Date();
         const open = q.openTime ? new Date(q.openTime) : null;
@@ -219,18 +250,27 @@ export default function QuizListPage() {
         else status = 'Active';
         const topicFromQuiz = (q.topic ?? '').trim();
         return {
-          ...q,
+          quizId: q.id,
+          classId: q.classId || '',
+          quizName: q.title,
+          className: q.className || null,
+          topic: q.topic || null,
+          assignedAt: q.createdAt,
+          openTime: q.openTime,
+          closeTime: q.closeTime,
+          questionCount: q.questionCount,
+          isFromExpertLibrary: q.isFromExpertLibrary ?? false,
           status,
           topicLabel: topicFromQuiz || '—',
-          formattedAssignedAt: q.createdAt
-            ? new Date(q.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-            : '—',
           formattedOpen: formatQuizInstant(q.openTime),
           formattedClose: formatQuizInstant(q.closeTime),
           compactOpen: formatQuizCompact(q.openTime),
           compactClose: formatQuizCompact(q.closeTime),
           compactAssigned: '—',
           isExpertQuiz: q.isFromExpertLibrary ?? false,
+          difficulty: q.difficulty ?? null,
+          timeLimit: q.timeLimit ?? null,
+          passingScore: q.passingScore ?? null,
         };
       });
       setMyQuizzes(enriched);
@@ -270,6 +310,8 @@ export default function QuizListPage() {
           compactOpen: formatQuizCompact(q.openTime),
           compactClose: formatQuizCompact(q.closeTime),
           compactAssigned: formatAssignedCompact(q.assignedAt ?? null),
+          creatorName: q.creatorName ?? null,
+          creatorType: q.creatorType ?? null,
         };
       });
       setAssignedQuizzes(enriched);
@@ -289,6 +331,22 @@ export default function QuizListPage() {
   }, [activeTab]);
 
   const uniqueClasses = Array.from(new Set(assignedQuizzes.map((q) => q.className).filter(Boolean))) as string[];
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    setPage(1);
+    // Clear filters and selections when switching tabs
+    setSearchTerm('');
+    setSelectedClass('all');
+    setSelectedQuizIds(new Set());
+    // Load data for the new tab
+    if (tab === 'my-quizzes') {
+      loadMyQuizzes();
+    } else if (tab === 'assigned-quizzes') {
+      loadAssignedQuizzes();
+    }
+    // expert-library loads within its own component
+  };
 
   const currentQuizzes = activeTab === 'my-quizzes' ? myQuizzes : assignedQuizzes;
 
@@ -350,7 +408,7 @@ export default function QuizListPage() {
       <div className="flex items-center gap-1 border-b border-border">
         <button
           type="button"
-          onClick={() => { setActiveTab('my-quizzes'); setPage(1); }}
+          onClick={() => handleTabChange('my-quizzes')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'my-quizzes' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           <ClipboardList className="h-4 w-4" />
@@ -358,7 +416,7 @@ export default function QuizListPage() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('expert-library')}
+          onClick={() => handleTabChange('expert-library')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'expert-library' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           <BookOpen className="h-4 w-4" />
@@ -366,7 +424,7 @@ export default function QuizListPage() {
         </button>
         <button
           type="button"
-          onClick={() => { setActiveTab('assigned-quizzes'); setPage(1); }}
+          onClick={() => handleTabChange('assigned-quizzes')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'assigned-quizzes' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           <ClipboardPen className="h-4 w-4" />
@@ -377,7 +435,7 @@ export default function QuizListPage() {
       {/* Expert Library Tab */}
       {activeTab === 'expert-library' ? (
         <div className="rounded-2xl border border-border bg-card p-6">
-          <ExpertQuizLibrary onAssignSuccess={() => setActiveTab('assigned-quizzes')} />
+          <ExpertQuizLibrary onAssignSuccess={() => handleTabChange('assigned-quizzes')} />
         </div>
       ) : (
         <div className="space-y-8">
@@ -482,12 +540,20 @@ export default function QuizListPage() {
               <table className="w-full table-fixed border-collapse text-left">
                 <colgroup>
                   <col style={{ width: '4%' }} />
-                  <col style={{ width: '22%' }} />
-                  <col style={{ width: '14%' }} />
+                  {activeTab === 'assigned-quizzes' ? (
+                    <>
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '10%' }} />
+                    </>
+                  ) : (
+                    <col style={{ width: '22%' }} />
+                  )}
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
                   <col style={{ width: '6%' }} />
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '20%' }} />
-                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '10%' }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-muted/40">
@@ -496,6 +562,7 @@ export default function QuizListPage() {
                     </th>
                     <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs">Quiz Title</th>
                     {activeTab === 'assigned-quizzes' && <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Class</th>}
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Creator</th>
                     <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Topic</th>
                     <th className="px-1 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-2 sm:py-4 sm:text-xs">Q#</th>
                     <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Status</th>
@@ -506,7 +573,7 @@ export default function QuizListPage() {
                 <tbody className="divide-y divide-border">
                   {paged.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-20 text-center sm:px-8">
+                      <td colSpan={activeTab === 'assigned-quizzes' ? 9 : 8} className="px-4 py-20 text-center sm:px-8">
                         <p className="text-muted-foreground">No quizzes found.</p>
                       </td>
                     </tr>
@@ -540,6 +607,22 @@ export default function QuizListPage() {
                             </td>
                           )}
                           <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                            {/* Creator Badge */}
+                            {(quiz as EnrichedAssignedQuiz).creatorType === 'Expert' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-1 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 sm:px-2.5 sm:py-1 sm:text-[10px]">
+                                <UserCheck className="h-3 w-3" />
+                                { (quiz as EnrichedAssignedQuiz).creatorName || 'Expert'}
+                              </span>
+                            ) : (quiz as EnrichedAssignedQuiz).creatorType === 'Lecturer' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 sm:px-2.5 sm:py-1 sm:text-[10px]">
+                                <User className="h-3 w-3" />
+                                {(quiz as EnrichedAssignedQuiz).creatorName || 'Lecturer'}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
                             <span className="inline-block max-w-full break-words rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[10px]">{quiz.topicLabel}</span>
                           </td>
                           <td className="px-1 py-4 text-center align-top sm:py-5">
@@ -560,9 +643,15 @@ export default function QuizListPage() {
                           <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
                             <div className="flex justify-end gap-1.5 sm:gap-2">
                               {activeTab === 'assigned-quizzes' && (
-                                <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}/results`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success" title="View Results">
-                                  <BarChart3 className="h-4 w-4" />
-                                </button>
+                                <>
+                                  <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}/results`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success" title="View Results">
+                                    <BarChart3 className="h-4 w-4" />
+                                  </button>
+                                  {/* Edit button - hiển thị cho tất cả assigned quizzes */}
+                                  <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary" title="Edit Quiz">
+                                    <Edit className="h-4 w-4" />
+                                  </button>
+                                </>
                               )}
                               {activeTab === 'my-quizzes' && !isExpert ? (
                                 <>
@@ -573,10 +662,17 @@ export default function QuizListPage() {
                                     <Trash2 className="h-4 w-4" />
                                   </button>
                                 </>
-                              ) : activeTab === 'my-quizzes' ? (
-                                <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2 py-1 text-[10px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-                                  <BookOpen className="h-3 w-3" />Expert
-                                </span>
+                              ) : activeTab === 'my-quizzes' && isExpert ? (
+                                <>
+                                  <button type="button" onClick={() => setPreviewQuiz(quiz as EnrichedQuiz)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer">
+                                    <Eye className="h-3.5 w-3.5" />
+                                    Xem trước
+                                  </button>
+                                  <button type="button" onClick={() => setAssignQuiz(quiz as EnrichedQuiz)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer">
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                    Gán
+                                  </button>
+                                </>
                               ) : (
                                 <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Unassign">
                                   <Trash2 className="h-4 w-4" />
@@ -706,6 +802,471 @@ export default function QuizListPage() {
           </div>
         )}
       </Modal>
+
+      {/* Preview Modal for Expert Quizzes */}
+      {previewQuiz && (
+        <PreviewModal
+          quiz={previewQuiz}
+          onClose={() => setPreviewQuiz(null)}
+          onAssign={() => {
+            setPreviewQuiz(null);
+            setAssignQuiz(previewQuiz);
+          }}
+        />
+      )}
+
+      {/* Assign Modal for Expert Quizzes */}
+      {assignQuiz && (
+        <AssignModal
+          quiz={assignQuiz}
+          onClose={() => setAssignQuiz(null)}
+          onAssigned={() => {
+            setAssignQuiz(null);
+            loadMyQuizzes();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Helper function for time conversion
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
+// ========== PREVIEW MODAL ==========
+
+interface PreviewModalProps {
+  quiz: EnrichedQuiz;
+  onClose: () => void;
+  onAssign: () => void;
+}
+
+function PreviewModal({ quiz, onClose, onAssign }: PreviewModalProps) {
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadQuestions();
+  }, [quiz.quizId]);
+
+  const loadQuestions = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchExpertQuizQuestions(quiz.quizId);
+      setQuestions(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load questions.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-card-foreground">{quiz.quizName || 'Untitled quiz'}</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {quiz.questionCount || 0} câu hỏi • Độ khó: {quiz.difficulty || '—'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
+          >
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : error ? (
+            <div className="flex items-center gap-2 text-destructive py-8">
+              <AlertCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          ) : questions.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">Quiz này chưa có câu hỏi nào.</p>
+          ) : (
+            <div className="space-y-6">
+              {questions.map((q: any, idx: number) => (
+                <div key={q.questionId} className="rounded-xl border border-border bg-input/20 overflow-hidden">
+                  {/* Ảnh câu hỏi */}
+                  {q.imageUrl && (
+                    <div className="bg-muted/50 p-4 border-b border-border">
+                      <img
+                        src={resolveApiAssetUrl(q.imageUrl)}
+                        alt={`Question ${idx + 1}`}
+                        className="max-h-64 mx-auto rounded-lg object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {/* Nội dung câu hỏi */}
+                  <div className="p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/15 text-primary font-bold text-sm shrink-0">
+                        {idx + 1}
+                      </span>
+                      <p className="text-base font-medium text-card-foreground leading-relaxed">
+                        {q.questionText}
+                      </p>
+                    </div>
+
+                    {/* Options */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-11">
+                      {[
+                        { key: 'A', value: q.optionA },
+                        { key: 'B', value: q.optionB },
+                        { key: 'C', value: q.optionC },
+                        { key: 'D', value: q.optionD },
+                      ].map(
+                        (opt) =>
+                          opt.value && (
+                            <div
+                              key={opt.key}
+                              className={`flex items-center gap-2 p-3 rounded-lg border ${
+                                q.correctAnswer?.toUpperCase() === opt.key
+                                  ? 'border-secondary bg-secondary/10'
+                                  : 'border-border bg-card'
+                              }`}
+                            >
+                              <span
+                                className={`font-bold text-sm w-6 h-6 flex items-center justify-center rounded ${
+                                  q.correctAnswer?.toUpperCase() === opt.key
+                                    ? 'bg-secondary text-white'
+                                    : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {opt.key}
+                              </span>
+                              <span className="text-sm text-card-foreground">{opt.value}</span>
+                              {q.correctAnswer?.toUpperCase() === opt.key && (
+                                <CheckCircle className="h-4 w-4 text-secondary ml-auto" />
+                              )}
+                            </div>
+                          )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            Đóng
+          </button>
+          <button
+            onClick={onAssign}
+            className="px-6 py-2.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            Gán vào lớp
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== ASSIGN MODAL ==========
+
+interface AssignModalProps {
+  quiz: EnrichedQuiz;
+  onClose: () => void;
+  onAssigned: () => void;
+}
+
+function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
+  const toast = useToast();
+  const [classes, setClasses] = useState<{ id: string; className: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
+  const [openTime, setOpenTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.openTime)
+  );
+  const [closeTime, setCloseTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.closeTime)
+  );
+  const [timeLimit, setTimeLimit] = useState<number | ''>(quiz.timeLimit ?? '');
+  const [passingScore, setPassingScore] = useState<number | ''>(quiz.passingScore ?? '');
+
+  const toggleClass = (classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId)
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId]
+    );
+  };
+
+  const removeClass = (classId: string) => {
+    setSelectedClassIds((prev) => prev.filter((id) => id !== classId));
+  };
+
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  const loadClasses = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchLecturerClasses();
+      setClasses(data);
+      // Không preset lớp nào, để user tự chọn
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load classes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (selectedClassIds.length === 0) {
+      toast.error('Please select at least one class.');
+      return;
+    }
+    setAssigning(true);
+
+    // CLAMP LOGIC
+    let effectiveTimeLimit = typeof timeLimit === 'number' ? timeLimit : null;
+    let effectivePassingScore = typeof passingScore === 'number' ? passingScore : null;
+    const warnings: string[] = [];
+
+    if (quiz.timeLimit != null && effectiveTimeLimit != null) {
+      const minTimeLimit = Math.max(5, Math.floor(quiz.timeLimit * 0.5));
+      if (effectiveTimeLimit < minTimeLimit) {
+        warnings.push(`Thời gian làm bài thấp hơn mức tối thiểu (${minTimeLimit} phút).`);
+      }
+      if (effectiveTimeLimit > quiz.timeLimit) {
+        warnings.push(`Thời gian làm bài vượt quá giới hạn đề bài (${quiz.timeLimit} phút).`);
+      }
+    }
+
+    if (quiz.passingScore != null && effectivePassingScore != null) {
+      if (effectivePassingScore < 0) warnings.push('Điểm Passing không thể âm.');
+      if (effectivePassingScore > 100) warnings.push('Điểm Passing không thể vượt quá 100.');
+    }
+
+    const isoOpen = localDatetimeLocalToIso(openTime);
+    const isoClose = localDatetimeLocalToIso(closeTime);
+    if (isoOpen && isoClose && new Date(isoOpen) >= new Date(isoClose)) {
+      warnings.push('Thời gian mở phải trước thời gian đóng.');
+    }
+
+    if (warnings.length > 0) {
+      const confirmed = window.confirm(
+        'Có một số cảnh báo:\n\n' + warnings.join('\n') + '\n\nBạn vẫn muốn tiếp tục?'
+      );
+      if (!confirmed) {
+        setAssigning(false);
+        return;
+      }
+    }
+
+    try {
+      for (const classId of selectedClassIds) {
+        await assignExpertQuizToClass(
+          classId,
+          quiz.quizId,
+          {
+            openTime: isoOpen || undefined,
+            closeTime: isoClose || undefined,
+            timeLimitMinutes: effectiveTimeLimit,
+            passingScore: effectivePassingScore,
+          }
+        );
+      }
+      toast.success(`Gán quiz vào ${selectedClassIds.length} lớp thành công!`);
+      onAssigned();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gán quiz thất bại.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-card-foreground">Gán Quiz vào Lớp</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {quiz.quizName || 'Untitled quiz'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
+          >
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Class Selection */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Chọn lớp <span className="text-destructive">*</span>
+            </label>
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading classes...
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {classes.map((cls) => (
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => toggleClass(cls.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      selectedClassIds.includes(cls.id)
+                        ? 'bg-primary text-white'
+                        : 'bg-muted text-card-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {selectedClassIds.includes(cls.id) && <Check className="h-3.5 w-3.5" />}
+                    {cls.className}
+                  </button>
+                ))}
+                {classes.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No classes found.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Open Time */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Thời gian mở (tùy chọn)
+            </label>
+            <input
+              type="datetime-local"
+              value={openTime}
+              onChange={(e) => setOpenTime(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Close Time */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Thời gian đóng (tùy chọn)
+            </label>
+            <input
+              type="datetime-local"
+              value={closeTime}
+              onChange={(e) => setCloseTime(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Time Limit */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Giới hạn thời gian làm bài (phút, tùy chọn)
+            </label>
+            <input
+              type="number"
+              min="5"
+              value={timeLimit}
+              onChange={(e) => setTimeLimit(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder={quiz.timeLimit?.toString() || ''}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {quiz.timeLimit != null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Đề bài gốc: {quiz.timeLimit} phút
+              </p>
+            )}
+          </div>
+
+          {/* Passing Score */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Điểm Passing (tùy chọn)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={passingScore}
+              onChange={(e) => setPassingScore(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder={quiz.passingScore?.toString() || ''}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {quiz.passingScore != null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Đề bài gốc: {quiz.passingScore} điểm
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
+          <button
+            type="button"
+            disabled={assigning}
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            disabled={assigning || selectedClassIds.length === 0}
+            onClick={handleAssign}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+          >
+            {assigning ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Đang gán...
+              </>
+            ) : (
+              'Gán vào lớp'
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
