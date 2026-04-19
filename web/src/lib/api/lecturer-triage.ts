@@ -120,6 +120,12 @@ function normalizeTriageRow(row: unknown): LecturerTriageRow | null {
   const id = String(r.answerId ?? r.AnswerId ?? r.questionId ?? r.QuestionId ?? '');
   if (!id) return null;
 
+  const qsRaw = r.questionSource ?? r.QuestionSource ?? r.triageSource ?? r.TriageSource;
+  const qs = String(qsRaw ?? '').trim();
+  let questionSource: LecturerTriageRow['questionSource'] = null;
+  if (/visualqa/i.test(qs)) questionSource = 'VisualQA';
+  else if (/caseqa/i.test(qs)) questionSource = 'CaseQA';
+
   return {
     id,
     studentName: String(r.studentName ?? r.StudentName ?? ''),
@@ -132,5 +138,8 @@ function normalizeTriageRow(row: unknown): LecturerTriageRow | null {
     askedAt: String(r.askedAt ?? r.AskedAt ?? r.createdAt ?? r.questionCreatedAt ?? ''),
     similarityScore: Number(r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? 0),
     escalated: !!(r.isEscalated ?? r.IsEscalated ?? (r.status === 'Escalated' ? true : false)),
+    questionSource,
+    caseTitle: String(r.caseTitle ?? r.CaseTitle ?? '').trim() || null,
+    caseDescription: String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null,
   };
 }

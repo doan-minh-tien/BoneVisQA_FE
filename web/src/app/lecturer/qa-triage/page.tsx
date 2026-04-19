@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { TriageWorkbenchSkeleton } from '@/components/shared/DashboardSkeletons';
@@ -84,6 +85,21 @@ function confidencePercent(score: number | null | undefined): number | null {
   return Math.round(Math.min(100, Math.max(0, pct)));
 }
 
+/** BE `questionSource` when present; otherwise infer from case id vs upload-only sessions. */
+function triageWorkflowLabel(item: LectStudentQuestionDto): string {
+  if (item.questionSource === 'CaseQA') return 'Thư viện case';
+  if (item.questionSource === 'VisualQA') return 'Upload / ROI';
+  const cid = item.caseId?.trim();
+  if (!cid) return 'Visual QA';
+  return 'Visual QA';
+}
+
+function shortCaseId(caseId: string): string {
+  const t = caseId.trim();
+  if (!t) return '—';
+  return t.length <= 10 ? t.toUpperCase() : `${t.slice(0, 8).toUpperCase()}…`;
+}
+
 function resolveSelectedTurn(item: LectStudentQuestionDto | null): VisualQaTurn | null {
   if (!item?.turns || item.turns.length === 0) return null;
   const requestedReviewMessageId = item.requestedReviewMessageId?.trim();
@@ -131,6 +147,7 @@ function hasSelectedPairMismatch(item: LectStudentQuestionDto | null): boolean {
 
 export default function QATriagePage() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [questions, setQuestions] = useState<LectStudentQuestionDto[]>([]);
@@ -179,12 +196,16 @@ export default function QATriagePage() {
     void getLecturerClasses(userId)
       .then((data) => {
         setClasses(data);
-        if (data.length > 0) setSelectedClassId(data[0].id);
+        if (data.length === 0) return;
+        const fromUrl = searchParams.get('classId')?.trim();
+        const pick =
+          fromUrl && data.some((c) => c.id === fromUrl) ? fromUrl : data[0].id;
+        setSelectedClassId(pick);
       })
       .catch(() => {
         toast.error('Unable to load your lecturer classes.');
       });
-  }, [toast]);
+  }, [toast, searchParams]);
 
   const loadQuestions = useCallback(async (classId: string) => {
     setLoading(true);
@@ -416,9 +437,14 @@ export default function QATriagePage() {
                           <User className="h-3 w-3" />
                           {question.studentName}
                         </span>
-                        <span className="rounded-full bg-muted px-2 py-0.5">
-                          Case {question.caseId.slice(0, 8).toUpperCase()}
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                          {triageWorkflowLabel(question)}
                         </span>
+                        {question.caseId?.trim() ? (
+                          <span className="rounded-full bg-muted px-2 py-0.5" title={question.caseId}>
+                            Case {shortCaseId(question.caseId)}
+                          </span>
+                        ) : null}
                         {question.createdAt ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
                             <Clock3 className="h-3 w-3" />
@@ -566,16 +592,76 @@ export default function QATriagePage() {
                       </p>
                     </article>
 
+                    {selectedTurn &&
+                    (selectedTurn.structuredDiagnosis?.trim() ||
+                      selectedTurn.keyImagingFindings?.trim()) ? (
+                      <article className="rounded-lg border border-border bg-background p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Structured assistant fields (selected turn)
+                        </p>
+                        {selectedTurn.structuredDiagnosis?.trim() ? (
+                          <div className="mt-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Structured diagnosis
+                            </p>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground/90">
+                              {selectedTurn.structuredDiagnosis.trim()}
+                            </p>
+                          </div>
+                        ) : null}
+                        {selectedTurn.keyImagingFindings?.trim() ? (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Key imaging findings
+                            </p>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground/90">
+                              {selectedTurn.keyImagingFindings.trim()}
+                            </p>
+                          </div>
+                        ) : null}
+                      </article>
+                    ) : null}
+
                     <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Case metadata</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Case metadata (catalog snapshot)
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {triageWorkflowLabel(selectedQuestion)} —{' '}
+                        {selectedQuestion.caseId?.trim()
+                          ? `Case ID: ${shortCaseId(selectedQuestion.caseId)}`
+                          : 'Không gắn case thư viện (upload / ROI).'}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          {selectedQuestion.caseTitle || 'Untitled case'}
-                        </span>
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          Case ID: {selectedQuestion.caseId.slice(0, 8).toUpperCase()}
+                          {selectedQuestion.caseTitle?.trim() || 'Untitled case'}
                         </span>
                       </div>
+                      {selectedQuestion.caseDescription?.trim() ? (
+                        <p className="mt-3 text-sm leading-relaxed text-foreground/90">
+                          {selectedQuestion.caseDescription.trim()}
+                        </p>
+                      ) : null}
+                      {selectedQuestion.caseSuggestedDiagnosis?.trim() ? (
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Case suggested diagnosis
+                          </p>
+                          <p className="mt-2 text-sm text-foreground/90">
+                            {selectedQuestion.caseSuggestedDiagnosis.trim()}
+                          </p>
+                        </div>
+                      ) : null}
+                      {selectedQuestion.caseKeyFindings?.trim() ? (
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Case key findings
+                          </p>
+                          <p className="mt-2 text-sm text-foreground/90">
+                            {selectedQuestion.caseKeyFindings.trim()}
+                          </p>
+                        </div>
+                      ) : null}
                     </article>
                     {selectedPairMismatch ? (
                       <article className="rounded-lg border border-amber-300 bg-amber-50 p-4">

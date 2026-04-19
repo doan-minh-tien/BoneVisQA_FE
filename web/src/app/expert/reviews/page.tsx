@@ -610,6 +610,40 @@ export default function ExpertReviewsPage() {
                                 )}
                               </div>
                             </div>
+                            {item.caseDescription?.trim() ||
+                            item.caseSuggestedDiagnosis?.trim() ||
+                            item.caseKeyFindings?.trim() ? (
+                              <div className="rounded-xl border border-border-color bg-surface p-4">
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                  Case snapshot (catalog)
+                                </p>
+                                {item.caseId?.trim() ? (
+                                  <p className="mb-2 text-[11px] text-text-muted">
+                                    Case ID:{' '}
+                                    <span className="font-mono text-text-main">{item.caseId.trim()}</span>
+                                  </p>
+                                ) : null}
+                                {item.caseDescription?.trim() ? (
+                                  <p className="text-sm leading-relaxed text-text-main">{item.caseDescription.trim()}</p>
+                                ) : null}
+                                {item.caseSuggestedDiagnosis?.trim() ? (
+                                  <div className="mt-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                                      Suggested diagnosis
+                                    </p>
+                                    <p className="mt-1 text-sm text-text-main">{item.caseSuggestedDiagnosis.trim()}</p>
+                                  </div>
+                                ) : null}
+                                {item.caseKeyFindings?.trim() ? (
+                                  <div className="mt-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                                      Key findings
+                                    </p>
+                                    <p className="mt-1 text-sm text-text-main">{item.caseKeyFindings.trim()}</p>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
                             <div className="rounded-xl border border-border-color bg-surface p-4">
                               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-accent">
                                 Left pane · Expert edit mode

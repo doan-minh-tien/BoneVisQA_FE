@@ -192,6 +192,14 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     sessionQuestion || fallbackQuestionFromMessage || r.questionText || r.question || '',
   );
 
+  const caseIdRaw = r.caseId ?? r.CaseId;
+  const caseId =
+    caseIdRaw != null && String(caseIdRaw).trim() !== '' ? String(caseIdRaw).trim() : null;
+  const caseDescription = String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null;
+  const caseSuggestedDiagnosis =
+    String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim() || null;
+  const caseKeyFindings = String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim() || null;
+
   return {
     sessionId,
     answerId: answerIdRaw || null,
@@ -200,6 +208,10 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     className: r.className !== undefined ? String(r.className) : undefined,
     questionText,
     question: questionText,
+    caseId,
+    caseDescription,
+    caseSuggestedDiagnosis,
+    caseKeyFindings,
     imageUrl:
       r.imageUrl !== undefined
         ? String(r.imageUrl)
@@ -329,26 +341,22 @@ const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => ({
   reflectiveQuestions: payload.reflectiveQuestions ?? null,
 });
 
-/** Approve / finalize review — prefers `POST .../approve`, falls back to legacy `.../resolve`. */
+/**
+ * Persist expert-reviewed outcome (answer text, diagnoses, notes).
+ * BE: POST `/api/expert/reviews/{sessionId}/resolve` — this also sets session status to ExpertApproved.
+ * Status-only finalize without storing expert content uses `approveExpertReview` (POST `.../approve`).
+ */
 export async function putExpertReview(
   sessionId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
   const body = reviewSubmitBody(payload);
   try {
-    await http.post(`/api/expert/reviews/${sessionId}/approve`, body);
-    return;
+    await http.post(`/api/expert/reviews/${sessionId}/resolve`, body);
   } catch (e) {
     if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
       throw new Error(REVIEW_WORKFLOW_CONFLICT);
     }
-    if (!axios.isAxiosError(e)) throw new Error(getApiErrorMessage(e));
-    const st = e.response?.status;
-    if (st !== 404 && st !== 405 && st !== 400) throw new Error(getApiErrorMessage(e));
-  }
-  try {
-    await http.post(`/api/expert/reviews/${sessionId}/resolve`, body);
-  } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
@@ -412,18 +420,25 @@ export async function promoteExpertReview(
     const { data } = await http.post<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}/promote`, body);
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    const direct = record.promotedCaseId ?? record.PromotedCaseId ?? null;
+    const direct =
+      record.promotedCaseId ??
+      record.PromotedCaseId ??
+      record.caseId ??
+      record.CaseId ??
+      null;
     if (direct != null) return String(direct);
     const nestedData = record.data;
     if (nestedData && typeof nestedData === 'object') {
       const nested = nestedData as Record<string, unknown>;
-      const nestedId = nested.promotedCaseId ?? nested.PromotedCaseId ?? null;
+      const nestedId =
+        nested.promotedCaseId ?? nested.PromotedCaseId ?? nested.caseId ?? nested.CaseId ?? null;
       if (nestedId != null) return String(nestedId);
     }
     const nestedResult = record.result;
     if (nestedResult && typeof nestedResult === 'object') {
       const nested = nestedResult as Record<string, unknown>;
-      const nestedId = nested.promotedCaseId ?? nested.PromotedCaseId ?? null;
+      const nestedId =
+        nested.promotedCaseId ?? nested.PromotedCaseId ?? nested.caseId ?? nested.CaseId ?? null;
       if (nestedId != null) return String(nestedId);
     }
     return null;

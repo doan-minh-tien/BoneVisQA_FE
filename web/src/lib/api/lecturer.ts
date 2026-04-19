@@ -482,20 +482,31 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
       typeof turnIndexRaw === 'number'
         ? turnIndexRaw
         : Number.parseInt(String(turnIndexRaw), 10) || idx + 1;
-    const roiBoundingBox = parseNormalizedBoundingBox(
-      t.roiBoundingBox ??
-        t.RoiBoundingBox ??
-        t.coordinates ??
-        t.Coordinates ??
-        t.customPolygon ??
-        t.CustomPolygon,
-    );
+    const userMsgRaw = t.userMessage ?? t.UserMessage;
+    let userMsgCoords: unknown;
+    if (userMsgRaw && typeof userMsgRaw === 'object') {
+      const um = userMsgRaw as Record<string, unknown>;
+      userMsgCoords =
+        um.questionCoordinates ??
+        um.QuestionCoordinates ??
+        um.coordinates ??
+        um.Coordinates;
+    }
+    const roiBoundingBox =
+      parseNormalizedBoundingBox(t.roiBoundingBox ?? t.RoiBoundingBox) ??
+      parseNormalizedBoundingBox(t.questionCoordinates ?? t.QuestionCoordinates) ??
+      parseNormalizedBoundingBox(userMsgCoords) ??
+      parseNormalizedBoundingBox(
+        t.coordinates ?? t.Coordinates ?? t.customPolygon ?? t.CustomPolygon,
+      );
     return {
       turnId: String(t.turnId ?? t.TurnId ?? '').trim() || null,
       turnIndex,
       questionText: q,
       answerText: a,
       roiBoundingBox,
+      structuredDiagnosis: String(t.structuredDiagnosis ?? t.StructuredDiagnosis ?? '').trim() || null,
+      keyImagingFindings: String(t.keyImagingFindings ?? t.KeyImagingFindings ?? '').trim() || null,
       diagnosis: String(
         t.diagnosis ?? t.Diagnosis ?? t.suggestedDiagnosis ?? t.SuggestedDiagnosis ?? '',
       ).trim(),
@@ -607,6 +618,9 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
           .filter((entry) => entry !== null)
       : [],
     questionSource: normalizeQuestionSource(r.questionSource ?? r.QuestionSource),
+    caseDescription: String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null,
+    caseSuggestedDiagnosis: String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim() || null,
+    caseKeyFindings: String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim() || null,
   };
 }
 
