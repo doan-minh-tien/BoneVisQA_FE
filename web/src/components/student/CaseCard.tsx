@@ -1,7 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { useMemo } from 'react';
 import { BookOpen, CheckCircle2, Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
 import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
+import { formatRelativeTime } from '@/lib/format-relative-time';
+import { stashSessionPrefillImage } from '@/components/student/VisualQaSessionHistorySidebar';
 
 interface CaseCardProps {
   title: string;
@@ -12,6 +15,10 @@ interface CaseCardProps {
   duration?: string;
   progress?: number;
   status?: string;
+  /** BE `reviewState` on history list when `status` alone is ambiguous. */
+  reviewState?: string | null;
+  /** BE `lastResponderRole` on history list (e.g. assistant, lecturer, expert). */
+  lastResponderRole?: string | null;
   askedAt?: string;
   /** SEPS learning fields when returned by history API */
   keyImagingFindings?: string | null;
@@ -20,6 +27,27 @@ interface CaseCardProps {
   rejectionReason?: string | null;
   /** When set, the whole card links (e.g. catalog case detail). */
   href?: string;
+  /** Stash study image for Visual QA restore when thread DTO omits image URL (Wave 1 hydrate). */
+  prefillSessionImage?: { sessionId: string; imageUrl?: string | null };
+}
+
+function formatLastResponderRole(raw: string | null | undefined): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  const key = t.toLowerCase();
+  const labels: Record<string, string> = {
+    assistant: 'Assistant',
+    ai: 'Assistant',
+    student: 'You',
+    user: 'You',
+    lecturer: 'Lecturer',
+    instructor: 'Lecturer',
+    expert: 'Expert',
+    system: 'System',
+  };
+  if (labels[key]) return `Last reply: ${labels[key]}`;
+  const pretty = t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+  return `Last reply: ${pretty}`;
 }
 
 const difficultyConfig = {
@@ -46,15 +74,37 @@ export default function CaseCard({
   duration = '15 min',
   progress = 0,
   status,
+  reviewState,
+  lastResponderRole,
   askedAt,
   keyImagingFindings,
   reflectiveQuestions,
   rejectionReason,
   href,
+  prefillSessionImage,
 }: CaseCardProps) {
   const diffConfig = difficultyConfig[difficulty];
+  const showRegionTags = Boolean(boneLocation?.trim() || lesionType?.trim());
+  const metaTimeLabel = useMemo(() => {
+    const raw = askedAt?.trim();
+    if (!raw) return duration ?? '';
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return formatRelativeTime(raw);
+    return raw;
+  }, [askedAt, duration]);
+  const metaTimeTitle = useMemo(() => {
+    const raw = askedAt?.trim();
+    if (!raw) return undefined;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleString();
+  }, [askedAt]);
   const normalizedStatusKey = (status ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const reviewBadge =
+  const normalizedReviewStateKey = (reviewState ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  let reviewBadge =
     normalizedStatusKey === 'expertapproved' ||
     normalizedStatusKey === 'approved' ||
     normalizedStatusKey === 'revised'
@@ -79,7 +129,7 @@ export default function CaseCard({
             }
           : normalizedStatusKey === 'active'
             ? {
-                label: 'Chatting',
+                label: 'Active session',
                 className: 'border-blue-400/40 bg-blue-500/10 text-blue-700',
                 icon: Clock,
               }
@@ -96,7 +146,29 @@ export default function CaseCard({
                 icon: Clock,
               }
             : null;
+  if (!reviewBadge && normalizedReviewStateKey && normalizedReviewStateKey !== 'none') {
+    if (normalizedReviewStateKey === 'pending') {
+      reviewBadge = {
+        label: 'Review requested',
+        className: 'border-violet-400/40 bg-violet-500/10 text-violet-800',
+        icon: Clock,
+      };
+    } else if (normalizedReviewStateKey === 'escalated') {
+      reviewBadge = {
+        label: 'With expert',
+        className: 'border-orange-400/40 bg-orange-500/10 text-orange-700',
+        icon: ShieldAlert,
+      };
+    } else if (normalizedReviewStateKey === 'reviewed' || normalizedReviewStateKey === 'resolved') {
+      reviewBadge = {
+        label: 'Review updated',
+        className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-800',
+        icon: CheckCircle2,
+      };
+    }
+  }
   const ReviewIcon = reviewBadge?.icon;
+  const lastResponderLine = formatLastResponderRole(lastResponderRole);
 
   const article = (
     <article className="group block overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:shadow-lg">
@@ -141,6 +213,10 @@ export default function CaseCard({
           {title}
         </h3>
 
+        {lastResponderLine ? (
+          <p className="mb-2 text-[11px] leading-snug text-muted-foreground">{lastResponderLine}</p>
+        ) : null}
+
         {reviewBadge && ReviewIcon ? (
           <div
             className={`mb-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${reviewBadge.className}`}
@@ -160,15 +236,16 @@ export default function CaseCard({
           </p>
         ) : null}
 
-        {/* Tags */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">
-            {boneLocation}
-          </span>
-          <span className="px-2 py-1 bg-accent/10 text-accent text-xs rounded">
-            {lesionType}
-          </span>
-        </div>
+        {showRegionTags ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {boneLocation?.trim() ? (
+              <span className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{boneLocation.trim()}</span>
+            ) : null}
+            {lesionType?.trim() ? (
+              <span className="rounded bg-accent/10 px-2 py-1 text-xs text-accent">{lesionType.trim()}</span>
+            ) : null}
+          </div>
+        ) : null}
 
         {keyImagingFindings?.trim() ? (
           <p className="mb-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
@@ -185,9 +262,9 @@ export default function CaseCard({
 
         {/* Meta */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            <span>{askedAt || duration}</span>
+          <div className="flex items-center gap-1" title={metaTimeTitle}>
+            <Clock className="h-4 w-4 shrink-0" />
+            <span className="text-xs sm:text-sm">{metaTimeLabel}</span>
           </div>
           {progress > 0 && (
             <div className="flex items-center gap-1 text-accent">
@@ -202,7 +279,16 @@ export default function CaseCard({
 
   if (href?.trim()) {
     return (
-      <Link href={href.trim()} className="block rounded-xl no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+      <Link
+        href={href.trim()}
+        className="block rounded-xl no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        onClick={() => {
+          const sid = prefillSessionImage?.sessionId?.trim();
+          if (sid && prefillSessionImage?.imageUrl?.trim()) {
+            stashSessionPrefillImage(sid, prefillSessionImage.imageUrl);
+          }
+        }}
+      >
         {article}
       </Link>
     );

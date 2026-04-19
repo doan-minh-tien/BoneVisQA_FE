@@ -142,8 +142,10 @@ export default function StudentHistoryPage() {
             </button>
           </div>
           <p className="text-xs text-muted-foreground sm:ml-2 sm:max-w-xl">
-            Tabs separate curated case-library work from uploads you brought into Visual QA. Classification uses API
-            fields when present, with light fallbacks when the server omits them.
+            Tabs separate curated case-library work from uploads you brought into Visual QA. Personal sessions open in
+            the same Visual QA workspace (<span className="font-mono text-[11px]">/student/qa/image</span>) so chat,
+            image, and history stay in one place. Classification uses API fields when present, with light fallbacks when
+            the server omits them.
           </p>
         </div>
 
@@ -231,17 +233,21 @@ export default function StudentHistoryPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 md:gap-5">
             {filtered.map((item) => {
-              const detailHref =
-                activeTab === 'cases' && item.catalogCaseId?.trim()
+              const sid = item.sessionId?.trim();
+              const detailHref = sid
+                ? `/student/qa/image?sessionId=${encodeURIComponent(sid)}`
+                : activeTab === 'cases' && item.catalogCaseId?.trim()
                   ? `/student/cases/${encodeURIComponent(item.catalogCaseId.trim())}`
-                  : activeTab === 'personal' && item.sessionId?.trim()
-                    ? `/student/qa/image?sessionId=${encodeURIComponent(item.sessionId.trim())}`
                   : undefined;
               return (
                 <CaseCard
                   key={item.id}
                   href={detailHref}
-                  title={item.lastQuestionAsked?.trim() || item.title}
+                  title={
+                    item.lastQuestionAsked?.trim() ||
+                    item.questionSnippet?.trim() ||
+                    item.title
+                  }
                   thumbnail={item.thumbnailUrl}
                   boneLocation={item.boneLocation}
                   lesionType={item.lesionType}
@@ -249,10 +255,17 @@ export default function StudentHistoryPage() {
                   duration={item.duration}
                   progress={item.progress}
                   status={item.status}
-                  askedAt={item.askedAt}
+                  reviewState={item.reviewState}
+                  lastResponderRole={item.lastResponderRole}
+                  askedAt={item.askedAt ?? item.updatedAt ?? undefined}
                   keyImagingFindings={item.keyImagingFindings}
                   reflectiveQuestions={item.reflectiveQuestions}
                   rejectionReason={item.rejectionReason}
+                  prefillSessionImage={
+                    activeTab === 'personal' && sid
+                      ? { sessionId: sid, imageUrl: item.thumbnailUrl }
+                      : undefined
+                  }
                 />
               );
             })}

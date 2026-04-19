@@ -150,12 +150,32 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   };
 }
 
+function coordinatesFromUserMessage(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const um = raw as Record<string, unknown>;
+  return (
+    pick(um, ['questionCoordinates', 'question_coordinates']) ??
+    pick(um, ['coordinates', 'Coordinates'])
+  );
+}
+
 function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTurn {
   const report = normalizeVisualQaReport(raw);
   const o = normalizeRootPayload(raw);
   const turnRaw = pick(o, ['turnIndex']);
   const createdRaw = pick(o, ['createdAt']);
-  const roiRaw = pick(o, ['roiBoundingBox']);
+  const roiRaw = pick(o, ['roiBoundingBox', 'roi_bounding_box']);
+  const questionCoordsRaw = pick(o, [
+    'questionCoordinates',
+    'question_coordinates',
+    'QuestionCoordinates',
+  ]);
+  const userMessageRaw = pick(o, ['userMessage', 'user_message', 'UserMessage']);
+  const questionCoordsParsed =
+    parseNormalizedBoundingBox(questionCoordsRaw) ??
+    parseNormalizedBoundingBox(coordinatesFromUserMessage(userMessageRaw));
+  const roiFromLegacyFields = parseNormalizedBoundingBox(roiRaw);
+  const roiBoundingBox = roiFromLegacyFields ?? questionCoordsParsed;
   const turnIndex =
     typeof turnRaw === 'number' && Number.isFinite(turnRaw)
       ? turnRaw
@@ -175,7 +195,8 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
     ...(report.questionText ? { questionText: report.questionText } : {}),
     ...(report.answerText ? { answerText: report.answerText } : {}),
     ...(messages.length > 0 ? { messages } : {}),
-    roiBoundingBox: parseNormalizedBoundingBox(roiRaw),
+    ...(questionCoordsParsed ? { questionCoordinates: questionCoordsParsed } : {}),
+    roiBoundingBox,
     diagnosis: report.diagnosis ?? '',
     ...(report.findings ? { findings: report.findings } : {}),
     ...(reflectiveTurn && reflectiveTurn.length > 0 ? { reflectiveQuestions: reflectiveTurn } : {}),
@@ -273,8 +294,28 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
       : null;
   const topLevelReport = normalizeVisualQaReport(o);
   const sessionReflective = reflectiveQuestionsReportToTurnArray(topLevelReport.reflectiveQuestions);
+  const sessionImageUrl = asNullableString(
+    pick(o, [
+      'sessionImageUrl',
+      'session_image_url',
+      'studyImageUrl',
+      'study_image_url',
+      'StudyImageUrl',
+      'imageUrl',
+      'image_url',
+      'ImageUrl',
+      'customImageUrl',
+      'custom_image_url',
+    ]),
+  );
+  const threadRoiBoundingBox = parseNormalizedBoundingBox(
+    pick(o, ['roiBoundingBox', 'roi_bounding_box', 'RoiBoundingBox']),
+  );
+
   return {
     sessionId: sessionId || 'session-local',
+    ...(sessionImageUrl ? { sessionImageUrl } : {}),
+    ...(threadRoiBoundingBox ? { roiBoundingBox: threadRoiBoundingBox } : {}),
     clientRequestId: asNullableString(pick(o, ['clientRequestId', 'client_request_id'])),
     responseKind: asNullableString(pick(o, ['responseKind', 'response_kind'])),
     ...(topLevelReport.answerText ? { answerText: topLevelReport.answerText } : {}),
@@ -293,6 +334,7 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
     updatedAt,
     reviewState: asNullableString(pick(o, ['reviewState', 'review_state'])),
     lastResponderRole: asNullableString(pick(o, ['lastResponderRole', 'last_responder_role'])),
+    blockingNotice: asNullableString(pick(o, ['blockingNotice', 'blocking_notice'])),
     systemNotice,
     policyReason: asNullableString(pick(o, ['policyReason', 'policy_reason'])) ?? systemNoticePolicyReason,
     systemNoticeCode:

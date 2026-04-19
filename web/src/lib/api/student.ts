@@ -93,7 +93,17 @@ function inferHistoryKind(item: Record<string, unknown>): StudentHistoryKind {
 function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
-  const id = String(item.id ?? item.caseId ?? item.case_id ?? item.answerId ?? item.answer_id ?? '');
+  /** Visual QA history list rows are keyed by `sessionId` (BE: VisualQaSessionHistoryItemDto). */
+  const id = String(
+    item.sessionId ??
+      item.SessionId ??
+      item.id ??
+      item.caseId ??
+      item.case_id ??
+      item.answerId ??
+      item.answer_id ??
+      '',
+  ).trim();
   if (!id) return null;
 
   const historyKind = inferHistoryKind(item);
@@ -120,6 +130,8 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
     const hiddenStatuses = new Set(['deleted', 'archived', 'cancelled']);
     if (hiddenStatuses.has(normalizedStatus)) return null;
   }
+  const snippet =
+    pickStringAny(item, ['questionSnippet', 'question_snippet', 'QuestionSnippet']) ?? null;
   const lastUserQuestion =
     [...qaMessages]
       .reverse()
@@ -134,6 +146,7 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
       : null;
   const firstQuestionFallback = pickStringAny(item, ['questionText', 'question_text', 'question']);
   const trimmedQuestionFallback = firstQuestionFallback ? firstQuestionFallback.slice(0, 50).trim() : null;
+  const previewQuestion = normalizedLastQuestion ?? snippet ?? trimmedQuestionFallback;
   const imageFromMessages =
     [...qaMessages]
       .reverse()
@@ -152,26 +165,47 @@ function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
       .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
       ?.thumbnail_url;
 
+  const sessionIdMapped = pickStringAny(item, ['sessionId', 'SessionId', 'session_id']);
+  const reviewStateRaw = pickStringAny(item, ['reviewState', 'ReviewState', 'review_state']);
+  const lastResponderMapped = pickStringAny(item, ['lastResponderRole', 'LastResponderRole', 'last_responder_role']);
+  const updatedAtMapped =
+    pickStringAny(item, ['updatedAt', 'UpdatedAt', 'updated_at']) ?? undefined;
+
   return {
     id,
-    sessionId: pickStringAny(item, ['sessionId', 'session_id']),
+    sessionId: sessionIdMapped,
     title: String(
-      pickStringAny(item, ['title']) ?? normalizedLastQuestion ?? trimmedQuestionFallback ?? 'Untitled case',
+      pickStringAny(item, ['title']) ?? previewQuestion ?? 'Untitled session',
     ),
-    lastQuestionAsked: normalizedLastQuestion,
+    lastQuestionAsked: normalizedLastQuestion ?? snippet ?? null,
+    questionSnippet: snippet,
     thumbnailUrl:
       pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']) != null
         ? String(pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']))
         : imageFromMessages != null
             ? String(imageFromMessages)
           : undefined,
-    boneLocation: String(pickStringAny(item, ['boneLocation', 'bone_location', 'regionName', 'region']) ?? 'Clinical case'),
-    lesionType: String(pickStringAny(item, ['lesionType', 'lesion_type', 'caseType', 'categoryName']) ?? 'Visual QA'),
+    boneLocation: (() => {
+      const v = pickStringAny(item, ['boneLocation', 'bone_location', 'regionName', 'region']);
+      if (v != null && String(v).trim()) return String(v).trim();
+      return historyKind === 'personalQa' ? '' : 'Clinical case';
+    })(),
+    lesionType: (() => {
+      const v = pickStringAny(item, ['lesionType', 'lesion_type', 'caseType', 'categoryName']);
+      if (v != null && String(v).trim()) return String(v).trim();
+      return historyKind === 'personalQa' ? '' : 'Visual QA';
+    })(),
     difficulty: normalizeDifficulty(item.difficulty ?? item.level),
     duration: pickStringAny(item, ['duration']) ?? undefined,
     progress: typeof item.progress === 'number' ? item.progress : undefined,
     status: sessionStatus || undefined,
-    askedAt: pickStringAny(item, ['askedAt', 'asked_at', 'createdAt', 'created_at']) ?? undefined,
+    reviewState: reviewStateRaw,
+    lastResponderRole: lastResponderMapped,
+    askedAt:
+      pickStringAny(item, ['askedAt', 'asked_at', 'createdAt', 'created_at']) ??
+      updatedAtMapped ??
+      undefined,
+    updatedAt: updatedAtMapped ?? null,
     keyImagingFindings:
       item.keyImagingFindings != null && item.keyImagingFindings !== ''
         ? String(item.keyImagingFindings)
@@ -689,24 +723,33 @@ function mapStudentRecentActivity(row: unknown, index: number): StudentRecentAct
   const occurredAt = String(item.occurredAt ?? item.createdAt ?? item.timestamp ?? '');
   if (!title || !occurredAt) return null;
 
-  const targetRaw = item.targetUrl ?? item.route ?? item.href ?? item.url ?? item.deepLink;
+  const routeRaw = item.route ?? item.Route;
+  const route = routeRaw != null && String(routeRaw).trim() ? String(routeRaw).trim() : undefined;
+  const targetRaw =
+    item.targetUrl ?? item.TargetUrl ?? item.href ?? item.url ?? item.deepLink;
   const targetUrl =
-    targetRaw != null && String(targetRaw).trim() ? String(targetRaw).trim() : undefined;
+    route ??
+    (targetRaw != null && String(targetRaw).trim() ? String(targetRaw).trim() : undefined);
   const caseRaw = item.caseId ?? item.catalogCaseId ?? item.libraryCaseId;
   const caseId = caseRaw != null && String(caseRaw).trim() ? String(caseRaw).trim() : undefined;
   const quizRaw = item.quizId ?? item.assignedQuizId;
   const quizId = quizRaw != null && String(quizRaw).trim() ? String(quizRaw).trim() : undefined;
+  const sessionRaw = item.sessionId ?? item.SessionId ?? item.visualQaSessionId ?? item.VisualQaSessionId;
+  const sessionId =
+    sessionRaw != null && String(sessionRaw).trim() ? String(sessionRaw).trim() : undefined;
 
   return {
     id: String(item.id ?? item.activityId ?? index),
     title,
     description: item.description != null ? String(item.description) : item.message != null ? String(item.message) : undefined,
     occurredAt,
-    type: String(item.type ?? item.activityType ?? 'activity'),
+    type: String(item.type ?? item.activityType ?? item.ActivityType ?? 'activity'),
     status: item.status != null ? String(item.status) : undefined,
     targetUrl,
     caseId,
     quizId,
+    ...(sessionId ? { sessionId } : {}),
+    ...(route ? { route } : {}),
   };
 }
 

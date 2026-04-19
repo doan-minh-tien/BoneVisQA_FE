@@ -8,8 +8,12 @@ import useSWRMutation from 'swr/mutation';
 import Header from '@/components/Header';
 import { ChatComposer } from '@/components/student/ChatComposer';
 import { ChatConversation } from '@/components/student/ChatConversation';
+import {
+  readAndClearSessionPrefillImage,
+  VisualQaSessionHistorySidebar,
+} from '@/components/student/VisualQaSessionHistorySidebar';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
-import { Loader2, MessageCircle } from 'lucide-react';
+import { History, Loader2, MessageCircle } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -55,8 +59,10 @@ import type {
 } from '@/lib/api/types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
+import { cn } from '@/lib/utils';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { useAuth } from '@/lib/useAuth';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 type VisualQaDraft = {
   question: string;
@@ -157,6 +163,7 @@ export default function StudentVisualQaImagePage() {
   const [serverForcedExpired, setServerForcedExpired] = useState(false);
   const [pendingOutgoingMessage, setPendingOutgoingMessage] = useState<PendingOutgoingMessage | null>(null);
   const [restoringSession, setRestoringSession] = useState(false);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const localQuestionByRequestIdRef = useRef<Record<string, string>>({});
   const draftStorageKey = `student-visual-qa-draft:${user?.email ?? 'anonymous'}:${pathname}`;
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
@@ -169,6 +176,7 @@ export default function StudentVisualQaImagePage() {
   const catalogTitle = searchParams.get('catalogTitle');
   const catalogContext = searchParams.get('catalogContext');
   const historySessionId = searchParams.get('sessionId') ?? searchParams.get('historySessionId');
+  const studyImageUrlParam = searchParams.get('studyImageUrl');
   const catalogCaseId =
     searchParams.get('catalogCaseId') ??
     searchParams.get('caseId') ??
@@ -245,14 +253,22 @@ export default function StudentVisualQaImagePage() {
   }, []);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
+    if (!file) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  /** When there is no local file, show the thread image from BE (follow-up turns, restore, reconcile). */
+  useEffect(() => {
+    if (file) return;
+    const raw = session?.sessionImageUrl?.trim();
+    if (raw) {
+      setPreviewUrl(resolveApiAssetUrl(raw));
+      return;
+    }
+    setPreviewUrl(null);
+  }, [file, session?.sessionImageUrl]);
 
   useEffect(() => {
     if (!catalogImageUrl || file) return;
@@ -312,6 +328,22 @@ export default function StudentVisualQaImagePage() {
         setSelectedTurnIndex(
           restored.latest?.turnIndex ?? restoredTurns[restoredTurns.length - 1]?.turnIndex ?? null,
         );
+        const sid = historySessionId.trim();
+        let fromParam: string | null = null;
+        if (studyImageUrlParam?.trim()) {
+          try {
+            fromParam = decodeURIComponent(studyImageUrlParam.trim());
+          } catch {
+            fromParam = studyImageUrlParam.trim();
+          }
+        }
+        const fromThread = restored.sessionImageUrl?.trim() || fromParam;
+        const fromStorage = readAndClearSessionPrefillImage(sid);
+        const imageHydrate = fromThread || fromStorage;
+        if (imageHydrate) {
+          setPreviewUrl(imageHydrate);
+          setFile(null);
+        }
       } catch (error) {
         if (!cancelled) {
           toast.error(error instanceof Error ? error.message : 'Could not restore the chat session.');
@@ -323,7 +355,7 @@ export default function StudentVisualQaImagePage() {
     return () => {
       cancelled = true;
     };
-  }, [historySessionId, toast]);
+  }, [historySessionId, studyImageUrlParam, toast]);
 
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -552,7 +584,9 @@ export default function StudentVisualQaImagePage() {
       setChatTurns(immediateTurns);
       setSelectedTurnIndex(immediateTurns[immediateTurns.length - 1]?.turnIndex ?? null);
       setPendingOutgoingMessage(null);
-      setRoiBoundingBox(null);
+      if (res.roiBoundingBox && isValidNormalizedBoundingBox(res.roiBoundingBox)) {
+        setRoiBoundingBox(res.roiBoundingBox);
+      }
       toast.success('Diagnostic report generated.');
       clearDraft();
       if (res.sessionId?.trim()) {
@@ -797,13 +831,19 @@ export default function StudentVisualQaImagePage() {
         : session?.latest ?? null,
     [chatTurns, selectedTurnIndex, session],
   );
-  const viewerAnnotation = useMemo(
-    () =>
+  const viewerAnnotation = useMemo(() => {
+    const fromTurn =
       selectedTurn?.roiBoundingBox && isValidNormalizedBoundingBox(selectedTurn.roiBoundingBox)
         ? selectedTurn.roiBoundingBox
-        : roiBoundingBox,
-    [roiBoundingBox, selectedTurn],
-  );
+        : null;
+    if (fromTurn) return fromTurn;
+    const fromThread =
+      session?.roiBoundingBox && isValidNormalizedBoundingBox(session.roiBoundingBox)
+        ? session.roiBoundingBox
+        : null;
+    if (fromThread) return fromThread;
+    return roiBoundingBox;
+  }, [roiBoundingBox, selectedTurn, session?.roiBoundingBox]);
   const canAskNext = session?.capabilities?.canAskNext ?? true;
   const isSessionReadOnly = session?.capabilities?.isReadOnly ?? false;
   const sessionCapabilityReason =
@@ -884,11 +924,6 @@ export default function StudentVisualQaImagePage() {
     setRequestingLecturerReview(true);
     try {
       const updated = await requestStudentVisualQaReview(session.sessionId, targetTurnId);
-      const shouldLockAfterReview =
-        updated.capabilities?.isReadOnly === true ||
-        updated.capabilities?.canAskNext === false ||
-        (updated.reviewState ?? '').toLowerCase() === 'pending' ||
-        (updated.status ?? '').toLowerCase().includes('pending');
       setSession((prev) => {
         const base = prev ?? session;
         const mergedTurns =
@@ -898,25 +933,15 @@ export default function StudentVisualQaImagePage() {
           ...updated,
           turns: mergedTurns,
           latest: updated.latest ?? mergedTurns[mergedTurns.length - 1] ?? base.latest,
-          status: updated.status ?? 'PendingExpertReview',
+          status: updated.status ?? base.status ?? 'PendingExpertReview',
           capabilities: {
             ...(base.capabilities ?? {}),
             ...(updated.capabilities ?? {}),
-            ...(shouldLockAfterReview
-              ? {
-                  isReadOnly: true,
-                  canAskNext: false,
-                }
-              : {}),
           },
         };
       });
       if (updated.turns.length > 0) {
         setChatTurns((prev) => mergeTurnsByIdentity(prev, updated.turns));
-      }
-      const reviewNotice = updated.systemNotice?.trim();
-      if (reviewNotice) {
-        appendLocalSystemNotice(reviewNotice, updated.systemNoticeCode ?? 'REVIEW_REQUESTED');
       }
       setChatSystemNoticeCode(updated.systemNoticeCode ?? null);
       toast.success('Support request has been sent to your lecturer.');
@@ -929,7 +954,7 @@ export default function StudentVisualQaImagePage() {
     } finally {
       setRequestingLecturerReview(false);
     }
-  }, [appendLocalSystemNotice, latestTurn?.turnId, requestingLecturerReview, session, toast]);
+  }, [latestTurn?.turnId, requestingLecturerReview, session, toast]);
 
   useEffect(() => {
     if (!isGuestUser) return;
@@ -987,7 +1012,34 @@ export default function StudentVisualQaImagePage() {
         title="Visual QA"
         subtitle="Review an imaging study, keep the full chat history, and escalate the current AI turn for lecturer triage when needed."
       />
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2 lg:items-stretch">
+      {mobileHistoryOpen ? (
+        <button
+          type="button"
+          aria-label="Close session list"
+          className="fixed inset-0 z-[55] bg-black/45 lg:hidden"
+          onClick={() => setMobileHistoryOpen(false)}
+        />
+      ) : null}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] lg:items-stretch">
+        <VisualQaSessionHistorySidebar
+          className={cn(
+            'min-h-0',
+            mobileHistoryOpen
+              ? 'max-lg:fixed max-lg:inset-y-3 max-lg:left-0 max-lg:z-[60] max-lg:flex max-lg:w-[min(90vw,280px)] max-lg:rounded-r-2xl max-lg:border max-lg:border-border max-lg:bg-background max-lg:shadow-xl'
+              : 'max-lg:hidden',
+            'lg:flex',
+          )}
+          selectedSessionId={historySessionId?.trim() || session?.sessionId?.trim() || null}
+          onSelectSession={(id) => {
+            setMobileHistoryOpen(false);
+            const params = new URLSearchParams(searchParams.toString());
+            params.set('sessionId', id);
+            router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, {
+              scroll: false,
+            });
+          }}
+        />
+        <div className="grid min-h-0 min-h-[50vh] flex-1 grid-cols-1 overflow-hidden border-t border-border-color lg:min-h-0 lg:grid-cols-2 lg:border-l lg:border-t-0">
         <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
           <div className="min-h-0 min-h-[36vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
             <MedicalImageViewer
@@ -1007,16 +1059,29 @@ export default function StudentVisualQaImagePage() {
                 <MessageCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
                 <span className="truncate">Conversation</span>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="shrink-0 transition-all hover:opacity-90 active:scale-95"
-                disabled={loading || restoringSession}
-                onClick={startNewSession}
-              >
-                New Chat
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="transition-all hover:opacity-90 active:scale-95 lg:hidden"
+                  disabled={loading || restoringSession}
+                  onClick={() => setMobileHistoryOpen((o) => !o)}
+                >
+                  <History className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="sr-only sm:not-sr-only sm:ml-1 sm:inline">Sessions</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 transition-all hover:opacity-90 active:scale-95"
+                  disabled={loading || restoringSession}
+                  onClick={startNewSession}
+                >
+                  New Chat
+                </Button>
+              </div>
             </div>
             <ChatConversation
               messages={chatTurns}
@@ -1039,6 +1104,7 @@ export default function StudentVisualQaImagePage() {
               errorCode={chatErrorCode}
               policyReason={chatPolicyReason ?? session?.policyReason ?? null}
               systemNoticeCode={chatSystemNoticeCode ?? session?.systemNoticeCode ?? null}
+              blockingNotice={session?.blockingNotice ?? null}
               errorMessage={
                 chatErrorMessage ??
                 (aiOverload
@@ -1113,6 +1179,7 @@ export default function StudentVisualQaImagePage() {
             )}
           </div>
         </main>
+        </div>
       </div>
     </div>
   );

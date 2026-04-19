@@ -15,7 +15,7 @@ function normalizeAppPath(path: string): string {
  * Uses API `targetUrl` when safe; otherwise maps `type` + optional ids to student routes.
  */
 export function resolveStudentRecentActivityHref(activity: StudentRecentActivityItem): string {
-  const raw = activity.targetUrl?.trim();
+  const raw = (activity.route ?? activity.targetUrl)?.trim();
   if (raw) {
     if (/^https?:\/\//i.test(raw)) {
       try {
@@ -32,6 +32,13 @@ export function resolveStudentRecentActivityHref(activity: StudentRecentActivity
   }
 
   const t = activity.type?.trim().toLowerCase() ?? '';
+  const sid = activity.sessionId?.trim();
+
+  if (t === 'visual_qa' || t === 'visual_qa_lecturer_reply' || t.includes('visual_qa')) {
+    return sid
+      ? `/student/qa/image?sessionId=${encodeURIComponent(sid)}`
+      : '/student/qa/image';
+  }
   const caseId = activity.caseId?.trim();
   const quizId = activity.quizId?.trim();
 

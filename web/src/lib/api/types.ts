@@ -62,8 +62,17 @@ export interface VisualQaTurn {
   questionText?: string;
   answerText?: string;
   messages?: VisualQaMessage[];
+  /**
+   * BE `VisualQaTurnDto.questionCoordinates` — user question ROI (normalized JSON).
+   * FE merges into `roiBoundingBox` when the latter is absent so the viewer can reuse one field.
+   */
+  questionCoordinates?: NormalizedImageBoundingBox | null;
   /** Message-level ROI for this specific Q/A turn (normalized 0-1). */
   roiBoundingBox?: NormalizedImageBoundingBox | null;
+  /** Assistant structured diagnosis (JSON string or plain text) from triage / thread DTOs. */
+  structuredDiagnosis?: string | null;
+  /** Assistant key imaging line (string or JSON) from triage DTOs. */
+  keyImagingFindings?: string | null;
   diagnosis?: string;
   findings?: string[];
   reflectiveQuestions?: string[];
@@ -91,6 +100,16 @@ export interface VisualQaMessage {
 
 export interface VisualQaSessionReport {
   sessionId: string;
+  /**
+   * Root study image on thread (`VisualQaThreadDto`). BE may also send `imageUrl` / `studyImageUrl`
+   * with the same value — FE normalizes into this field.
+   */
+  sessionImageUrl?: string | null;
+  /**
+   * Thread-level ROI: BE derives from latest user message with non-empty coordinates
+   * (parallel to per-turn `questionCoordinates` / `roiBoundingBox` on turns).
+   */
+  roiBoundingBox?: NormalizedImageBoundingBox | null;
   clientRequestId?: string | null;
   responseKind?: VisualQaResponseKind | null;
   /** Root-level analysis text from the API when not only present on `latest` / `turns`. */
@@ -106,6 +125,8 @@ export interface VisualQaSessionReport {
   updatedAt?: string | null;
   reviewState?: VisualQaReviewState | null;
   lastResponderRole?: string | null;
+  /** Thread-level banner when BE blocks interaction (VisualQaThreadDto). */
+  blockingNotice?: string | null;
   systemNotice?: string | null;
   policyReason?: string | null;
   systemNoticeCode?: string | null;
@@ -179,6 +200,11 @@ export interface LecturerTriageRow {
   requestedReviewMessageId?: string | null;
   selectedUserMessageId?: string | null;
   selectedAssistantMessageId?: string | null;
+  /** BE triage row: VisualQA vs CaseQA when present. */
+  questionSource?: 'CaseQA' | 'VisualQA' | null;
+  /** Short case snapshot for list (e.g. medical_cases.description). */
+  caseDescription?: string | null;
+  caseTitle?: string | null;
 }
 
 export interface ClassItem {
@@ -245,6 +271,10 @@ export interface LectStudentQuestionDto {
   citations?: Citation[];
   /** Present when `GET .../questions` is called with an explicit `source` query (not legacy). */
   questionSource?: 'CaseQA' | 'VisualQA' | null;
+  /** Snapshot from `medical_cases` when the session references a catalog case. */
+  caseDescription?: string | null;
+  caseSuggestedDiagnosis?: string | null;
+  caseKeyFindings?: string | null;
 }
 
 export interface Announcement {
@@ -376,8 +406,12 @@ export interface StudentRecentActivityItem {
   status?: string;
   /** Absolute or app-relative navigation target when the API provides one. */
   targetUrl?: string;
+  /** Same semantics as notifications `route` when BE sends normalized SPA path. */
+  route?: string;
   caseId?: string;
   quizId?: string;
+  /** Visual QA session id when `type` is lecturer/expert reply notifications. */
+  sessionId?: string;
 }
 
 export interface StudentQuizQuestion {
@@ -477,6 +511,8 @@ export interface StudentCaseHistoryItem {
   sessionId?: string | null;
   title: string;
   lastQuestionAsked?: string | null;
+  /** BE list DTO (`VisualQaSessionHistoryItemDto`): short preview for cards. */
+  questionSnippet?: string | null;
   thumbnailUrl?: string;
   boneLocation: string;
   lesionType: string;
@@ -484,7 +520,12 @@ export interface StudentCaseHistoryItem {
   duration?: string;
   progress?: number;
   status?: 'Pending' | 'PendingExpert' | 'Approved' | 'Revised' | string;
+  /** Session-level review workflow (list + thread; may overlap with `status`). */
+  reviewState?: string | null;
+  lastResponderRole?: string | null;
   askedAt?: string;
+  /** BE often sends `updatedAt` on history list items. */
+  updatedAt?: string | null;
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
   historyKind: StudentHistoryKind;
@@ -516,6 +557,8 @@ export interface NotificationDto {
   title: string;
   message: string;
   type: string;
+  /** BE-normalized SPA path (pathname + query + fragment); prefer over `targetUrl` when set. */
+  route?: string;
   targetUrl?: string;
   isRead: boolean;
   createdAt: string;
@@ -531,6 +574,14 @@ export interface AppNotificationItem {
   isRead?: boolean;
 }
 
+/** From GET /api/admin/users — enrollments snapshot (BE `classAssignments`). */
+export interface AdminClassAssignment {
+  classId: string;
+  className: string;
+  roleInClass: string;
+  enrolledAt?: string | null;
+}
+
 export interface AdminUser {
   id: string;
   fullName: string;
@@ -539,6 +590,7 @@ export interface AdminUser {
   isActive: boolean;
   createdAt?: string;
   schoolCohort?: string;
+  classAssignments?: AdminClassAssignment[];
 }
 
 export interface PercentageBoundingBox {
@@ -570,6 +622,12 @@ export interface ExpertReviewItem {
   className?: string;
   questionText: string;
   question: string;
+  /** Catalog case id when session is tied to library case. */
+  caseId?: string | null;
+  /** Snapshot from `medical_cases` (aligned with lecturer triage). */
+  caseDescription?: string | null;
+  caseSuggestedDiagnosis?: string | null;
+  caseKeyFindings?: string | null;
   imageUrl?: string;
   imageId?: string | null;
   customImageUrl?: string | null;
@@ -797,6 +855,8 @@ export interface LectStudentQuestionDetail {
   caseId: string | null;
   caseTitle: string | null;
   caseDescription: string | null;
+  caseSuggestedDiagnosis?: string | null;
+  caseKeyFindings?: string | null;
   caseThumbnailUrl: string | null;
   caseDifficulty: string | null;
   questionText: string;
