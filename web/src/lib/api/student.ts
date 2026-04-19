@@ -360,6 +360,7 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
     score: typeof item.score === 'number' ? item.score : null,
     attemptId: item.attemptId != null ? String(item.attemptId) : item.AttemptId != null ? String(item.AttemptId) : null,
+    createdAt: item.createdAt != null ? String(item.createdAt) : item.CreatedAt != null ? String(item.CreatedAt) : null,
   };
 }
 
@@ -462,6 +463,7 @@ function mapSubmitQuizResult(raw: unknown): StudentQuizResultDto {
     passed: Boolean(r.passed ?? r.Passed ?? false),
     totalQuestions: Number(r.totalQuestions ?? r.TotalQuestions ?? 0),
     correctAnswers: Number(r.correctAnswers ?? r.CorrectAnswers ?? 0),
+    ungradedEssayCount: r.ungradedEssayCount != null ? Number(r.ungradedEssayCount) : r.UngradedEssayCount != null ? Number(r.UngradedEssayCount) : null,
   };
 }
 
@@ -475,7 +477,11 @@ export async function submitQuizSession(
   try {
     const { data } = await http.post<unknown>('/api/student/quizzes/submit', {
       attemptId,
-      answers: answers.map((a) => ({ questionId: a.questionId, studentAnswer: a.studentAnswer })),
+      answers: answers.map((a) => ({
+        questionId: a.questionId,
+        studentAnswer: a.studentAnswer,
+        essayAnswer: a.essayAnswer ?? undefined,
+      })),
     });
     return mapSubmitQuizResult(data);
   } catch (e) {
@@ -703,6 +709,7 @@ export interface QuizAttemptReview {
     isCorrect: boolean;
     imageUrl?: string | null;
     caseId?: string | null;
+    essayAnswer?: string | null; // Model answer for essay questions
   }>;
 }
 
@@ -730,6 +737,7 @@ export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAtt
         isCorrect: Boolean(q.isCorrect ?? q.IsCorrect ?? false),
         imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
         caseId: pickStr(q, 'caseId', 'CaseId'),
+        essayAnswer: pickStr(q, 'essayAnswer', 'EssayAnswer'),
       })),
     };
   } catch (e) {

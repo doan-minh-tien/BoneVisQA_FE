@@ -33,7 +33,15 @@ function MicroQuizzesPanel() {
     setLoading(true);
     try {
       const data = await getAssignedQuizzes();
-      setItems(data);
+      // Sort by newest first (by createdAt descending, fallback to quizId)
+      const sorted = [...data].sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (dateA !== dateB) return dateB - dateA;
+        // Fallback: sort by quizId to keep consistent order
+        return a.quizId.localeCompare(b.quizId);
+      });
+      setItems(sorted);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load assigned quizzes.');
       setItems([]);

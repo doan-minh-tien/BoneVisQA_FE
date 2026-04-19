@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import QuestionCard from '@/components/lecturer/quizzes/QuestionCard';
 import {
   getQuiz,
@@ -40,6 +41,13 @@ export default function QuestionManagerPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
   const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
+
+  // Delete question dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{
+    questionId: string;
+    questionText: string;
+  } | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!quizId) {
@@ -76,13 +84,21 @@ export default function QuestionManagerPage() {
     setEditorOpen(true);
   };
 
-  const handleDeleteQuestion = async (questionId: string) => {
-    if (!confirm('Remove this question?')) return;
+  const openDeleteQuestionDialog = (questionId: string, questionText: string) => {
+    setDeleteDialog({ questionId, questionText });
+  };
+
+  const handleDeleteQuestionConfirm = async () => {
+    if (!deleteDialog) return;
+    setDeletingQuestion(true);
     try {
-      await deleteQuizQuestion(questionId);
-      setQuestions(questions.filter((q) => q.id !== questionId));
+      await deleteQuizQuestion(deleteDialog.questionId);
+      setQuestions(questions.filter((q) => q.id !== deleteDialog.questionId));
+      setDeleteDialog(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete question');
+    } finally {
+      setDeletingQuestion(false);
     }
   };
 
@@ -261,7 +277,7 @@ export default function QuestionManagerPage() {
                   question={q}
                   variant="manager"
                   onEdit={handleEditQuestion}
-                  onDelete={handleDeleteQuestion}
+                  onDelete={openDeleteQuestionDialog}
                   points={10}
                 />
               ))}
@@ -292,6 +308,21 @@ export default function QuestionManagerPage() {
         quizId={quizId}
         question={editingQuestion}
         onSuccess={handleQuestionSuccess}
+      />
+
+      {/* Delete question confirmation dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialog !== null}
+        title="Xóa câu hỏi?"
+        description="Câu hỏi này sẽ bị xóa vĩnh viễn khỏi quiz."
+        itemName={deleteDialog?.questionText || ''}
+        itemType="Câu hỏi"
+        onConfirm={handleDeleteQuestionConfirm}
+        onCancel={() => setDeleteDialog(null)}
+        deleting={deletingQuestion}
+        confirmText="Xóa câu hỏi"
+        cancelText="Hủy"
+        dangerLevel="high"
       />
     </div>
   );

@@ -36,6 +36,7 @@ import {
   Target,
   Trophy,
   User,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 type StatCardModel = {
@@ -56,6 +57,14 @@ const quickActions = [
     href: '/student/qa/image',
     iconColor: 'bg-primary/15 text-primary',
   },
+  // TODO: Uncomment when AI Image Practice is ready for production
+  // {
+  //   title: 'AI Image Practice',
+  //   description: 'Upload an X-ray and get AI-generated practice questions instantly.',
+  //   icon: ImageIcon,
+  //   href: '/student/ai-quiz/image-based',
+  //   iconColor: 'bg-purple-500/15 text-purple-700',
+  // },
   {
     title: 'View history',
     description: 'Review your past visual QA requests and expert review status.',

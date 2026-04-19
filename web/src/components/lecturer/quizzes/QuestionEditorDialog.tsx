@@ -36,7 +36,6 @@ interface QuestionEditorDialogProps {
 
 const TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'MultipleChoice', label: 'Multiple Choice' },
-  { value: 'TrueFalse', label: 'True / False' },
   { value: 'Annotation', label: 'Identification (Point)' },
   { value: 'Essay', label: 'Essay' },
 ];
@@ -202,7 +201,6 @@ export default function QuestionEditorDialog({
     }
   };
 
-  const isTrueFalse = formData.type === 'TrueFalse';
   const isMc = formData.type === 'MultipleChoice';
   const isEssay = formData.type === 'Essay';
 
@@ -509,32 +507,6 @@ export default function QuestionEditorDialog({
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-                )}
-
-                {isTrueFalse && (
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
-                      Correct answer
-                    </label>
-                    <div className="flex gap-2">
-                      {(['True', 'False'] as const).map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() =>
-                            setFormData({ ...formData, correctAnswer: opt })
-                          }
-                          className={`flex-1 rounded-xl py-3 text-sm font-bold transition-colors ${
-                            formData.correctAnswer === opt
-                              ? 'bg-[#00478d] text-white'
-                              : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
-                          }`}
-                        >
-                          {opt}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 )}

@@ -85,6 +85,43 @@ export async function getUnassignedLecturerQuizzes(lecturerId: string): Promise<
 }
 
 /**
+ * Get all quizzes for lecturer with their assigned classes (for My Quizzes tab)
+ */
+export interface MyQuizClassInfo {
+  classId: string;
+  className: string;
+  assignedAt: string | null;
+  assignmentId: string;
+}
+
+export interface MyQuizWithClasses {
+  quizId: string;
+  quizName: string;
+  topic: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  timeLimit: number | null;
+  passingScore: number | null;
+  createdAt: string | null;
+  questionCount: number;
+  isAiGenerated: boolean;
+  isFromExpertLibrary: boolean;
+  difficulty: string | null;
+  classes: MyQuizClassInfo[];
+}
+
+export async function getMyQuizzesWithClasses(lecturerId: string): Promise<MyQuizWithClasses[]> {
+  try {
+    const { data } = await http.get<MyQuizWithClasses[]>('/api/lecturer/quizzes/my-with-classes', {
+      params: { lecturerId },
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
  * Get assigned quizzes (Assigned Quizzes tab)
  */
 export async function getAssignedQuizzes(lecturerId: string): Promise<AssignedQuizDto[]> {

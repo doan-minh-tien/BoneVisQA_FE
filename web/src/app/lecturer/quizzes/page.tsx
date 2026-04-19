@@ -64,6 +64,8 @@ interface EnrichedQuiz {
   difficulty?: string | null;
   timeLimit?: number | null;
   passingScore?: number | null;
+  creatorName?: string | null;
+  creatorType?: string | null;
 }
 
 interface EnrichedAssignedQuiz extends AssignedQuizDto {
@@ -222,8 +224,11 @@ export default function QuizListPage() {
         toast.success('Quiz unassigned from class.');
       }
       setDeleteTarget(null);
-    } catch (error) {
-      toast.error('Action failed.');
+    } catch (error: unknown) {
+      const message = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || (error as Error)?.message
+        || 'Action failed.';
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -250,14 +255,14 @@ export default function QuizListPage() {
         else status = 'Active';
         const topicFromQuiz = (q.topic ?? '').trim();
         return {
-          quizId: q.id,
+          quizId: q.quizId,
           classId: q.classId || '',
-          quizName: q.title,
+          quizName: q.quizName || 'Untitled',
           className: q.className || null,
           topic: q.topic || null,
-          assignedAt: q.createdAt,
-          openTime: q.openTime,
-          closeTime: q.closeTime,
+          assignedAt: q.assignedAt,
+          openTime: q.openTime || null,
+          closeTime: q.closeTime || null,
           questionCount: q.questionCount,
           isFromExpertLibrary: q.isFromExpertLibrary ?? false,
           status,
@@ -268,9 +273,11 @@ export default function QuizListPage() {
           compactClose: formatQuizCompact(q.closeTime),
           compactAssigned: '—',
           isExpertQuiz: q.isFromExpertLibrary ?? false,
-          difficulty: q.difficulty ?? null,
+          difficulty: null,
           timeLimit: q.timeLimit ?? null,
           passingScore: q.passingScore ?? null,
+          creatorName: q.creatorName ?? null,
+          creatorType: q.creatorType ?? null,
         };
       });
       setMyQuizzes(enriched);
@@ -321,6 +328,11 @@ export default function QuizListPage() {
       setLoading(false);
     }
   };
+
+  // Load data on mount
+  useEffect(() => {
+    loadMyQuizzes();
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'my-quizzes') {
@@ -480,7 +492,7 @@ export default function QuizListPage() {
           </div>
 
           {/* Quiz Table */}
-          <div className="overflow-hidden rounded-3xl border border-border/40 bg-card shadow-sm">
+          <div className="rounded-3xl border border-border/40 bg-card shadow-sm overflow-x-auto">
             <div className="flex flex-col gap-4 border-b border-border bg-muted/30 p-6 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="flex items-center gap-2 font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">
                 <ClipboardList className="h-5 w-5 text-primary" />
@@ -536,25 +548,8 @@ export default function QuizListPage() {
               </div>
             </div>
 
-            <div className="min-w-0">
-              <table className="w-full table-fixed border-collapse text-left">
-                <colgroup>
-                  <col style={{ width: '4%' }} />
-                  {activeTab === 'assigned-quizzes' ? (
-                    <>
-                      <col style={{ width: '18%' }} />
-                      <col style={{ width: '10%' }} />
-                    </>
-                  ) : (
-                    <col style={{ width: '22%' }} />
-                  )}
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '6%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '20%' }} />
-                  <col style={{ width: '10%' }} />
-                </colgroup>
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto text-left">
                 <thead>
                   <tr className="bg-muted/40">
                     <th className="px-2 py-3 sm:px-3 sm:py-4">
@@ -562,7 +557,6 @@ export default function QuizListPage() {
                     </th>
                     <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs">Quiz Title</th>
                     {activeTab === 'assigned-quizzes' && <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Class</th>}
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Creator</th>
                     <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Topic</th>
                     <th className="px-1 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-2 sm:py-4 sm:text-xs">Q#</th>
                     <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Status</th>
@@ -573,7 +567,7 @@ export default function QuizListPage() {
                 <tbody className="divide-y divide-border">
                   {paged.length === 0 ? (
                     <tr>
-                      <td colSpan={activeTab === 'assigned-quizzes' ? 9 : 8} className="px-4 py-20 text-center sm:px-8">
+                      <td colSpan={activeTab === 'assigned-quizzes' ? 8 : 7} className="px-4 py-20 text-center sm:px-8">
                         <p className="text-muted-foreground">No quizzes found.</p>
                       </td>
                     </tr>
@@ -607,22 +601,6 @@ export default function QuizListPage() {
                             </td>
                           )}
                           <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
-                            {/* Creator Badge */}
-                            {(quiz as EnrichedAssignedQuiz).creatorType === 'Expert' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-1 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 sm:px-2.5 sm:py-1 sm:text-[10px]">
-                                <UserCheck className="h-3 w-3" />
-                                { (quiz as EnrichedAssignedQuiz).creatorName || 'Expert'}
-                              </span>
-                            ) : (quiz as EnrichedAssignedQuiz).creatorType === 'Lecturer' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 sm:px-2.5 sm:py-1 sm:text-[10px]">
-                                <User className="h-3 w-3" />
-                                {(quiz as EnrichedAssignedQuiz).creatorName || 'Lecturer'}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
                             <span className="inline-block max-w-full break-words rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[10px]">{quiz.topicLabel}</span>
                           </td>
                           <td className="px-1 py-4 text-center align-top sm:py-5">
@@ -647,36 +625,27 @@ export default function QuizListPage() {
                                   <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}/results`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success" title="View Results">
                                     <BarChart3 className="h-4 w-4" />
                                   </button>
-                                  {/* Edit button - hiển thị cho tất cả assigned quizzes */}
                                   <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary" title="Edit Quiz">
                                     <Edit className="h-4 w-4" />
+
+                                  </button>
+                                  <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Unassign Quiz">
+                                    <Trash2 className="h-4 w-4" />
                                   </button>
                                 </>
                               )}
-                              {activeTab === 'my-quizzes' && !isExpert ? (
+                              {activeTab === 'my-quizzes' && (
                                 <>
                                   <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary" title="Edit">
                                     <Edit className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => setAssignQuiz(quiz as EnrichedQuiz)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20" title="Assign">
+                                    <CheckCircle className="h-4 w-4" />
                                   </button>
                                   <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Delete">
                                     <Trash2 className="h-4 w-4" />
                                   </button>
                                 </>
-                              ) : activeTab === 'my-quizzes' && isExpert ? (
-                                <>
-                                  <button type="button" onClick={() => setPreviewQuiz(quiz as EnrichedQuiz)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer">
-                                    <Eye className="h-3.5 w-3.5" />
-                                    Xem trước
-                                  </button>
-                                  <button type="button" onClick={() => setAssignQuiz(quiz as EnrichedQuiz)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer">
-                                    <CheckCircle className="h-3.5 w-3.5" />
-                                    Gán
-                                  </button>
-                                </>
-                              ) : (
-                                <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Unassign">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
                               )}
                             </div>
                           </td>

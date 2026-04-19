@@ -384,11 +384,11 @@ export default function StudentQuizPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={goToAIPractice}
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-95"
+              disabled
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all opacity-50 cursor-not-allowed"
             >
               <Sparkles className="h-4 w-4" />
-              AI Quiz
+              AI Quiz (Coming Soon)
             </button>
           </div>
         </div>
@@ -397,7 +397,8 @@ export default function StudentQuizPage() {
         <div className="mb-6 flex items-center gap-1 border-b border-[#c2c6d4]/30">
           {([
             ['assigned', 'Assigned Quizzes', Trophy, assignedQuizzes.length] as const,
-            ['practice', 'AI Quizzes', BotMessageSquare, 0] as const,
+            // TODO: Uncomment when AI Quizzes is ready for production
+            // ['practice', 'AI Quizzes', BotMessageSquare, 0] as const,
           ]).map(([key, label, Icon, count]) => (
             <button
               key={key}
@@ -567,7 +568,7 @@ export default function StudentQuizPage() {
         )}
 
         {/* ── AI Quiz active / result ── */}
-        {filterTab === 'practice' && (
+        {false && (
           <>
             {/* AI Quiz Generator panel — inside AI tab, collapsible */}
             {showGenerator &&
@@ -687,10 +688,10 @@ export default function StudentQuizPage() {
                 {aiSession && (
                   <div className="flex items-center justify-between rounded-2xl border border-[#924e00]/30 bg-[#ffdcc3]/20 p-4">
                     <div>
-                      <p className="font-semibold text-[#703a00]">{aiSession.title}</p>
+                      <p className="font-semibold text-[#703a00]">{aiSession?.title}</p>
                       <p className="text-xs text-[#703a00]/70">
-                        {aiSession.questions.length} questions •{' '}
-                        {aiSession.topic ? `Topic: ${aiSession.topic}` : 'AI-generated'}
+                        {aiSession?.questions?.length} questions •{' '}
+                        {aiSession?.topic ? `Topic: ${aiSession?.topic}` : 'AI-generated'}
                       </p>
                     </div>
                     {aiState === 'result' && (
@@ -709,16 +710,16 @@ export default function StudentQuizPage() {
                 {aiState === 'result' && aiResult && (
                   <div className="rounded-2xl border border-[#006a68]/30 bg-[#94efec]/20 p-6">
                     <div className="mb-4 flex items-center gap-3">
-                      {aiResult.passed
+                      {aiResult?.passed
                         ? <CheckCircle className="h-8 w-8 text-[#006a68]" />
                         : <XCircle className="h-8 w-8 text-[#ba1a1a]" />}
                       <div>
-                        <h3 className={`text-2xl font-black ${scoreColor(aiResult.score)}`}>
-                          {Math.round(aiResult.score)}%
+                        <h3 className={`text-2xl font-black ${scoreColor(aiResult?.score ?? undefined)}`}>
+                          {Math.round(aiResult?.score ?? 0)}%
                         </h3>
                         <p className="text-sm text-[#424752]">
-                          {aiResult.correctAnswers}/{aiResult.totalQuestions} correct —{' '}
-                          {aiResult.passed ? 'Passed' : 'Needs improvement'}
+                          {aiResult?.correctAnswers}/{aiResult?.totalQuestions} correct —{' '}
+                          {aiResult?.passed ? 'Passed' : 'Needs improvement'}
                         </p>
                       </div>
                     </div>
@@ -736,7 +737,7 @@ export default function StudentQuizPage() {
                         )}
                         Review Answers
                       </button>
-                      {!aiResult.passed && (
+                      {!aiResult?.passed && (
                         <button
                           type="button"
                           onClick={() => {
@@ -754,7 +755,7 @@ export default function StudentQuizPage() {
 
                 {/* Review Answers Panel */}
                 {reviewActive && currentReview && (
-                  <ReviewAnswersPanel review={currentReview} onClose={() => setReviewActive(false)} />
+                  <ReviewAnswersPanel review={currentReview!} onClose={() => setReviewActive(false)} />
                 )}
 
                 {/* Questions */}

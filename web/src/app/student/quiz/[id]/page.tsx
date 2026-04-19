@@ -44,6 +44,7 @@ interface QuizModeQuestion {
   imageUrl?: string | null;
   explanation?: string;
   correctAnswer?: string;
+  essayAnswer?: string; // Model answer for essay questions
 }
 
 type AnswerState = 'unanswered' | 'correct' | 'incorrect';
@@ -132,12 +133,30 @@ export default function QuizSessionPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRetakeRequested, quizInfo]);
 
-  const questions: QuizModeQuestion[] = session?.questions ?? [];
+  const questions: QuizModeQuestion[] = (session?.questions ?? []).map(q => ({
+    questionId: q.questionId,
+    questionText: q.questionText,
+    type: q.type ?? null,
+    optionA: q.optionA ?? null,
+    optionB: q.optionB ?? null,
+    optionC: q.optionC ?? null,
+    optionD: q.optionD ?? null,
+    caseId: q.caseId ?? null,
+    caseTitle: q.caseTitle ?? null,
+    imageUrl: q.imageUrl ?? null,
+  }));
   const currentQ = questions[currentIndex];
   const totalQ = questions.length;
   const answeredCount = Object.keys(answers).length;
   const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
   const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
+
+  // Get essay model answer from review data if available
+  const getEssayModelAnswer = (questionId: string): string | null | undefined => {
+    if (!quizReview) return undefined;
+    const reviewQ = quizReview.questions.find(q => q.questionId === questionId);
+    return reviewQ?.essayAnswer;
+  };
   const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
   const timeLimitMinutes =
     rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
@@ -195,9 +214,16 @@ export default function QuizSessionPage({
     if (!session) return;
     setSubmitting(true);
     try {
-      const payload: StudentSubmitQuestionDto[] = Object.entries(answers).map(
-        ([questionId, studentAnswer]) => ({ questionId, studentAnswer }),
-      );
+      // Build payload with proper essayAnswer field for Essay-type questions
+      const payload: StudentSubmitQuestionDto[] = session.questions.map((q) => {
+        const answer = answers[q.questionId] || '';
+        const isEssay = q.type?.toLowerCase() === 'essay';
+        return {
+          questionId: q.questionId,
+          studentAnswer: isEssay ? '' : answer,
+          essayAnswer: isEssay ? answer : undefined,
+        };
+      });
       const result = await submitQuizSession(session.attemptId, payload);
       setQuizResult(result);
       setSubmitted(true);
@@ -435,8 +461,8 @@ export default function QuizSessionPage({
                   This quiz has already been completed
                 </p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  Score: {quizInfo.score != null && quizInfo.totalQuestions != null
-                    ? `${Math.round(quizInfo.score * quizInfo.totalQuestions / 100)}/${quizInfo.totalQuestions}`
+                  Score: {quizInfo.score != null
+                    ? `${quizInfo.score.toFixed(1)}%`
                     : 'N/A'}
                 </p>
               </div>
@@ -864,6 +890,26 @@ export default function QuizSessionPage({
               })}
             </div>
 
+            {/* Essay Answer Textarea - shown only for Essay type questions */}
+            {currentQ.type === 'Essay' && (
+              <div className="space-y-3 rounded-2xl border border-outline-variant/15 bg-surface-container-low p-6">
+                <label className="block text-xs font-bold uppercase tracking-widest text-primary">
+                  Your Essay Response
+                </label>
+                <textarea
+                  value={answers[currentQ.questionId] || ''}
+                  onChange={(e) => handleSelect(e.target.value)}
+                  disabled={submitted}
+                  className="w-full resize-none rounded-xl border-2 border-outline-variant/20 bg-surface-container-lowest p-4 text-sm outline-none transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  rows={8}
+                  placeholder="Type your essay answer here... Be thorough and provide a comprehensive response."
+                />
+                <p className="text-xs text-on-surface-variant">
+                  Your response will be submitted for evaluation.
+                </p>
+              </div>
+            )}
+
             {!submitted && (
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
@@ -953,7 +999,32 @@ export default function QuizSessionPage({
                   <p className="text-sm leading-relaxed text-on-surface-variant">{currentQ.explanation}</p>
                 )}
 
-                {currentState === 'incorrect' && currentQ.correctAnswer && (
+                {/* Essay question: show student's answer and model answer */}
+                {currentQ.type === 'Essay' && (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl bg-surface-container-low p-4">
+                      <h5 className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
+                        Your Essay Response
+                      </h5>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-on-surface">
+                        {answers[currentQ.questionId] || '(No answer provided)'}
+                      </p>
+                    </div>
+                    {getEssayModelAnswer(currentQ.questionId) && (
+                      <div className="rounded-xl bg-primary/5 p-4">
+                        <h5 className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
+                          Reference / Model Answer
+                        </h5>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
+                          {getEssayModelAnswer(currentQ.questionId)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Multiple choice / Annotation: show ABCD answer */}
+                {currentQ.type !== 'Essay' && currentState === 'incorrect' && currentQ.correctAnswer && (
                   <p className="mt-3 text-sm font-semibold text-on-surface">
                     Correct answer:{' '}
                     <span className="text-success">
@@ -984,6 +1055,24 @@ export default function QuizSessionPage({
 
             {submitted && quizResult && (
               <div className="space-y-6 rounded-2xl border border-primary/25 bg-primary/5 p-8">
+                {/* ⚠️ Warning nếu có essay chưa chấm */}
+                {quizResult.ungradedEssayCount && quizResult.ungradedEssayCount > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                      <div>
+                        <p className="font-bold">
+                          Essay awaiting instructor grading
+                        </p>
+                        <p className="mt-1 text-sm">
+                          Your submission has {quizResult.ungradedEssayCount} essay question(s) not yet graded.
+                          Current score does not include the essay portion. The instructor will grade and update later.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Hiển thị điểm - thang điểm 100 */}
                 <div className="flex flex-col items-center justify-center rounded-xl bg-surface p-6">
                   <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Your Score</p>
@@ -1015,7 +1104,7 @@ export default function QuizSessionPage({
                     <p className="text-3xl font-black text-primary">
                       {quizResult.correctAnswers}/{quizResult.totalQuestions}
                     </p>
-                    <p className="text-xs text-on-surface-variant">Correct answers</p>
+                    <p className="text-xs text-on-surface-variant">MCQ correct</p>
                   </div>
                   <div className="text-center">
                     <p
@@ -1028,6 +1117,11 @@ export default function QuizSessionPage({
                     </p>
                   </div>
                 </div>
+                {(quizResult.ungradedEssayCount ?? 0) > 0 && (
+                  <p className="mt-2 text-center text-xs text-amber-600 dark:text-amber-400">
+                    * {quizResult.ungradedEssayCount} essay(s) pending grading. Score will update after grading.
+                  </p>
+                )}
 
                 <div className="flex flex-wrap justify-center gap-3">
                   <Link href="/student/quizzes">
@@ -1042,10 +1136,10 @@ export default function QuizSessionPage({
         </div>
 
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
-          <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
-            <span className="h-1 w-6 rounded-full bg-primary" />
-            Điều hướng câu hỏi
-          </h4>
+        <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
+          <span className="h-1 w-6 rounded-full bg-primary" />
+          Question Navigation
+        </h4>
           <div className="flex flex-wrap gap-2">
             {questions.map((q, i) => {
               const state = answerStates[q.questionId];

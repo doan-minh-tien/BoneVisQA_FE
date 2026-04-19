@@ -193,6 +193,41 @@ export interface UpdateAssignmentSubmissionRequest {
   submissions: AssignmentSubmissionUpdate[];
 }
 
+// ========== Manual Assignment Types ==========
+
+export interface CreateAssignmentManualRequest {
+  /** "case" or "quiz" */
+  assignmentType: string;
+  classIds: string[];
+  caseId?: string | null;
+  quizId?: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  timeLimitMinutes?: number | null;
+  passingScore?: number | null;
+  shuffleQuestions?: boolean;
+  allowRetake?: boolean;
+  allowLate?: boolean;
+  showResultsAfterSubmission?: boolean;
+  useExpertTime?: boolean;
+  dueDate?: string | null;
+  isMandatory?: boolean;
+  /** Nếu true, gửi email notification cho sinh viên */
+  sendNotification?: boolean;
+}
+
+export interface ManualAssignmentResult {
+  classId: string;
+  className: string;
+  assignmentId: string;
+  success: boolean;
+  message?: string;
+}
+
+export interface CreateAssignmentManualResponse {
+  results: ManualAssignmentResult[];
+}
+
 export interface ClassStats {
   classId: string;
   totalStudents: number;
@@ -353,6 +388,8 @@ export interface AssignedQuizItem {
   score: number | null;
   /** Attempt ID of the most recent attempt (used for review) */
   attemptId?: string | null;
+  /** Quiz creation time — used for sorting by newest first */
+  createdAt?: string | null;
 }
 
 export interface QuizSessionDto {
@@ -377,11 +414,13 @@ export interface StudentSessionQuestion {
   optionC: string | null;
   optionD: string | null;
   imageUrl?: string | null;
+  essayAnswer?: string | null; // Model answer for essay questions (from backend)
 }
 
 export interface StudentSubmitQuestionDto {
   questionId: string;
   studentAnswer: string;
+  essayAnswer?: string; // For essay-type questions
 }
 
 export interface StudentQuizResultDto {
@@ -392,6 +431,8 @@ export interface StudentQuizResultDto {
   passed: boolean;
   totalQuestions: number;
   correctAnswers: number;
+  /** Number of ungraded essay questions by the instructor. If > 0, the score may change. */
+  ungradedEssayCount?: number | null;
 }
 
 /** Distinguishes expert library case work vs student-upload Visual QA in history UI. */
@@ -564,6 +605,10 @@ export interface ClassQuizDto {
   isAutoCreated?: boolean;
   /** Message about manual assignment card creation */
   message?: string;
+  /** Name of quiz creator: "You" if created by lecturer, Expert name if copied from Expert Library */
+  creatorName?: string | null;
+  /** Creator type: "Lecturer" or "Expert" */
+  creatorType?: string | null;
 }
 
 export interface AssignedQuizDto {
@@ -706,6 +751,30 @@ export interface AISuggestQuestionsRequest {
   difficulty?: string | null;
 }
 
+// ========== AI Image Quiz Types ==========
+
+export interface VisualQAGeneratedQuestion {
+  questionText: string;
+  type: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctAnswer: string;
+  caseId?: string;
+  caseTitle?: string;
+  imageUrl?: string;
+}
+
+export interface VisualQAGenerateQuizResponse {
+  success: boolean;
+  message?: string;
+  questions: VisualQAGeneratedQuestion[];
+  generatedTopic?: string;
+  difficulty?: string;
+  imageAnalysis?: string;
+}
+
 export interface ImportStudentsSummary {
   totalRows: number;
   successCount: number;
@@ -830,8 +899,15 @@ export interface QuestionWithAnswerDto {
   optionD: string | null;
   correctAnswer: string | null;
   studentAnswer: string | null;
+  essayAnswer: string | null;
   isCorrect: boolean | null;
   answerId: string;
+  maxScore: number;
+  scoreAwarded: number | null;
+  lecturerFeedback: string | null;
+  isGraded: boolean;
+  referenceAnswer: string | null;
+  imageUrl?: string | null;
 }
 
 export interface UpdateQuizAttemptRequestDto {
@@ -842,7 +918,11 @@ export interface UpdateQuizAttemptRequestDto {
 export interface UpdateAnswerDto {
   answerId: string;
   studentAnswer?: string | null;
+  essayAnswer?: string | null;
   isCorrect?: boolean | null;
+  scoreAwarded?: number | null;
+  lecturerFeedback?: string | null;
+  isGraded?: boolean;
 }
 
 // ── Assignment DTOs ───────────────────────────────────────────────────────────

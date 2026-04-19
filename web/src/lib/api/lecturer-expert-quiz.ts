@@ -63,6 +63,7 @@ export interface AssignExpertQuizResult {
     closeTime: string | null;
     passingScore: number | null;
     timeLimitMinutes: number | null;
+    isAlreadyAssigned: boolean;  // True nếu quiz đã được assign cho lớp trước đó
   };
   questionCount: number;
   note: string;
@@ -234,6 +235,87 @@ export async function assignExpertQuizToClass(
       request ?? {}
     );
     return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Copy Expert Quiz ==========
+
+export interface CopyExpertQuizRequest {
+  title?: string;
+}
+
+export interface CopiedExpertQuizResult {
+  newQuizId: string;
+  newQuizTitle: string;
+  originalQuizId: string;
+  originalQuizTitle: string;
+  questionCount: number;
+  createdAt: string;
+}
+
+/**
+ * Tạo bản copy của một Expert Quiz để Lecturer có thể tùy chỉnh.
+ * Quiz mới sẽ không có CreatedByExpertId và có thể edit câu hỏi.
+ */
+export async function copyExpertQuiz(
+  expertQuizId: string,
+  request?: CopyExpertQuizRequest
+): Promise<CopiedExpertQuizResult> {
+  try {
+    const { data } = await http.post<{ message: string; result: CopiedExpertQuizResult }>(
+      `/api/lecturer/expert-quizzes/${expertQuizId}/copy`,
+      request ?? {}
+    );
+    return data.result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Update Quiz Question ==========
+
+export interface UpdateQuestionRequest {
+  questionText: string;
+  type?: string | null;
+  correctAnswer?: string | null;
+  optionA?: string | null;
+  optionB?: string | null;
+  optionC?: string | null;
+  optionD?: string | null;
+  imageUrl?: string | null;
+  referenceAnswer?: string | null;
+  maxScore?: number;
+}
+
+/**
+ * Cập nhật thông tin một câu hỏi trong quiz của Lecturer.
+ * Chỉ hoạt động với quiz do Lecturer tạo (không phải Expert Quiz gốc).
+ */
+export async function updateQuizQuestion(
+  questionId: string,
+  request: UpdateQuestionRequest
+): Promise<void> {
+  try {
+    await http.put(
+      `/api/lecturer/quizzes/questions/${questionId}`,
+      request
+    );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Delete Quiz ==========
+
+/**
+ * Xóa một quiz của Lecturer.
+ * Ai cũng có thể xóa quiz (không yêu cầu quyền Expert).
+ */
+export async function deleteQuiz(quizId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/quizzes/${quizId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
