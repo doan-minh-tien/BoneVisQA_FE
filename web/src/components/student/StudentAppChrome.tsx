@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bell, MessageCircle } from 'lucide-react';
+import { Bell, MessageCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import { fetchStudentProfile, fetchStudentAnnouncements } from '@/lib/api/student';
@@ -91,6 +91,15 @@ export function StudentAppChrome({
           </h1>
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" aria-hidden />
           <span className="truncate text-sm font-medium text-muted-foreground">{breadcrumb}</span>
+          {/*
+          <Link
+            href="/student/ai-quiz"
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-4 py-1.5 text-xs font-bold text-white shadow-md transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 active:scale-95"
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Quiz
+          </Link>
+          */}
         </div>
         <div className="flex shrink-0 items-center gap-4 md:gap-6">
           <div className="relative" ref={panelRef}>

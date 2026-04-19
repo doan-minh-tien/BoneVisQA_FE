@@ -302,6 +302,98 @@ export interface ClassAssignment {
   gradedCount: number;
 }
 
+// ========== Assignment Types ==========
+
+export interface AssignmentDetail {
+  id: string;
+  classId: string;
+  className: string;
+  classCode?: string | null;
+  /** "case" or "quiz" */
+  type: string;
+  title: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate: string | null;
+  openDate?: string | null;
+  isMandatory: boolean;
+  assignedAt: string | null;
+  totalStudents: number;
+  submittedCount: number;
+  gradedCount: number;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate: boolean;
+  avgScore?: number | null;
+  createdAt: string;
+}
+
+export interface AssignmentSubmission {
+  studentId: string;
+  studentName: string;
+  studentCode: string | null;
+  submittedAt: string | null;
+  score: number | null;
+  status: 'graded' | 'pending' | 'not-submitted';
+}
+
+export interface UpdateAssignmentRequest {
+  title?: string;
+  description?: string | null;
+  instructions?: string | null;
+  dueDate?: string | null;
+  openDate?: string | null;
+  isMandatory?: boolean;
+  maxScore?: number | null;
+  passingScore?: number | null;
+  allowLate?: boolean;
+  allowRetake?: boolean;
+}
+
+export interface AssignmentSubmissionUpdate {
+  studentId: string;
+  score: number | null;
+}
+
+export interface UpdateAssignmentSubmissionRequest {
+  submissions: AssignmentSubmissionUpdate[];
+}
+
+// ========== Manual Assignment Types ==========
+
+export interface CreateAssignmentManualRequest {
+  /** "case" or "quiz" */
+  assignmentType: string;
+  classIds: string[];
+  caseId?: string | null;
+  quizId?: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  timeLimitMinutes?: number | null;
+  passingScore?: number | null;
+  shuffleQuestions?: boolean;
+  allowRetake?: boolean;
+  allowLate?: boolean;
+  showResultsAfterSubmission?: boolean;
+  useExpertTime?: boolean;
+  dueDate?: string | null;
+  isMandatory?: boolean;
+  /** Nếu true, gửi email notification cho sinh viên */
+  sendNotification?: boolean;
+}
+
+export interface ManualAssignmentResult {
+  classId: string;
+  className: string;
+  assignmentId: string;
+  success: boolean;
+  message?: string;
+}
+
+export interface CreateAssignmentManualResponse {
+  results: ManualAssignmentResult[];
+}
+
 export interface ClassStats {
   classId: string;
   totalStudents: number;
@@ -455,7 +547,7 @@ export interface AssignedQuizItem {
   quizName: string;
   classId: string;
   className: string;
-  /** Topic/chủ đề của quiz */
+  /** Topic of the quiz */
   topic?: string | null;
   totalQuestions: number;
   timeLimit: number | null;
@@ -464,6 +556,10 @@ export interface AssignedQuizItem {
   closeTime: string | null;
   isCompleted: boolean;
   score: number | null;
+  /** Attempt ID of the most recent attempt (used for review) */
+  attemptId?: string | null;
+  /** Quiz creation time — used for sorting by newest first */
+  createdAt?: string | null;
 }
 
 export interface QuizSessionDto {
@@ -472,6 +568,8 @@ export interface QuizSessionDto {
   title: string;
   topic: string | null;
   timeLimit?: number | null;
+  /** Quiz closing time (ISO string) - used for auto-submit when time is up */
+  closeTime?: string | null;
   questions: StudentSessionQuestion[];
 }
 
@@ -486,11 +584,13 @@ export interface StudentSessionQuestion {
   optionC: string | null;
   optionD: string | null;
   imageUrl?: string | null;
+  essayAnswer?: string | null; // Model answer for essay questions (from backend)
 }
 
 export interface StudentSubmitQuestionDto {
   questionId: string;
   studentAnswer: string;
+  essayAnswer?: string; // For essay-type questions
 }
 
 export interface StudentQuizResultDto {
@@ -501,6 +601,8 @@ export interface StudentQuizResultDto {
   passed: boolean;
   totalQuestions: number;
   correctAnswers: number;
+  /** Number of ungraded essay questions by the instructor. If > 0, the score may change. */
+  ungradedEssayCount?: number | null;
 }
 
 /** Distinguishes expert library case work vs student-upload Visual QA in history UI. */
@@ -668,6 +770,7 @@ export interface QuizDto {
   title: string;
   topic: string | null;
   isAiGenerated: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty: string | null;
   classification: string | null;
   openTime: string | null;
@@ -678,6 +781,14 @@ export interface QuizDto {
   /** Present when API returns aggregate question count. */
   questionCount?: number | null;
   quizName?: string | null;
+  /** True nếu quiz này từ Expert Library (CreatedByExpertId != null). */
+  isFromExpertLibrary?: boolean;
+}
+
+export interface QuizWithQuestionsDto {
+  quiz: QuizDto;
+  questions: QuizQuestionDto[];
+  totalQuestions: number;
 }
 
 export interface ClassQuizDto {
@@ -685,18 +796,49 @@ export interface ClassQuizDto {
   quizId: string;
   quizName: string | null;
   className: string | null;
-  /** Chủ đề quiz (khác tên lớp). */
+  /** Quiz topic (different from class name). */
   topic?: string | null;
   assignedAt: string | null;
   openTime?: string | null;
   closeTime?: string | null;
   questionCount?: number;
+  /** Quiz from Expert Library or created by lecturer */
+  isFromExpertLibrary: boolean;
+  /** Time limit in minutes (set by Expert or Lecturer) */
+  timeLimit?: number | null;
+  /** Passing score percentage (set by Expert or Lecturer) */
+  passingScore?: number | null;
+  /** Whether assignment card was auto-created (now false - manual creation required) */
+  isAutoCreated?: boolean;
+  /** Message about manual assignment card creation */
+  message?: string;
+  /** Name of quiz creator: "You" if created by lecturer, Expert name if copied from Expert Library */
+  creatorName?: string | null;
+  /** Creator type: "Lecturer" or "Expert" */
+  creatorType?: string | null;
+}
+
+export interface AssignedQuizDto {
+  assignmentId: string; // ClassQuizSession.Id
+  classId: string;
+  quizId: string;
+  quizName: string | null;
+  className: string | null;
+  topic?: string | null;
+  assignedAt: string | null;
+  openTime?: string | null;
+  closeTime?: string | null;
+  questionCount: number;
+  isFromExpertLibrary: boolean;
+  creatorName?: string | null;
+  creatorType?: string | null; // "Expert" or "Lecturer"
 }
 
 export interface CreateQuizRequest {
   title: string;
   topic?: string;
   isAiGenerated?: boolean;
+  isVerifiedCurriculum?: boolean;
   difficulty?: string;
   classification?: string;
   openTime?: string;
@@ -722,6 +864,22 @@ export interface QuizQuestionDto {
   imageUrl?: string | null;
 }
 
+export interface ExpertQuizQuestion {
+  id: string;
+  quizId: string;
+  quizTitle: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  questionText: string;
+  type: string | null;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  imageUrl?: string | null;
+}
+
 export interface CreateQuizQuestionRequest {
   quizId: string;
   caseId?: string;
@@ -731,7 +889,8 @@ export interface CreateQuizQuestionRequest {
   optionB?: string;
   optionC?: string;
   optionD?: string;
-  correctAnswer: string;
+  correctAnswer?: string;
+  essayAnswer?: string;
   imageUrl?: string;
 }
 
@@ -739,6 +898,7 @@ export interface UpdateQuizQuestionRequest {
   questionText: string;
   type?: string;
   correctAnswer?: string;
+  essayAnswer?: string;
   optionA?: string;
   optionB?: string;
   optionC?: string;
@@ -756,6 +916,7 @@ export interface AIQuizQuestion {
   optionC: string;
   optionD: string;
   correctAnswer: string;
+  essayAnswer?: string;
   caseId?: string;
   caseTitle?: string;
   explanation?: string;
@@ -795,6 +956,30 @@ export interface AISuggestQuestionsRequest {
   }>;
   questionsPerCase?: number;
   difficulty?: string | null;
+}
+
+// ========== AI Image Quiz Types ==========
+
+export interface VisualQAGeneratedQuestion {
+  questionText: string;
+  type: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctAnswer: string;
+  caseId?: string;
+  caseTitle?: string;
+  imageUrl?: string;
+}
+
+export interface VisualQAGenerateQuizResponse {
+  success: boolean;
+  message?: string;
+  questions: VisualQAGeneratedQuestion[];
+  generatedTopic?: string;
+  difficulty?: string;
+  imageAnalysis?: string;
 }
 
 export interface ImportStudentsSummary {
@@ -923,8 +1108,15 @@ export interface QuestionWithAnswerDto {
   optionD: string | null;
   correctAnswer: string | null;
   studentAnswer: string | null;
+  essayAnswer: string | null;
   isCorrect: boolean | null;
   answerId: string;
+  maxScore: number;
+  scoreAwarded: number | null;
+  lecturerFeedback: string | null;
+  isGraded: boolean;
+  referenceAnswer: string | null;
+  imageUrl?: string | null;
 }
 
 export interface UpdateQuizAttemptRequestDto {
@@ -935,5 +1127,38 @@ export interface UpdateQuizAttemptRequestDto {
 export interface UpdateAnswerDto {
   answerId: string;
   studentAnswer?: string | null;
+  essayAnswer?: string | null;
   isCorrect?: boolean | null;
+  scoreAwarded?: number | null;
+  lecturerFeedback?: string | null;
+  isGraded?: boolean;
+}
+
+// ── Assignment DTOs ───────────────────────────────────────────────────────────
+
+export interface ClassCaseAssignmentDto {
+  classId: string;
+  caseId: string;
+  caseTitle: string;
+  assignedAt: string | null;
+  dueDate: string | null;
+  isMandatory: boolean;
+}
+
+export interface ClassQuizSessionDto {
+  id: string;
+  classId: string;
+  quizId: string;
+  quizTitle: string;
+  openTime: string | null;
+  closeTime: string | null;
+  timeLimitMinutes: number | null;
+  passingScore: number | null;
+  createdAt: string | null;
+  shuffleQuestions: boolean;
+  allowRetake: boolean;
+  allowLate: boolean;
+  showResultsAfterSubmission: boolean;
+  retakeResetAt: string | null;
+  warning?: string | null;
 }

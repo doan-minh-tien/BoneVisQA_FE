@@ -36,8 +36,8 @@ interface QuestionEditorDialogProps {
 
 const TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'MultipleChoice', label: 'Multiple Choice' },
-  { value: 'TrueFalse', label: 'True / False' },
   { value: 'Annotation', label: 'Identification (Point)' },
+  { value: 'Essay', label: 'Essay' },
 ];
 
 type OptionKey = 'A' | 'B' | 'C' | 'D';
@@ -54,7 +54,7 @@ export default function QuestionEditorDialog({
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [difficulty, setDifficulty] = useState<'basic' | 'advanced'>('basic');
+  const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [visibleMcCount, setVisibleMcCount] = useState(3);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +67,7 @@ export default function QuestionEditorDialog({
     optionC: string;
     optionD: string;
     correctAnswer: string;
+    essayAnswer?: string;
   }>({
     questionText: '',
     type: 'MultipleChoice',
@@ -75,6 +76,7 @@ export default function QuestionEditorDialog({
     optionC: '',
     optionD: '',
     correctAnswer: '',
+    essayAnswer: '',
   });
 
   const [optionPoints, setOptionPoints] = useState<Record<OptionKey, number>>({
@@ -107,6 +109,7 @@ export default function QuestionEditorDialog({
         optionC: question.optionC || '',
         optionD: question.optionD || '',
         correctAnswer: (question.correctAnswer || 'A').toUpperCase().slice(0, 1),
+        essayAnswer: (question as any).essayAnswer || (question as any).EssayAnswer || '',
       });
       const filled = [question.optionA, question.optionB, question.optionC, question.optionD].filter(
         (t) => (t || '').trim().length > 0,
@@ -122,6 +125,7 @@ export default function QuestionEditorDialog({
         optionC: '',
         optionD: '',
         correctAnswer: 'A',
+        essayAnswer: '',
       });
       setVisibleMcCount(3);
       setOptionPoints({ A: 10, B: 0, C: 0, D: 0 });
@@ -131,7 +135,7 @@ export default function QuestionEditorDialog({
       (question as QuizQuestionDto & { ImageUrl?: string | null })?.ImageUrl ??
       null;
     setImageUrl(qImg);
-    setDifficulty('basic');
+    setDifficulty('Medium');
     setError(null);
   }, [question, open, syncPointsFromCorrect]);
 
@@ -150,18 +154,21 @@ export default function QuestionEditorDialog({
     setError(null);
 
     try {
+      const basePayload = {
+        quizId: quizId === 'temp' ? '' : quizId,
+        questionText: formData.questionText,
+        type: formData.type,
+        optionA: formData.optionA,
+        optionB: formData.optionB,
+        optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
+        optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+        correctAnswer: formData.type === 'Essay' ? undefined : formData.correctAnswer,
+        essayAnswer: formData.type === 'Essay' ? formData.essayAnswer : undefined,
+        imageUrl: imageUrl || undefined,
+      };
+
       if (draftMode) {
-        const payload: CreateQuizQuestionRequest = {
-          quizId: quizId === 'temp' ? '' : quizId,
-          questionText: formData.questionText,
-          type: formData.type,
-          optionA: formData.optionA,
-          optionB: formData.optionB,
-          optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
-          optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
-          correctAnswer: formData.correctAnswer,
-          imageUrl: imageUrl || undefined,
-        };
+        const payload: CreateQuizQuestionRequest = basePayload;
         onDraftSave?.(payload);
         onSuccess?.();
         onClose();
@@ -172,26 +179,17 @@ export default function QuestionEditorDialog({
         const payload: UpdateQuizQuestionRequest = {
           questionText: formData.questionText,
           type: formData.type,
-          correctAnswer: formData.correctAnswer,
+          correctAnswer: formData.type === 'Essay' ? undefined : formData.correctAnswer,
           optionA: formData.optionA,
           optionB: formData.optionB,
           optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
           optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
+          essayAnswer: formData.type === 'Essay' ? formData.essayAnswer : undefined,
           imageUrl: imageUrl || undefined,
         };
         await updateQuizQuestion(question.id, payload);
       } else {
-        const payload: CreateQuizQuestionRequest = {
-          quizId,
-          questionText: formData.questionText,
-          type: formData.type,
-          optionA: formData.optionA,
-          optionB: formData.optionB,
-          optionC: formData.type === 'MultipleChoice' ? formData.optionC : undefined,
-          optionD: formData.type === 'MultipleChoice' ? formData.optionD : undefined,
-          correctAnswer: formData.correctAnswer,
-          imageUrl: imageUrl || undefined,
-        };
+        const payload: CreateQuizQuestionRequest = basePayload;
         await addQuizQuestion(payload);
       }
       onSuccess?.();
@@ -203,8 +201,8 @@ export default function QuestionEditorDialog({
     }
   };
 
-  const isTrueFalse = formData.type === 'TrueFalse';
   const isMc = formData.type === 'MultipleChoice';
+  const isEssay = formData.type === 'Essay';
 
   const mcKeys: OptionKey[] = ['A', 'B', 'C', 'D'].slice(0, visibleMcCount) as OptionKey[];
 
@@ -417,28 +415,20 @@ export default function QuestionEditorDialog({
                       Difficulty Level
                     </label>
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDifficulty('basic')}
-                        className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
-                          difficulty === 'basic'
-                            ? 'bg-[#94efec] text-[#006e6d]'
-                            : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
-                        }`}
-                      >
-                        Basic
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDifficulty('advanced')}
-                        className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
-                          difficulty === 'advanced'
-                            ? 'bg-[#94efec] text-[#006e6d]'
-                            : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
-                        }`}
-                      >
-                        Advanced
-                      </button>
+                      {(['Easy', 'Medium', 'Hard'] as const).map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setDifficulty(level)}
+                          className={`flex-1 rounded-xl py-3 text-[10px] font-bold uppercase transition-colors ${
+                            difficulty === level
+                              ? 'bg-[#94efec] text-[#006e6d]'
+                              : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
+                          }`}
+                        >
+                          {level}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -521,32 +511,6 @@ export default function QuestionEditorDialog({
                   </div>
                 )}
 
-                {isTrueFalse && (
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
-                      Correct answer
-                    </label>
-                    <div className="flex gap-2">
-                      {(['True', 'False'] as const).map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() =>
-                            setFormData({ ...formData, correctAnswer: opt })
-                          }
-                          className={`flex-1 rounded-xl py-3 text-sm font-bold transition-colors ${
-                            formData.correctAnswer === opt
-                              ? 'bg-[#00478d] text-white'
-                              : 'bg-[#eceef0] text-[#424752] hover:bg-[#e6e8ea]'
-                          }`}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {formData.type === 'Annotation' && (
                   <div className="space-y-3">
                     <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
@@ -561,6 +525,26 @@ export default function QuestionEditorDialog({
                       className="w-full rounded-xl border-0 bg-[#eceef0] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#00478d]/20"
                       placeholder="Expected identification or label"
                     />
+                  </div>
+                )}
+
+                {isEssay && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[#727783]">
+                      Model Answer / Guidelines
+                    </label>
+                    <textarea
+                      value={formData.essayAnswer || ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, essayAnswer: e.target.value })
+                      }
+                      className="w-full resize-none rounded-xl border-0 bg-[#eceef0] px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#00478d]/20"
+                      rows={5}
+                      placeholder="Enter a model answer or grading guidelines for the essay question..."
+                    />
+                    <p className="text-xs text-[#727783]">
+                      This will be used as a reference for grading the essay response.
+                    </p>
                   </div>
                 )}
               </div>

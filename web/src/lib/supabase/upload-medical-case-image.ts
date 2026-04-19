@@ -1,40 +1,25 @@
-import { createClient } from '@/lib/supabase/client';
-
-const BUCKET = 'medical-cases';
+import { http, getApiErrorMessage } from '@/lib/api/client';
 
 /**
- * Uploads a file to the public `medical-cases` bucket (same pattern as backend-stored URLs).
- * Requires RLS/policies that allow the browser client to insert (e.g. authenticated Supabase user or public upload policy).
+ * Uploads a quiz question image via the backend API.
+ * The backend uses Supabase Service Key for upload, bypassing RLS policies.
  */
 export async function uploadExpertWorkbenchImage(file: File): Promise<string> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error(
-      'Supabase env missing: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY for image upload.',
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const { data } = await http.post<{ url?: string; Url?: string; message?: string }>(
+      '/api/expert/quiz-questions/upload-image',
+      form
     );
+
+    const url = data?.url ?? data?.Url;
+    if (!url) {
+      throw new Error(data?.message || 'Upload failed: no URL returned');
+    }
+    return url;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
   }
-
-  const supabase = createClient();
-  const ext =
-    file.name && file.name.includes('.')
-      ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
-      : '.jpg';
-  const safeExt = /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : '.jpg';
-  const path = `expert-workbench/${crypto.randomUUID()}${safeExt}`;
-
-  const { data, error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    cacheControl: '3600',
-    upsert: false,
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Supabase storage upload failed');
-  }
-
-  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
-  if (!pub?.publicUrl) {
-    throw new Error('Could not resolve public URL for uploaded image.');
-  }
-  return pub.publicUrl;
 }

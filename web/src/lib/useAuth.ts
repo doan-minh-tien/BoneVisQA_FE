@@ -40,8 +40,10 @@ function normalizeRole(raw: string | null | undefined): BackendRole | null {
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
+  // const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    // setIsHydrated(true);
     let cancelled = false;
     let latestSnapshot: AuthUser | null = null;
 
@@ -76,7 +78,7 @@ export function useAuth() {
 
       // Prefer canonical profile from API when available.
       void http
-        .get<Record<string, unknown>>('/api/users/me')
+        .get<Record<string, unknown>>('/api/profile')
         .then((response) => {
           if (cancelled) return;
           const payload = response.data ?? {};
@@ -139,5 +141,6 @@ export function useAuth() {
     };
   }, []);
 
+  // return { user, isHydrated };
   return { user };
 }

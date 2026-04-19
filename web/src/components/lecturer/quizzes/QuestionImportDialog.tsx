@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   X,
@@ -17,7 +17,7 @@ import {
 
 export interface ParsedQuestion {
   questionText: string;
-  type: 'MultipleChoice' | 'TrueFalse' | 'Annotation';
+  type: 'MultipleChoice' | 'Annotation' | 'Essay';
   optionA?: string;
   optionB?: string;
   optionC?: string;
@@ -38,8 +38,7 @@ type ParseResult =
   | { ok: false; error: string };
 
 const SAMPLE_CSV = `questionText,type,optionA,optionB,optionC,optionD,correctAnswer,difficulty
-"What is the most common fracture site in the femur?","MultipleChoice","Proximal shaft","Distal metaphysis","Femoral neck","Medial epicondyle","A","basic"
-"True or False: The tibial plateau is part of the knee joint.","TrueFalse","True","False","","","True","basic"`;
+"What is the most common fracture site in the femur?","MultipleChoice","Proximal shaft","Distal metaphysis","Femoral neck","Medial epicondyle","A","basic"`;
 
 const SAMPLE_JSON = `[
   {
@@ -50,11 +49,6 @@ const SAMPLE_JSON = `[
     "optionC": "Femoral neck",
     "optionD": "Medial epicondyle",
     "correctAnswer": "A"
-  },
-  {
-    "questionText": "True or False: The tibial plateau is part of the knee joint.",
-    "type": "TrueFalse",
-    "correctAnswer": "True"
   }
 ]`;
 
@@ -71,8 +65,8 @@ Answer: Transverse fracture`;
 
 function detectType(text: string): ParsedQuestion['type'] {
   const lower = text.toLowerCase();
-  if (lower.includes('true or false') || lower.includes('t/f')) return 'TrueFalse';
   if (lower.includes('identify') || lower.includes('label') || lower.includes('point')) return 'Annotation';
+  if (lower.includes('essay') || lower.includes('tự luận') || lower.includes('viết')) return 'Essay';
   return 'MultipleChoice';
 }
 
@@ -116,11 +110,11 @@ function parsePaste(raw: string): ParsedQuestion[] {
       correctAnswer = ansRaw.charAt(0).toUpperCase();
     }
 
-    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|true[\s\/]?false|annotation)/i);
+    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|annotation|essay)/i);
     if (mcMatch) {
       const t = mcMatch[1].toLowerCase().replace(/\s/g, '');
-      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-      else if (t.includes('annotation')) type = 'Annotation';
+      if (t.includes('annotation')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
     }
 
@@ -186,8 +180,8 @@ function parseCSV(raw: string): ParseResult {
     const typeVal = cells[typeIdx] ?? 'MultipleChoice';
     let type: ParsedQuestion['type'] = 'MultipleChoice';
     const t = typeVal.toLowerCase().replace(/\s/g, '');
-    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-    else if (t.includes('annotation')) type = 'Annotation';
+    if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({
@@ -216,8 +210,8 @@ function parseJSON(raw: string): ParseResult {
       const typeVal = item.type ?? 'MultipleChoice';
       let type: ParsedQuestion['type'] = 'MultipleChoice';
       const t = String(typeVal).toLowerCase().replace(/\s/g, '');
-      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-      else if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
       questions.push({
         questionText: qText,
@@ -273,8 +267,8 @@ function parseExcel(workbook: XLSX.WorkBook): ParseResult {
     const typeVal = cells[typeIdx] ?? 'MultipleChoice';
     let type: ParsedQuestion['type'] = 'MultipleChoice';
     const t = typeVal.toLowerCase().replace(/\s/g, '');
-    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-    else if (t.includes('annotation')) type = 'Annotation';
+    if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({
@@ -313,6 +307,12 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      reset();
+    }
+  }, [open]);
 
   const parse = useCallback(() => {
     if (mode === 'paste') {
@@ -401,13 +401,18 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
     onClose();
   };
 
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
   if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-md"
       role="presentation"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="flex min-h-[100dvh] items-center justify-center p-4 pb-8 sm:p-6 sm:pb-10">
         <div
@@ -428,7 +433,10 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              reset();
+              onClose();
+            }}
             className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted transition-colors"
           >
             <X className="h-6 w-6" />
@@ -493,7 +501,9 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Flexible format supported: split questions with &quot;Q1&quot;, &quot;1.&quot;, or &quot;Question 1&quot;; enter answers as &quot;Answer: X&quot; or &quot;Correct Answer: X&quot; (A-D or True/False).
+                Flexible format / Định dạng linh hoạt: split questions with &quot;Q1&quot;, &quot;1.&quot;, &quot;Câu 1&quot;,
+                or &quot;Question 1&quot;; answers as &quot;Answer: X&quot;, &quot;Đáp án: X&quot;, or &quot;Correct Answer: X&quot; (A–D or
+                True/False).
               </p>
             </div>
           ) : (
@@ -608,7 +618,10 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           <div className="flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                reset();
+                onClose();
+              }}
               className="rounded-full px-6 py-2.5 text-sm font-bold text-muted-foreground hover:bg-muted transition-colors"
             >
               Cancel

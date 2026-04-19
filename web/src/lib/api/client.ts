@@ -57,6 +57,9 @@ export function withVersionedAssetUrl(resolvedUrl: string, version?: string | nu
 
 const baseURL = getPublicApiOrigin() || undefined;
 
+/** Base URL của BE để dùng trực tiếp, ví dụ: axios đến /api/... */
+export const API_BASE_URL = baseURL || '';
+
 export const http = axios.create({
   baseURL,
   timeout: 60_000,
@@ -110,6 +113,12 @@ http.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('activeRole');
       window.dispatchEvent(new Event('auth:unauthorized'));
+    }
+    // Log chi tiết lỗi để debug
+    if (err.response) {
+      console.warn(`[API] HTTP ${err.response.status}: ${err.config?.url}`, err.response.data);
+    } else if (err.request) {
+      console.warn(`[API] No response from ${err.config?.url} — server may be offline or unreachable.`);
     }
     return Promise.reject(err);
   },

@@ -21,6 +21,8 @@ import {
   BarChart3,
   Megaphone,
   Settings,
+
+  Sparkles,
   ChevronLeft,
   ChevronRight,
   GraduationCap,
@@ -92,7 +94,7 @@ export function AppSidebar({
   onToggleCollapsed,
 }: {
   role?: RoleKey;
-  collapsed: boolean;
+  collapsed?: boolean;
   onToggleCollapsed: () => void;
 }) {
   const pathname = usePathname();

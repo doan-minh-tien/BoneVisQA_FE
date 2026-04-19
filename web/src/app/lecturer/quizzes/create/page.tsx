@@ -8,7 +8,6 @@ import {
   PlusCircle,
   Timer,
   Percent,
-  Upload,
   Save,
   X,
   FilePenLine,
@@ -16,14 +15,15 @@ import {
   ListChecks,
   Eye,
   Send,
-  Lightbulb,
-  ShieldCheck,
   GripVertical,
   Trash2,
   Pencil,
   ArrowLeft,
-  Sparkles,
   UploadCloud,
+  Upload,
+  ShieldCheck,
+  Sparkles,
+  Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -84,8 +84,8 @@ function classificationToBand(c: string): 'RESIDENT' | 'SPECIALIST' | 'FELLOW' {
 
 function typeLabel(type: string | null | undefined): string {
   const t = (type || 'MultipleChoice').toLowerCase();
-  if (t === 'truefalse' || t === 'true/false') return 'True / False';
-  if (t === 'annotation' || t === 'draw') return 'Annotation';
+  if (t === 'annotation' || t === 'draw') return 'Identification (Point)';
+  if (t === 'essay') return 'Essay';
   return 'Multiple Choice';
 }
 
@@ -112,19 +112,10 @@ function CreateQuizQuestionPreview({
   onDelete: () => void;
 }) {
   const t = (question.type || 'MultipleChoice').toLowerCase();
-  const isTf = t === 'truefalse' || t === 'true/false';
-  const opts = isTf
-    ? [
-        { key: 'True', text: 'True' },
-        { key: 'False', text: 'False' },
-      ]
-    : mcOptions(question).map((o) => ({ key: o.key, text: o.text! }));
-  let correct = (question.correctAnswer || '').trim();
-  if (isTf) {
-    const u = correct.toUpperCase();
-    if (u === 'A') correct = 'True';
-    if (u === 'B') correct = 'False';
-  }
+  const isEssay = t === 'essay';
+  const opts = mcOptions(question).map((o) => ({ key: o.key, text: o.text! }));
+  const correct = (question.correctAnswer || '').trim();
+  const essayAnswer = (question as any).essayAnswer || (question as any).EssayAnswer;
 
   return (
     <div className="group relative mb-4 rounded-xl border border-border/60 bg-muted/30 p-6 transition-all last:mb-0 hover:border-primary/30">
@@ -161,34 +152,41 @@ function CreateQuizQuestionPreview({
       >
         {question.questionText}
       </button>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {opts.map(({ key, text }) => {
-          const isCorrect = isTf
-            ? correct.toLowerCase() === key.toLowerCase()
-            : correct === key;
-          return (
-            <div
-              key={key}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
-                isCorrect
-                  ? 'border-primary/40 bg-primary/5'
-                  : 'border-border/60 bg-card hover:bg-muted/50'
-              }`}
-              onClick={onEdit}
-              role="presentation"
-            >
+      {isEssay && essayAnswer ? (
+        <div className="rounded-lg border border-border/60 bg-card p-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Model Answer / Guidelines
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-card-foreground">{essayAnswer}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {opts.map(({ key, text }) => {
+            const isCorrect = correct === key;
+            return (
               <div
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                  isCorrect ? 'border-primary' : 'border-muted-foreground/30'
+                key={key}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
+                  isCorrect
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border/60 bg-card hover:bg-muted/50'
                 }`}
+                onClick={onEdit}
+                role="presentation"
               >
-                {isCorrect ? <div className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
+                <div
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                    isCorrect ? 'border-primary' : 'border-muted-foreground/30'
+                  }`}
+                >
+                  {isCorrect ? <div className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
+                </div>
+                <span className="text-sm font-medium text-card-foreground">{text}</span>
               </div>
-              <span className="text-sm font-medium text-card-foreground">{text}</span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -254,11 +252,8 @@ export default function CreateQuizPage() {
   const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>(
     'Resident Year 1',
   );
-  const [tags, setTags] = useState<string[]>(['Radiology', 'Cardiology']);
-  const [tagInput, setTagInput] = useState('');
   const [randomizeQuestions, setRandomizeQuestions] = useState(true);
   const [allowRetakes, setAllowRetakes] = useState(false);
-  const [immediateResults, setImmediateResults] = useState(true);
 
   const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
   const [casePickerOpen, setCasePickerOpen] = useState(false);
@@ -271,15 +266,15 @@ export default function CreateQuizPage() {
   const [editingQuestion, setEditingQuestion] = useState<CreateQuizQuestionRequest | null>(null);
   const [editingTempIndex, setEditingTempIndex] = useState<number | null>(null);
 
-  // AI Quiz State
+  const [importOpen, setImportOpen] = useState(false);
+  const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
+  const [createStatsLoading, setCreateStatsLoading] = useState(false);
+
+  const [questionCount, setQuestionCount] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<AIQuizQuestion[]>([]);
   const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
-  const [questionCount, setQuestionCount] = useState(5);
-  const [importOpen, setImportOpen] = useState(false);
-  const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
-  const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
   const allQuestions = createdQuizId ? questions : tempQuestions;
 
@@ -340,27 +335,19 @@ export default function CreateQuizPage() {
     );
   };
 
-  const addTag = () => {
-    const t = tagInput.trim();
-    if (!t || tags.includes(t)) return;
-    setTags([...tags, t]);
-    setTagInput('');
-  };
-
-  const removeTag = (t: string) => setTags(tags.filter((x) => x !== t));
-
   const band = classificationToBand(classification);
-
-  const insightsText = useMemo(() => {
-    const level =
-      band === 'SPECIALIST' ? 'Level 3 Specialist' : band === 'FELLOW' ? 'Fellowship' : 'Residency';
-    const diff = band === 'SPECIALIST' ? 'High' : band === 'FELLOW' ? 'Very high' : 'Moderate';
-    return `This quiz structure aligns with ${level} standards. Topics: ${tags.slice(0, 3).join(', ') || 'general'}. Predicted difficulty: ${diff}.`;
-  }, [band, tags]);
 
   const scrollTo = (ref: { current: HTMLElement | null }, step: 1 | 2) => {
     setActiveStep(step);
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const toUTC = (local: string) => {
+    const t = local.trim();
+    if (!t) return undefined;
+    const d = new Date(t);
+    if (Number.isNaN(d.getTime())) return undefined;
+    return d.toISOString();
   };
 
   const buildCreatePayload = () => ({
@@ -370,8 +357,8 @@ export default function CreateQuizPage() {
     classification: classification,
     isAiGenerated: false,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
-    openTime: formData.openTime || undefined,
-    closeTime: formData.closeTime || undefined,
+    openTime: toUTC(formData.openTime),
+    closeTime: toUTC(formData.closeTime),
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
   });
@@ -523,6 +510,7 @@ export default function CreateQuizPage() {
     }
   };
 
+  // ========== Quiz Handlers ==========
   const handleSaveDraft = async () => {
     if (!formData.title.trim()) {
       setError('Please enter an assessment title');
@@ -656,6 +644,18 @@ export default function CreateQuizPage() {
     if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900' };
     return { label: 'LEVEL 1', className: 'bg-muted text-muted-foreground' };
   }, [allQuestions.length, classification]);
+
+  const tags = useMemo(() => {
+    const raw = formData.topic?.trim();
+    return raw ? [raw] : [];
+  }, [formData.topic]);
+
+  const insightsText = useMemo(() => {
+    if (referenceCaseIds.length > 0) {
+      return `${referenceCaseIds.length} reference case(s) tagged for this assessment.`;
+    }
+    return 'Tag cases from the library to anchor questions in real imaging scenarios.';
+  }, [referenceCaseIds.length]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
@@ -1028,40 +1028,10 @@ export default function CreateQuizPage() {
                   Advanced quiz options
                 </summary>
                 <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {tags.map((t) => (
-                      <span
-                        key={t}
-                        className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-3 py-1 text-xs font-bold text-secondary"
-                      >
-                        {t}
-                        <button type="button" onClick={() => removeTag(t)} className="rounded hover:opacity-70">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                      placeholder="Topic tag"
-                      className="min-w-0 flex-1 rounded-full border border-border bg-card px-3 py-2 text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={addTag}
-                      className="rounded-full bg-muted px-3 py-2 text-xs font-bold"
-                    >
-                      Add
-                    </button>
-                  </div>
                   <ToggleRow label="Randomize questions" on={randomizeQuestions} onChange={setRandomizeQuestions} />
                   <ToggleRow label="Allow retakes" on={allowRetakes} onChange={setAllowRetakes} />
-                  <ToggleRow label="Immediate results" on={immediateResults} onChange={setImmediateResults} />
                   <p className="text-[11px] text-muted-foreground">
-                    Tags and toggles are local to this screen until the API supports them.
+                    These options are applied when the quiz is published.
                   </p>
                 </div>
               </details>
@@ -1100,7 +1070,7 @@ export default function CreateQuizPage() {
               </button>
             </div>
 
-            {allQuestions.length > 0 || aiQuestions.length > 0 ? (
+            {allQuestions.length > 0 ? (
               <div>
                 {/* AI Questions Section */}
                 {aiQuestions.length > 0 && (
@@ -1162,7 +1132,7 @@ export default function CreateQuizPage() {
                 {allQuestions.map((question, index) => (
                   <CreateQuizQuestionPreview
                     key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
-                    index={aiQuestions.length + index + 1}
+                    index={index + 1}
                     question={question as QuestionLike}
                     onEdit={() => {
                       if (!createdQuizId) {

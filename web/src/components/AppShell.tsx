@@ -11,6 +11,10 @@ type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
 
 type AuthSnapshot = {
   token: string | null;
+  /**
+   * True when a token exists but the user should not access the app shell yet
+   * (guest, pending approval, or no usable active role).
+   */
   isGuestOrUnassigned: boolean;
 };
 
@@ -30,15 +34,17 @@ function readAuthSnapshot(): AuthSnapshot {
   const activeRole = (localStorage.getItem('activeRole') || '').trim().toLowerCase();
   const hasUsableRole = Boolean(activeRole) && activeRole !== 'none';
   const guestStatus = status === 'guest';
+  const pendingStatus = status === 'pending';
   const unassignedRole =
     normalizedRoles.length === 0 ||
     normalizedRoles.includes('none') ||
     normalizedRoles.includes('unassigned') ||
     normalizedRoles.includes('guest') ||
+    normalizedRoles.includes('pending') ||
     !hasUsableRole;
   return {
     token: nextToken,
-    isGuestOrUnassigned: Boolean(nextToken) && (guestStatus || unassignedRole),
+    isGuestOrUnassigned: Boolean(nextToken) && (guestStatus || pendingStatus || unassignedRole),
   };
 }
 
@@ -52,12 +58,12 @@ export function AppShell({
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  /** Stable SSR + first client frame — real auth is applied only after mount. */
   const [auth, setAuth] = useState<AuthSnapshot>({
     token: null,
     isGuestOrUnassigned: false,
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setMounted(true);
@@ -84,11 +90,7 @@ export function AppShell({
     return <SessionGateSkeleton />;
   }
 
-  if (!token) {
-    return <SessionGateSkeleton />;
-  }
-
-  if (isGuestOrUnassigned) {
+  if (!token || isGuestOrUnassigned) {
     return <SessionGateSkeleton />;
   }
 

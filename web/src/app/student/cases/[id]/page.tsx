@@ -13,6 +13,7 @@ import { fetchCaseCatalogDetail } from '@/lib/api/student';
 import type { StudentCaseCatalogDetail } from '@/lib/api/types';
 import { AlertCircle, BookOpen, ChevronRight } from 'lucide-react';
 import { isNextImageRemoteOptimized } from '@/lib/images/remote-image';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 export default function StudentCaseDetailPage() {
   const toast = useToast();
@@ -95,14 +96,14 @@ export default function StudentCaseDetailPage() {
               <div className="flex w-full justify-center overflow-hidden rounded-lg border border-border bg-muted p-2">
                 {item.imageUrl ? (
                   <Image
-                    src={item.imageUrl}
+                    src={resolveApiAssetUrl(item.imageUrl)}
                     alt={item.title}
                     width={1600}
                     height={1200}
                     sizes="(max-width: 1024px) 100vw, 55vw"
                     className="h-auto max-h-[600px] w-full object-contain"
                     priority
-                    unoptimized={!isNextImageRemoteOptimized(item.imageUrl)}
+                    unoptimized={!isNextImageRemoteOptimized(resolveApiAssetUrl(item.imageUrl))}
                   />
                 ) : (
                   <div className="flex min-h-[280px] items-center justify-center text-sm text-muted-foreground">

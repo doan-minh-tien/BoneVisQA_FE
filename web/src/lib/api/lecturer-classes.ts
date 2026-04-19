@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { getApiErrorMessage, http } from './client';
-import type { CaseDto, ClassItem, QuizDto, StudentEnrollment } from './types';
+import type { CaseDto, ClassItem, QuizDto, StudentEnrollment, ClassCaseAssignmentDto, ClassQuizSessionDto } from './types';
 
 export class ForbiddenApiError extends Error {
   constructor(message = 'You are not allowed to access this resource.') {
@@ -62,9 +62,13 @@ export async function fetchClassStudents(classId: string): Promise<StudentEnroll
 export async function assignCasesToLecturerClass(
   classId: string,
   payload: AssignCasesPayload,
-): Promise<void> {
+): Promise<ClassCaseAssignmentDto[]> {
   try {
-    await http.post(`/api/lecturer/classes/${classId}/assignments/cases`, payload);
+    const { data } = await http.post<ClassCaseAssignmentDto[]>(
+      `/api/lecturer/classes/${classId}/assignments/cases`,
+      payload
+    );
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     throwApiError(error);
   }
@@ -73,9 +77,13 @@ export async function assignCasesToLecturerClass(
 export async function assignQuizToLecturerClass(
   classId: string,
   payload: AssignQuizPayload,
-): Promise<void> {
+): Promise<ClassQuizSessionDto> {
   try {
-    await http.post(`/api/lecturer/classes/${classId}/assignments/quizzes`, payload);
+    const { data } = await http.post<ClassQuizSessionDto>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes`,
+      payload
+    );
+    return data;
   } catch (error) {
     throwApiError(error);
   }

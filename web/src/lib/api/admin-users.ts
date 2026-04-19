@@ -107,6 +107,8 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
     const responses = await Promise.all(
       rolesToFetch.map(async (role) => {
         try {
+          // const res = await http.get<unknown>(`/api/admin/users/roles/${r}`);
+          // return { role: r, data: res.data };
           const res = await http.get<unknown>(`/api/admin/role/${role}`);
           return { role, users: normalizeUsersResponse(res.data) };
         } catch {

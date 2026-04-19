@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { StudentAppChrome, StudentDashboardFab } from '@/components/student/StudentAppChrome';
-import { fetchStudentQuizHistory } from '@/lib/api/student';
-import type { StudentQuizAttemptSummary } from '@/lib/api/student';
+import { fetchStudentQuizHistory, fetchQuizAttemptReview } from '@/lib/api/student';
+import type { StudentQuizAttemptSummary, QuizAttemptReview } from '@/lib/api/student';
 import { useToast } from '@/components/ui/toast';
 import {
   BarChart3,
@@ -11,6 +12,7 @@ import {
   CheckCircle,
   ChevronRight,
   Clock,
+  Eye,
   Filter,
   Loader2,
   RotateCcw,
@@ -22,11 +24,38 @@ import {
 type FilterMode = 'all' | 'ai' | 'assigned';
 
 export default function StudentQuizHistoryPage() {
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [attempts, setAttempts] = useState<StudentQuizAttemptSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Review panel state
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [currentReview, setCurrentReview] = useState<QuizAttemptReview | null>(null);
+  const [reviewActive, setReviewActive] = useState(false);
+
+  // Auto-expand + load review when ?review=<attemptId> is present
+  useEffect(() => {
+    const reviewId = searchParams.get('review');
+    if (reviewId) {
+      setExpanded(reviewId);
+      // Load and show review automatically
+      setReviewLoading(true);
+      fetchQuizAttemptReview(reviewId)
+        .then((data) => {
+          setCurrentReview(data);
+          setReviewActive(true);
+        })
+        .catch(() => {
+          toast.error('Failed to load review.');
+        })
+        .finally(() => {
+          setReviewLoading(false);
+        });
+    }
+  }, [searchParams, toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +111,155 @@ export default function StudentQuizHistoryPage() {
     if (score >= 80) return 'text-[#006a68]';
     if (score >= 60) return 'text-[#924e00]';
     return 'text-[#ba1a1a]';
+  }
+
+  function optionLabel(key: string) {
+    const map: Record<string, string> = { A: 'A', B: 'B', C: 'C', D: 'D' };
+    return map[key] ?? key;
+  }
+
+  function optionValue(q: {
+    optionA?: string | null;
+    optionB?: string | null;
+    optionC?: string | null;
+    optionD?: string | null;
+  }, key: string) {
+    return q[`option${key}` as keyof typeof q] as string | undefined;
+  }
+
+  // Load review handler
+  const openReview = async (attemptId: string) => {
+    setReviewLoading(true);
+    try {
+      const data = await fetchQuizAttemptReview(attemptId);
+      setCurrentReview(data);
+      setReviewActive(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load review.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  // ReviewAnswersPanel component (inline to avoid moving complex JSX)
+  function ReviewAnswersPanel({
+    review,
+    onClose,
+  }: {
+    review: QuizAttemptReview;
+    onClose: () => void;
+  }) {
+    const [expanded, setExpanded] = useState<string | null>(null);
+    return (
+      <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white shadow-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#eceef0] px-6 py-4">
+          <div>
+            <h3 className="font-['Manrope',sans-serif] text-lg font-bold text-[#191c1e]">Review Answers</h3>
+            <p className="text-sm text-[#424752]">{review.quizTitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-2 rounded-xl bg-[#00478d] px-4 py-2 text-sm font-bold text-white"
+          >
+            <CheckCircle className="h-4 w-4" /> Done
+          </button>
+        </div>
+        {/* Summary bar */}
+        <div className="flex items-center gap-6 border-b border-[#eceef0] px-6 py-3 text-sm">
+          <span className="font-semibold text-[#191c1e]">
+            {review.score != null ? `${review.correctAnswers}/${review.totalQuestions}` : '—'}
+          </span>
+          <span className="text-[#727783]">
+            {review.score != null ? `${Math.round(review.score)}%` : '—'}
+          </span>
+          <span className={`rounded-full px-3 py-0.5 text-xs font-bold ${
+            review.passed
+              ? 'bg-[#006a68]/10 text-[#006a68]'
+              : 'bg-[#ba1a1a]/10 text-[#ba1a1a]'
+          }`}>
+            {review.passed ? 'Passed' : 'Not Passed'}
+          </span>
+        </div>
+        {/* Questions */}
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto p-4">
+          {review.questions.map((q, i) => {
+            const isExpanded = expanded === q.questionId;
+            return (
+              <div
+                key={q.questionId}
+                className={`rounded-xl border p-4 transition-all ${
+                  q.isCorrect
+                    ? 'border-[#006a68]/30 bg-[#94efec]/10'
+                    : 'border-[#ba1a1a]/30 bg-[#f8d7da]/10'
+                }`}
+              >
+                {/* Question header */}
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-3 text-left"
+                  onClick={() => setExpanded(isExpanded ? null : q.questionId)}
+                >
+                  <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    q.isCorrect
+                      ? 'bg-[#006a68] text-white'
+                      : 'bg-[#ba1a1a] text-white'
+                  }`}>
+                    {q.isCorrect ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-[#191c1e]">
+                      <span className="mr-2 text-xs text-[#727783]">Q{i + 1}.</span>
+                      {q.questionText}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      <span className="font-semibold">Your answer: </span>
+                      <span className={q.isCorrect ? 'text-[#006a68]' : 'text-[#ba1a1a]'}>
+                        {q.studentAnswer
+                          ? `${optionLabel(q.studentAnswer)}. ${optionValue(q, q.studentAnswer) ?? ''}`
+                          : <span className="italic text-[#727783]">No answer</span>}
+                      </span>
+                      {!q.isCorrect && q.correctAnswer && (
+                        <span className="ml-3">
+                          <span className="font-semibold text-[#727783]">Correct: </span>
+                          <span className="text-[#006a68]">
+                            {optionLabel(q.correctAnswer)}. {optionValue(q, q.correctAnswer) ?? ''}
+                          </span>
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-[#727783] transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                </button>
+                {/* Expanded: all options */}
+                {isExpanded && (
+                  <div className="mt-3 space-y-2 pl-9">
+                    {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                      const val = optionValue(q, key);
+                      if (!val) return null;
+                      const isSelected = q.studentAnswer === key;
+                      const isCorrect = q.correctAnswer === key;
+                      let cls = 'bg-white border-[#eceef0]';
+                      if (isCorrect) cls = 'border-[#006a68] bg-[#94efec]/20 text-[#006a68]';
+                      else if (isSelected && !isCorrect) cls = 'border-[#ba1a1a] bg-[#f8d7da]/20 text-[#ba1a1a]';
+                      return (
+                        <div key={key} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${cls}`}>
+                          <span className="w-5 shrink-0 font-bold">{key}.</span>
+                          <span className="flex-1">{val}</span>
+                          {isCorrect && <CheckCircle className="h-4 w-4 shrink-0" />}
+                          {isSelected && !isCorrect && <XCircle className="h-4 w-4 shrink-0" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -224,10 +402,10 @@ export default function StudentQuizHistoryPage() {
                             {attempt.score != null ? (
                               <>
                                 <p className={`text-xl font-black ${scoreColor(attempt.score)}`}>
-                                  {Math.round(attempt.score)}%
+                                  {attempt.correctAnswers}/{attempt.totalQuestions}
                                 </p>
                                 <p className="text-xs text-[#727783]">
-                                  {attempt.correctAnswers}/{attempt.totalQuestions} correct
+                                  {Math.round(attempt.score)}%
                                 </p>
                               </>
                             ) : (
@@ -291,7 +469,25 @@ export default function StudentQuizHistoryPage() {
                           </div>
                         </div>
 
-                        <div className="mt-4 flex gap-3">
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          {attempt.completedAt && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void openReview(attempt.attemptId);
+                              }}
+                              disabled={reviewLoading && expanded === attempt.attemptId}
+                              className="flex items-center gap-2 rounded-xl border border-[#00478d]/30 bg-[#d6e3ff]/20 px-4 py-2 text-xs font-bold text-[#00478d] transition-colors hover:bg-[#d6e3ff]/40 disabled:opacity-50"
+                            >
+                              {reviewLoading && expanded === attempt.attemptId ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Eye className="h-3.5 w-3.5" />
+                              )}
+                              Review Answers
+                            </button>
+                          )}
                           {attempt.isAiGenerated && attempt.completedAt && (
                             <a
                               href={`/student/quiz?regenerate=${encodeURIComponent(attempt.topic ?? attempt.quizTitle)}`}
@@ -311,6 +507,18 @@ export default function StudentQuizHistoryPage() {
           </>
         )}
       </div>
+
+      {/* Review Answers Panel Overlay */}
+      {reviewActive && currentReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <ReviewAnswersPanel
+              review={currentReview}
+              onClose={() => setReviewActive(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <StudentDashboardFab />
     </div>

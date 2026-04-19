@@ -15,6 +15,12 @@ import {
   AlertTriangle,
   Plus,
   Bell,
+  Settings,
+  BarChart3,
+  Trash2,
+  CheckSquare,
+  Square,
+
 } from 'lucide-react';
 import { getLecturerClasses, getStudentQuestions } from '@/lib/api/lecturer';
 import { escalateToExpert, TRIAGE_ALREADY_ESCALATED } from '@/lib/api/lecturer-triage';
@@ -44,6 +50,16 @@ interface StudentQuestion {
   studyImageUrl?: string | null;
   /** Set when API is called with explicit `source` (not legacy). */
   questionSource?: 'CaseQA' | 'VisualQA' | null;
+}
+
+interface QuestionCardProps {
+  question: StudentQuestion;
+  isActive: boolean;
+  isSelected: boolean;
+  /** When true, show bulk-selection checkbox (multi-delete). */
+  selectMode: boolean;
+  onSelect: (id: string) => void;
+  onClick: () => void;
 }
 
 function initials(name: string | null): string {
@@ -79,12 +95,11 @@ function sourceBadgeLabel(source: StudentQuestion['questionSource']): string | n
 function QuestionCard({
   question,
   isActive,
+  isSelected,
+  selectMode,
+  onSelect,
   onClick,
-}: {
-  question: StudentQuestion;
-  isActive: boolean;
-  onClick: () => void;
-}) {
+}: QuestionCardProps) {
   const badgeClass = isActive
     ? 'border-l-4 border-primary bg-surface-container-lowest'
     : 'bg-surface-container-low hover:bg-surface-container transition-all';
@@ -97,7 +112,21 @@ function QuestionCard({
     >
       <div className="flex justify-between items-start mb-2 gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+          {selectMode ? (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onSelect(question.id);
+              }}
+              className="h-4 w-4 shrink-0 cursor-pointer rounded border-muted-foreground/30 text-primary focus:ring-primary"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : null}
+          <span
+            className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
+          >
             CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
           </span>
           {sourceLabel ? (
@@ -140,7 +169,36 @@ export default function StudentQuestionsPage() {
   const [escalateText, setEscalateText] = useState('');
   const [highPriority, setHighPriority] = useState(false);
   const [notifyHead, setNotifyHead] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [expertSubmitting, setExpertSubmitting] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectMode(true);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((q) => q.id)));
+    }
+  };
+
+  const deleteSelected = () => {
+    setQuestions((prev) => prev.filter((q) => !selectedIds.has(q.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    if (selectedQuestion && selectedIds.has(selectedQuestion.id)) {
+      setSelectedQuestion(null);
+    }
+  };
 
   useEffect(() => {
     loadClasses();
@@ -331,12 +389,54 @@ export default function StudentQuestionsPage() {
         <div className="grid grid-cols-12 gap-8 items-start">
           {/* Left: Question List */}
           <div className="col-span-12 space-y-4 lg:col-span-4">
-            <div className="flex flex-col gap-3 mb-6">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                  {pendingCount} Pending
-                </span>
+            <div className="mb-6 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="text-xl font-bold text-foreground">Student Questions</h3>
+                  {filtered.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectMode(!selectMode)}
+                      className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                        selectMode
+                          ? 'bg-primary text-white'
+                          : 'bg-primary/10 text-primary hover:bg-primary/20'
+                      }`}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5" />
+                      Multi Select
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {selectMode && selectedIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={deleteSelected}
+                      className="flex items-center gap-1.5 rounded-full bg-red-500/10 px-4 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-500/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete ({selectedIds.size})
+                    </button>
+                  )}
+                  {selectMode && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+                    >
+                      {selectedIds.size === filtered.length ? (
+                        <CheckSquare className="h-3.5 w-3.5" />
+                      ) : (
+                        <Square className="h-3.5 w-3.5" />
+                      )}
+                      Select All
+                    </button>
+                  )}
+                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                    {pendingCount} Pending
+                  </span>
+                </div>
               </div>
               <label className="flex flex-col gap-1.5 text-xs font-semibold text-muted-foreground">
                 <span>List source</span>
@@ -363,6 +463,9 @@ export default function StudentQuestionsPage() {
                     key={q.id}
                     question={q}
                     isActive={selectedQuestion?.id === q.id}
+                    isSelected={selectedIds.has(q.id)}
+                    selectMode={selectMode}
+                    onSelect={toggleSelect}
                     onClick={() => setSelectedQuestion(q)}
                   />
                 ))

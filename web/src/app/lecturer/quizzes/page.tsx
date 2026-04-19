@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QuizWorkbenchListSkeleton } from '@/components/shared/DashboardSkeletons';
 import {
@@ -22,23 +22,62 @@ import {
   Copy,
   Check,
   Trash,
+  BookOpen,
+  User,
+  UserCheck,
+  Eye,
+  X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
-import { getLecturerQuizzes, deleteQuiz } from '@/lib/api/lecturer-quiz';
+import { deleteQuiz, removeQuizFromClass, getUnassignedLecturerQuizzes, getAssignedQuizzes, getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassQuizDto } from '@/lib/api/types';
+import type { ClassQuizDto, AssignedQuizDto, QuizDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
+import { useToast } from '@/components/ui/toast';
+import ExpertQuizLibrary from '@/components/lecturer/quizzes/ExpertQuizLibrary';
+import { fetchExpertQuizQuestions, assignExpertQuizToClass } from '@/lib/api/lecturer-expert-quiz';
+import { fetchLecturerClasses } from '@/lib/api/lecturer-classes';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 type QuizStatus = 'Active' | 'Draft' | 'Completed';
+type TabType = 'my-quizzes' | 'expert-library' | 'assigned-quizzes';
 
-interface EnrichedQuiz extends ClassQuizDto {
+interface EnrichedQuiz {
+  quizId: string;
+  classId: string;
+  quizName: string | null;
+  className: string | null;
+  topic: string | null;
+  assignedAt: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  questionCount?: number | null;
+  isFromExpertLibrary: boolean;
   status: QuizStatus;
   topicLabel: string;
-  formattedAssignedAt: string;
+  formattedOpen: string;
+  formattedClose: string;
+  compactOpen: string;
+  compactClose: string;
+  isExpertQuiz: boolean;
+  difficulty?: string | null;
+  timeLimit?: number | null;
+  passingScore?: number | null;
+  creatorName?: string | null;
+  creatorType?: string | null;
+}
+
+interface EnrichedAssignedQuiz extends AssignedQuizDto {
+  status: QuizStatus;
+  topicLabel: string;
   formattedOpen: string;
   formattedClose: string;
   compactOpen: string;
   compactClose: string;
   compactAssigned: string;
+  creatorName?: string | null;
+  creatorType?: string | null;
 }
 
 const PAGE_SIZE = 5;
@@ -50,7 +89,6 @@ function formatQuizInstant(iso: string | null | undefined): string {
   return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Định dạng ngắn để bảng không tràn ngang (dd/MM/yy HH:mm). */
 function formatQuizCompact(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -70,7 +108,6 @@ function formatAssignedCompact(iso: string | null | undefined): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
-/** Page numbers and ellipsis for pagination (no hardcoded 1,2,3). */
 function buildPageList(totalPages: number, current: number): (number | 'ellipsis')[] {
   if (totalPages <= 0) return [];
   if (totalPages <= 7) {
@@ -93,18 +130,23 @@ function buildPageList(totalPages: number, current: number): (number | 'ellipsis
 
 export default function QuizListPage() {
   const router = useRouter();
-  const [quizzes, setQuizzes] = useState<EnrichedQuiz[]>([]);
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState<TabType>('my-quizzes');
+  const [myQuizzes, setMyQuizzes] = useState<EnrichedQuiz[]>([]);
+  const [assignedQuizzes, setAssignedQuizzes] = useState<EnrichedAssignedQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<EnrichedQuiz | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrichedQuiz | EnrichedAssignedQuiz | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedQuizIds, setSelectedQuizIds] = useState<Set<string>>(new Set());
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<Set<string> | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [previewQuiz, setPreviewQuiz] = useState<EnrichedQuiz | null>(null);
+  const [assignQuiz, setAssignQuiz] = useState<EnrichedQuiz | null>(null);
 
   const toggleSelect = (quizId: string) => {
     setSelectedQuizIds((prev) => {
@@ -120,14 +162,41 @@ export default function QuizListPage() {
     setBulkDeleting(true);
     try {
       const ids = [...bulkDeleteTarget];
-      await Promise.allSettled(ids.map((id) => deleteQuiz(id)));
-      setQuizzes((prev) => prev.filter((q) => !bulkDeleteTarget.has(q.quizId)));
+      let successCount = 0;
+      let failedCount = 0;
+
+      if (activeTab === 'my-quizzes') {
+        const results = await Promise.allSettled(ids.map((id) => deleteQuiz(id)));
+        successCount = results.filter((r) => r.status === 'fulfilled').length;
+        failedCount = results.length - successCount;
+        await loadMyQuizzes();
+      } else if (activeTab === 'assigned-quizzes') {
+        const results = await Promise.allSettled(
+          ids.map((id) => {
+            const quiz = assignedQuizzes.find((q) => q.quizId === id);
+            if (!quiz) return Promise.reject(new Error('Quiz not found'));
+            return removeQuizFromClass(quiz.classId, quiz.quizId);
+          })
+        );
+        successCount = results.filter((r) => r.status === 'fulfilled').length;
+        failedCount = results.length - successCount;
+        await loadAssignedQuizzes();
+      }
+
+      setBulkDeleteTarget(null);
       setSelectedQuizIds((prev) => {
         const next = new Set(prev);
         ids.forEach((id) => next.delete(id));
         return next;
       });
-      setBulkDeleteTarget(null);
+
+      if (failedCount > 0) {
+        toast.error(`Processed ${successCount}, ${failedCount} failed.`);
+      } else {
+        toast.success(`Successfully processed ${successCount} quiz(es).`);
+      }
+    } catch (error) {
+      toast.error('Bulk action failed.');
     } finally {
       setBulkDeleting(false);
     }
@@ -144,30 +213,36 @@ export default function QuizListPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteQuiz(deleteTarget.quizId);
-      setQuizzes((prev) => prev.filter((q) => q.quizId !== deleteTarget.quizId));
+      if (activeTab === 'my-quizzes') {
+        await deleteQuiz(deleteTarget.quizId);
+        await loadMyQuizzes();
+        toast.success('Quiz deleted permanently.');
+      } else if (activeTab === 'assigned-quizzes') {
+        const target = deleteTarget as EnrichedAssignedQuiz;
+        await removeQuizFromClass(target.classId, target.quizId);
+        await loadAssignedQuizzes();
+        toast.success('Quiz unassigned from class.');
+      }
       setDeleteTarget(null);
-    } catch {
-      // silently fail
+    } catch (error: unknown) {
+      const message = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || (error as Error)?.message
+        || 'Action failed.';
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
   };
 
-  useEffect(() => {
-    loadQuizzes();
-  }, []);
-
-  const loadQuizzes = async () => {
+  const loadMyQuizzes = async () => {
     setLoading(true);
     setError(null);
     try {
       const lecturerId = getStoredUserId();
       if (!lecturerId) {
-        setError('Not logged in or userId is missing. Please log in again.');
+        setError('Not logged in. Please log in again.');
         return;
       }
-
       const data = await getLecturerQuizzes(lecturerId);
       const enriched: EnrichedQuiz[] = data.map((q) => {
         const now = new Date();
@@ -180,25 +255,32 @@ export default function QuizListPage() {
         else status = 'Active';
         const topicFromQuiz = (q.topic ?? '').trim();
         return {
-          ...q,
+          quizId: q.quizId,
+          classId: q.classId || '',
+          quizName: q.quizName || 'Untitled',
+          className: q.className || null,
+          topic: q.topic || null,
+          assignedAt: q.assignedAt,
+          openTime: q.openTime || null,
+          closeTime: q.closeTime || null,
+          questionCount: q.questionCount,
+          isFromExpertLibrary: q.isFromExpertLibrary ?? false,
           status,
-          /** Cột Topic: dùng Quiz.Topic từ BE; không dùng tên lớp. */
           topicLabel: topicFromQuiz || '—',
-          formattedAssignedAt: q.assignedAt
-            ? new Date(q.assignedAt).toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-              })
-            : '—',
           formattedOpen: formatQuizInstant(q.openTime),
           formattedClose: formatQuizInstant(q.closeTime),
           compactOpen: formatQuizCompact(q.openTime),
           compactClose: formatQuizCompact(q.closeTime),
-          compactAssigned: formatAssignedCompact(q.assignedAt ?? null),
+          compactAssigned: '—',
+          isExpertQuiz: q.isFromExpertLibrary ?? false,
+          difficulty: null,
+          timeLimit: q.timeLimit ?? null,
+          passingScore: q.passingScore ?? null,
+          creatorName: q.creatorName ?? null,
+          creatorType: q.creatorType ?? null,
         };
       });
-      setQuizzes(enriched);
+      setMyQuizzes(enriched);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load quizzes');
     } finally {
@@ -206,27 +288,94 @@ export default function QuizListPage() {
     }
   };
 
-  const uniqueClasses = Array.from(new Set(quizzes.map((q) => q.className).filter(Boolean))) as string[];
+  const loadAssignedQuizzes = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const lecturerId = getStoredUserId();
+      if (!lecturerId) {
+        setError('Not logged in. Please log in again.');
+        return;
+      }
+      const data = await getAssignedQuizzes(lecturerId);
+      const enriched: EnrichedAssignedQuiz[] = data.map((q) => {
+        const now = new Date();
+        const open = q.openTime ? new Date(q.openTime) : null;
+        const close = q.closeTime ? new Date(q.closeTime) : null;
+        let status: QuizStatus = 'Draft';
+        if (close && now > close) status = 'Completed';
+        else if (open && now < open) status = 'Draft';
+        else if (!open && !close) status = 'Draft';
+        else status = 'Active';
+        const topicFromQuiz = (q.topic ?? '').trim();
+        return {
+          ...q,
+          status,
+          topicLabel: topicFromQuiz || '—',
+          formattedOpen: formatQuizInstant(q.openTime),
+          formattedClose: formatQuizInstant(q.closeTime),
+          compactOpen: formatQuizCompact(q.openTime),
+          compactClose: formatQuizCompact(q.closeTime),
+          compactAssigned: formatAssignedCompact(q.assignedAt ?? null),
+          creatorName: q.creatorName ?? null,
+          creatorType: q.creatorType ?? null,
+        };
+      });
+      setAssignedQuizzes(enriched);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load assigned quizzes');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const filtered = quizzes.filter((quiz) => {
-    const q = searchTerm.toLowerCase();
+  // Load data on mount
+  useEffect(() => {
+    loadMyQuizzes();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'my-quizzes') {
+      loadMyQuizzes();
+    } else if (activeTab === 'assigned-quizzes') {
+      loadAssignedQuizzes();
+    }
+  }, [activeTab]);
+
+  const uniqueClasses = Array.from(new Set(assignedQuizzes.map((q) => q.className).filter(Boolean))) as string[];
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    setPage(1);
+    // Clear filters and selections when switching tabs
+    setSearchTerm('');
+    setSelectedClass('all');
+    setSelectedQuizIds(new Set());
+    // Load data for the new tab
+    if (tab === 'my-quizzes') {
+      loadMyQuizzes();
+    } else if (tab === 'assigned-quizzes') {
+      loadAssignedQuizzes();
+    }
+    // expert-library loads within its own component
+  };
+
+  const currentQuizzes = activeTab === 'my-quizzes' ? myQuizzes : assignedQuizzes;
+
+  const filtered = currentQuizzes.filter((quiz) => {
+    const term = searchTerm.toLowerCase();
     const matchesSearch =
-      (quiz.quizName?.toLowerCase().includes(q) ?? false) ||
-      (quiz.className?.toLowerCase().includes(q) ?? false) ||
-      (quiz.topic?.toLowerCase().includes(q) ?? false) ||
-      (quiz.topicLabel?.toLowerCase().includes(q) ?? false);
+      (quiz.quizName?.toLowerCase().includes(term) ?? false) ||
+      (quiz.className?.toLowerCase().includes(term) ?? false) ||
+      (quiz.topic?.toLowerCase().includes(term) ?? false) ||
+      (quiz.topicLabel?.toLowerCase().includes(term) ?? false);
     const matchesClass = selectedClass === 'all' || quiz.className === selectedClass;
     return matchesSearch && matchesClass;
   });
 
-  const totalPages =
-    filtered.length === 0 ? 0 : Math.ceil(filtered.length / PAGE_SIZE);
-  const currentPage =
-    totalPages === 0 ? 1 : Math.min(Math.max(1, page), totalPages);
-  const paged =
-    totalPages === 0
-      ? []
-      : filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const totalPages = filtered.length === 0 ? 0 : Math.ceil(filtered.length / PAGE_SIZE);
+  const currentPage = totalPages === 0 ? 1 : Math.min(Math.max(1, page), totalPages);
+  const paged = totalPages === 0 ? [] : filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const pageItems = buildPageList(totalPages, currentPage);
 
   const allPageSelected = paged.length > 0 && paged.every((q) => selectedQuizIds.has(q.quizId));
@@ -246,16 +395,12 @@ export default function QuizListPage() {
     }
   };
 
-  const totalQuizzes = quizzes.length;
-  const activeModules = quizzes.filter((q) => q.status === 'Active').length;
-  const pendingDrafts = quizzes.filter((q) => q.status === 'Draft').length;
+  const totalQuizzes = currentQuizzes.length;
+  const activeModules = currentQuizzes.filter((q) => q.status === 'Active').length;
+  const pendingDrafts = currentQuizzes.filter((q) => q.status === 'Draft').length;
 
-  const listStart =
-    filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const listEnd =
-    filtered.length === 0
-      ? 0
-      : Math.min(currentPage * PAGE_SIZE, filtered.length);
+  const listStart = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const listEnd = filtered.length === 0 ? 0 : Math.min(currentPage * PAGE_SIZE, filtered.length);
 
   if (loading) {
     return <QuizWorkbenchListSkeleton />;
@@ -263,530 +408,340 @@ export default function QuizListPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
-      {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-primary">
-            Academic Management
-          </p>
-          <h1 className="font-['Manrope',sans-serif] text-[2.75rem] font-extrabold leading-tight tracking-tight text-card-foreground">
-            Quiz Workbench
-          </h1>
-          <p className="mt-2 max-w-xl text-lg text-muted-foreground">
-            Review, manage, and curate diagnostic assessment modules for clinical students.
-          </p>
+          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-primary">Academic Management</p>
+          <h1 className="font-['Manrope',sans-serif] text-[2.75rem] font-extrabold leading-tight tracking-tight text-card-foreground">Quiz Workbench</h1>
+          <p className="mt-2 max-w-xl text-lg text-muted-foreground">Quản lý và gán bài kiểm tra từ thư viện Expert vào lớp học.</p>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-border">
         <button
           type="button"
-          onClick={() => router.push('/lecturer/quizzes/create')}
-          className="flex items-center gap-3 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-4 font-bold text-white shadow-xl shadow-primary/10 transition-all hover:scale-[0.98]"
+          onClick={() => handleTabChange('my-quizzes')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'my-quizzes' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          <Plus className="h-5 w-5" />
-          Create New Quiz
+          <ClipboardList className="h-4 w-4" />
+          My Quizzes
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange('expert-library')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'expert-library' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          <BookOpen className="h-4 w-4" />
+          Expert Library
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange('assigned-quizzes')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'assigned-quizzes' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+        >
+          <ClipboardPen className="h-4 w-4" />
+          Assigned Quizzes
         </button>
       </div>
 
-      {/* Bento Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              <BarChart3 className="h-5 w-5 text-primary" />
+      {/* Expert Library Tab */}
+      {activeTab === 'expert-library' ? (
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <ExpertQuizLibrary onAssignSuccess={() => handleTabChange('assigned-quizzes')} />
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Total {activeTab === 'my-quizzes' ? 'My Quizzes' : 'Assigned'}</p>
+              <p className="mt-1 text-3xl font-black text-card-foreground">{totalQuizzes}</p>
             </div>
-            <span className="rounded-full bg-secondary/10 px-2 py-1 text-[10px] font-bold text-secondary">
-              +12% vs last month
-            </span>
-          </div>
-          <p className="text-sm font-medium text-muted-foreground">Total Quizzes</p>
-          <p className="mt-1 text-3xl font-black text-card-foreground">{totalQuizzes}</p>
-        </div>
-
-        <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10">
-              <CheckCircle className="h-5 w-5 text-secondary" />
+            <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10">
+                  <CheckCircle className="h-5 w-5 text-secondary" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Active</p>
+              <p className="mt-1 text-3xl font-black text-card-foreground">{activeModules}</p>
             </div>
-          </div>
-          <p className="text-sm font-medium text-muted-foreground">Active Modules</p>
-          <p className="mt-1 text-3xl font-black text-card-foreground">{activeModules}</p>
-        </div>
-
-        <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10">
-              <FilePen className="h-5 w-5 text-warning" />
+            <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10">
+                  <FilePen className="h-5 w-5 text-warning" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Drafts</p>
+              <p className="mt-1 text-3xl font-black text-card-foreground">{pendingDrafts}</p>
             </div>
-          </div>
-          <p className="text-sm font-medium text-muted-foreground">Pending Drafts</p>
-          <p className="mt-1 text-3xl font-black text-card-foreground">{pendingDrafts}</p>
-        </div>
-
-        <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/20">
-              <TrendingUp className="h-5 w-5 text-secondary" />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-muted-foreground">Avg. Student Score</p>
-          <p className="mt-1 text-3xl font-black text-card-foreground">—</p>
-        </div>
-      </div>
-
-      {/* Quiz Table */}
-      <div className="overflow-hidden rounded-3xl border border-border/40 bg-card shadow-sm">
-        {/* Table header bar */}
-        <div className="flex flex-col gap-4 border-b border-border bg-muted/30 p-6 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="flex items-center gap-2 font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">
-            <ClipboardList className="h-5 w-5 text-primary" />
-            All Quiz Records
-          </h3>
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedClass}
-              onChange={(e) => {
-                setSelectedClass(e.target.value);
-                setPage(1);
-              }}
-              className="appearance-none rounded-full border border-border bg-white px-4 py-2 pr-8 text-xs font-bold text-muted-foreground focus:ring-2 focus:ring-primary/20 cursor-pointer"
-            >
-              <option value="all">All Topics</option>
-              {uniqueClasses.map((cls) => (
-                <option key={cls} value={cls}>{cls}</option>
-              ))}
-            </select>
-            <select className="appearance-none rounded-full border border-border bg-white px-4 py-2 pr-8 text-xs font-bold text-muted-foreground focus:ring-2 focus:ring-primary/20 cursor-pointer">
-              <option>Sort: Date Created</option>
-              <option>Sort: Name</option>
-              <option>Sort: Status</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Bulk action bar */}
-        {selectedQuizIds.size > 0 && (
-          <div className="flex items-center gap-3 border-b border-border bg-primary/5 px-6 py-3">
-          <span className="text-sm font-semibold text-primary">
-            {selectedQuizIds.size} selected
-          </span>
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={() => setBulkDeleteTarget(new Set(selectedQuizIds))}
-                className="flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive/20 transition-colors"
-              >
-                <Trash className="h-4 w-4" />
-                Delete selected
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedQuizIds(new Set())}
-                className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
-              >
-                Clear selection
-              </button>
+            <div className="rounded-3xl border border-border/10 bg-card p-6 shadow-sm">
+              <div className="mb-4 flex items-start justify-between">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/20">
+                  <TrendingUp className="h-5 w-5 text-secondary" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">Avg. Score</p>
+              <p className="mt-1 text-3xl font-black text-card-foreground">—</p>
             </div>
           </div>
-        )}
 
-        {/* Search bar */}
-        <div className="border-b border-border px-6 py-3">
-          <div className="relative max-w-md">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search quizzes or topics…"
-              className="h-10 w-full rounded-full border border-border bg-muted pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-        </div>
-
-        {/* Table — table-fixed + cột gộp để không cần scroll ngang */}
-        <div className="min-w-0">
-          <table className="w-full table-fixed border-collapse text-left">
-            <colgroup>
-              <col style={{ width: '4%' }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '14%' }} />
-            </colgroup>
-            <thead>
-              <tr className="bg-muted/40">
-                <th className="px-2 py-3 sm:px-3 sm:py-4">
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 cursor-pointer accent-primary"
-                    title={allPageSelected ? 'Deselect all' : 'Select all'}
-                  />
-                </th>
-                <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Quiz Title
-                </th>
-                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Topic
-                </th>
-                <th className="px-1 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-2 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Q#
-                </th>
-                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Status
-                </th>
-                <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Opens / Closes
-                </th>
-                <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs sm:tracking-widest">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {paged.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-20 text-center sm:px-8">
-                    <p className="text-muted-foreground">No quizzes match your search.</p>
-                  </td>
-                </tr>
-              ) : (
-                paged.map((quiz) => (
-                  <tr
-                    key={`${quiz.quizId}-${quiz.classId}`}
-                    className="group cursor-pointer hover:bg-muted/40 transition-colors"
+          {/* Quiz Table */}
+          <div className="rounded-3xl border border-border/40 bg-card shadow-sm overflow-x-auto">
+            <div className="flex flex-col gap-4 border-b border-border bg-muted/30 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="flex items-center gap-2 font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">
+                <ClipboardList className="h-5 w-5 text-primary" />
+                {activeTab === 'my-quizzes' ? 'My Quizzes' : 'Assigned Quizzes'}
+              </h3>
+              {activeTab === 'assigned-quizzes' && (
+                <div className="flex items-center gap-3">
+                  <select
+                    value={selectedClass}
+                    onChange={(e) => { setSelectedClass(e.target.value); setPage(1); }}
+                    className="appearance-none rounded-full border border-border bg-white px-4 py-2 pr-8 text-xs font-bold text-muted-foreground focus:ring-2 focus:ring-primary/20 cursor-pointer"
                   >
-                    <td className="px-2 py-4 sm:px-3 sm:py-5">
-                      <input
-                        type="checkbox"
-                        checked={selectedQuizIds.has(quiz.quizId)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          toggleSelect(quiz.quizId);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-4 w-4 cursor-pointer accent-primary"
-                      />
-                    </td>
-                    <td className="px-3 py-4 sm:px-4 sm:py-5">
-                        <div className="flex min-w-0 items-start gap-2 sm:gap-3">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyId(quiz.quizId);
-                          }}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-9 sm:w-9"
-                          title="Copy Quiz ID"
-                        >
-                          {copiedId === quiz.quizId ? (
-                            <Check className="h-4 w-4 text-success sm:h-[18px] sm:w-[18px]" />
-                          ) : (
-                            <Copy className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
-                          )}
-                        </button>
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted sm:h-9 sm:w-9">
-                          <BarChart3 className="h-4 w-4 text-muted-foreground sm:h-[18px] sm:w-[18px]" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className="line-clamp-2 break-words text-sm font-bold leading-snug text-card-foreground"
-                            title={quiz.quizName || 'Untitled quiz'}
-                          >
-                            {quiz.quizName || 'Untitled quiz'}
-                          </p>
-                          <p
-                            className="mt-0.5 line-clamp-1 break-words text-[10px] text-muted-foreground sm:text-xs"
-                            title={quiz.className || 'Unassigned'}
-                          >
-                            {quiz.className || 'Unassigned'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
-                      <span
-                        className="inline-block max-w-full break-words rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[10px] sm:tracking-wider"
-                        title={quiz.topicLabel}
-                      >
-                        {quiz.topicLabel}
-                      </span>
-                    </td>
-                    <td className="px-1 py-4 text-center align-top sm:py-5">
-                      <span className="text-sm font-bold text-card-foreground">
-                        {typeof quiz.questionCount === 'number' ? quiz.questionCount : '—'}
-                      </span>
-                    </td>
-                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
-                      <span
-                        className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-xs ${
-                          quiz.status === 'Active'
-                            ? 'bg-secondary/15 text-secondary'
-                            : quiz.status === 'Completed'
-                              ? 'bg-muted text-muted-foreground'
-                              : 'bg-warning/10 text-warning'
-                        }`}
-                      >
-                        <span
-                          className={`h-1 w-1 shrink-0 rounded-full sm:h-1.5 sm:w-1.5 ${
-                            quiz.status === 'Active'
-                              ? 'bg-secondary'
-                              : quiz.status === 'Completed'
-                                ? 'bg-muted-foreground'
-                                : 'bg-warning'
-                          }`}
-                        />
-                        <span className="truncate">{quiz.status}</span>
-                      </span>
-                    </td>
-                    <td className="min-w-0 px-2 py-4 align-top sm:px-3 sm:py-5">
-                      <div className="min-w-0 space-y-2 text-[11px] leading-snug">
-                        <div title={quiz.formattedOpen}>
-                          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                            Open
-                          </span>
-                          <span className="block break-words font-semibold text-card-foreground">
-                            {quiz.compactOpen}
-                          </span>
-                        </div>
-                        <div title={quiz.formattedClose}>
-                          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                            Close
-                          </span>
-                          <span className="block break-words font-semibold text-card-foreground">
-                            {quiz.compactClose}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-2 py-4 align-top text-right sm:px-3 sm:py-5">
-                      <span
-                        className="inline-block whitespace-nowrap text-[11px] font-semibold text-card-foreground sm:text-xs"
-                        title={quiz.formattedAssignedAt}
-                      >
-                        {quiz.compactAssigned}
-                      </span>
-                    </td>
-                    <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
-                      <div className="flex justify-end gap-1.5 sm:gap-2">
-                        {quiz.classId && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/lecturer/quizzes/${quiz.quizId}/results`);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success"
-                            title="View Results"
-                          >
-                            <BarChart3 className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/lecturer/quizzes/${quiz.quizId}`);
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(quiz);
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                    <option value="all">All Classes</option>
+                    {uniqueClasses.map((cls) => (<option key={cls} value={cls}>{cls}</option>))}
+                  </select>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
 
-        {/* Pagination */}
-        <div className="flex flex-col gap-3 border-t border-border bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-medium text-muted-foreground">
-            {filtered.length === 0
-              ? 'No quizzes to show.'
-              : `Showing ${listStart} to ${listEnd} of ${filtered.length} quizzes`}
-          </p>
-          {totalPages > 0 ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {pageItems.map((item, idx) =>
-                item === 'ellipsis' ? (
-                  <span key={`e-${idx}`} className="px-1 text-muted-foreground">
-                    …
-                  </span>
-                ) : (
+            {selectedQuizIds.size > 0 && (
+              <div className="flex items-center gap-3 border-b border-border bg-primary/5 px-6 py-3">
+                <span className="text-sm font-semibold text-primary">{selectedQuizIds.size} selected</span>
+                <div className="flex items-center gap-2 ml-auto">
                   <button
-                    key={item}
                     type="button"
-                    onClick={() => setPage(item)}
-                    className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-xs font-bold transition-colors ${
-                      item === currentPage
-                        ? 'bg-primary text-white'
-                        : 'border border-border/30 bg-white hover:bg-muted text-muted-foreground'
-                    }`}
+                    onClick={() => setBulkDeleteTarget(new Set(selectedQuizIds))}
+                    className="flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive/20 transition-colors"
                   >
-                    {item}
+                    <Trash className="h-4 w-4" />
+                    {activeTab === 'my-quizzes' ? 'Delete selected' : 'Unassign selected'}
                   </button>
-                ),
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQuizIds(new Set())}
+                    className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="border-b border-border px-6 py-3">
+              <div className="relative max-w-md">
+                <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                  placeholder="Search quizzes or topics…"
+                  className="h-10 w-full rounded-full border border-border bg-muted pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto text-left">
+                <thead>
+                  <tr className="bg-muted/40">
+                    <th className="px-2 py-3 sm:px-3 sm:py-4">
+                      <input type="checkbox" checked={allPageSelected} onChange={toggleSelectAll} className="h-4 w-4 cursor-pointer accent-primary" />
+                    </th>
+                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-4 sm:py-4 sm:text-xs">Quiz Title</th>
+                    {activeTab === 'assigned-quizzes' && <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Class</th>}
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Topic</th>
+                    <th className="px-1 py-3 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-2 sm:py-4 sm:text-xs">Q#</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Status</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Opens / Closes</th>
+                    <th className="px-2 py-3 text-right text-[10px] font-bold uppercase tracking-wide text-muted-foreground sm:px-3 sm:py-4 sm:text-xs">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {paged.length === 0 ? (
+                    <tr>
+                      <td colSpan={activeTab === 'assigned-quizzes' ? 8 : 7} className="px-4 py-20 text-center sm:px-8">
+                        <p className="text-muted-foreground">No quizzes found.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    paged.map((quiz, idx) => {
+                      const quizId = quiz.quizId;
+                      const isExpert = activeTab === 'my-quizzes' ? (quiz as EnrichedQuiz).isExpertQuiz : (quiz as EnrichedAssignedQuiz).isFromExpertLibrary;
+                      return (
+                        <tr key={`${quizId}-${idx}`} className="group cursor-pointer hover:bg-muted/40 transition-colors">
+                          <td className="px-2 py-4 sm:px-3 sm:py-5">
+                            <input type="checkbox" checked={selectedQuizIds.has(quizId)} onChange={() => toggleSelect(quizId)} onClick={(e) => e.stopPropagation()} className="h-4 w-4 cursor-pointer accent-primary" />
+                          </td>
+                          <td className="px-3 py-4 sm:px-4 sm:py-5">
+                            <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); handleCopyId(quizId); }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:h-9 sm:w-9" title="Copy Quiz ID">
+                                {copiedId === quizId ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                              </button>
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted sm:h-9 sm:w-9">
+                                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-card-foreground">{quiz.quizName || 'Untitled quiz'}</p>
+                              </div>
+                            </div>
+                          </td>
+                          {activeTab === 'assigned-quizzes' && (
+                            <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                              <span className="inline-block max-w-full break-words rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 sm:px-2.5 sm:py-1 sm:text-[10px]">
+                                {(quiz as EnrichedAssignedQuiz).className || '—'}
+                              </span>
+                            </td>
+                          )}
+                          <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                            <span className="inline-block max-w-full break-words rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide text-muted-foreground sm:px-2.5 sm:py-1 sm:text-[10px]">{quiz.topicLabel}</span>
+                          </td>
+                          <td className="px-1 py-4 text-center align-top sm:py-5">
+                            <span className="text-sm font-bold text-card-foreground">{quiz.questionCount || '—'}</span>
+                          </td>
+                          <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                            <span className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-xs ${quiz.status === 'Active' ? 'bg-secondary/15 text-secondary' : quiz.status === 'Completed' ? 'bg-muted text-muted-foreground' : 'bg-warning/10 text-warning'}`}>
+                              <span className={`h-1 w-1 shrink-0 rounded-full sm:h-1.5 sm:w-1.5 ${quiz.status === 'Active' ? 'bg-secondary' : quiz.status === 'Completed' ? 'bg-muted-foreground' : 'bg-warning'}`} />
+                              {quiz.status}
+                            </span>
+                          </td>
+                          <td className="min-w-0 px-2 py-4 align-top sm:px-3 sm:py-5">
+                            <div className="min-w-0 space-y-2 text-[11px] leading-snug">
+                              <div><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Open</span><span className="block break-words font-semibold text-card-foreground">{quiz.compactOpen}</span></div>
+                              <div><span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Close</span><span className="block break-words font-semibold text-card-foreground">{quiz.compactClose}</span></div>
+                            </div>
+                          </td>
+                          <td className="px-2 py-4 align-top sm:px-3 sm:py-5">
+                            <div className="flex justify-end gap-1.5 sm:gap-2">
+                              {activeTab === 'assigned-quizzes' && (
+                                <>
+                                  <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}/results`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-success/10 hover:text-success" title="View Results">
+                                    <BarChart3 className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary" title="Edit Quiz">
+                                    <Edit className="h-4 w-4" />
+
+                                  </button>
+                                  <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Unassign Quiz">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                              {activeTab === 'my-quizzes' && (
+                                <>
+                                  <button type="button" onClick={() => router.push(`/lecturer/quizzes/${quizId}`)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary" title="Edit">
+                                    <Edit className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => setAssignQuiz(quiz as EnrichedQuiz)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20" title="Assign">
+                                    <CheckCircle className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => setDeleteTarget(quiz)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive" title="Delete">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-medium text-muted-foreground">
+                {filtered.length === 0 ? 'No quizzes to show.' : `Showing ${listStart} to ${listEnd} of ${filtered.length} quizzes`}
+              </p>
+              {totalPages > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  {pageItems.map((item, idx) =>
+                    item === 'ellipsis' ? <span key={`e-${idx}`} className="px-1 text-muted-foreground">…</span> :
+                    <button key={item} type="button" onClick={() => setPage(item)} className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-xs font-bold transition-colors ${item === currentPage ? 'bg-primary text-white' : 'border border-border/30 bg-white hover:bg-muted text-muted-foreground'}`}>{item}</button>
+                  )}
+                  <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               )}
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-              >
-                <ChevronRight className="h-4 w-4" />
+            </div>
+          </div>
+
+          {/* Contextual Insight Panel */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="relative col-span-2 flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[#1a2332] p-10">
+              <div className="relative z-10">
+                <h4 className="font-['Manrope',sans-serif] text-2xl font-bold text-white">Quiz Engagement Insights</h4>
+                <p className="mt-4 max-w-md text-sm text-slate-400">Student participation is up 22% this semester.</p>
+                <div className="mt-8 flex items-center gap-8">
+                  <div><p className="font-black text-3xl text-primary-fixed-dim">4.8k</p><p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">Total Attempts</p></div>
+                  <div className="h-10 w-px bg-white/10" />
+                  <div><p className="font-black text-3xl text-secondary-fixed">12m</p><p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">Avg. Time</p></div>
+                </div>
+              </div>
+              <div aria-hidden className="pointer-events-none absolute right-0 top-0 h-full w-1/2 opacity-20"><div className="h-full w-full bg-gradient-to-l from-primary/30 to-transparent" /></div>
+            </div>
+            <div className="flex flex-col justify-center rounded-[2rem] border border-primary/10 bg-primary/5 p-8">
+              <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20"><Sparkles className="h-6 w-6 text-white" /></div>
+              <h5 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">Generate with AI</h5>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Instantly create a new quiz by uploading a medical case study or diagnostic images.</p>
+              <button type="button" onClick={() => router.push('/lecturer/quizzes/create')} className="mt-6 flex items-center gap-2 text-sm font-bold text-primary transition-all hover:gap-3">
+                Launch AI Assistant <ArrowRight className="h-4 w-4" />
               </button>
             </div>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Contextual Insight Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Engagement Insights */}
-        <div className="relative col-span-2 flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[#1a2332] p-10">
-          <div className="relative z-10">
-            <h4 className="font-['Manrope',sans-serif] text-2xl font-bold text-white">
-              Quiz Engagement Insights
-            </h4>
-            <p className="mt-4 max-w-md text-sm text-slate-400">
-              Student participation is up 22% this semester. The quiz series is currently the most attempted module.
-            </p>
-            <div className="mt-8 flex items-center gap-8">
-              <div>
-                <p className="font-black text-3xl text-primary-fixed-dim">4.8k</p>
-                <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">Total Attempts</p>
-              </div>
-              <div className="h-10 w-px bg-white/10" />
-              <div>
-                <p className="font-black text-3xl text-secondary-fixed">12m</p>
-                <p className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">Avg. Time</p>
-              </div>
-            </div>
-          </div>
-          {/* Decorative gradient */}
-          <div aria-hidden className="pointer-events-none absolute right-0 top-0 h-full w-1/2 opacity-20">
-            <div className="h-full w-full bg-gradient-to-l from-primary/30 to-transparent" />
           </div>
         </div>
-
-        {/* AI Generate Card */}
-        <div className="flex flex-col justify-center rounded-[2rem] border border-primary/10 bg-primary/5 p-8">
-          <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
-            <Sparkles className="h-6 w-6 text-white" />
-          </div>
-          <h5 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">
-            Generate with AI
-          </h5>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Instantly create a new quiz by uploading a medical case study or diagnostic images.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push('/lecturer/quizzes/create')}
-            className="mt-6 flex items-center gap-2 text-sm font-bold text-primary transition-all hover:gap-3"
-          >
-            Launch AI Assistant
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Footer */}
       <div className="mt-8 flex flex-col gap-4 border-t border-border pt-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h4 className="font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">
-            Knowledge Integrity Guarantee
-          </h4>
-          <p className="mt-1 text-sm text-muted-foreground">
-            All quizzes are validated against the current Board of Radiology standards (v2.0-2024).
-          </p>
+          <h4 className="font-['Manrope',sans-serif] text-lg font-bold text-card-foreground">Knowledge Integrity Guarantee</h4>
+          <p className="mt-1 text-sm text-muted-foreground">All quizzes are validated against the current Board of Radiology standards (v2.0-2024).</p>
         </div>
         <div className="flex items-center gap-6">
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Total Students Evaluated
-            </p>
-            <p className="text-2xl font-black text-primary">—</p>
-          </div>
+          <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Students Evaluated</p><p className="text-2xl font-black text-primary">—</p></div>
           <div className="h-10 w-px bg-border" />
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Avg. Accuracy Rate
-            </p>
-            <p className="text-2xl font-black text-secondary">—</p>
-          </div>
+          <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Avg. Accuracy Rate</p><p className="text-2xl font-black text-secondary">—</p></div>
         </div>
       </div>
 
       {/* FAB */}
-      <button
-        type="button"
-        onClick={() => router.push('/lecturer/quizzes/create')}
-        className="fixed bottom-8 right-8 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-2xl transition-all hover:scale-110 active:scale-95 z-50"
-        aria-label="Create new quiz"
-      >
+      <button type="button" onClick={() => router.push('/lecturer/quizzes/create')} className="fixed bottom-8 right-8 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-2xl transition-all hover:scale-110 active:scale-95 z-50" aria-label="Create new quiz">
         <Plus className="h-6 w-6" />
       </button>
 
       {/* Delete confirmation dialog */}
       <Modal
         open={deleteTarget !== null}
-        title="Delete Quiz"
+        title={activeTab === 'my-quizzes' ? 'Delete Quiz' : 'Unassign Quiz'}
         onClose={() => !deleting && setDeleteTarget(null)}
         footer={
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => setDeleteTarget(null)}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={handleDelete}
-              className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50"
-            >
-              {deleting ? 'Deleting…' : 'Delete'}
+            <button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={deleting} onClick={handleDelete} className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50">
+              {deleting ? 'Processing…' : activeTab === 'my-quizzes' ? 'Delete' : 'Unassign'}
             </button>
           </div>
         }
       >
         {deleteTarget && (
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete{' '}
-            <strong className="text-foreground">{deleteTarget.quizName ?? 'this quiz'}</strong>
-            ? This will also delete all questions and attempts. This action cannot be undone.
+            {activeTab === 'my-quizzes'
+              ? <>Are you sure you want to delete <strong className="text-foreground">{deleteTarget.quizName ?? 'this quiz'}</strong>? This will permanently delete all questions and attempts. This action cannot be undone.</>
+              : <>Are you sure you want to unassign <strong className="text-foreground">{deleteTarget.quizName ?? 'this quiz'}</strong> from the class? The quiz will remain in your library.</>
+            }
           </p>
         )}
       </Modal>
@@ -794,25 +749,13 @@ export default function QuizListPage() {
       {/* Bulk delete confirmation dialog */}
       <Modal
         open={bulkDeleteTarget !== null}
-        title="Delete Multiple Quizzes"
+        title={activeTab === 'my-quizzes' ? 'Delete Multiple Quizzes' : 'Unassign Multiple Quizzes'}
         onClose={() => !bulkDeleting && setBulkDeleteTarget(null)}
         footer={
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              disabled={bulkDeleting}
-              onClick={() => setBulkDeleteTarget(null)}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={bulkDeleting}
-              onClick={handleBulkDelete}
-              className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50"
-            >
-              {bulkDeleting ? `Deleting…` : `Delete ${bulkDeleteTarget?.size ?? 0} Quizzes`}
+            <button type="button" disabled={bulkDeleting} onClick={() => setBulkDeleteTarget(null)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={bulkDeleting} onClick={handleBulkDelete} className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50">
+              {bulkDeleting ? 'Processing…' : activeTab === 'my-quizzes' ? `Delete ${bulkDeleteTarget?.size ?? 0} Quizzes` : `Unassign ${bulkDeleteTarget?.size ?? 0} Quizzes`}
             </button>
           </div>
         }
@@ -820,26 +763,479 @@ export default function QuizListPage() {
         {bulkDeleteTarget && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              You are about to delete <strong className="text-foreground">{bulkDeleteTarget.size} quiz</strong>(s) from your library.
+              You are about to {activeTab === 'my-quizzes' ? 'delete' : 'unassign'} <strong className="text-foreground">{bulkDeleteTarget.size} quiz</strong>(s).
             </p>
-            <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/50 p-3">
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {[...bulkDeleteTarget].map((id) => {
-                  const quiz = quizzes.find((q) => q.quizId === id);
-                  return (
-                    <li key={id} className="truncate">
-                      • {quiz?.quizName ?? id}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-            <p className="text-xs text-destructive font-medium">
-              This action will delete all related questions and attempt history. Cannot be undone.
-            </p>
+            {activeTab === 'my-quizzes' && (
+              <p className="text-xs text-destructive font-medium">This action will permanently delete all questions and attempt history. Cannot be undone.</p>
+            )}
           </div>
         )}
       </Modal>
+
+      {/* Preview Modal for Expert Quizzes */}
+      {previewQuiz && (
+        <PreviewModal
+          quiz={previewQuiz}
+          onClose={() => setPreviewQuiz(null)}
+          onAssign={() => {
+            setPreviewQuiz(null);
+            setAssignQuiz(previewQuiz);
+          }}
+        />
+      )}
+
+      {/* Assign Modal for Expert Quizzes */}
+      {assignQuiz && (
+        <AssignModal
+          quiz={assignQuiz}
+          onClose={() => setAssignQuiz(null)}
+          onAssigned={() => {
+            setAssignQuiz(null);
+            loadMyQuizzes();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Helper function for time conversion
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
+// ========== PREVIEW MODAL ==========
+
+interface PreviewModalProps {
+  quiz: EnrichedQuiz;
+  onClose: () => void;
+  onAssign: () => void;
+}
+
+function PreviewModal({ quiz, onClose, onAssign }: PreviewModalProps) {
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadQuestions();
+  }, [quiz.quizId]);
+
+  const loadQuestions = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchExpertQuizQuestions(quiz.quizId);
+      setQuestions(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load questions.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-card-foreground">{quiz.quizName || 'Untitled quiz'}</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {quiz.questionCount || 0} câu hỏi • Độ khó: {quiz.difficulty || '—'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
+          >
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : error ? (
+            <div className="flex items-center gap-2 text-destructive py-8">
+              <AlertCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          ) : questions.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">Quiz này chưa có câu hỏi nào.</p>
+          ) : (
+            <div className="space-y-6">
+              {questions.map((q: any, idx: number) => (
+                <div key={q.questionId} className="rounded-xl border border-border bg-input/20 overflow-hidden">
+                  {/* Ảnh câu hỏi */}
+                  {q.imageUrl && (
+                    <div className="bg-muted/50 p-4 border-b border-border">
+                      <img
+                        src={resolveApiAssetUrl(q.imageUrl)}
+                        alt={`Question ${idx + 1}`}
+                        className="max-h-64 mx-auto rounded-lg object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {/* Nội dung câu hỏi */}
+                  <div className="p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/15 text-primary font-bold text-sm shrink-0">
+                        {idx + 1}
+                      </span>
+                      <p className="text-base font-medium text-card-foreground leading-relaxed">
+                        {q.questionText}
+                      </p>
+                    </div>
+
+                    {/* Options */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-11">
+                      {[
+                        { key: 'A', value: q.optionA },
+                        { key: 'B', value: q.optionB },
+                        { key: 'C', value: q.optionC },
+                        { key: 'D', value: q.optionD },
+                      ].map(
+                        (opt) =>
+                          opt.value && (
+                            <div
+                              key={opt.key}
+                              className={`flex items-center gap-2 p-3 rounded-lg border ${
+                                q.correctAnswer?.toUpperCase() === opt.key
+                                  ? 'border-secondary bg-secondary/10'
+                                  : 'border-border bg-card'
+                              }`}
+                            >
+                              <span
+                                className={`font-bold text-sm w-6 h-6 flex items-center justify-center rounded ${
+                                  q.correctAnswer?.toUpperCase() === opt.key
+                                    ? 'bg-secondary text-white'
+                                    : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {opt.key}
+                              </span>
+                              <span className="text-sm text-card-foreground">{opt.value}</span>
+                              {q.correctAnswer?.toUpperCase() === opt.key && (
+                                <CheckCircle className="h-4 w-4 text-secondary ml-auto" />
+                              )}
+                            </div>
+                          )
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            Đóng
+          </button>
+          <button
+            onClick={onAssign}
+            className="px-6 py-2.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            Gán vào lớp
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== ASSIGN MODAL ==========
+
+interface AssignModalProps {
+  quiz: EnrichedQuiz;
+  onClose: () => void;
+  onAssigned: () => void;
+}
+
+function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
+  const toast = useToast();
+  const [classes, setClasses] = useState<{ id: string; className: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState(false);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
+  const [openTime, setOpenTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.openTime)
+  );
+  const [closeTime, setCloseTime] = useState<string | ''>(
+    utcToLocalDatetimeLocal(quiz.closeTime)
+  );
+  const [timeLimit, setTimeLimit] = useState<number | ''>(quiz.timeLimit ?? '');
+  const [passingScore, setPassingScore] = useState<number | ''>(quiz.passingScore ?? '');
+
+  const toggleClass = (classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId)
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId]
+    );
+  };
+
+  const removeClass = (classId: string) => {
+    setSelectedClassIds((prev) => prev.filter((id) => id !== classId));
+  };
+
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  const loadClasses = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchLecturerClasses();
+      setClasses(data);
+      // Không preset lớp nào, để user tự chọn
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load classes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (selectedClassIds.length === 0) {
+      toast.error('Please select at least one class.');
+      return;
+    }
+    setAssigning(true);
+
+    // CLAMP LOGIC
+    let effectiveTimeLimit = typeof timeLimit === 'number' ? timeLimit : null;
+    let effectivePassingScore = typeof passingScore === 'number' ? passingScore : null;
+    const warnings: string[] = [];
+
+    if (quiz.timeLimit != null && effectiveTimeLimit != null) {
+      const minTimeLimit = Math.max(5, Math.floor(quiz.timeLimit * 0.5));
+      if (effectiveTimeLimit < minTimeLimit) {
+        warnings.push(`Thời gian làm bài thấp hơn mức tối thiểu (${minTimeLimit} phút).`);
+      }
+      if (effectiveTimeLimit > quiz.timeLimit) {
+        warnings.push(`Thời gian làm bài vượt quá giới hạn đề bài (${quiz.timeLimit} phút).`);
+      }
+    }
+
+    if (quiz.passingScore != null && effectivePassingScore != null) {
+      if (effectivePassingScore < 0) warnings.push('Điểm Passing không thể âm.');
+      if (effectivePassingScore > 100) warnings.push('Điểm Passing không thể vượt quá 100.');
+    }
+
+    const isoOpen = localDatetimeLocalToIso(openTime);
+    const isoClose = localDatetimeLocalToIso(closeTime);
+    if (isoOpen && isoClose && new Date(isoOpen) >= new Date(isoClose)) {
+      warnings.push('Thời gian mở phải trước thời gian đóng.');
+    }
+
+    if (warnings.length > 0) {
+      const confirmed = window.confirm(
+        'Có một số cảnh báo:\n\n' + warnings.join('\n') + '\n\nBạn vẫn muốn tiếp tục?'
+      );
+      if (!confirmed) {
+        setAssigning(false);
+        return;
+      }
+    }
+
+    try {
+      for (const classId of selectedClassIds) {
+        await assignExpertQuizToClass(
+          classId,
+          quiz.quizId,
+          {
+            openTime: isoOpen || undefined,
+            closeTime: isoClose || undefined,
+            timeLimitMinutes: effectiveTimeLimit,
+            passingScore: effectivePassingScore,
+          }
+        );
+      }
+      toast.success(`Gán quiz vào ${selectedClassIds.length} lớp thành công!`);
+      onAssigned();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gán quiz thất bại.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-card-foreground">Gán Quiz vào Lớp</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {quiz.quizName || 'Untitled quiz'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
+          >
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Class Selection */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Chọn lớp <span className="text-destructive">*</span>
+            </label>
+            {loading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading classes...
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {classes.map((cls) => (
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => toggleClass(cls.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      selectedClassIds.includes(cls.id)
+                        ? 'bg-primary text-white'
+                        : 'bg-muted text-card-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {selectedClassIds.includes(cls.id) && <Check className="h-3.5 w-3.5" />}
+                    {cls.className}
+                  </button>
+                ))}
+                {classes.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No classes found.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Open Time */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Thời gian mở (tùy chọn)
+            </label>
+            <input
+              type="datetime-local"
+              value={openTime}
+              onChange={(e) => setOpenTime(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Close Time */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Thời gian đóng (tùy chọn)
+            </label>
+            <input
+              type="datetime-local"
+              value={closeTime}
+              onChange={(e) => setCloseTime(e.target.value)}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* Time Limit */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Giới hạn thời gian làm bài (phút, tùy chọn)
+            </label>
+            <input
+              type="number"
+              min="5"
+              value={timeLimit}
+              onChange={(e) => setTimeLimit(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder={quiz.timeLimit?.toString() || ''}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {quiz.timeLimit != null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Đề bài gốc: {quiz.timeLimit} phút
+              </p>
+            )}
+          </div>
+
+          {/* Passing Score */}
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-2">
+              Điểm Passing (tùy chọn)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={passingScore}
+              onChange={(e) => setPassingScore(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder={quiz.passingScore?.toString() || ''}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            {quiz.passingScore != null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Đề bài gốc: {quiz.passingScore} điểm
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
+          <button
+            type="button"
+            disabled={assigning}
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            disabled={assigning || selectedClassIds.length === 0}
+            onClick={handleAssign}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+          >
+            {assigning ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Đang gán...
+              </>
+            ) : (
+              'Gán vào lớp'
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

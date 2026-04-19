@@ -13,11 +13,13 @@ export interface ExpertQuizQuestion {
   optionC?: string;
   optionD?: string;
   correctAnswer: string;
+  /** URL của ảnh câu hỏi */
+  imageUrl?: string | null;
 }
 
 export interface CreateExpertQuizQuestionRequest {
   quizId: string;
-  caseId: string;
+  caseId?: string;
   questionText: string;
   type: string;
   optionA?: string;
@@ -25,6 +27,8 @@ export interface CreateExpertQuizQuestionRequest {
   optionC?: string;
   optionD?: string;
   correctAnswer: string;
+  /** URL của ảnh câu hỏi (bắt buộc) */
+  imageUrl?: string;
 }
 
 export type UpdateExpertQuizQuestionRequest = CreateExpertQuizQuestionRequest & {
@@ -66,6 +70,7 @@ function mapExpertQuizQuestion(row: unknown, fallbackQuestionId?: string): Exper
     optionC: strOrUndef(r.optionC ?? (r as any).OptionC),
     optionD: strOrUndef(r.optionD ?? (r as any).OptionD),
     correctAnswer: String(r.correctAnswer ?? (r as any).CorrectAnswer ?? ''),
+    imageUrl: r.imageUrl != null ? String(r.imageUrl) : (r as any).ImageUrl != null ? String((r as any).ImageUrl) : undefined,
   };
 }
 
@@ -102,7 +107,18 @@ export async function createExpertQuizQuestion(
   input: Omit<CreateExpertQuizQuestionRequest, 'quizId'>,
 ): Promise<ExpertQuizQuestion> {
   try {
-    const payload: CreateExpertQuizQuestionRequest = { quizId, ...input };
+    // Build payload without quizId (already in URL route)
+    const payload = {
+      caseId: input.caseId || undefined,
+      questionText: input.questionText,
+      type: input.type || 'selection-choice',
+      optionA: input.optionA || undefined,
+      optionB: input.optionB || undefined,
+      optionC: input.optionC || undefined,
+      optionD: input.optionD || undefined,
+      correctAnswer: input.correctAnswer,
+      imageUrl: input.imageUrl || undefined,
+    };
     const { data } = await http.post<unknown>(`/api/expert/quizzes/${quizId}/questions`, payload);
     const body = data as any;
     const row = body?.result ?? body;

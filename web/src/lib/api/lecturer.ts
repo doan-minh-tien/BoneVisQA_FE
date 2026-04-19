@@ -16,12 +16,19 @@ import type {
   UpdateQuizAttemptRequestDto,
   ExpertOption,
   VisualQaTurn,
+  AssignmentDetail,
+  AssignmentSubmission,
+  UpdateAssignmentRequest,
+  UpdateAssignmentSubmissionRequest,
+  QuizWithQuestionsDto,
+  ClassCaseAssignmentDto,
+  ClassQuizSessionDto,
 } from './types';
 import { parseNormalizedBoundingBox, parsePercentageBoundingBox } from '@/lib/utils/annotations';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Chuẩn hóa JSON từ BE (camelCase hoặc PascalCase) + gắn classId khi thiếu. */
+/** Normalize JSON from BE (camelCase or PascalCase) + attach classId when missing. */
 export function normalizeAnnouncement(row: unknown, fallbackClassId: string): Announcement {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
   const id = String(r.id ?? r.Id ?? '').trim();
@@ -45,7 +52,7 @@ function assertValidGuid(label: string, value: string) {
   return v;
 }
 
-/** Dùng để lọc bản ghi không đủ id trước khi gọi API update/delete. */
+/** Used to filter records with insufficient id before calling update/delete API. */
 export function isValidGuidString(value: string | undefined | null): boolean {
   return GUID_RE.test(String(value ?? '').trim());
 }
@@ -109,9 +116,7 @@ function normalizeClassItem(raw: unknown): ClassItem | null {
 
 export async function getLecturerClasses(lecturerId: string): Promise<ClassItem[]> {
   try {
-    const { data } = await http.get<unknown[]>('/api/lecturer/classes', {
-      params: { lecturerId },
-    });
+    const { data } = await http.get<unknown[]>('/api/lecturer/classes');
     const list = Array.isArray(data) ? data : [];
     return list.map(normalizeClassItem).filter((c): c is ClassItem => c !== null);
   } catch (e) {
@@ -155,6 +160,7 @@ export async function removeStudent(classId: string, studentId: string): Promise
   }
 }
 
+
 export async function getLecturerCases(): Promise<CaseDto[]> {
   try {
     const { data } = await http.get<CaseDto[]>('/api/lecturer/cases');
@@ -167,9 +173,9 @@ export async function getLecturerCases(): Promise<CaseDto[]> {
 export async function assignCasesToClass(
   classId: string,
   payload: { caseIds: string[]; dueDate?: string; isMandatory: boolean },
-): Promise<CaseDto[]> {
+): Promise<ClassCaseAssignmentDto[]> {
   try {
-    const { data } = await http.post<CaseDto[]>(
+    const { data } = await http.post<ClassCaseAssignmentDto[]>(
       `/api/lecturer/classes/${classId}/assignments/cases`,
       {
       caseIds: payload.caseIds,
@@ -210,24 +216,26 @@ export async function assignQuizToClass(
   }
 }
 
-/** Lấy danh sách Expert để gán vào lớp học. */
-export async function getExperts(): Promise<ExpertOption[]> {
-  try {
-    const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// ĐÃ TẮT: getExperts — Giảng viên không gán chuyên gia
+// /** Lấy danh sách Chuyên gia để gán cho một lớp. */
+// export async function getExperts(): Promise<ExpertOption[]> {
+//   try {
+//     const { data } = await http.get<ExpertOption[]>('/api/lecturer/experts');
+//     return Array.isArray(data) ? data : [];
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
-/** Gán (hoặc gỡ) Expert khỏi một lớp học. expertId = null → gỡ expert. */
-export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
-  try {
-    await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// ĐÃ TẮT: assignExpertToClass — Giảng viên không gán chuyên gia
+// /** Gán (hoặc xóa) một Chuyên gia khỏi một lớp. expertId = null → xóa chuyên gia. */
+// export async function assignExpertToClass(classId: string, expertId: string | null): Promise<void> {
+//   try {
+//     await http.put(`/api/lecturer/classes/${classId}/expert`, { expertId });
+//   } catch (e) {
+//     throw new Error(getApiErrorMessage(e));
+//   }
+// }
 
 export async function approveCase(caseId: string, isApproved: boolean): Promise<void> {
   try {
@@ -324,9 +332,16 @@ export async function getAllLecturerAssignments(lecturerId: string): Promise<Cla
       `/api/lecturer/assignments?lecturerId=${encodeURIComponent(lid)}`,
     );
     const list = Array.isArray(data) ? data : [];
-    return list
+    const normalized = list
       .map(normalizeAssignment)
       .filter((a): a is ClassAssignment => a !== null);
+    // Loại bỏ trùng lặp theo id (phòng thủ: đề phòng backend trả về dữ liệu trùng lặp)
+    const seen = new Set<string>();
+    return normalized.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -418,7 +433,7 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     explicitRowId &&
     explicitQuestionId !== explicitRowId
   ) {
-    // Common list DTO: `id` is the answer row, `questionId` is the parent question.
+    // DTO danh sách chung: `id` là hàng câu trả lời, `questionId` là câu hỏi cha.
     answerId = explicitRowId;
   }
 
@@ -688,9 +703,7 @@ export async function rejectTriageAnswer(answerId: string, reason: string): Prom
   }
 }
 
-/**
- * Import students from Excel file
- */
+/** Import students from Excel file */
 export async function importStudentsFromExcel(
   classId: string,
   file: File,
@@ -714,9 +727,6 @@ export async function importStudentsFromExcel(
   }
 }
 
-/**
- * Bulk enroll students from list
- */
 export async function enrollManyStudents(
   classId: string,
   studentIds: string[],
@@ -786,10 +796,10 @@ export async function getClassStudentProgress(
   }
 }
 
-// ── Quiz Review API ────────────────────────────────────────────────────────────
+// ── API Đánh giá Quiz ────────────────────────────────────────────────────────────
 
 /**
- * Lấy danh sách bài quiz attempts của tất cả sinh viên trong lớp cho 1 quiz cụ thể.
+ * Get list of all quiz attempts for all students in the class for a specific quiz.
  */
 export async function getClassQuizAttempts(
   classId: string,
@@ -806,7 +816,7 @@ export async function getClassQuizAttempts(
 }
 
 /**
- * Lấy chi tiết bài làm của 1 sinh viên (câu hỏi + câu trả lời + điểm).
+ * Get the quiz attempt details for one student (questions + answers + score).
  */
 export async function getQuizAttemptDetail(
   classId: string,
@@ -824,7 +834,7 @@ export async function getQuizAttemptDetail(
 }
 
 /**
- * Cập nhật điểm / câu trả lời của 1 bài quiz (lecturer chỉnh sửa).
+ * Update score / answers for a quiz attempt (lecturer editing).
  */
 export async function updateQuizAttempt(
   classId: string,
@@ -844,7 +854,7 @@ export async function updateQuizAttempt(
 }
 
 /**
- * Cho phép một sinh viên làm lại quiz (reset attempt).
+ * Allow one student to retake a quiz (reset attempt).
  */
 export async function allowRetakeForAttempt(
   classId: string,
@@ -862,7 +872,7 @@ export async function allowRetakeForAttempt(
 }
 
 /**
- * Cho phép TẤT CẢ sinh viên trong lớp đã nộp quiz được làm lại.
+ * Allow ALL students in the class who have submitted the quiz to retake it.
  */
 export async function allowRetakeAll(classId: string, quizId: string): Promise<void> {
   try {
@@ -870,6 +880,151 @@ export async function allowRetakeAll(classId: string, quizId: string): Promise<v
       `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
       {},
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== CRUD API cho Assignment ==========
+
+/** Chuẩn hóa hàng chi tiết assignment từ BE (camelCase hoặc PascalCase). */
+function normalizeAssignmentDetail(row: unknown): AssignmentDetail | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const id = String(r.id ?? r.Id ?? '').trim();
+  if (!id || !GUID_RE.test(id)) return null;
+  return {
+    id,
+    classId: String(r.classId ?? r.ClassId ?? '') || '',
+    className: String(r.className ?? r.ClassName ?? '') || '',
+    classCode: (r.classCode ?? r.ClassCode ?? null) as string | null,
+    type: String(r.type ?? r.Type ?? '') || '',
+    title: String(r.title ?? r.Title ?? '') || '',
+    description: (r.description ?? r.Description ?? null) as string | null,
+    instructions: (r.instructions ?? r.Instructions ?? null) as string | null,
+    dueDate: (r.dueDate ?? r.DueDate ?? null) as string | null,
+    openDate: (r.openDate ?? r.OpenDate ?? r.openTime ?? r.OpenTime ?? null) as string | null,
+    isMandatory: Boolean(r.isMandatory ?? r.IsMandatory ?? false),
+    assignedAt: (r.assignedAt ?? r.AssignedAt ?? null) as string | null,
+    totalStudents: Number(r.totalStudents ?? r.TotalStudents ?? 0) || 0,
+    submittedCount: Number(r.submittedCount ?? r.SubmittedCount ?? 0) || 0,
+    gradedCount: Number(r.gradedCount ?? r.GradedCount ?? 0) || 0,
+    maxScore: r.maxScore != null ? Number(r.maxScore) : null,
+    passingScore: r.passingScore != null ? Number(r.passingScore) : null,
+    allowLate: Boolean(r.allowLate ?? r.AllowLate ?? false),
+    avgScore: r.avgScore != null ? Number(r.avgScore) : null,
+    createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+  };
+}
+
+/** Normalize submission row from BE (camelCase or PascalCase). */
+function normalizeSubmission(row: unknown): AssignmentSubmission | null {
+  const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+  const studentId = String(r.studentId ?? r.StudentId ?? '').trim();
+  if (!studentId) return null;
+  return {
+    studentId,
+    studentName: String(r.studentName ?? r.StudentName ?? 'Unknown') || 'Unknown',
+    studentCode: (r.studentCode ?? r.StudentCode ?? null) as string | null,
+    submittedAt: (r.submittedAt ?? r.SubmittedAt ?? r.submittedAt ?? null) as string | null,
+    score: r.score != null ? Number(r.score) : null,
+    status: String(r.status ?? r.Status ?? 'not-submitted') as AssignmentSubmission['status'],
+  };
+}
+
+/**
+ * Get details of a specific assignment.
+ */
+export async function getAssignmentById(assignmentId: string): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown>(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Update assignment information.
+ */
+export async function updateAssignment(
+  assignmentId: string,
+  body: UpdateAssignmentRequest,
+): Promise<AssignmentDetail> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}`,
+      body,
+    );
+    const normalized = normalizeAssignmentDetail(data);
+    if (!normalized) throw new Error('Invalid assignment data received.');
+    return normalized;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Delete an assignment.
+ */
+export async function deleteAssignment(assignmentId: string): Promise<void> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    await http.delete(`/api/lecturer/assignments/${encodeURIComponent(id)}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get list of submissions for an assignment.
+ */
+export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.get<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get quiz details including question list — used when selecting quiz to create assignment.
+ */
+export async function getQuizDetailsForAssignment(quizId: string): Promise<QuizWithQuestionsDto> {
+  const id = assertValidGuid('Quiz', quizId);
+  try {
+    const { data } = await http.get<QuizWithQuestionsDto>(
+      `/api/lecturer/quizzes/${encodeURIComponent(id)}/details`,
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Update scores for one or multiple submissions.
+ */
+export async function updateAssignmentSubmissions(
+  assignmentId: string,
+  body: UpdateAssignmentSubmissionRequest,
+): Promise<AssignmentSubmission[]> {
+  const id = assertValidGuid('Assignment', assignmentId);
+  try {
+    const { data } = await http.put<unknown[]>(
+      `/api/lecturer/assignments/${encodeURIComponent(id)}/submissions`,
+      body,
+    );
+    const list = Array.isArray(data) ? data : [];
+    return list.map(normalizeSubmission).filter((s): s is AssignmentSubmission => s !== null);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

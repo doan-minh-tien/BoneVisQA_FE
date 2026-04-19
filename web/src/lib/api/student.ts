@@ -251,13 +251,18 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
   const base = mapStudentCaseCatalog(row);
   if (!base) return null;
   const item = row as Record<string, unknown>;
-  const rawFindings = Array.isArray(item.keyFindings)
-    ? item.keyFindings
-    : Array.isArray(item.findings)
-      ? item.findings
-      : [];
+
+  // 获取 CategoryName 作为基础
+  const categoryName = item.categoryName != null ? String(item.categoryName) : '';
+
   return {
     ...base,
+    // imageUrl: 优先使用 base 已有的 imageUrl (来自 imageUrl/thumbnailUrl)，否则使用 PrimaryImageUrl
+    imageUrl: base.imageUrl ?? (item.primaryImageUrl != null ? String(item.primaryImageUrl) : undefined),
+    // location: 从 CategoryName 或从 base 继承
+    location: categoryName || base.location,
+    // lesionType: 由于后端没有明确的 lesionType，使用 CategoryName 或默认值
+    lesionType: categoryName || base.lesionType,
     description: item.description != null ? String(item.description) : undefined,
     expertSummary:
       item.expertSummary != null
@@ -265,9 +270,11 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
         : item.summary != null
           ? String(item.summary)
           : undefined,
-    keyFindings: rawFindings
-      .map((entry) => String(entry ?? '').trim())
-      .filter((entry) => entry.length > 0),
+    keyFindings: Array.isArray(item.keyFindings)
+      ? (item.keyFindings as unknown[]).map((f) => String(f ?? '').trim()).filter((s) => s.length > 0)
+      : typeof item.keyFindings === 'string' && item.keyFindings
+        ? item.keyFindings.split(/[\n,;]/).map((s) => s.trim()).filter((s) => s.length > 0)
+        : [],
     approvedAt:
       item.approvedAt != null
         ? String(item.approvedAt)
@@ -457,6 +464,8 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     closeTime: item.closeTime != null ? String(item.closeTime) : null,
     isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
     score: typeof item.score === 'number' ? item.score : null,
+    attemptId: item.attemptId != null ? String(item.attemptId) : item.AttemptId != null ? String(item.AttemptId) : null,
+    createdAt: item.createdAt != null ? String(item.createdAt) : item.CreatedAt != null ? String(item.CreatedAt) : null,
   };
 }
 
@@ -506,12 +515,16 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
     const n = typeof rawTl === 'number' ? rawTl : Number(rawTl);
     if (Number.isFinite(n) && n > 0) timeLimit = Math.round(n);
   }
+  // Handle closeTime from BE
+  const closeTime = o.closeTime ?? o.CloseTime;
+  const closeTimeStr = typeof closeTime === 'string' ? closeTime : (closeTime instanceof Date ? closeTime.toISOString() : null);
   return {
     attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
     quizId: String(o.quizId ?? o.QuizId ?? ''),
     title: String(o.title ?? o.Title ?? ''),
     topic: pickStr(o, 'topic', 'Topic'),
     timeLimit,
+    closeTime: closeTimeStr,
     questions: list.map(normalizeStudentSessionQuestion),
   };
 }
@@ -555,6 +568,7 @@ function mapSubmitQuizResult(raw: unknown): StudentQuizResultDto {
     passed: Boolean(r.passed ?? r.Passed ?? false),
     totalQuestions: Number(r.totalQuestions ?? r.TotalQuestions ?? 0),
     correctAnswers: Number(r.correctAnswers ?? r.CorrectAnswers ?? 0),
+    ungradedEssayCount: r.ungradedEssayCount != null ? Number(r.ungradedEssayCount) : r.UngradedEssayCount != null ? Number(r.UngradedEssayCount) : null,
   };
 }
 
@@ -568,7 +582,11 @@ export async function submitQuizSession(
   try {
     const { data } = await http.post<unknown>('/api/student/quizzes/submit', {
       attemptId,
-      answers: answers.map((a) => ({ questionId: a.questionId, studentAnswer: a.studentAnswer })),
+      answers: answers.map((a) => ({
+        questionId: a.questionId,
+        studentAnswer: a.studentAnswer,
+        essayAnswer: a.essayAnswer ?? undefined,
+      })),
     });
     return mapSubmitQuizResult(data);
   } catch (e) {
@@ -816,6 +834,7 @@ export interface StudentGeneratedQuizSession {
     questionText: string;
     type?: string | null;
     caseId?: string | null;
+    caseTitle?: string | null;
     optionA?: string | null;
     optionB?: string | null;
     optionC?: string | null;
@@ -846,6 +865,7 @@ export interface QuizAttemptReview {
     isCorrect: boolean;
     imageUrl?: string | null;
     caseId?: string | null;
+    essayAnswer?: string | null; // Model answer for essay questions
   }>;
 }
 
@@ -873,6 +893,7 @@ export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAtt
         isCorrect: Boolean(q.isCorrect ?? q.IsCorrect ?? false),
         imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
         caseId: pickStr(q, 'caseId', 'CaseId'),
+        essayAnswer: pickStr(q, 'essayAnswer', 'EssayAnswer'),
       })),
     };
   } catch (e) {
