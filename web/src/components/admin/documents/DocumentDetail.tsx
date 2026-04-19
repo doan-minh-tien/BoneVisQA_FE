@@ -13,6 +13,7 @@ import type { DocumentIngestionStatusDto } from '@/lib/api/types';
 import {
   FileText,
   Loader2,
+  Clock,
   AlertCircle,
   CheckCircle2,
   RefreshCw,
@@ -222,6 +223,13 @@ export default function DocumentDetail({ id }: { id: string }) {
       : 0;
 
   const centerStatusUi = (() => {
+    if (normalizedStatus === 'unknown') {
+      return {
+        title: 'Status',
+        icon: <Clock className="h-14 w-14 text-slate-400" />,
+        subtitle: 'Waiting for the server to report indexing status. Refresh or reopen if this persists.',
+      };
+    }
     if (normalizedStatus === 'completed') {
       return {
         title: 'Completed',
@@ -321,7 +329,7 @@ export default function DocumentDetail({ id }: { id: string }) {
         </div>
 
         <div className="p-8 sm:p-10 bg-gray-50/50">
-          <div className="max-w-4xl mx-auto flex flex-col items-center">
+          <div className="mx-auto flex w-full max-w-none flex-col items-center">
             
             <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-6">
               <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto border border-gray-100 shadow-inner">
@@ -336,7 +344,7 @@ export default function DocumentDetail({ id }: { id: string }) {
               </div>
 
               {normalizedStatus === 'pending' || normalizedStatus === 'processing' ? (
-                <div className="w-full max-w-2xl rounded-2xl border border-sky-200 bg-sky-50/60 p-4 text-left">
+                <div className="w-full max-w-none rounded-2xl border border-sky-200 bg-sky-50/60 p-4 text-left sm:px-6">
                   <p className="text-sm font-semibold text-sky-900">Ingestion Pipeline</p>
                   <div className="mt-3 space-y-4">
                     <div>

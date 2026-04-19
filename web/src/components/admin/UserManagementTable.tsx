@@ -73,7 +73,6 @@ function UserRowCard({
   onOpenAssignRole,
   onEdit,
   onDelete,
-  onManageClasses,
 }: {
   user: UiUser;
   hideRoleButton?: boolean;
@@ -81,7 +80,6 @@ function UserRowCard({
   onOpenAssignRole: (user: UiUser, mode: 'assign' | 'change') => void;
   onEdit: (user: UiUser) => void;
   onDelete: (user: UiUser) => void;
-  onManageClasses: (user: UiUser) => void;
 }) {
   const pendingQueue = needsRoleAssignment(user.role);
   const isActive = user.status === 'Active';
@@ -147,19 +145,6 @@ function UserRowCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-        {canAssignToClass(user.role) ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            title="Assign to class"
-            onClick={() => onManageClasses(user)}
-          >
-            <School className="h-4 w-4" />
-            <span className="sr-only">Assign to class</span>
-          </Button>
-        ) : null}
         {!hideRoleButton ? (
           <button
             type="button"
@@ -210,7 +195,6 @@ export function UserManagementTable({
   onOpenAssignRole,
   onEdit,
   onDelete,
-  onManageClasses,
   hideRoleButton,
 }: {
   users: UiUser[];
@@ -218,7 +202,6 @@ export function UserManagementTable({
   onOpenAssignRole: (user: UiUser, mode: 'assign' | 'change') => void;
   onEdit: (user: UiUser) => void;
   onDelete: (user: UiUser) => void;
-  onManageClasses: (user: UiUser) => void;
   hideRoleButton?: boolean;
 }) {
   return (
@@ -233,7 +216,6 @@ export function UserManagementTable({
             onOpenAssignRole={onOpenAssignRole}
             onEdit={onEdit}
             onDelete={onDelete}
-            onManageClasses={onManageClasses}
           />
         ))}
       </div>
@@ -320,18 +302,6 @@ export function UserManagementTable({
                   </td>
                   <td className="px-2 py-3 align-top lg:px-4">
                     <div className="flex flex-wrap items-center justify-end gap-1">
-                      {canAssignToClass(user.role) ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                          title="Assign to class"
-                          onClick={() => onManageClasses(user)}
-                        >
-                          <School className="h-4 w-4" />
-                        </Button>
-                      ) : null}
                       {!hideRoleButton ? (
                         <button
                           type="button"

@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Plus,
   Eye,
-  Pencil,
 } from 'lucide-react';
 
 export default function DocumentList() {
@@ -201,16 +200,9 @@ export default function DocumentList() {
                           <Link
                             href={`/admin/documents/${doc.id}`}
                             className="inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-primary shadow-sm transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                            title="Open document"
+                            title="Open document detail"
                           >
                             <Eye className="h-4 w-4" />
-                          </Link>
-                          <Link
-                            href={`/admin/documents/${doc.id}`}
-                            className="inline-flex items-center justify-center rounded-lg border border-border bg-muted/40 p-2 text-muted-foreground shadow-sm transition-all hover:bg-muted"
-                            title="Update document"
-                          >
-                            <Pencil className="h-4 w-4" />
                           </Link>
                           <a
                             href={doc.filePath}
