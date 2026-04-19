@@ -1,9 +1,17 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import { useToast } from '@/components/ui/toast';
+import { deleteAdminCase, fetchAdminCaseDetail, updateAdminCase } from '@/lib/api/admin-cases';
+import type { ExpertCase, SaveExpertCaseInput } from '@/lib/api/expert-cases';
+import {
+  expertCaseToAdminDetailView,
+  type CaseDetail,
+  type Review,
+} from '@/lib/admin/map-expert-case-to-admin-detail';
 import {
   ArrowLeft,
   CheckCircle,
@@ -28,49 +36,25 @@ import {
   MessageSquare,
   Send,
   Star,
+  Loader2,
 } from 'lucide-react';
 
-type CaseStatus = 'approved' | 'pending' | 'hidden' | 'rejected';
-type Difficulty = 'basic' | 'intermediate' | 'advanced';
+type CaseStatus = CaseDetail['status'];
+type Difficulty = CaseDetail['difficulty'];
 
-interface CaseImage {
-  id: string;
-  filename: string;
-  type: string;
-  anonymized: boolean;
-  issue?: string;
-}
-
-interface Review {
-  id: string;
-  reviewer: string;
-  role: string;
-  date: string;
-  rating: number;
-  comment: string;
-  action: 'approved' | 'rejected' | 'requested_changes' | 'comment';
-}
-
-interface CaseDetail {
-  id: string;
-  title: string;
-  description: string;
-  boneLocation: string;
-  lesionType: string;
-  difficulty: Difficulty;
-  status: CaseStatus;
-  addedBy: string;
-  addedDate: string;
-  lastModified: string;
-  viewCount: number;
-  usageCount: number;
-  imageAnonymized: boolean;
-  flagReason?: string;
-  clinicalHistory: string;
-  findings: string;
-  diagnosis: string;
-  images: CaseImage[];
-  reviews: Review[];
+function expertToSaveInput(c: ExpertCase): SaveExpertCaseInput {
+  return {
+    title: c.title,
+    createdByExpertId: c.createdByExpertId,
+    description: c.description,
+    difficulty: c.difficulty,
+    isApproved: c.isApproved,
+    isActive: c.isActive,
+    categoryId: c.categoryId,
+    suggestedDiagnosis: c.suggestedDiagnosis,
+    reflectiveQuestions: c.reflectiveQuestions,
+    keyFindings: c.keyFindings,
+  };
 }
 
 const mockCases: Record<string, CaseDetail> = {
@@ -205,14 +189,47 @@ export default function AdminCaseDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const toast = useToast();
 
   const initial = mockCases[id] || getDefaultCase(id);
   const [caseData, setCaseData] = useState<CaseDetail>(initial);
+  const [sourceCase, setSourceCase] = useState<ExpertCase | null>(null);
+  const [apiLoading, setApiLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'approve' | 'hide' | 'delete' | null>(null);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewRating, setReviewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewAction, setReviewAction] = useState<Review['action']>('comment');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setApiLoading(true);
+      setApiError(null);
+      try {
+        const c = await fetchAdminCaseDetail(id);
+        if (cancelled) return;
+        setSourceCase(c);
+        setCaseData(expertCaseToAdminDetailView(c));
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'Unable to load case.';
+        setApiError(msg);
+        setSourceCase(null);
+        if (mockCases[id]) {
+          setCaseData(mockCases[id]);
+        } else {
+          setCaseData(getDefaultCase(id));
+        }
+      } finally {
+        if (!cancelled) setApiLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const handleSubmitReview = () => {
     if (!reviewComment.trim()) return;
@@ -236,16 +253,49 @@ export default function AdminCaseDetailPage({
   const dConfig = difficultyConfig[caseData.difficulty];
   const privacyIssueImages = caseData.images.filter((img) => !img.anonymized);
 
-  const handleConfirm = () => {
-    if (dialog === 'approve') {
-      setCaseData((prev) => ({ ...prev, status: 'approved' }));
-    } else if (dialog === 'hide') {
-      setCaseData((prev) => ({ ...prev, status: 'hidden' }));
-    } else if (dialog === 'delete') {
+  const handleConfirm = async () => {
+    const d = dialog;
+    setDialog(null);
+    if (!d) return;
+
+    if (d === 'delete') {
+      if (sourceCase) {
+        try {
+          await deleteAdminCase(id);
+          toast.success('Case deleted.');
+          router.push('/admin/cases');
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Delete failed.');
+        }
+        return;
+      }
       router.push('/admin/cases');
       return;
     }
-    setDialog(null);
+
+    if (sourceCase && (d === 'approve' || d === 'hide')) {
+      try {
+        const base = expertToSaveInput(sourceCase);
+        const body =
+          d === 'approve'
+            ? { ...base, isApproved: true, isActive: true }
+            : { ...base, isActive: false };
+        await updateAdminCase(id, body);
+        const refreshed = await fetchAdminCaseDetail(id);
+        setSourceCase(refreshed);
+        setCaseData(expertCaseToAdminDetailView(refreshed));
+        toast.success(d === 'approve' ? 'Case approved.' : 'Case deactivated (hidden).');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Update failed.');
+      }
+      return;
+    }
+
+    if (d === 'approve') {
+      setCaseData((prev) => ({ ...prev, status: 'approved' }));
+    } else if (d === 'hide') {
+      setCaseData((prev) => ({ ...prev, status: 'hidden' }));
+    }
   };
 
   return (
@@ -253,6 +303,21 @@ export default function AdminCaseDetailPage({
       <Header title="Case Detail" subtitle={caseData.title} />
 
       <div className="p-6 max-w-[1600px] mx-auto">
+        {apiLoading ? (
+          <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Loading case from API…
+          </div>
+        ) : null}
+        {apiError && !sourceCase ? (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <span className="font-medium">API: </span>
+            {apiError}
+            <span className="block mt-1 text-xs opacity-90">
+              Showing mock or placeholder data for this id when available.
+            </span>
+          </div>
+        ) : null}
         {/* Back + Actions */}
         <div className="flex items-center justify-between mb-6">
           <Link

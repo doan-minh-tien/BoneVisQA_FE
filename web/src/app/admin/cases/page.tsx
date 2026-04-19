@@ -8,8 +8,10 @@ import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { fetchAdminCases, type AdminCaseRow } from '@/lib/api/admin-cases';
-import { AlertCircle, Eye, Loader2, Search } from 'lucide-react';
+import { fetchAdminCasesPaged } from '@/lib/api/admin-cases';
+import { AlertCircle, ChevronLeft, ChevronRight, Eye, Loader2, Search } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 function statusClass(statusRaw: string): string {
   const s = statusRaw.trim().toLowerCase();
@@ -23,14 +25,27 @@ function statusClass(statusRaw: string): string {
 export default function AdminCasesPage() {
   const toast = useToast();
   const [search, setSearch] = useState('');
+  const [pageIndex, setPageIndex] = useState(1);
 
-  const { data, error, isLoading, mutate } = useSWR<AdminCaseRow[]>(
-    'admin-cases',
-    fetchAdminCases,
-    { revalidateOnFocus: true },
+  const { data, error, isLoading, mutate, isValidating } = useSWR(
+    ['admin-cases', pageIndex, PAGE_SIZE],
+    () => fetchAdminCasesPaged(pageIndex, PAGE_SIZE),
+    {
+      revalidateOnFocus: true,
+      keepPreviousData: true,
+      onSuccess: (res) => {
+        const tc = res?.totalCount ?? 0;
+        const tp = Math.max(1, Math.ceil(tc / PAGE_SIZE));
+        setPageIndex((p) => (p > tp ? tp : p));
+      },
+    },
   );
 
-  const rows = data ?? [];
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const displayPage = Math.min(pageIndex, totalPages);
+
+  const rows = useMemo(() => data?.items ?? [], [data]);
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -65,8 +80,8 @@ export default function AdminCasesPage() {
             </Button>
           }
         >
-          <div className="mb-4">
-            <div className="relative max-w-md">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="relative max-w-md flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -75,9 +90,15 @@ export default function AdminCasesPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+            <p className="text-xs text-muted-foreground">
+              {totalCount > 0
+                ? `Showing page ${displayPage} of ${totalPages} · ${totalCount} case${totalCount === 1 ? '' : 's'} total`
+                : null}
+              {rows.length > 0 ? ' · Search filters this page only.' : ''}
+            </p>
           </div>
 
-          {isLoading ? (
+          {isLoading && !data ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
               Loading medical cases...
@@ -94,7 +115,13 @@ export default function AdminCasesPage() {
               No medical cases found for the current filters.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-border">
+            <div className="space-y-3">
+            <div className="relative overflow-hidden rounded-xl border border-border">
+              {isValidating && data ? (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Refreshing" />
+                </div>
+              ) : null}
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
@@ -137,6 +164,36 @@ export default function AdminCasesPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={displayPage <= 1 || isValidating}
+                onClick={() =>
+                  setPageIndex((p) => Math.max(1, Math.min(p, totalPages) - 1))
+                }
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {displayPage} / {totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={displayPage >= totalPages || isValidating}
+                onClick={() =>
+                  setPageIndex((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))
+                }
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
             </div>
           )}
         </SectionCard>
