@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Bell, Check } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { getPublicApiOrigin } from '@/lib/api/client';
+import { useSignalR } from '@/hooks/useSignalR';
 
 interface NotificationItem {
   id: string;
@@ -32,8 +33,10 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
   const lastFetch = useRef<number>(0);
+  const { notifications: realtimeNotifications } = useSignalR();
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   useEffect(() => {
     setMounted(true);
@@ -73,6 +76,30 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
     const interval = setInterval(() => void fetchNotifs(true), 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (realtimeNotifications.length === 0) return;
+    setNotifications((prev) => {
+      const map = new Map<string, NotificationItem>();
+      for (const n of prev) {
+        map.set(n.id, n);
+      }
+      for (const r of realtimeNotifications) {
+        map.set(r.id, {
+          id: r.id,
+          title: r.title,
+          message: r.message,
+          type: r.type,
+          targetUrl: r.targetUrl,
+          isRead: r.isRead,
+          createdAt: r.createdAt,
+        });
+      }
+      return Array.from(map.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    });
+  }, [realtimeNotifications]);
 
   useLayoutEffect(() => {
     if (!open || !buttonRef.current) return;

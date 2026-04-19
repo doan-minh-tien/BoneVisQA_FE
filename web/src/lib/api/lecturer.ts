@@ -30,6 +30,19 @@ export function normalizeAnnouncement(row: unknown, fallbackClassId: string): An
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
   const id = String(r.id ?? r.Id ?? '').trim();
   const classId = String(r.classId ?? r.ClassId ?? fallbackClassId).trim() || fallbackClassId;
+
+  // Normalize related assignment
+  const relRaw = r.relatedAssignment ?? r.RelatedAssignment;
+  let relatedAssignment: AnnouncementAssignmentInfo | undefined = undefined;
+  if (relRaw && typeof relRaw === 'object') {
+    const rel = relRaw as Record<string, unknown>;
+    relatedAssignment = {
+      assignmentId: rel.assignmentId != null ? String(rel.assignmentId) : undefined,
+      assignmentTitle: rel.assignmentTitle != null ? String(rel.assignmentTitle) : undefined,
+      assignmentType: rel.assignmentType != null ? String(rel.assignmentType) : undefined,
+    };
+  }
+
   return {
     id,
     classId,
@@ -38,6 +51,7 @@ export function normalizeAnnouncement(row: unknown, fallbackClassId: string): An
     content: String(r.content ?? r.Content ?? '') || '',
     sendEmail: Boolean(r.sendEmail ?? r.SendEmail ?? true),
     createdAt: String(r.createdAt ?? r.CreatedAt ?? new Date().toISOString()),
+    relatedAssignment,
   };
 }
 
@@ -254,7 +268,7 @@ export async function getClassAnnouncements(classId: string): Promise<Announceme
 
 export async function createAnnouncement(
   classId: string,
-  body: { title: string; content: string; sendEmail: boolean },
+  body: { title: string; content: string; sendEmail: boolean; assignmentId?: string | null },
 ): Promise<Announcement> {
   try {
     const { data } = await http.post<Announcement | ''>(
@@ -270,6 +284,7 @@ export async function createAnnouncement(
         content: body.content,
         sendEmail: body.sendEmail,
         createdAt: new Date().toISOString(),
+        relatedAssignment: body.assignmentId ? { assignmentId: body.assignmentId } : undefined,
       };
     }
     return normalizeAnnouncement(data, classId);
@@ -281,7 +296,7 @@ export async function createAnnouncement(
 export async function updateAnnouncement(
   classId: string,
   announcementId: string,
-  body: { title: string; content: string; sendEmail: boolean },
+  body: { title: string; content: string; sendEmail: boolean; assignmentId?: string | null },
 ): Promise<Announcement> {
   const cId = assertValidGuid('Class', classId);
   const aId = assertValidGuid('Announcement', announcementId);
@@ -303,6 +318,20 @@ export async function deleteAnnouncement(classId: string, announcementId: string
     await http.delete(
       `/api/lecturer/classes/${encodeURIComponent(cId)}/announcements/${encodeURIComponent(aId)}`,
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function moveAnnouncement(announcementId: string, targetClassId: string): Promise<Announcement> {
+  const aId = assertValidGuid('Announcement', announcementId);
+  const cId = assertValidGuid('Class', targetClassId);
+  try {
+    const { data } = await http.put<unknown>(
+      `/api/lecturer/announcements/${encodeURIComponent(aId)}/move`,
+      { targetClassId: cId },
+    );
+    return normalizeAnnouncement(data, cId);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -699,6 +728,96 @@ export async function allowRetakeAll(classId: string, quizId: string): Promise<v
       `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/retake-all`,
       {},
     );
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Export quiz results to Excel file.
+ * Downloads the file directly to the user's browser.
+ */
+export async function exportQuizResultsExcel(classId: string, quizId: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/export`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Export failed' }));
+      throw new Error(errorData.message || 'Export failed');
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let fileName = `QuizResults_${Date.now()}.xlsx`;
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (match && match[1]) {
+        fileName = match[1].replace(/['"]/g, '');
+      }
+    }
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Export all quiz results for the lecturer into a single Excel file.
+ * Downloads the file directly to the user's browser.
+ */
+export async function exportAllQuizResultsExcel(): Promise<void> {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/lecturer/quizzes/export-all`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Export failed' }));
+      throw new Error(errorData.message || 'Export failed');
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let fileName = `AllQuizResults_${Date.now()}.xlsx`;
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (match && match[1]) {
+        fileName = match[1].replace(/['"]/g, '');
+      }
+    }
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

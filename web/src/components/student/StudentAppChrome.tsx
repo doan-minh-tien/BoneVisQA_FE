@@ -135,6 +135,11 @@ export function StudentAppChrome({
                         {a.className ? (
                           <p className="text-xs text-primary">{a.className}</p>
                         ) : null}
+                        {a.relatedAssignment?.assignmentTitle ? (
+                          <p className="mt-1 text-xs font-medium text-primary">
+                            [{a.relatedAssignment.assignmentType?.toUpperCase()}] {a.relatedAssignment.assignmentTitle}
+                          </p>
+                        ) : null}
                         <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.content}</p>
                       </li>
                     ))}

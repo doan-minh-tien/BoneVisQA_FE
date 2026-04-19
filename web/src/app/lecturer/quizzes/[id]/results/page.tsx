@@ -18,6 +18,7 @@ import {
   FileText,
   RotateCcw,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { getQuiz } from '@/lib/api/lecturer-quiz';
 import {
@@ -26,6 +27,7 @@ import {
   allowRetakeForAttempt,
   allowRetakeAll,
   updateQuizAttempt,
+  exportQuizResultsExcel,
 } from '@/lib/api/lecturer';
 import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import type { QuizDto, StudentQuizAttemptDto, QuizAttemptDetailDto, QuestionWithAnswerDto, UpdateAnswerDto } from '@/lib/api/types';
@@ -606,12 +608,26 @@ export default function QuizResultsPage({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [retakingId, setRetakingId] = useState<string | null>(null);
   const [retakingAll, setRetakingAll] = useState(false);
+  const [exporting, setExporting] = useState(false);
   /** In-app confirmation instead of window.confirm */
   const [retakeDialog, setRetakeDialog] = useState<
     null | { kind: 'single'; attempt: StudentQuizAttemptDto } | { kind: 'all'; count: number }
   >(null);
 
   const classId = quiz?.classId ?? '';
+
+  const handleExportExcel = async () => {
+    if (!classId || !quizId) return;
+    setExporting(true);
+    try {
+      await exportQuizResultsExcel(classId, quizId);
+      toast.success('Quiz results exported successfully!');
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   function openRetakeSingleDialog(attempt: StudentQuizAttemptDto) {
     setRetakeDialog({ kind: 'single', attempt });
@@ -819,13 +835,31 @@ export default function QuizResultsPage({
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold">Quiz Results</h1>
-        {quiz && (
-          <p className="text-muted-foreground text-sm mt-1">
-            {quiz.title}
-            {quiz.topic ? ` · ${quiz.topic}` : ''}
-          </p>
-        )}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Quiz Results</h1>
+            {quiz && (
+              <p className="text-muted-foreground text-sm mt-1">
+                {quiz.title}
+                {quiz.topic ? ` · ${quiz.topic}` : ''}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={exporting || attempts.length === 0}
+            className="shrink-0 border-success/30 bg-success/5 font-semibold text-success hover:bg-success/10"
+          >
+            {exporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}

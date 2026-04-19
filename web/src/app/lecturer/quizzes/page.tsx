@@ -29,9 +29,11 @@ import {
   X,
   Loader2,
   AlertCircle,
+  Download,
 } from 'lucide-react';
 import { deleteQuiz, removeQuizFromClass, getUnassignedLecturerQuizzes, getAssignedQuizzes, getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { getStoredUserId } from '@/lib/getStoredUserId';
+import { exportAllQuizResultsExcel } from '@/lib/api/lecturer';
 import type { ClassQuizDto, AssignedQuizDto, QuizDto } from '@/lib/api/types';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
@@ -147,6 +149,27 @@ export default function QuizListPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [previewQuiz, setPreviewQuiz] = useState<EnrichedQuiz | null>(null);
   const [assignQuiz, setAssignQuiz] = useState<EnrichedQuiz | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAllResults = async () => {
+    if (activeTab !== 'assigned-quizzes') {
+      toast.error('Export is only available for Assigned Quizzes tab.');
+      return;
+    }
+    if (assignedQuizzes.length === 0) {
+      toast.error('No quiz data to export.');
+      return;
+    }
+    setExporting(true);
+    try {
+      await exportAllQuizResultsExcel();
+      toast.success('All quiz results exported successfully!');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const toggleSelect = (quizId: string) => {
     setSelectedQuizIds((prev) => {
@@ -500,6 +523,19 @@ export default function QuizListPage() {
               </h3>
               {activeTab === 'assigned-quizzes' && (
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportAllResults}
+                    disabled={exporting || assignedQuizzes.length === 0}
+                    className="flex items-center gap-2 rounded-full border border-success/30 bg-success/5 px-4 py-2 text-xs font-bold text-success transition-colors hover:bg-success/10 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {exporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Export All Results
+                  </button>
                   <select
                     value={selectedClass}
                     onChange={(e) => { setSelectedClass(e.target.value); setPage(1); }}

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppSidebar } from '@/components/AppSidebar';
+import { NotificationBell } from '@/components/NotificationBell';
 import { cn } from '@/lib/utils';
 import { SessionGateSkeleton } from '@/components/shared/DashboardSkeletons';
 
@@ -100,6 +101,9 @@ export function AppShell({
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
         style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
       >
+        <div className="mb-4 flex items-center justify-end">
+          <NotificationBell variant="header" />
+        </div>
         <main
           className={cn(
             'min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500',
