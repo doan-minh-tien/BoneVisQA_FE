@@ -16,7 +16,6 @@ import {
   EditUserDialog,
   DeleteConfirmDialog,
 } from '@/components/admin/users/UserDialogs';
-import { ManageClassesDialog } from '@/components/admin/users/ManageClassesDialog';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
 import { UserManagementTableSkeleton } from '@/components/shared/DashboardSkeletons';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
@@ -30,13 +29,13 @@ import {
   toggleAdminUserStatus,
   updateAdminUser,
   type CreateUserPayload,
-  type UserClassInfo,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
-import { ChevronDown, Filter, Plus, Search, Users } from 'lucide-react';
+import { BookOpen, ChevronDown, Filter, Loader2, Plus, Search, Users, X } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
-const allRoles = assignableRoles;
+/** Directory tabs: Admin accounts are excluded by BE on GET /api/admin/users. */
+const directoryRoleTabs = ['Student', 'Lecturer', 'Expert'] as const satisfies readonly UserRole[];
 
 type RoleTab = UserRole | 'Pending' | 'Unassigned' | 'All';
 
@@ -56,6 +55,13 @@ function normalizeUser(user: AdminUser): UiUser {
     displayRole = 'Unassigned';
   }
 
+  const classListFromApi =
+    user.classAssignments?.map((c) => ({
+      id: c.classId,
+      className: c.className,
+      relationType: c.roleInClass,
+    })) ?? undefined;
+
   return {
     id: user.id,
     name: user.fullName,
@@ -64,6 +70,7 @@ function normalizeUser(user: AdminUser): UiUser {
     status: user.isActive ? 'Active' : 'Inactive',
     joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A',
     className: user.schoolCohort,
+    ...(classListFromApi?.length ? { classList: classListFromApi } : {}),
   };
 }
 
@@ -71,9 +78,6 @@ export default function AdminUsersPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const [classListByUser, setClassListByUser] = useState<
-    Record<string, NonNullable<UiUser['classList']>>
-  >({});
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<RoleTab>('All');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
@@ -86,7 +90,6 @@ export default function AdminUsersPage() {
   } | null>(null);
   const [editTarget, setEditTarget] = useState<UiUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
-  const [manageClassesTarget, setManageClassesTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   const {
@@ -107,10 +110,9 @@ export default function AdminUsersPage() {
   const users = useMemo(() => {
     return (adminUsersRaw ?? []).map((u) => {
       const base = normalizeUser(u);
-      const cl = classListByUser[u.id];
-      return cl ? { ...base, classList: cl } : base;
+      return base;
     });
-  }, [adminUsersRaw, classListByUser]);
+  }, [adminUsersRaw]);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -141,7 +143,6 @@ export default function AdminUsersPage() {
       Student: users.filter((u) => u.role === 'Student').length,
       Lecturer: users.filter((u) => u.role === 'Lecturer').length,
       Expert: users.filter((u) => u.role === 'Expert').length,
-      Admin: users.filter((u) => u.role === 'Admin').length,
     }),
     [users],
   );
@@ -209,26 +210,11 @@ export default function AdminUsersPage() {
       await deleteAdminUser(userId);
       toast.success('User deleted successfully.');
       setDeleteTarget(null);
-      setClassListByUser((prev) => {
-        const next = { ...prev };
-        delete next[userId];
-        return next;
-      });
+      setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete user.');
     }
-  };
-
-  const handleManageClassesUpdated = (userId: string, updatedClasses: UserClassInfo[]) => {
-    setClassListByUser((prev) => ({
-      ...prev,
-      [userId]: updatedClasses.map((c) => ({
-        id: c.id,
-        className: c.className,
-        relationType: c.relationType,
-      })),
-    }));
   };
 
   return (
@@ -260,7 +246,7 @@ export default function AdminUsersPage() {
               active={activeTab === 'Unassigned'}
               onClick={() => setActiveTab('Unassigned')}
             />
-            {allRoles.map((role) => (
+            {directoryRoleTabs.map((role) => (
               <TabButton
                 key={role}
                 label={role}
@@ -271,14 +257,16 @@ export default function AdminUsersPage() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md transition-all hover:opacity-95 active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-            Create User
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md transition-all hover:opacity-95 active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              Create User
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row">
@@ -332,7 +320,6 @@ export default function AdminUsersPage() {
               onOpenAssignRole={(user, mode) => setAssignRoleDialog({ user, mode })}
               onEdit={(user) => setEditTarget(user)}
               onDelete={(user) => setDeleteTarget(user)}
-              onManageClasses={(user) => setManageClassesTarget(user)}
               hideRoleButton={activeTab === 'Pending'}
             />
           )}
@@ -387,14 +374,6 @@ export default function AdminUsersPage() {
           onCancel={() => setStatusTarget(null)}
           onConfirm={handleToggleStatus}
           isLoading={submitting}
-        />
-      ) : null}
-
-      {manageClassesTarget ? (
-        <ManageClassesDialog
-          user={manageClassesTarget}
-          onCancel={() => setManageClassesTarget(null)}
-          onUpdated={handleManageClassesUpdated}
         />
       ) : null}
     </div>

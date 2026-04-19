@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { http } from '@/lib/api/client';
 
-export type BackendRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin';
+export type BackendRole = 'Student' | 'Lecturer' | 'Expert' | 'Admin' | 'Guest';
 
 export interface AuthUser {
   fullName: string | null;
@@ -15,6 +15,18 @@ export interface AuthUser {
   avatarUrl: string | null;
 }
 
+type AuthRefreshPatch = Partial<Pick<AuthUser, 'fullName' | 'avatarUrl' | 'status' | 'activeRole' | 'roles'>>;
+
+export function emitAuthRefresh(patch?: AuthRefreshPatch) {
+  if (typeof window === 'undefined') return;
+  if (patch?.fullName != null) localStorage.setItem('fullName', patch.fullName);
+  if (patch?.avatarUrl != null) localStorage.setItem('avatarUrl', patch.avatarUrl);
+  if (patch?.status != null) localStorage.setItem('userStatus', patch.status);
+  if (patch?.activeRole != null) localStorage.setItem('activeRole', patch.activeRole);
+  if (patch?.roles) localStorage.setItem('roles', JSON.stringify(patch.roles));
+  window.dispatchEvent(new CustomEvent<AuthRefreshPatch>('bonevis:auth-refresh', { detail: patch }));
+}
+
 function normalizeRole(raw: string | null | undefined): BackendRole | null {
   if (!raw) return null;
   const value = raw.trim().toLowerCase();
@@ -22,6 +34,7 @@ function normalizeRole(raw: string | null | undefined): BackendRole | null {
   if (value === 'lecturer') return 'Lecturer';
   if (value === 'expert') return 'Expert';
   if (value === 'admin') return 'Admin';
+  if (value === 'guest') return 'Guest';
   return null;
 }
 
@@ -32,6 +45,7 @@ export function useAuth() {
   useEffect(() => {
     // setIsHydrated(true);
     let cancelled = false;
+    let latestSnapshot: AuthUser | null = null;
 
     const readAuth = () => {
       const fullName = localStorage.getItem('fullName');
@@ -58,6 +72,7 @@ export function useAuth() {
       };
 
       if (!cancelled) {
+        latestSnapshot = localUser;
         setUser(localUser);
       }
 
@@ -104,12 +119,25 @@ export function useAuth() {
     };
 
     readAuth();
-    window.addEventListener('storage', readAuth);
-    window.addEventListener('bonevis:auth-refresh', readAuth);
+    const onStorage = () => readAuth();
+    const onAuthRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<AuthRefreshPatch>).detail;
+      if (detail && latestSnapshot) {
+        latestSnapshot = {
+          ...latestSnapshot,
+          ...detail,
+          avatarUrl: detail.avatarUrl ?? latestSnapshot.avatarUrl,
+        };
+        setUser(latestSnapshot);
+      }
+      readAuth();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('bonevis:auth-refresh', onAuthRefresh as EventListener);
     return () => {
       cancelled = true;
-      window.removeEventListener('storage', readAuth);
-      window.removeEventListener('bonevis:auth-refresh', readAuth);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('bonevis:auth-refresh', onAuthRefresh as EventListener);
     };
   }, []);
 

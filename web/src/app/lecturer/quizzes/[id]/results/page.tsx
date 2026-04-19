@@ -1136,7 +1136,7 @@ export default function QuizResultsPage({
       >
         {retakeDialog?.kind === 'single' ? (
           <div className="flex gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="min-w-0 space-y-2 text-sm text-muted-foreground">
@@ -1149,7 +1149,7 @@ export default function QuizResultsPage({
           </div>
         ) : retakeDialog?.kind === 'all' ? (
           <div className="flex gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="min-w-0 space-y-2 text-sm text-muted-foreground">

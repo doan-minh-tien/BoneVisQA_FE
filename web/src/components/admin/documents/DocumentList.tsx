@@ -16,7 +16,8 @@ import {
   Clock,
   MapPin,
   RefreshCw,
-  Plus
+  Plus,
+  Eye,
 } from 'lucide-react';
 
 export default function DocumentList() {
@@ -145,10 +146,10 @@ export default function DocumentList() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Document</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Indexing Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Version</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Created</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground align-middle">Indexing Status</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground align-middle">Version</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground align-middle">Created</th>
+                    <th className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground align-middle">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -179,29 +180,29 @@ export default function DocumentList() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 align-middle">
-                        {getStatusBadge(doc.indexingStatus)}
+                      <td className="px-6 py-4 align-middle text-center">
+                        <div className="inline-flex">{getStatusBadge(doc.indexingStatus)}</div>
                       </td>
-                      <td className="px-6 py-4 align-middle">
+                      <td className="px-6 py-4 align-middle text-center">
                         <div className="inline-flex items-center justify-center rounded border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                           v{doc.version}
                         </div>
                       </td>
-                      <td className="px-6 py-4 align-middle text-sm font-medium text-muted-foreground">
+                      <td className="px-6 py-4 align-middle text-center text-sm font-medium text-muted-foreground">
                         {new Date(doc.createdAt).toLocaleDateString(undefined, {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
                         })}
                       </td>
-                      <td className="px-6 py-4 align-middle text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-6 py-4 align-middle text-center">
+                        <div className="flex flex-row items-center justify-center gap-2">
                           <Link
                             href={`/admin/documents/${doc.id}`}
                             className="inline-flex items-center justify-center rounded-lg border border-border bg-card p-2 text-primary shadow-sm transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                            title="View Details"
+                            title="Open document detail"
                           >
-                            <span className="text-xs font-semibold px-1">Details</span>
+                            <Eye className="h-4 w-4" />
                           </Link>
                           <a
                             href={doc.filePath}

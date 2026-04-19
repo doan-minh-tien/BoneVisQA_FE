@@ -24,7 +24,7 @@ type ProfileAvatarPickerProps = {
   size?: Size;
   /** Large avatar with ring, hover overlay, optional footer (hides default hint). */
   variant?: 'default' | 'hero';
-  /** Replaces the default “Bấm ảnh…” caption when provided. */
+  /** Replaces the default "Tap image..." caption when provided. */
   footer?: (openPicker: () => void) => ReactNode;
 };
 
@@ -129,7 +129,7 @@ export function ProfileAvatarPicker({
         footer(pickFile)
       ) : (
         <p className="max-w-[10rem] text-center text-[10px] leading-tight text-muted-foreground sm:max-w-none">
-          Bấm ảnh để tải lên
+          Tap image to upload
         </p>
       )}
     </div>

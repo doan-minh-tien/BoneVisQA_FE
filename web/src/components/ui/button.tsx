@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { Slot } from '@radix-ui/react-slot';
 
 type Variant = 'primary' | 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive';
 type Size = 'sm' | 'md' | 'lg';
@@ -27,6 +28,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   isLoading?: boolean;
+  asChild?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -35,6 +37,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     variant = 'primary',
     size = 'md',
     isLoading,
+    asChild = false,
     disabled,
     children,
     type = 'button',
@@ -42,11 +45,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   },
   ref,
 ) {
+  const Comp = asChild ? Slot : 'button';
   return (
-    <button
+    <Comp
       ref={ref}
-      type={type}
-      disabled={disabled || isLoading}
+      {...(!asChild ? { type } : {})}
+      {...(!asChild ? { disabled: disabled || isLoading } : {})}
       className={`
         inline-flex items-center justify-center gap-2 rounded-lg font-medium tracking-[0.01em]
         cursor-pointer transition-all duration-150
@@ -63,6 +67,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
       ) : null}
       {children}
-    </button>
+    </Comp>
   );
 });

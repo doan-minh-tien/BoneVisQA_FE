@@ -257,6 +257,7 @@ export default function QuizSessionPage({
         msg.includes('already submitted') ||
         msg.includes('cannot retake') ||
         msg.includes('submitted') ||
+        msg.includes('retake denied') ||
         msg.includes('retake') ||
         msg.includes('not open') ||
         msg.includes('open time') ||
@@ -347,7 +348,7 @@ export default function QuizSessionPage({
   if (!session) {
     if (startError) {
       const retakeHint =
-        /submitted|retake/i.test(startError) ||
+        /retake|submitted|submission/i.test(startError) ||
         startError.toLowerCase().includes('lecturer');
       const notOpenHint = startError.includes('not open') || startError.includes('open time');
       const closedHint = startError.includes('closed');
@@ -557,7 +558,7 @@ export default function QuizSessionPage({
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 bg-slate-50/95 px-4 py-4 backdrop-blur-md dark:border-slate-800/50 dark:bg-slate-900/95 sm:px-8 sm:py-5">
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/20 bg-slate-50/95 px-4 py-4 backdrop-blur-md sm:px-8 sm:py-5">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -598,8 +599,8 @@ export default function QuizSessionPage({
             <div
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 font-headline text-sm font-bold tabular-nums sm:px-4 ${
                 timerDisplaySeconds === 0
-                  ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                  : 'bg-slate-100 text-primary dark:bg-slate-800 dark:text-blue-400'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-slate-100 text-primary'
               }`}
               title="Time remaining"
             >
@@ -721,11 +722,11 @@ export default function QuizSessionPage({
                   )}
                 </div>
 
-                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl dark:bg-black/50">
+                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl">
                   <button
                     type="button"
                     onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
-                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom in"
                   >
                     <ZoomIn className="h-5 w-5" />
@@ -733,17 +734,17 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={() => setZoomIndex((i) => Math.max(i - 1, 0))}
-                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom out"
                   >
                     <Minus className="h-5 w-5" />
                   </button>
-                  <div className="mx-1 h-6 w-px bg-outline-variant/30 dark:bg-white/20" />
+                  <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
                     onClick={() => setHighContrastImg((v) => !v)}
-                    className={`rounded-full p-2 transition-colors hover:bg-surface-container-high dark:hover:bg-white/10 ${
-                      highContrastImg ? 'text-secondary dark:text-secondary-container' : 'text-on-surface dark:text-white/90'
+                    className={`rounded-full p-2 transition-colors hover:bg-surface-container-high ${
+                      highContrastImg ? 'text-secondary' : 'text-on-surface'
                     }`}
                     title="Contrast"
                   >
@@ -752,18 +753,18 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={() => setStraightenActive((v) => !v)}
-                    className={`rounded-full p-2 font-bold transition-colors hover:bg-surface-container-high dark:hover:bg-white/10 ${
-                      straightenActive ? 'text-secondary dark:text-secondary-container' : 'text-on-surface dark:text-white/90'
+                    className={`rounded-full p-2 font-bold transition-colors hover:bg-surface-container-high ${
+                      straightenActive ? 'text-secondary' : 'text-on-surface'
                     }`}
                     title="Straighten / align"
                   >
                     <Ruler className="h-5 w-5" />
                   </button>
-                  <div className="mx-1 h-6 w-px bg-outline-variant/30 dark:bg-white/20" />
+                  <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
                     onClick={() => setZoomIndex(0)}
-                    className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high dark:text-white/90 dark:hover:bg-white/10"
+                    className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high"
                     title="Reset zoom"
                   >
                     {ZOOM_LEVELS[zoomIndex]}x
@@ -784,7 +785,7 @@ export default function QuizSessionPage({
                   </span>
                 )}
                 {currentQ.type && (
-                  <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                  <span className="inline-flex items-center rounded-xl bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900">
                     {currentQ.type}
                   </span>
                 )}
@@ -973,22 +974,22 @@ export default function QuizSessionPage({
               <div
                 className={`rounded-2xl border p-6 sm:p-8 ${
                   currentState === 'correct'
-                    ? 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30'
-                    : 'border-amber-500/30 bg-amber-50 dark:bg-amber-950/30'
+                    ? 'border-emerald-500/30 bg-emerald-50'
+                    : 'border-amber-500/30 bg-amber-50'
                 }`}
               >
                 <div className="mb-3 flex items-center gap-3">
                   {currentState === 'correct' ? (
                     <>
                       <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                      <span className="font-headline text-lg font-bold text-emerald-800 dark:text-emerald-200">
+                      <span className="font-headline text-lg font-bold text-emerald-800">
                         Correct
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-7 w-7 text-amber-600" />
-                      <span className="font-headline text-lg font-bold text-amber-800 dark:text-amber-200">
+                      <span className="font-headline text-lg font-bold text-amber-800">
                         Incorrect
                       </span>
                     </>
@@ -1134,6 +1135,105 @@ export default function QuizSessionPage({
             )}
           </div>
         </div>
+
+        {/* Review answers */}
+        {submitted && quizReview && quizReview.questions.length > 0 && (
+          <div>
+            <div className="mb-6 flex items-center gap-3">
+              <span className="h-1 w-6 rounded-full bg-primary" />
+              <h4 className="font-headline text-base font-bold text-on-surface">
+                Review answers
+              </h4>
+              <span className="ml-auto text-xs text-on-surface-variant">
+                {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
+              </span>
+            </div>
+            <div className="space-y-3">
+              {quizReview.questions.map((q, i) => {
+                const studentChoice = q.studentAnswer?.toUpperCase();
+                const correctChoice = q.correctAnswer?.toUpperCase();
+                const isCorrect = q.isCorrect;
+
+                return (
+                  <div
+                    key={q.questionId}
+                    className={`rounded-2xl border-2 p-5 transition-all ${
+                      isCorrect
+                        ? 'border-emerald-400/50 bg-emerald-50'
+                        : 'border-destructive/40 bg-destructive/5'
+                    }`}
+                  >
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-headline text-sm font-extrabold text-white ${
+                            isCorrect ? 'bg-emerald-500' : 'bg-destructive'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <p className="font-semibold text-on-surface-variant">
+                          {isCorrect ? 'Correct' : 'Incorrect'}
+                        </p>
+                      </div>
+                      {q.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={resolveApiAssetUrl(q.imageUrl)}
+                          alt="case"
+                          className="h-14 w-14 rounded-xl border border-outline-variant/20 object-cover"
+                        />
+                      )}
+                    </div>
+
+                    <p className="mb-4 text-sm font-semibold text-on-surface leading-snug">
+                      {q.questionText}
+                    </p>
+
+                    <div className="space-y-2">
+                      {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                        const text = q[`option${key}` as keyof typeof q];
+                        if (!text) return null;
+                        const isStudent = studentChoice === key;
+                        const isCorrectKey = correctChoice === key;
+
+                        let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
+                        if (isCorrectKey) {
+                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800';
+                        } else if (isStudent && !isCorrect) {
+                          cls = 'border-destructive/50 bg-destructive/10 text-destructive';
+                        }
+
+                        return (
+                          <div
+                            key={key}
+                            className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${cls}`}
+                          >
+                            <span
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                                isCorrectKey
+                                  ? 'bg-emerald-500 text-white'
+                                  : isStudent
+                                    ? 'bg-destructive text-white'
+                                    : 'bg-surface-container text-on-surface-variant'
+                              }`}
+                            >
+                              {key}
+                            </span>
+                            <span className="flex-1">{text}</span>
+                            {isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                            {isStudent && !isCorrectKey && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
+                            {isStudent && isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
         <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">

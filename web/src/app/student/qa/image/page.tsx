@@ -1,26 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { CitationList } from '@/components/shared/CitationList';
-import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
-import { DynamicProgressTracker } from '@/components/shared/DynamicProgressTracker';
-import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
+import useSWRMutation from 'swr/mutation';
+import Header from '@/components/Header';
+import { ChatComposer } from '@/components/student/ChatComposer';
+import { ChatConversation } from '@/components/student/ChatConversation';
 import {
-  ArrowLeft,
-  AlertTriangle,
-  CheckCircle,
-  FileQuestion,
-  Loader2,
-  Send,
-  Sparkles,
-  UploadCloud,
-} from 'lucide-react';
+  readAndClearSessionPrefillImage,
+  VisualQaSessionHistorySidebar,
+} from '@/components/student/VisualQaSessionHistorySidebar';
+import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
+import { History, Loader2, MessageCircle } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -53,13 +46,23 @@ const MedicalImageViewer = dynamic(
 );
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
-import { postStudentVisualQa } from '@/lib/api/student-visual-qa';
-import type { NormalizedImageBoundingBox, NormalizedPolygonPoint, VisualQaReport } from '@/lib/api/types';
+import {
+  fetchStudentVisualQaSession,
+  postStudentVisualQa,
+  requestStudentVisualQaReview,
+} from '@/lib/api/student-visual-qa';
+import type {
+  NormalizedImageBoundingBox,
+  NormalizedPolygonPoint,
+  VisualQaSessionReport,
+  VisualQaTurn,
+} from '@/lib/api/types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
-import { splitLearningBullets } from '@/lib/utils/learning-text';
-import { looksLikeAiFallbackAnswer } from '@/lib/utils/ai-fallback-message';
 import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
+import { cn } from '@/lib/utils';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
+import { useAuth } from '@/lib/useAuth';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 
 type VisualQaDraft = {
   question: string;
@@ -80,8 +83,54 @@ const EMPTY_DRAFT: VisualQaDraft = {
 };
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const DRAFT_TTL_MS = 10_800_000;
+
+type PendingOutgoingMessage = {
+  id: string;
+  content: string;
+  status: 'sending' | 'failed';
+};
+
+function turnIdentity(turn: VisualQaTurn): string {
+  if (turn.turnId?.trim()) return `turn:${turn.turnId.trim()}`;
+  if (turn.clientRequestId?.trim()) return `request:${turn.clientRequestId.trim()}`;
+  if (typeof turn.turnIndex === 'number' && Number.isFinite(turn.turnIndex)) return `index:${turn.turnIndex}`;
+  return `fallback:${turn.createdAt ?? ''}:${turn.answerText ?? ''}`;
+}
+
+function mergeTurnsByIdentity(base: VisualQaTurn[], incoming: VisualQaTurn[]): VisualQaTurn[] {
+  const merged = [...base];
+  const identityToIndex = new Map<string, number>();
+  merged.forEach((turn, idx) => identityToIndex.set(turnIdentity(turn), idx));
+  incoming.forEach((turn) => {
+    const key = turnIdentity(turn);
+    const existingIndex = identityToIndex.get(key);
+    if (typeof existingIndex === 'number') {
+      merged[existingIndex] = turn;
+      return;
+    }
+    merged.push(turn);
+    identityToIndex.set(key, merged.length - 1);
+  });
+  return merged.sort((a, b) => {
+    if (a.turnIndex !== b.turnIndex) return a.turnIndex - b.turnIndex;
+    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+  });
+}
+
+function hasQuestionText(turn: VisualQaTurn): boolean {
+  if (turn.questionText?.trim()) return true;
+  if (!Array.isArray(turn.messages)) return false;
+  return turn.messages.some((msg) => {
+    const role = (msg.role ?? '').toLowerCase();
+    return (role === 'student' || role === 'user') && Boolean(msg.content?.trim());
+  });
+}
 
 export default function StudentVisualQaImagePage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user } = useAuth();
   const toast = useToast();
   const searchParams = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
@@ -91,23 +140,79 @@ export default function StudentVisualQaImagePage() {
   /** `upload` = multipart upload in progress; `analyzing` = bytes sent, waiting on model + server. */
   const [loadingPhase, setLoadingPhase] = useState<'upload' | 'analyzing'>('upload');
   const [uploadPct, setUploadPct] = useState(0);
-  const [report, setReport] = useState<VisualQaReport | null>(null);
+  const [session, setSession] = useState<VisualQaSessionReport | null>(null);
+  const [chatTurns, setChatTurns] = useState<VisualQaTurn[]>([]);
+  const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [networkWarning, setNetworkWarning] = useState<string | null>(null);
   const [aiOverload, setAiOverload] = useState(false);
-  const [lastSubmittedQuestion, setLastSubmittedQuestion] = useState<string | null>(null);
+  const [chatErrorCode, setChatErrorCode] = useState<string | null>(null);
+  const [chatErrorMessage, setChatErrorMessage] = useState<string | null>(null);
+  const [chatPolicyReason, setChatPolicyReason] = useState<string | null>(null);
+  const [chatSystemNoticeCode, setChatSystemNoticeCode] = useState<string | null>(null);
   const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [hydratingDraft, setHydratingDraft] = useState(true);
+  /** Synchronous guard against double-submit before React applies `loading`. */
+  const isSubmittingRef = useRef(false);
+  /** Remount file input on New Chat so the native picker and preview fully reset. */
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const bottomFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [requestingLecturerReview, setRequestingLecturerReview] = useState(false);
+  const [serverForcedExpired, setServerForcedExpired] = useState(false);
+  const [pendingOutgoingMessage, setPendingOutgoingMessage] = useState<PendingOutgoingMessage | null>(null);
+  const [restoringSession, setRestoringSession] = useState(false);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const localQuestionByRequestIdRef = useRef<Record<string, string>>({});
+  const draftStorageKey = `student-visual-qa-draft:${user?.email ?? 'anonymous'}:${pathname}`;
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
-    'student-visual-qa-draft',
+    draftStorageKey,
     EMPTY_DRAFT,
+    { ttlMs: DRAFT_TTL_MS },
   );
 
   const catalogImageUrl = searchParams.get('catalogImageUrl');
   const catalogTitle = searchParams.get('catalogTitle');
   const catalogContext = searchParams.get('catalogContext');
+  const historySessionId = searchParams.get('sessionId') ?? searchParams.get('historySessionId');
+  const studyImageUrlParam = searchParams.get('studyImageUrl');
+  const catalogCaseId =
+    searchParams.get('catalogCaseId') ??
+    searchParams.get('caseId') ??
+    searchParams.get('catalogCaseID');
+  const catalogImageId =
+    searchParams.get('catalogImageId') ??
+    searchParams.get('imageId') ??
+    searchParams.get('catalogImageID');
+
+  const { trigger: askVisualQa } = useSWRMutation(
+    'student-visual-qa-session-ask',
+    async (
+      _key,
+      {
+        arg,
+      }: {
+        arg: {
+          file?: File | null;
+          questionText: string;
+          sessionId?: string | null;
+          caseId?: string | null;
+          imageId?: string | null;
+          roiBoundingBox?: NormalizedImageBoundingBox | null;
+          clientRequestId?: string | null;
+        };
+      },
+    ) =>
+      postStudentVisualQa(arg.file, arg.questionText, {
+        sessionId: arg.sessionId,
+        caseId: arg.caseId,
+        imageId: arg.imageId,
+        roiBoundingBox: arg.roiBoundingBox,
+        clientRequestId: arg.clientRequestId,
+        onUploadProgress: handleUploadProgress,
+      }),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -148,14 +253,22 @@ export default function StudentVisualQaImagePage() {
   }, []);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl(null);
-      return;
-    }
+    if (!file) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  /** When there is no local file, show the thread image from BE (follow-up turns, restore, reconcile). */
+  useEffect(() => {
+    if (file) return;
+    const raw = session?.sessionImageUrl?.trim();
+    if (raw) {
+      setPreviewUrl(resolveApiAssetUrl(raw));
+      return;
+    }
+    setPreviewUrl(null);
+  }, [file, session?.sessionImageUrl]);
 
   useEffect(() => {
     if (!catalogImageUrl || file) return;
@@ -196,8 +309,60 @@ export default function StudentVisualQaImagePage() {
     setQuestion(`Please analyze this teaching case: ${catalogContext}.`);
   }, [catalogContext, question]);
 
+  useEffect(() => {
+    if (!historySessionId?.trim()) return;
+    let cancelled = false;
+    (async () => {
+      setRestoringSession(true);
+      try {
+        const restored = await fetchStudentVisualQaSession(historySessionId);
+        if (cancelled) return;
+        const restoredTurns = withLocalQuestionFallback(restored.turns);
+        pruneResolvedLocalQuestions(restoredTurns);
+        setSession({
+          ...restored,
+          turns: restoredTurns,
+          latest: restored.latest ?? restoredTurns[restoredTurns.length - 1] ?? null,
+        });
+        setChatTurns(restoredTurns);
+        setSelectedTurnIndex(
+          restored.latest?.turnIndex ?? restoredTurns[restoredTurns.length - 1]?.turnIndex ?? null,
+        );
+        const sid = historySessionId.trim();
+        let fromParam: string | null = null;
+        if (studyImageUrlParam?.trim()) {
+          try {
+            fromParam = decodeURIComponent(studyImageUrlParam.trim());
+          } catch {
+            fromParam = studyImageUrlParam.trim();
+          }
+        }
+        const fromThread = restored.sessionImageUrl?.trim() || fromParam;
+        const fromStorage = readAndClearSessionPrefillImage(sid);
+        const imageHydrate = fromThread || fromStorage;
+        if (imageHydrate) {
+          setPreviewUrl(imageHydrate);
+          setFile(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Could not restore the chat session.');
+        }
+      } finally {
+        if (!cancelled) setRestoringSession(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [historySessionId, studyImageUrlParam, toast]);
+
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (loading || isSubmittingRef.current) {
+        toast.info('Please wait for the current AI response before changing the image.');
+        return;
+      }
       const f = e.target.files?.[0];
       if (!f) return;
       if (f.size > MAX_IMAGE_SIZE_BYTES) {
@@ -207,13 +372,14 @@ export default function StudentVisualQaImagePage() {
       }
       setImageError(null);
       setQuestionError(null);
-      setReport(null);
-      setLastSubmittedQuestion(null);
+      setSession(null);
+      setChatTurns([]);
       setAiOverload(false);
+      setPendingOutgoingMessage(null);
       setFile(f);
       setRoiBoundingBox(null);
     },
-    [],
+    [loading, toast],
   );
 
   const handleUploadProgress = useCallback((pct: number) => {
@@ -221,36 +387,388 @@ export default function StudentVisualQaImagePage() {
     if (pct >= 100) setLoadingPhase('analyzing');
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !question.trim()) {
-      if (!file) setImageError('Please attach an image before submitting.');
-      if (!question.trim()) setQuestionError('Please enter your question or observations.');
+  const appendLocalSystemNotice = useCallback((message: string, systemNoticeCode?: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const makeSystemTurn = (nextTurnIndex: number): VisualQaTurn => ({
+      turnId: null,
+      turnIndex: nextTurnIndex,
+      answerText: trimmed,
+      diagnosis: '',
+      findings: [],
+      reflectiveQuestions: [],
+      differentialDiagnoses: [],
+      citations: [],
+      createdAt: new Date().toISOString(),
+      responseKind: 'system_notice',
+      systemNoticeCode: systemNoticeCode?.trim() || null,
+      actorRole: 'system',
+      lastResponderRole: 'system',
+      isReviewTarget: false,
+    });
+    setChatTurns((prev) => {
+      const nextTurnIndex = (prev[prev.length - 1]?.turnIndex ?? 0) + 1;
+      return mergeTurnsByIdentity(prev, [makeSystemTurn(nextTurnIndex)]);
+    });
+    setSession((prev) => {
+      if (!prev) return prev;
+      const nextTurnIndex = (prev.turns[prev.turns.length - 1]?.turnIndex ?? 0) + 1;
+      const systemTurn = makeSystemTurn(nextTurnIndex);
+      const mergedTurns = mergeTurnsByIdentity(prev.turns, [systemTurn]);
+      return {
+        ...prev,
+        turns: mergedTurns,
+        latest: mergedTurns[mergedTurns.length - 1] ?? prev.latest,
+      };
+    });
+  }, []);
+
+  function withLocalQuestionFallback(turns: VisualQaTurn[]): VisualQaTurn[] {
+    return turns.map((turn) => {
+      const requestId = turn.clientRequestId?.trim();
+      if (!requestId || hasQuestionText(turn)) return turn;
+      const fallbackQuestion = localQuestionByRequestIdRef.current[requestId];
+      if (!fallbackQuestion?.trim()) return turn;
+      return {
+        ...turn,
+        questionText: fallbackQuestion,
+      };
+    });
+  }
+
+  function pruneResolvedLocalQuestions(turns: VisualQaTurn[]) {
+    turns.forEach((turn) => {
+      const requestId = turn.clientRequestId?.trim();
+      if (!requestId) return;
+      if (hasQuestionText(turn)) {
+        delete localQuestionByRequestIdRef.current[requestId];
+      }
+    });
+  }
+
+  const submitQuestion = async (questionOverride?: string) => {
+    if (isSubmittingRef.current) return;
+    if (isSessionInteractionLocked) {
+      const lockMessage = sessionCapabilityReason || 'This chat is read-only for now. Start a new chat to continue.';
+      appendLocalSystemNotice(lockMessage, session?.systemNoticeCode ?? 'SESSION_LOCKED');
+      toast.info(lockMessage);
       return;
     }
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    const requiresFile = !isOngoingSession;
+    const nextQuestion =
+      (typeof questionOverride === 'string' ? questionOverride : question).trim();
+    if ((requiresFile && !file) || !nextQuestion) {
+      if (requiresFile && !file) {
+        const msg = 'Please attach an image before submitting.';
+        setImageError(msg);
+        appendLocalSystemNotice(msg, 'MISSING_IMAGE');
+      }
+      if (!nextQuestion) {
+        const msg = 'Please enter your question or observations.';
+        setQuestionError(msg);
+        appendLocalSystemNotice(msg, 'MISSING_QUESTION');
+      }
+      return;
+    }
+    if (file && file.size > MAX_IMAGE_SIZE_BYTES) {
       setImageError('Image must be smaller than 5MB.');
       return;
     }
-    const q = question.trim();
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    const q = nextQuestion;
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `client-${Date.now()}`;
+    localQuestionByRequestIdRef.current[requestId] = q;
+    setPendingOutgoingMessage({ id: requestId, content: q, status: 'sending' });
+    setQuestion('');
     setImageError(null);
     setQuestionError(null);
     setNetworkWarning(null);
     setAiOverload(false);
+    setChatErrorCode(null);
+    setChatErrorMessage(null);
+    setChatPolicyReason(null);
+    setChatSystemNoticeCode(null);
     setLoading(true);
-    setLoadingPhase('upload');
+    setLoadingPhase(file ? 'upload' : 'analyzing');
     setUploadPct(0);
-    setReport(null);
     let overloadExit = false;
     try {
-      const res = await postStudentVisualQa(file, q, roiBoundingBox, handleUploadProgress);
-      setLastSubmittedQuestion(q);
-      setReport(res);
+      const res = await askVisualQa({
+        file,
+        questionText: q,
+        sessionId: session?.sessionId ?? null,
+        caseId: catalogCaseId,
+        imageId: catalogImageId,
+        roiBoundingBox,
+        clientRequestId: requestId,
+      });
+      const normalizeTurnsWithLivePayload = (): VisualQaTurn[] => {
+        const byServerTurns = res.turns.length > 0 ? mergeTurnsByIdentity(chatTurns, res.turns) : [...chatTurns];
+        const latestTurnFromResponse: VisualQaTurn | null =
+          res.latest ??
+          (res.turns.length === 0
+            ? {
+                turnId: null,
+                turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
+                questionText: q,
+                ...(res.answerText ? { answerText: res.answerText } : {}),
+                diagnosis: res.diagnosis ?? '',
+                findings: res.findings ?? [],
+                reflectiveQuestions: res.reflectiveQuestions ?? [],
+                differentialDiagnoses: res.differentialDiagnoses ?? [],
+                citations: res.citations ?? [],
+                aiConfidenceScore: undefined,
+                createdAt: new Date().toISOString(),
+                responseKind: res.responseKind ?? 'analysis',
+                clientRequestId: res.clientRequestId ?? requestId,
+                policyReason: res.policyReason ?? null,
+                systemNoticeCode: res.systemNoticeCode ?? null,
+                reviewState: res.reviewState ?? null,
+                lastResponderRole: res.lastResponderRole ?? 'assistant',
+                actorRole: 'assistant',
+                isReviewTarget: true,
+              }
+            : null);
+        const mergedWithLatest = latestTurnFromResponse
+          ? mergeTurnsByIdentity(byServerTurns, [latestTurnFromResponse])
+          : byServerTurns;
+        const systemNotice = res.systemNotice?.trim();
+        if (systemNotice) {
+          const hasNotice = mergedWithLatest.some(
+            (turn) =>
+              turn.responseKind?.toLowerCase() === 'system_notice' &&
+              (turn.answerText?.trim() || turn.diagnosis?.trim()) === systemNotice,
+          );
+          if (!hasNotice) {
+            return mergeTurnsByIdentity(mergedWithLatest, [{
+              turnId: null,
+              turnIndex: (mergedWithLatest[mergedWithLatest.length - 1]?.turnIndex ?? 0) + 1,
+              answerText: systemNotice,
+              diagnosis: '',
+              findings: [],
+              reflectiveQuestions: [],
+              differentialDiagnoses: [],
+              citations: [],
+              createdAt: new Date().toISOString(),
+              responseKind: 'system_notice',
+              policyReason: res.policyReason ?? null,
+              systemNoticeCode: res.systemNoticeCode ?? null,
+              actorRole: 'system',
+              lastResponderRole: 'system',
+              isReviewTarget: false,
+            }]);
+          }
+        }
+        return mergedWithLatest;
+      };
+
+      const immediateTurns = withLocalQuestionFallback(normalizeTurnsWithLivePayload());
+      pruneResolvedLocalQuestions(immediateTurns);
+      const immediateLatest = res.latest ?? immediateTurns[immediateTurns.length - 1] ?? null;
+      setChatPolicyReason(res.policyReason ?? null);
+      setChatSystemNoticeCode(res.systemNoticeCode ?? null);
+      setSession({
+        ...res,
+        turns: immediateTurns,
+        latest: immediateLatest,
+      });
+      if (res.sessionId) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('sessionId', res.sessionId);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }
+      setChatTurns(immediateTurns);
+      setSelectedTurnIndex(immediateTurns[immediateTurns.length - 1]?.turnIndex ?? null);
+      setPendingOutgoingMessage(null);
+      if (res.roiBoundingBox && isValidNormalizedBoundingBox(res.roiBoundingBox)) {
+        setRoiBoundingBox(res.roiBoundingBox);
+      }
       toast.success('Diagnostic report generated.');
       clearDraft();
+      if (res.sessionId?.trim()) {
+        void (async () => {
+          try {
+            const restored = await fetchStudentVisualQaSession(res.sessionId);
+            setSession((prev) => {
+              const mergedTurns = withLocalQuestionFallback(
+                mergeTurnsByIdentity(prev?.turns ?? [], restored.turns),
+              );
+              pruneResolvedLocalQuestions(mergedTurns);
+              return {
+                ...restored,
+                turns: mergedTurns,
+                latest: restored.latest ?? mergedTurns[mergedTurns.length - 1] ?? null,
+              };
+            });
+            setChatTurns((prev) => {
+              const mergedTurns = withLocalQuestionFallback(mergeTurnsByIdentity(prev, restored.turns));
+              pruneResolvedLocalQuestions(mergedTurns);
+              return mergedTurns;
+            });
+            setSelectedTurnIndex(
+              restored.latest?.turnIndex ??
+                restored.turns[restored.turns.length - 1]?.turnIndex ??
+                null,
+            );
+          } catch {
+            // Keep live response as source of truth if thread reconcile fails.
+          }
+        })();
+      }
     } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const errorPayload = err.response?.data as
+          | {
+              errorCode?: string;
+              code?: string;
+              policyReason?: string;
+              policy_reason?: string;
+              systemNoticeCode?: string;
+              system_notice_code?: string;
+              message?: string;
+              detail?: string;
+            }
+          | undefined;
+        const payloadPolicyReason =
+          errorPayload?.policyReason?.trim() || errorPayload?.policy_reason?.trim() || null;
+        const payloadSystemNoticeCode =
+          errorPayload?.systemNoticeCode?.trim() || errorPayload?.system_notice_code?.trim() || null;
+        const errCode =
+          (
+            err.response?.data as { errorCode?: string; code?: string } | undefined
+          )?.errorCode ??
+          (
+            err.response?.data as { errorCode?: string; code?: string } | undefined
+          )?.code ??
+          null;
+        if (errCode === 'AI_SERVICE_UNAVAILABLE' || err.response?.status === 503) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          toast.info('The AI service is currently busy. Your question quota was not consumed; please try again shortly.');
+          return;
+        }
+        if (errCode === 'AI_RESPONSE_INVALID_FORMAT') {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setChatErrorCode(errCode);
+          setChatErrorMessage('AI returned an invalid format. Try resending or ask a simpler question.');
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
+          toast.error('The AI response could not be rendered safely. Please resend or simplify the question.');
+          return;
+        }
+        if (errCode === 'INTERNAL_SERVER_ERROR' || err.response?.status === 500) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          toast.error('A processing error occurred. Your uploaded file was safely cleaned up. Please try again.');
+          return;
+        }
+        if (errCode === 'SESSION_EXPIRED') {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setServerForcedExpired(true);
+          toast.info('This Q&A session has expired. Please start a new session.');
+          return;
+        }
+        if (errCode === 'SESSION_READ_ONLY') {
+          const readOnlyMessage =
+            (
+              err.response?.data as { message?: string; detail?: string } | undefined
+            )?.message?.trim() ||
+            (
+              err.response?.data as { message?: string; detail?: string } | undefined
+            )?.detail?.trim() ||
+            'This session is read-only after requesting expert support. Start a new chat to continue.';
+          const systemTurn: VisualQaTurn = {
+            turnId: null,
+            turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
+            answerText: readOnlyMessage,
+            diagnosis: '',
+            findings: [],
+            reflectiveQuestions: [],
+            differentialDiagnoses: [],
+            citations: [],
+            createdAt: new Date().toISOString(),
+            responseKind: 'system_notice',
+            policyReason: payloadPolicyReason,
+            systemNoticeCode: payloadSystemNoticeCode,
+            actorRole: 'system',
+            lastResponderRole: 'system',
+            isReviewTarget: false,
+          };
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setSession((prev) => {
+            if (!prev) return prev;
+            const mergedTurns = mergeTurnsByIdentity(prev.turns, [systemTurn]);
+            return {
+              ...prev,
+              turns: mergedTurns,
+              latest: mergedTurns[mergedTurns.length - 1] ?? prev.latest,
+              capabilities: {
+                ...prev.capabilities,
+                canAskNext: false,
+                isReadOnly: true,
+                reason: readOnlyMessage,
+              },
+            };
+          });
+          setChatTurns((prev) => mergeTurnsByIdentity(prev, [systemTurn]));
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
+          toast.info(readOnlyMessage);
+          return;
+        }
+        if (errCode === 'TURN_LIMIT_EXCEEDED') {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          setChatErrorCode(errCode);
+          setChatErrorMessage('You have reached the billable analysis-turn limit for this session.');
+          setChatPolicyReason(payloadPolicyReason);
+          setChatSystemNoticeCode(payloadSystemNoticeCode);
+          toast.info('You have reached the billable analysis-turn limit for this session.');
+          return;
+        }
+      }
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
+        toast.info('Requests are being sent too quickly. Please wait about 1 minute before submitting again.');
+        return;
+      }
+      if (axios.isAxiosError(err)) {
+        const code =
+          (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
+            ?.code ??
+          (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
+            ?.errorCode ??
+          (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
+            ?.title;
+        if (typeof code === 'string' && code.toUpperCase().includes('INVALID_IMAGE_NOT_XRAY')) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
+          toast.error('Image rejected: Only Human Bone X-Rays are supported.');
+          setImageError('Image rejected: Only Human Bone X-Rays are supported.');
+          return;
+        }
+      }
       if (isAiModelOverloadError(err)) {
         overloadExit = true;
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
         setAiOverload(true);
         setLoading(false);
         setUploadPct(0);
@@ -261,11 +779,17 @@ export default function StudentVisualQaImagePage() {
         const isNetworkDrop = !err.response;
         const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
         if (isNetworkDrop || isTimeout) {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           const warning =
             'Network connection lost. The AI is still processing your request on the server. Please check your History tab in a few minutes to see the result.';
           setNetworkWarning(warning);
           toast.info('Connection interrupted. You can continue safely and check History shortly.');
         } else {
+          setPendingOutgoingMessage((prev) =>
+            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+          );
           const maybeData = err.response?.data;
           const apiMessage =
             typeof maybeData === 'string'
@@ -276,9 +800,13 @@ export default function StudentVisualQaImagePage() {
           toast.error(apiMessage || err.message || 'Request failed');
         }
       } else {
+        setPendingOutgoingMessage((prev) =>
+          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
+        );
         toast.error(err instanceof Error ? err.message : 'Request failed');
       }
     } finally {
+      isSubmittingRef.current = false;
       if (!overloadExit) {
         setLoading(false);
         setUploadPct(0);
@@ -287,12 +815,152 @@ export default function StudentVisualQaImagePage() {
     }
   };
 
-  const displayedQuestion = useMemo(() => {
-    if (!report) return '';
-    const fromApi = report.questionText?.trim();
-    if (fromApi) return fromApi;
-    return lastSubmittedQuestion?.trim() ?? '';
-  }, [report, lastSubmittedQuestion]);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitQuestion();
+  };
+
+  const handleComposerSubmit = (messageOverride?: string) => {
+    void submitQuestion(messageOverride);
+  };
+
+  const selectedTurn = useMemo(
+    () =>
+      selectedTurnIndex != null
+        ? chatTurns.find((t) => t.turnIndex === selectedTurnIndex) ?? null
+        : session?.latest ?? null,
+    [chatTurns, selectedTurnIndex, session],
+  );
+  const viewerAnnotation = useMemo(() => {
+    const fromTurn =
+      selectedTurn?.roiBoundingBox && isValidNormalizedBoundingBox(selectedTurn.roiBoundingBox)
+        ? selectedTurn.roiBoundingBox
+        : null;
+    if (fromTurn) return fromTurn;
+    const fromThread =
+      session?.roiBoundingBox && isValidNormalizedBoundingBox(session.roiBoundingBox)
+        ? session.roiBoundingBox
+        : null;
+    if (fromThread) return fromThread;
+    return roiBoundingBox;
+  }, [roiBoundingBox, selectedTurn, session?.roiBoundingBox]);
+  const canAskNext = session?.capabilities?.canAskNext ?? true;
+  const isSessionReadOnly = session?.capabilities?.isReadOnly ?? false;
+  const sessionCapabilityReason =
+    session?.capabilities?.reason?.trim() ||
+    (typeof session?.capabilities?.turnsUsed === 'number' &&
+    typeof session?.capabilities?.turnLimit === 'number' &&
+    session.capabilities.turnLimit > 0
+      ? `Analysis-turn limit reached (${session.capabilities.turnsUsed}/${session.capabilities.turnLimit}).`
+      : '');
+  const isSessionInteractionLocked = !canAskNext || isSessionReadOnly || serverForcedExpired;
+  const composerPlaceholder = isSessionInteractionLocked
+    ? sessionCapabilityReason || 'This chat is read-only. Start a new chat to continue.'
+    : 'What would you like to ask about this image?';
+  const isOngoingSession = Boolean(session) && chatTurns.length > 0;
+  const latestTurn = chatTurns[chatTurns.length - 1] ?? session?.latest ?? null;
+  const latestActorRole = (latestTurn?.actorRole ?? '').toLowerCase();
+  const lastResponderRole = (latestTurn?.lastResponderRole ?? session?.lastResponderRole ?? '').toLowerCase();
+  const latestReviewState = (latestTurn?.reviewState ?? session?.reviewState ?? '').toLowerCase();
+  const isReadOnlyMode = isSessionInteractionLocked;
+  const canRequestReview =
+    Boolean(session?.sessionId) &&
+    Boolean(latestTurn?.turnId || latestTurn?.turnIndex) &&
+    canAskNext &&
+    !isSessionReadOnly &&
+    !isSessionInteractionLocked &&
+    (session?.capabilities?.canRequestReview ?? true) &&
+    !serverForcedExpired &&
+    (latestTurn?.isReviewTarget === true || latestActorRole === 'assistant') &&
+    latestReviewState !== 'pending' &&
+    latestReviewState !== 'escalated' &&
+    latestReviewState !== 'reviewed' &&
+    latestReviewState !== 'resolved' &&
+    lastResponderRole !== 'expert' &&
+    lastResponderRole !== 'lecturer' &&
+    lastResponderRole !== 'system';
+  const isGuestUser = useMemo(() => {
+    const active = user?.activeRole?.toLowerCase() ?? '';
+    const roles = (user?.roles ?? []).map((r) => r.toLowerCase());
+    const status = (user?.status ?? '').toLowerCase();
+    return active === 'guest' || roles.includes('guest') || status === 'guest';
+  }, [user]);
+
+  const startNewSession = useCallback(() => {
+    if (loading || isSubmittingRef.current) {
+      toast.info('Please wait for the current AI response before starting a new chat.');
+      return;
+    }
+    setSession(null);
+    setChatTurns([]);
+    setSelectedTurnIndex(null);
+    setQuestion('');
+    setFile(null);
+    setFileInputKey((k) => k + 1);
+    setRoiBoundingBox(null);
+    setNetworkWarning(null);
+    setAiOverload(false);
+    setImageError(null);
+    setQuestionError(null);
+    setUploadPct(0);
+    setLoadingPhase('upload');
+    setRequestingLecturerReview(false);
+    setServerForcedExpired(false);
+    setPendingOutgoingMessage(null);
+    setChatPolicyReason(null);
+    setChatSystemNoticeCode(null);
+    localQuestionByRequestIdRef.current = {};
+    clearDraft();
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('sessionId');
+    params.delete('historySessionId');
+    router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
+    toast.info('New chat started. Choose an image and ask a question.');
+  }, [clearDraft, loading, pathname, router, searchParams, toast]);
+
+  const handleRequestLecturerReview = useCallback(async (turn?: VisualQaTurn | null) => {
+    if (!session?.sessionId || requestingLecturerReview) return;
+    const targetTurnId = turn?.turnId?.trim() || latestTurn?.turnId?.trim() || null;
+    setRequestingLecturerReview(true);
+    try {
+      const updated = await requestStudentVisualQaReview(session.sessionId, targetTurnId);
+      setSession((prev) => {
+        const base = prev ?? session;
+        const mergedTurns =
+          updated.turns.length > 0 ? mergeTurnsByIdentity(base.turns, updated.turns) : base.turns;
+        return {
+          ...base,
+          ...updated,
+          turns: mergedTurns,
+          latest: updated.latest ?? mergedTurns[mergedTurns.length - 1] ?? base.latest,
+          status: updated.status ?? base.status ?? 'PendingExpertReview',
+          capabilities: {
+            ...(base.capabilities ?? {}),
+            ...(updated.capabilities ?? {}),
+          },
+        };
+      });
+      if (updated.turns.length > 0) {
+        setChatTurns((prev) => mergeTurnsByIdentity(prev, updated.turns));
+      }
+      setChatSystemNoticeCode(updated.systemNoticeCode ?? null);
+      toast.success('Support request has been sent to your lecturer.');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        toast.info('This session has already been submitted for lecturer review.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Could not request lecturer support.');
+      }
+    } finally {
+      setRequestingLecturerReview(false);
+    }
+  }, [latestTurn?.turnId, requestingLecturerReview, session, toast]);
+
+  useEffect(() => {
+    if (!isGuestUser) return;
+    toast.error('Guest access blocked. Waiting for admin approval.');
+    router.replace('/pending-approval');
+  }, [isGuestUser, router, toast]);
 
   useEffect(() => {
     if (hydratingDraft) return;
@@ -320,385 +988,198 @@ export default function StudentVisualQaImagePage() {
     reader.readAsDataURL(file);
   }, [draft.imageDataUrl, draft.imageName, file, hydratingDraft, setDraft]);
 
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-text-main">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-color bg-background px-4 md:px-6">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/student/qa"
-            className="rounded-lg border border-border-color bg-surface p-2 text-text-muted hover:text-text-main"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h1 className="text-base font-semibold text-text-main">Visual diagnostic request</h1>
-            <p className="text-xs text-text-muted">
-              One image · One question · One structured AI report (not a chat session)
-            </p>
+  if (isGuestUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-xl rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-center">
+          <h1 className="text-xl font-semibold text-destructive">Access restricted</h1>
+          <p className="mt-2 text-sm text-foreground/90">
+            Guest accounts cannot access Visual QA. Please wait for admin approval.
+          </p>
+          <div className="mt-4">
+            <Button type="button" variant="outline" onClick={() => router.replace('/pending-approval')}>
+              Go to approval status
+            </Button>
           </div>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-text-main">
+      <Header
+        title="Visual QA"
+        subtitle="Review an imaging study, keep the full chat history, and escalate the current AI turn for lecturer triage when needed."
+      />
+      {mobileHistoryOpen ? (
+        <button
+          type="button"
+          aria-label="Close session list"
+          className="fixed inset-0 z-[55] bg-black/45 lg:hidden"
+          onClick={() => setMobileHistoryOpen(false)}
+        />
+      ) : null}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] lg:items-stretch">
+        <VisualQaSessionHistorySidebar
+          className={cn(
+            'min-h-0',
+            mobileHistoryOpen
+              ? 'max-lg:fixed max-lg:inset-y-3 max-lg:left-0 max-lg:z-[60] max-lg:flex max-lg:w-[min(90vw,280px)] max-lg:rounded-r-2xl max-lg:border max-lg:border-border max-lg:bg-background max-lg:shadow-xl'
+              : 'max-lg:hidden',
+            'lg:flex',
+          )}
+          selectedSessionId={historySessionId?.trim() || session?.sessionId?.trim() || null}
+          onSelectSession={(id) => {
+            setMobileHistoryOpen(false);
+            const params = new URLSearchParams(searchParams.toString());
+            params.set('sessionId', id);
+            router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, {
+              scroll: false,
+            });
+          }}
+        />
+        <div className="grid min-h-0 min-h-[50vh] flex-1 grid-cols-1 overflow-hidden border-t border-border-color lg:min-h-0 lg:grid-cols-2 lg:border-l lg:border-t-0">
         <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
-          <div className="min-h-0 min-h-[40vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
+          <div className="min-h-0 min-h-[36vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
             <MedicalImageViewer
               key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
               src={previewUrl}
               alt="Study image for diagnostic request"
-              initialAnnotation={hydratingDraft ? undefined : (roiBoundingBox ?? undefined)}
+              initialAnnotation={hydratingDraft ? undefined : (viewerAnnotation ?? undefined)}
               onAnnotationComplete={setRoiBoundingBox}
             />
           </div>
         </aside>
 
-        <main className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-background p-5 md:p-6">
-          <div className="mx-auto flex max-w-3xl flex-col gap-6">
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-5 rounded-xl border border-border-color bg-surface p-5 shadow-panel"
-            >
-              {networkWarning ? (
-                <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-                    <p>{networkWarning}</p>
-                  </div>
-                </div>
-              ) : null}
-              {aiOverload ? (
-                <div className="rounded-xl border border-sky-400/45 bg-sky-500/15 px-4 py-4 text-sm text-sky-50">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                      <div>
-                        <p className="font-medium text-sky-100">
-                          Hệ thống AI hiện đang xử lý quá nhiều yêu cầu. Vui lòng đợi ít phút và gửi lại câu hỏi.
-                        </p>
-                        <p className="mt-1 text-xs text-sky-200/90">
-                          The AI system is experiencing high traffic. Please try again in a few minutes.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAiOverload(false)}
-                      className="shrink-0 rounded-lg border border-sky-400/40 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-100 hover:bg-sky-950/50"
-                    >
-                      Đóng
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-cyan-accent" />
-                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Diagnostic request
-                </h2>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background p-3 md:p-4">
+          <div className="mx-auto flex h-full min-h-0 min-w-0 w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3 md:px-5">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+                <MessageCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <span className="truncate">Conversation</span>
               </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-main">Imaging file</label>
-              <input
-                type="file"
-                accept="image/*,.dcm,application/dicom"
-                onChange={onFileChange}
-                className="block w-full rounded-xl border border-border-color bg-background/70 px-3 py-3 text-sm text-text-main file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
-              />
-              {imageError ? <p className="mt-2 text-xs text-destructive">{imageError}</p> : null}
-              {file ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  <UploadCloud className="h-4 w-4 text-cyan-accent" />
-                  <span className="truncate">{file.name}</span>
-                </div>
-              ) : null}
-              {hydratingDraft ? (
-                <div className="mt-2 text-xs text-text-muted">Restoring your unsent draft...</div>
-              ) : null}
-              {!file && prefillLoading ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border-color bg-background/55 px-3 py-2 text-xs text-text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
-                  Preloading selected catalog image...
-                </div>
-              ) : null}
-              {roiBoundingBox && isValidNormalizedBoundingBox(roiBoundingBox) ? (
-                <div className="mt-2 rounded-xl border border-cyan-accent/20 bg-cyan-accent/5 px-3 py-2 text-xs text-text-muted">
-                  Rectangle ROI saved: x {roiBoundingBox.x.toFixed(3)}, y {roiBoundingBox.y.toFixed(3)}, w{' '}
-                  {roiBoundingBox.width.toFixed(3)}, h {roiBoundingBox.height.toFixed(3)} (normalized 0–1)
-                </div>
-              ) : null}
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="transition-all hover:opacity-90 active:scale-95 lg:hidden"
+                  disabled={loading || restoringSession}
+                  onClick={() => setMobileHistoryOpen((o) => !o)}
+                >
+                  <History className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="sr-only sm:not-sr-only sm:ml-1 sm:inline">Sessions</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 transition-all hover:opacity-90 active:scale-95"
+                  disabled={loading || restoringSession}
+                  onClick={startNewSession}
+                >
+                  New Chat
+                </Button>
+              </div>
             </div>
-            <div>
-              <label htmlFor="q" className="block text-sm font-medium text-text-main">
-                Your question / observations
-              </label>
-              <textarea
-                id="q"
-                required
-                rows={5}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="e.g. Describe suspected pathology and differential diagnoses for this radiograph."
-                className="mt-1.5 w-full rounded-xl border border-border-color bg-background/70 px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
-              />
-              {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
-            </div>
-            {question.trim() ? (
-              <div className="rounded-xl border border-border-color bg-background/55 p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Question preview
-                </p>
-                <p className="text-sm leading-relaxed text-text-main">{question.trim()}</p>
-              </div>
-            ) : null}
-            {loading && loadingPhase === 'upload' ? (
-              <DynamicProgressTracker
-                mode="determinate"
-                label="Uploading image"
-                progressPercentage={uploadPct}
-                message="Uploading imaging file..."
-              />
-            ) : null}
-            {loading && loadingPhase === 'analyzing' ? (
-              <div className="rounded-xl border border-cyan-accent/25 bg-cyan-accent/5 p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-cyan-accent" />
-                  <p className="text-sm font-medium text-text-main">
-                    Analyzing image and reasoning with AI... Please wait.
-                  </p>
-                </div>
-                <DynamicProgressTracker
-                  mode="indeterminate"
-                  label="AI reasoning"
-                  messages={[
-                    'Analyzing medical image...',
-                    'Searching vector database...',
-                    'Generating diagnosis and key findings...',
-                  ]}
-                />
-              </div>
-            ) : null}
-              <Button type="submit" className="w-full sm:w-auto" isLoading={loading} disabled={loading}>
-                {!loading && <Send className="h-4 w-4" />}
-                Generate diagnostic report
-              </Button>
-            </form>
-
-            {!report ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border-color bg-surface/40 py-20 text-center">
-                <FileQuestion className="mb-3 h-10 w-10 text-text-muted opacity-70" />
-                <p className="text-sm font-medium text-text-main">No report yet</p>
-                <p className="mt-1 max-w-md text-xs text-text-muted">
-                  Submit a single imaging study with one focused question. The assistant returns one
-                  structured report suitable for educator review — not a back-and-forth chat.
-                </p>
-              </div>
-            ) : (
-              <article className="space-y-6">
-                <header className="rounded-xl border border-border-color bg-surface p-5">
-                  <h2 className="text-lg font-semibold text-text-main">Medical AI report</h2>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Educational use — always correlate with clinical context and formal imaging
-                    interpretation.
-                  </p>
-                </header>
-
-                <section className="rounded-xl border border-cyan-accent/30 bg-gradient-to-br from-cyan-accent/10 to-background p-5">
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Your original question
-                  </h3>
-                  <p className="text-sm leading-relaxed text-text-main">
-                    {displayedQuestion || (
-                      <span className="italic text-text-muted">No question text was returned.</span>
-                    )}
-                  </p>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Answer / explanation
-                  </h3>
-                  {looksLikeAiFallbackAnswer(report.answerText) ? (
+            <ChatConversation
+              messages={chatTurns}
+              optimisticMessages={
+                pendingOutgoingMessage
+                  ? [
+                      {
+                        id: pendingOutgoingMessage.id,
+                        content: pendingOutgoingMessage.content,
+                        status: pendingOutgoingMessage.status,
+                      },
+                    ]
+                  : []
+              }
+              isLoading={loading}
+              capabilities={session?.capabilities}
+              isError={Boolean(aiOverload || chatErrorCode)}
+              isRestoring={restoringSession}
+              networkWarning={networkWarning}
+              errorCode={chatErrorCode}
+              policyReason={chatPolicyReason ?? session?.policyReason ?? null}
+              systemNoticeCode={chatSystemNoticeCode ?? session?.systemNoticeCode ?? null}
+              blockingNotice={session?.blockingNotice ?? null}
+              errorMessage={
+                chatErrorMessage ??
+                (aiOverload
+                  ? 'The AI system is experiencing high traffic. Please try again in a few minutes.'
+                  : null)
+              }
+              canRequestReview={canRequestReview}
+              requestingExpertSupport={requestingLecturerReview}
+              onRequestExpertSupport={(turn) => void handleRequestLecturerReview(turn)}
+              onSendMessage={async (message) => {
+                handleComposerSubmit(message);
+              }}
+              onClear={startNewSession}
+            />
+            {!isReadOnlyMode ? (
+              <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-3 md:p-4">
+                {loading && loadingPhase === 'upload' ? (
+                  <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-muted">
                     <div
-                      className="mb-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
-                      role="status"
-                    >
-                      <p className="font-medium">Assistant could not return a full clinical analysis</p>
-                      <p className="mt-1 text-xs opacity-90">
-                        The model returned a system-style message (for example an apology or “temporarily unavailable”).
-                        This is not a structured diagnosis — retry later or narrow your question.                         If you drew a region of interest, coordinates are sent as a normalized bounding box{' '}
-                        <code className="rounded bg-black/30 px-1">{'{ x, y, width, height }'}</code> (0–1).
-                      </p>
-                    </div>
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${uploadPct}%` }}
+                    />
+                  </div>
+                ) : null}
+                {imageError ? <p className="mb-2 text-xs text-destructive">{imageError}</p> : null}
+                {isSessionInteractionLocked ? (
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    {sessionCapabilityReason || 'This session is currently read-only. Tap '}
+                    <span className="font-medium text-foreground">New Chat</span>
+                    {' to continue.'}
+                  </p>
+                ) : null}
+                <div className="flex w-full items-center gap-2">
+                  {!isOngoingSession && !isSessionInteractionLocked ? (
+                    <>
+                      <input
+                        ref={bottomFileInputRef}
+                        key={fileInputKey}
+                        type="file"
+                        accept="image/*,.dcm,application/dicom"
+                        className="hidden"
+                        onChange={onFileChange}
+                      />
+                    </>
                   ) : null}
-                  <div className="rounded-xl border border-border-color bg-surface px-5 py-4 text-sm text-text-main">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        ...markdownExternalLinkComponents,
-                        p: ({ children }) => (
-                          <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                        ),
-                        ul: ({ children }) => (
-                          <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>
-                        ),
-                        li: ({ children }) => <li className="mb-1">{children}</li>,
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-text-main">{children}</strong>
-                        ),
-                      }}
-                    >
-                      {report.answerText?.trim() || '_No narrative returned._'}
-                    </ReactMarkdown>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Suggested diagnosis
-                  </h3>
-                  <div className="rounded-xl border-2 border-cyan-accent/40 bg-surface p-5 shadow-[0_0_0_1px_rgba(0,229,255,0.12)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <p className="max-w-2xl text-lg font-semibold leading-relaxed text-text-main">
-                        {report.suggestedDiagnosis?.trim() ? (
-                          report.suggestedDiagnosis
-                        ) : (
-                          <span className="text-base font-normal italic text-text-muted">
-                            No suggested diagnosis was provided in this response.
-                          </span>
-                        )}
-                      </p>
-                      {typeof report.aiConfidenceScore === 'number' &&
-                      Number.isFinite(report.aiConfidenceScore) ? (
-                        <span className="rounded-full border border-cyan-accent/30 bg-cyan-accent/10 px-3 py-1 text-sm font-semibold text-cyan-accent">
-                          {report.aiConfidenceScore.toFixed(1)}% confidence
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Key findings
-                  </h3>
-                  <div className="rounded-xl border border-border-color bg-surface p-5">
-                    {report.keyFindings.length > 0 ? (
-                      <ul className="space-y-3 text-sm text-text-main">
-                        {report.keyFindings.map((k, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-accent" />
-                            <span className="leading-relaxed">{k}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm italic text-text-muted">No key findings listed.</p>
-                    )}
-                  </div>
-                </section>
-
-                {report.keyImagingFindings?.trim() ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Key imaging findings
-                    </h3>
-                    <div className="rounded-xl border border-cyan-accent/25 bg-surface p-5">
-                      <ul className="space-y-2.5 text-sm text-text-main">
-                        {splitLearningBullets(report.keyImagingFindings).map((line, i) => (
-                          <li key={i} className="flex items-start gap-3">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-accent" />
-                            <span className="leading-relaxed">{line}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </section>
+                  <ChatComposer
+                    value={question}
+                    onChange={setQuestion}
+                    onSubmit={handleComposerSubmit}
+                    onChooseFile={() => bottomFileInputRef.current?.click()}
+                    disabled={isSessionInteractionLocked}
+                    isLoading={loading}
+                    canAttachFile={!isOngoingSession && !isSessionInteractionLocked}
+                    placeholder={composerPlaceholder}
+                  />
+                </div>
+                {hydratingDraft && !isOngoingSession ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Restoring your unsent draft…</p>
                 ) : null}
-
-                {report.reflectiveQuestions?.trim() ? (
-                  <section
-                    className="rounded-xl border border-amber-400/35 bg-gradient-to-br from-amber-500/10 to-background p-5 shadow-[inset_0_1px_0_0_rgba(251,191,36,0.2)]"
-                    role="note"
-                    aria-label="Reflective questions"
-                  >
-                    <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-amber-200/90">
-                      Reflective questions
-                    </h3>
-                    <div className="text-sm leading-relaxed text-text-main">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{ ...markdownExternalLinkComponents }}
-                      >
-                        {report.reflectiveQuestions.trim()}
-                      </ReactMarkdown>
-                    </div>
-                  </section>
-                ) : null}
-
-                <section>
-                  <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                    Differential diagnoses
-                  </h3>
-                  <div className="space-y-3">
-                    {report.differentialDiagnoses.length > 0 ? (
-                      <ol className="list-decimal space-y-3 pl-5 text-sm text-text-main marker:font-semibold marker:text-cyan-accent">
-                        {report.differentialDiagnoses.map((d, i) => (
-                          <li
-                            key={i}
-                            className="rounded-lg border border-border-color bg-surface/90 py-3 pl-2 pr-4 leading-relaxed"
-                          >
-                            {d}
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <div className="rounded-xl border border-border-color bg-surface p-5 text-sm italic text-text-muted">
-                        No differential diagnoses were listed.
-                      </div>
-                    )}
+                {!file && prefillLoading && !isOngoingSession ? (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin text-cyan-accent" />
+                    Preloading selected catalog image…
                   </div>
-                </section>
-
-                {report.recommendedReadings.length > 0 ? (
-                  <section>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-                      Recommended readings
-                    </h3>
-                    <ul className="space-y-2 rounded-xl border border-border-color bg-surface p-5 text-sm">
-                      {report.recommendedReadings.map((r, i) => (
-                        <li key={i} className="text-text-main">
-                          {typeof r === 'string' ? (
-                            r
-                          ) : (
-                            <>
-                              {r.title}
-                              {r.url ? (
-                                <a
-                                  href={r.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="ml-2 text-cyan-accent underline"
-                                >
-                                  Link
-                                </a>
-                              ) : null}
-                            </>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
                 ) : null}
-
-                <CitationList citations={report.citations} />
-              </article>
+                {questionError ? <p className="mt-2 text-xs text-destructive">{questionError}</p> : null}
+              </form>
+            ) : (
+              <div className="shrink-0 border-t border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
+                {sessionCapabilityReason || 'This session is currently read-only.'}
+              </div>
             )}
           </div>
         </main>
+        </div>
       </div>
     </div>
   );

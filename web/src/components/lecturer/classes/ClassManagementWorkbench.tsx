@@ -244,7 +244,7 @@ export default function ClassManagementWorkbench({
 
         <Link
           href="/lecturer/cases"
-          className="group flex flex-col rounded-3xl border border-border bg-slate-900 p-8 text-slate-50 shadow-sm transition-transform hover:scale-[1.01] dark:bg-slate-950 lg:col-span-4"
+          className="group flex flex-col rounded-3xl border border-border bg-slate-900 p-8 text-slate-50 shadow-sm transition-transform hover:scale-[1.01] lg:col-span-4"
         >
           <div className="mb-auto">
             <h3 className="mb-2 text-xl font-bold">Case library</h3>
@@ -313,7 +313,7 @@ export default function ClassManagementWorkbench({
                   <div className="relative h-36 overflow-hidden bg-gradient-to-br from-primary/20 via-muted to-primary/5">
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute bottom-3 left-4">
-                      <span className="rounded px-2 py-0.5 text-[10px] font-black tracking-tight bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">
+                      <span className="rounded px-2 py-0.5 text-[10px] font-black tracking-tight bg-amber-100 text-amber-950">
                         {tag}
                       </span>
                     </div>

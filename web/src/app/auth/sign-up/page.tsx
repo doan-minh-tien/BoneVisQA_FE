@@ -8,9 +8,6 @@ import {
   EyeOff,
   CheckCircle,
   ArrowLeft,
-  GraduationCap,
-  FileText,
-  ShieldCheck,
 } from "lucide-react";
 import { register } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
@@ -25,10 +22,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Medical Student Verification
-  const [isMedicalStudent, setIsMedicalStudent] = useState(false);
-  const [medicalSchool, setMedicalSchool] = useState("");
-  const [medicalStudentId, setMedicalStudentId] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,18 +45,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // Validate medical student fields if checkbox is checked
-    if (isMedicalStudent) {
-      if (!medicalSchool.trim()) {
-        setError("Medical school name is required for medical students.");
-        return;
-      }
-      if (!medicalStudentId.trim()) {
-        setError("Medical student ID is required for verification.");
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
@@ -72,9 +53,6 @@ export default function RegisterPage() {
         email,
         password,
         schoolCohort,
-        isMedicalStudent,
-        medicalSchool: isMedicalStudent ? medicalSchool : undefined,
-        medicalStudentId: isMedicalStudent ? medicalStudentId : undefined,
       });
 
       if (data.success) {
@@ -237,84 +215,6 @@ export default function RegisterPage() {
                   )}
                 </button>
               </div>
-            </div>
-
-            {/* Medical Student Verification Section */}
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <div className="mb-4 flex items-start gap-3">
-                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/20">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <label htmlFor="isMedicalStudent" className="flex cursor-pointer items-center gap-3">
-                    <input
-                      id="isMedicalStudent"
-                      type="checkbox"
-                      checked={isMedicalStudent}
-                      onChange={(e) => setIsMedicalStudent(e.target.checked)}
-                      className="h-5 w-5 rounded border-outline text-primary focus:ring-2 focus:ring-primary/30"
-                    />
-                    <div>
-                      <span className="block text-sm font-semibold text-text-main">
-                        Medical Student Verification
-                      </span>
-                      <span className="block text-xs text-text-muted">
-                        Verify your identity to access medical education content
-                      </span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {isMedicalStudent && (
-                <div className="mt-4 space-y-4 border-t border-outline/10 pt-4">
-                  <div className="flex items-center gap-2 text-xs font-medium text-primary">
-                    <GraduationCap className="h-4 w-4" />
-                    <span>Please provide your medical school information</span>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="medicalSchool"
-                      className="ml-1 block text-xs font-semibold text-on-surface-variant"
-                    >
-                      Medical School Name
-                    </label>
-                    <input
-                      id="medicalSchool"
-                      type="text"
-                      value={medicalSchool}
-                      onChange={(e) => setMedicalSchool(e.target.value)}
-                      placeholder="e.g., Hanoi Medical University"
-                      className="mt-1.5 w-full rounded-xl border border-outline/30 bg-surface-container-low px-4 py-3 text-sm text-text-main placeholder:text-outline/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="medicalStudentId"
-                      className="ml-1 flex items-center gap-1 block text-xs font-semibold text-on-surface-variant"
-                    >
-                      Medical Student ID
-                      <FileText className="h-3 w-3" />
-                    </label>
-                    <input
-                      id="medicalStudentId"
-                      type="text"
-                      value={medicalStudentId}
-                      onChange={(e) => setMedicalStudentId(e.target.value)}
-                      placeholder="e.g., MED2024001"
-                      className="mt-1.5 w-full rounded-xl border border-outline/30 bg-surface-container-low px-4 py-3 text-sm text-text-main placeholder:text-outline/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-
-                  <div className="rounded-lg bg-amber-500/10 p-3">
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                      <strong>Note:</strong> Your information will be reviewed by an admin. You will receive an email once your account is approved.
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
 
             <Button

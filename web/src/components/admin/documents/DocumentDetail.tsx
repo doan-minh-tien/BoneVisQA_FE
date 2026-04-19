@@ -1,107 +1,257 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from 'react';
 import {
+  fetchDocumentStatus,
+  getDocuments,
   getAdminDocumentById,
-  reindexAdminDocument,
+  normalizeIndexingStatus,
   type AdminDocumentDetail,
 } from '@/lib/api/admin-documents';
+import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
+import type { DocumentIngestionStatusDto } from '@/lib/api/types';
 import {
   FileText,
   Loader2,
+  Clock,
   AlertCircle,
   CheckCircle2,
-  Clock,
-  MapPin,
   RefreshCw,
-  ArrowLeft,
+  XCircle,
   Calendar,
-  Layers,
+  FolderOpen,
   ExternalLink,
   Download,
-  DatabaseZap
+  Layers,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import AdminDocumentReplaceFileModal from './AdminDocumentReplaceFileModal';
+
+type IngestionSnapshot = {
+  status?: string;
+  currentPageIndexing?: number;
+  totalPages?: number;
+  totalChunks?: number;
+  currentOperation?: string;
+  source: 'rest' | 'signalr';
+};
+
+function asNonNegInt(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.floor(value);
+}
 
 export default function DocumentDetail({ id }: { id: string }) {
-  const router = useRouter();
   const [doc, setDoc] = useState<AdminDocumentDetail | null>(null);
+  const [liveStatus, setLiveStatus] = useState<IngestionSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isReindexing, setIsReindexing] = useState(false);
-  const [reindexMessage, setReindexMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [hasOtherProcessingTask, setHasOtherProcessingTask] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceModalAction, setReplaceModalAction] = useState<'replace' | 'reindex'>('replace');
+
+  const applyIngestionSnapshot = (
+    next: Omit<IngestionSnapshot, 'source'> & { source: IngestionSnapshot['source'] },
+  ) => {
+    setLiveStatus((prev) => {
+      if (!prev) return next;
+      const prevCur = asNonNegInt(prev.currentPageIndexing) ?? 0;
+      const nextCur = asNonNegInt(next.currentPageIndexing) ?? 0;
+
+      // Race-safe rule: if realtime has higher progress, keep it over stale REST.
+      if (next.source === 'rest' && prev.source === 'signalr' && prevCur > nextCur) {
+        return {
+          ...next,
+          currentPageIndexing: prev.currentPageIndexing,
+          source: prev.source,
+        };
+      }
+
+      if (next.source === 'signalr' && nextCur < prevCur) {
+        return {
+          ...next,
+          currentPageIndexing: prev.currentPageIndexing,
+        };
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
-    const fetchDoc = async () => {
+    let disposed = false;
+    const fetchInitialState = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getAdminDocumentById(id);
+        const [data, status] = await Promise.all([getAdminDocumentById(id), fetchDocumentStatus(id)]);
+        if (disposed) return;
         setDoc(data);
+        applyIngestionSnapshot({
+          source: 'rest',
+          status: status.status || data.indexingStatus,
+          currentPageIndexing: status.currentPageIndexing ?? data.currentPageIndexing,
+          totalPages: status.totalPages ?? data.totalPages,
+          totalChunks: status.totalChunks,
+          currentOperation: status.currentOperation,
+        });
       } catch (err: unknown) {
+        if (disposed) return;
         console.error('Error fetching document:', err);
         setError(err instanceof Error ? err.message : 'Failed to load document details');
       } finally {
-        setLoading(false);
+        if (!disposed) setLoading(false);
       }
     };
 
-    fetchDoc();
+    void fetchInitialState();
+    return () => {
+      disposed = true;
+    };
   }, [id]);
 
-  const handleReindex = async () => {
-    try {
-      setIsReindexing(true);
-      setReindexMessage(null);
-      const response = await reindexAdminDocument(id);
-      setReindexMessage({ type: 'success', text: response.message || 'Reindexing started.' });
-      
-      // Refetch doc to see updated status
-      const data = await getAdminDocumentById(id);
-      setDoc(data);
-    } catch (err: unknown) {
-      console.error('Error reindexing document:', err);
-      setReindexMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to start reindexing.',
-      });
-    } finally {
-      setIsReindexing(false);
-    }
-  };
+  const effectiveStatus = liveStatus?.status ?? doc?.indexingStatus;
+  const isReindexingStatus = (effectiveStatus ?? '').toLowerCase().includes('reindex');
+  const normalizedStatus = useMemo(
+    () => normalizeIndexingStatus(effectiveStatus),
+    [effectiveStatus],
+  );
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Completed':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Completed
-          </span>
+  useEffect(() => {
+    if (!doc || (normalizedStatus !== 'pending' && normalizedStatus !== 'processing')) return;
+    let disposed = false;
+    const run = async () => {
+      try {
+        const status = await fetchDocumentStatus(id);
+        if (disposed) return;
+        applyIngestionSnapshot({
+          source: 'rest',
+          status: status.status,
+          currentPageIndexing: status.currentPageIndexing,
+          totalPages: status.totalPages,
+          totalChunks: status.totalChunks,
+          currentOperation: status.currentOperation,
+        });
+        setDoc((prev) =>
+          prev
+            ? {
+                ...prev,
+                indexingStatus: status.status || prev.indexingStatus,
+                currentPageIndexing: status.currentPageIndexing ?? prev.currentPageIndexing,
+                totalPages: status.totalPages ?? prev.totalPages,
+                indexingProgressPercentage:
+                  status.progressPercentage ?? prev.indexingProgressPercentage,
+              }
+            : prev,
         );
-      case 'Processing':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            Processing
-          </span>
-        );
-      case 'Failed':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
-            <AlertCircle className="w-3.5 h-3.5" />
-            Failed
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-            <Clock className="w-3.5 h-3.5" />
-            {status}
-          </span>
-        );
+      } catch {
+        // Keep UI responsive even if a status poll fails transiently.
+      }
+    };
+
+    void run();
+    const timer = window.setInterval(run, 3000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [doc, id, normalizedStatus]);
+
+  useEffect(() => {
+    const onRealtimeProgress = (event: Event) => {
+      const custom = event as CustomEvent<DocumentIngestionStatusDto>;
+      const payload = custom.detail;
+      if (!payload || (payload.documentId && payload.documentId !== id)) return;
+      applyIngestionSnapshot({
+        source: 'signalr',
+        status: payload.status,
+        currentPageIndexing: asNonNegInt(payload.currentPageIndexing),
+        totalPages: asNonNegInt(payload.totalPages),
+        totalChunks: asNonNegInt(payload.totalChunks),
+        currentOperation: payload.operation,
+      });
+    };
+
+    window.addEventListener('DocumentIndexingProgressUpdated', onRealtimeProgress as EventListener);
+    return () => {
+      window.removeEventListener(
+        'DocumentIndexingProgressUpdated',
+        onRealtimeProgress as EventListener,
+      );
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!doc || normalizedStatus !== 'pending') {
+      setHasOtherProcessingTask(false);
+      return;
     }
-  };
+    let disposed = false;
+    const run = async () => {
+      try {
+        const processingDocs = await getDocuments({ indexingStatus: 'Processing' });
+        if (disposed) return;
+        setHasOtherProcessingTask(processingDocs.some((item) => item.id !== id));
+      } catch {
+        if (!disposed) setHasOtherProcessingTask(false);
+      }
+    };
+
+    void run();
+    const timer = window.setInterval(run, 3000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [doc, id, normalizedStatus]);
+
+  const fileOpenHref = useMemo(() => {
+    if (!doc?.filePath) return '';
+    return withVersionedAssetUrl(resolveApiAssetUrl(doc.filePath), doc.version);
+  }, [doc?.filePath, doc?.version]);
+
+  const interactionLocked = normalizedStatus === 'pending' || normalizedStatus === 'processing';
+  const totalPages = liveStatus?.totalPages ?? doc?.totalPages ?? 0;
+  const totalChunks = liveStatus?.totalChunks ?? 0;
+  const currentProgressIndex = liveStatus?.currentPageIndexing ?? doc?.currentPageIndexing ?? 0;
+  const step1Percent =
+    totalPages > 0 ? Math.min(100, Math.max(0, Math.round((currentProgressIndex / totalPages) * 100))) : 0;
+  const step1Done = totalPages > 0 && (step1Percent >= 100 || totalChunks > 0);
+  const step2Active = /vector|embed|huggingface/i.test(liveStatus?.currentOperation ?? '');
+  const step2Percent =
+    totalChunks > 0 && step2Active
+      ? Math.min(100, Math.max(0, Math.round((currentProgressIndex / totalChunks) * 100)))
+      : 0;
+
+  const centerStatusUi = (() => {
+    if (normalizedStatus === 'unknown') {
+      return {
+        title: 'Status',
+        icon: <Clock className="h-14 w-14 text-slate-400" />,
+        subtitle: 'Waiting for the server to report indexing status. Refresh or reopen if this persists.',
+      };
+    }
+    if (normalizedStatus === 'completed') {
+      return {
+        title: 'Completed',
+        icon: <CheckCircle2 className="h-14 w-14 text-emerald-600" />,
+        subtitle: 'Document indexing is complete and ready for use.',
+      };
+    }
+    if (normalizedStatus === 'failed') {
+      return {
+        title: 'Failed',
+        icon: <XCircle className="h-14 w-14 text-red-600" />,
+        subtitle: 'The latest indexing run failed. Retry or upload a new version.',
+      };
+    }
+    return {
+      title: isReindexingStatus ? 'Reindexing' : 'Processing',
+      icon: <RefreshCw className="h-14 w-14 animate-spin text-sky-600" />,
+      subtitle: isReindexingStatus
+        ? 'Refreshing the document index with the latest file revision.'
+        : 'Indexing pipeline is currently running.',
+    };
+  })();
 
   if (loading) {
     return (
@@ -120,34 +270,14 @@ export default function DocumentDetail({ id }: { id: string }) {
         <p className="text-red-500 mb-8 text-center max-w-md text-lg">
           {error || 'The requested document could not be found or you do not have permission to view it.'}
         </p>
-        <button
-          onClick={() => router.push('/admin/documents')}
-          className="px-8 py-3 flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors font-semibold shadow-sm"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Documents
-        </button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 mt-6">
-      {/* Navigation */}
-      <button
-        onClick={() => router.push('/admin/documents')}
-        className="group flex items-center gap-2 text-gray-500 hover:text-primary transition-colors font-medium w-fit"
-      >
-        <div className="p-1.5 rounded-lg bg-gray-100 group-hover:bg-primary/10 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-        </div>
-        Back to list
-      </button>
-
-      {/* Main Content Card */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-[0_18px_46px_rgba(15,23,42,0.12)] backdrop-blur-xl">
         
-        {/* Header Header */}
         <div className="p-8 sm:p-10 border-b border-gray-100">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
             <div className="flex gap-6">
@@ -171,82 +301,139 @@ export default function DocumentDetail({ id }: { id: string }) {
                     <Layers className="w-4 h-4" />
                     Version {doc.version}
                   </span>
-                  {doc.categoryId && (
+                  {doc.categoryName && (
                     <span className="flex items-center gap-1.5 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100">
-                      <MapPin className="w-4 h-4" />
-                      Category: {doc.categoryId}
+                      <FolderOpen className="w-4 h-4" />
+                      Category: {doc.categoryName}
                     </span>
                   )}
                 </div>
+                {normalizedStatus === 'pending' && hasOtherProcessingTask ? (
+                  <div className="mt-3 rounded-xl border border-sky-400/25 bg-sky-50 px-3 py-2">
+                    <p className="text-xs font-medium text-sky-800">
+                      In Queue: Waiting for other tasks...
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             <div className="flex flex-col items-end gap-3 shrink-0">
-              {getStatusBadge(doc.indexingStatus)}
-              {doc.isOutdated && (
+              {doc.isOutdated ? (
                 <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200 font-medium text-xs">
                   Outdated Content
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
 
-        {/* Action Panel & Preview */}
         <div className="p-8 sm:p-10 bg-gray-50/50">
-          <div className="max-w-4xl mx-auto flex flex-col items-center">
+          <div className="mx-auto flex w-full max-w-none flex-col items-center">
             
             <div className="w-full bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-6">
-              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto border border-gray-100 shadow-inner">
-                <FileText className="w-10 h-10 text-primary" />
+              <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto border border-gray-100 shadow-inner">
+                {centerStatusUi.icon}
               </div>
               
               <div className="space-y-2">
-                <h3 className="text-xl font-bold text-gray-900">Document Actions</h3>
+                <h3 className="text-xl font-bold text-gray-900">{centerStatusUi.title}</h3>
                 <p className="text-gray-500 font-medium max-w-sm mx-auto">
-                  Access the original file to review its contents or trigger a manual reindex of the knowledge base.
+                  {centerStatusUi.subtitle}
                 </p>
               </div>
 
-              {reindexMessage && (
-                <div className={`flex items-start gap-3 p-4 rounded-xl text-left w-full max-w-md mx-auto border ${
-                  reindexMessage.type === 'success' 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100 animate-in fade-in slide-in-from-top-2' 
-                    : 'bg-red-50 text-red-700 border-red-100 animate-in fade-in slide-in-from-top-2'
-                }`}>
-                  {reindexMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" /> : <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />}
-                  <p className="text-sm font-medium leading-relaxed">{reindexMessage.text}</p>
+              {normalizedStatus === 'pending' || normalizedStatus === 'processing' ? (
+                <div className="w-full max-w-none rounded-2xl border border-sky-200 bg-sky-50/60 p-4 text-left sm:px-6">
+                  <p className="text-sm font-semibold text-sky-900">Ingestion Pipeline</p>
+                  <div className="mt-3 space-y-4">
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
+                        <span className="text-sky-900">
+                          {isReindexingStatus
+                            ? 'Step 1: Re-analyzing Document Pages'
+                            : 'Step 1: Parsing Document Pages'}
+                        </span>
+                        <span className={step1Done ? 'text-emerald-700' : 'text-sky-800'}>
+                          {step1Done ? 'Completed' : `${step1Percent}%`}
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-sky-100">
+                        <div
+                          className={`h-full ${step1Done ? 'bg-emerald-500' : 'bg-sky-500'}`}
+                          style={{ width: `${step1Done ? 100 : step1Percent}%`, transition: 'width 0.3s ease-in-out' }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
+                        <span className="text-sky-900">
+                          {isReindexingStatus
+                            ? 'Step 2: Re-vectorizing Content'
+                            : 'Step 2: Vectorizing Content'}
+                        </span>
+                        <span className="text-sky-800">{step2Active ? `${step2Percent}%` : 'Waiting'}</span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-sky-100">
+                        {step2Active ? (
+                          <div
+                            className="h-full bg-cyan-500"
+                            style={{ width: `${step2Percent}%`, transition: 'width 0.3s ease-in-out' }}
+                          />
+                        ) : (
+                          <div className="h-full w-0 rounded-full bg-cyan-400/70" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
+              ) : null}
 
               <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 pt-4 w-full">
-                <button
-                  onClick={handleReindex}
-                  disabled={isReindexing || doc.indexingStatus === 'Processing'}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-primary/25 hover:shadow-primary/40 disabled:opacity-50 disabled:shadow-none hover:-translate-y-0.5"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={interactionLocked}
+                  onClick={() => {
+                    setReplaceModalAction('replace');
+                    setReplaceOpen(true);
+                  }}
+                  className="w-full sm:w-auto"
                 >
-                  {isReindexing ? <Loader2 className="w-5 h-5 animate-spin" /> : <DatabaseZap className="w-5 h-5" />}
-                  Reindex Document
-                </button>
+                  <RefreshCw className="h-5 w-5" />
+                  Update/Manage Version
+                </Button>
 
-                <a
-                  href={doc.filePath}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 hover:border-primary/50 text-primary px-6 py-3 rounded-xl font-semibold transition-colors shadow-sm"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={interactionLocked || !fileOpenHref}
+                  onClick={() => {
+                    if (!fileOpenHref) return;
+                    window.open(fileOpenHref, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="w-full sm:w-auto"
                 >
                   <ExternalLink className="w-5 h-5" />
                   Open in New Tab
-                </a>
+                </Button>
                 
-                <a
-                  href={doc.filePath}
-                  download
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-6 py-3 rounded-xl font-semibold transition-colors shadow-sm"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={interactionLocked || !fileOpenHref}
+                  onClick={() => {
+                    if (!fileOpenHref) return;
+                    window.open(fileOpenHref, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="w-full sm:w-auto"
                 >
                   <Download className="w-5 h-5" />
                   Download File
-                </a>
+                </Button>
               </div>
             </div>
 
@@ -254,6 +441,47 @@ export default function DocumentDetail({ id }: { id: string }) {
         </div>
 
       </div>
+      <AdminDocumentReplaceFileModal
+        open={replaceOpen}
+        defaultAction={replaceModalAction}
+        documentId={doc.id}
+        documentTitle={doc.title}
+        onClose={() => setReplaceOpen(false)}
+        onSuccess={(result) => {
+          setReplaceOpen(false);
+          const nextStatus = result.indexingStatus ?? 'Reindexing';
+          setDoc((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  indexingStatus: nextStatus,
+                  currentPageIndexing: 0,
+                  totalPages: prev.totalPages,
+                }
+              : prev,
+          );
+          applyIngestionSnapshot({
+            source: 'rest',
+            status: nextStatus,
+            currentPageIndexing: 0,
+            totalPages: liveStatus?.totalPages ?? doc.totalPages,
+            totalChunks: liveStatus?.totalChunks,
+            currentOperation: 'Re-analyzing Document...',
+          });
+          void (async () => {
+            const [data, status] = await Promise.all([getAdminDocumentById(id), fetchDocumentStatus(id)]);
+            setDoc(data);
+            applyIngestionSnapshot({
+              source: 'rest',
+              status: status.status || data.indexingStatus,
+              currentPageIndexing: status.currentPageIndexing ?? data.currentPageIndexing,
+              totalPages: status.totalPages ?? data.totalPages,
+              totalChunks: status.totalChunks,
+              currentOperation: status.currentOperation,
+            });
+          })();
+        }}
+      />
     </div>
   );
 }

@@ -150,7 +150,8 @@ function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undef
   return out.length ? out : undefined;
 }
 
-function mapCase(row: unknown): ExpertCase | null {
+/** Maps BE medical case DTOs (expert list/detail, admin list/detail) to `ExpertCase`. */
+export function mapCase(row: unknown): ExpertCase | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as ExpertCaseApiRow;
   const record = row as Record<string, unknown>;
