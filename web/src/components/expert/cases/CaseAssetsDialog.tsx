@@ -20,6 +20,7 @@ import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotat
 import {
   cornersNormalizedToBox,
   cornersNormalizedToDraftBox,
+  normalizeClientPointFromRect,
   serializeNormalizedBoundingBox,
 } from '@/lib/utils/annotations';
 
@@ -189,10 +190,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
 
   const normFromClient = (clientX: number, clientY: number, el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const lx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-    const ly = Math.min(Math.max(clientY - rect.top, 0), rect.height);
-    return { x: lx / rect.width, y: ly / rect.height };
+    return normalizeClientPointFromRect(clientX, clientY, rect);
   };
 
   const handleDrawMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {

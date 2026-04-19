@@ -20,6 +20,10 @@ import {
   Pencil,
   ArrowLeft,
   UploadCloud,
+  Upload,
+  ShieldCheck,
+  Sparkles,
+  Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -28,6 +32,8 @@ import {
   createQuiz,
   addQuizQuestionsBatched,
   getQuizQuestions,
+  aiAutoGenerateQuiz,
+  aiSuggestQuestions,
 } from '@/lib/api/lecturer-quiz';
 import { getLecturerClasses, getLecturerCases, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
@@ -37,6 +43,7 @@ import type {
   ClassStats,
   CreateQuizQuestionRequest,
   QuizQuestionDto,
+  AIQuizQuestion,
 } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
@@ -263,6 +270,12 @@ export default function CreateQuizPage() {
   const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
   const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
+  const [questionCount, setQuestionCount] = useState(5);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiQuestions, setAiQuestions] = useState<AIQuizQuestion[]>([]);
+  const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
+
   const allQuestions = createdQuizId ? questions : tempQuestions;
 
   useEffect(() => {
@@ -349,6 +362,153 @@ export default function CreateQuizPage() {
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
   });
+
+  // ========== AI Quiz Handlers ==========
+
+  const handleAIAutoGenerate = async () => {
+    if (!formData.title.trim()) {
+      setError('Please enter a quiz title first');
+      return;
+    }
+    if (!formData.topic) {
+      setError('Please select a topic first');
+      return;
+    }
+
+    setAiGenerating(true);
+    setAiSuggestionMode('auto');
+    setError(null);
+
+    try {
+      const result = await aiAutoGenerateQuiz({
+        title: formData.title,
+        topic: formData.topic,
+        difficulty: formData.difficulty,
+        questionCount: questionCount,
+      });
+
+      if (result.success && result.questions.length > 0) {
+        setAiQuestions(result.questions);
+        setTempQuestions([]);
+        setActiveStep(2);
+      } else {
+        setError(result.message || 'Cannot create questions from AI');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while creating the quiz');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleAISuggestFromCases = async () => {
+    if (referenceCaseIds.length === 0) {
+      setError('Please select at least 1 case first');
+      return;
+    }
+
+    setAiSuggesting(true);
+    setAiSuggestionMode('suggest');
+    setError(null);
+
+    try {
+      const selectedCases = caseLibrary.filter((c) => referenceCaseIds.includes(c.id));
+      const caseInputs = selectedCases.map((c) => ({
+        caseId: c.id,
+        caseTitle: c.title,
+        caseDescription: c.description,
+        difficulty: c.difficulty,
+      }));
+
+      const result = await aiSuggestQuestions({
+        cases: caseInputs,
+        questionsPerCase: Math.ceil(questionCount / referenceCaseIds.length),
+        difficulty: formData.difficulty,
+      });
+
+      if (result.success && result.questions.length > 0) {
+        setAiQuestions(result.questions);
+        setTempQuestions([]);
+        setActiveStep(2);
+      } else {
+        setError(result.message || 'Cannot suggest questions from AI');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while suggesting');
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+
+  const handleAddAIQuestionsToQuiz = () => {
+    const newQuestions: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
+      quizId: createdQuizId || '',
+      questionText: q.questionText,
+      type: q.type || 'MultipleChoice',
+      optionA: q.optionA,
+      optionB: q.optionB,
+      optionC: q.optionC,
+      optionD: q.optionD,
+      correctAnswer: q.correctAnswer,
+      caseId: q.caseId,
+    }));
+
+    setTempQuestions([...tempQuestions, ...newQuestions]);
+    setAiQuestions([]);
+    setAiSuggestionMode(null);
+    setActiveStep(2);
+  };
+
+  const handleCreateAndAddAIQuestions = async () => {
+    if (!formData.title.trim()) {
+      setError('Please enter a quiz title.');
+      return;
+    }
+    if (!formData.topic) {
+      setError('Please select a topic.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Create quiz
+      const quiz = await createQuiz({
+        title: formData.title,
+        topic: formData.topic,
+        difficulty: formData.difficulty,
+        classification: classification,
+        isAiGenerated: true,
+        classId: formData.classId || '00000000-0000-0000-0000-000000000000',
+        openTime: formData.openTime || undefined,
+        closeTime: formData.closeTime || undefined,
+        timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
+        passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
+      });
+
+      const payloads: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
+        quizId: quiz.id,
+        questionText: q.questionText,
+        type: q.type || 'MultipleChoice',
+        optionA: q.optionA,
+        optionB: q.optionB,
+        optionC: q.optionC,
+        optionD: q.optionD,
+        correctAnswer: q.correctAnswer,
+        caseId: q.caseId,
+      }));
+      await addQuizQuestionsBatched(quiz.id, payloads);
+
+      toast.success('Quiz created and AI questions added.');
+      router.push(`/lecturer/quizzes/${quiz.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ========== Quiz Handlers ==========
   const handleSaveDraft = async () => {
@@ -479,11 +639,23 @@ export default function CreateQuizPage() {
   const estMinutes = Math.max(1, parseInt(formData.timeLimit, 10) || 12);
   const complexityBadge = useMemo(() => {
     const n = allQuestions.length;
-    if (classification.includes('Advanced')) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100' };
-    if (n >= 5) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100' };
-    if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900 dark:bg-sky-900/30 dark:text-sky-100' };
+    if (classification.includes('Advanced')) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
+    if (n >= 5) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
+    if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900' };
     return { label: 'LEVEL 1', className: 'bg-muted text-muted-foreground' };
   }, [allQuestions.length, classification]);
+
+  const tags = useMemo(() => {
+    const raw = formData.topic?.trim();
+    return raw ? [raw] : [];
+  }, [formData.topic]);
+
+  const insightsText = useMemo(() => {
+    if (referenceCaseIds.length > 0) {
+      return `${referenceCaseIds.length} reference case(s) tagged for this assessment.`;
+    }
+    return 'Tag cases from the library to anchor questions in real imaging scenarios.';
+  }, [referenceCaseIds.length]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
@@ -649,6 +821,24 @@ export default function CreateQuizPage() {
                   className="rounded-lg border-0 bg-muted/60 p-4 font-medium text-card-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
                 />
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border transition-colors hover:bg-muted/50">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
+                  <input type="file" accept=".dcm,.jpg,.jpeg,.png" className="hidden" disabled />
+                </label>
+                <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4">
+                  <div className="rounded-lg bg-secondary p-2 text-white">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-secondary">Verified curriculum</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Aligns with standard radiology board learning objectives for this track.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
                 <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -747,6 +937,91 @@ export default function CreateQuizPage() {
                 </div>
               )}
 
+              {/* ========== AI Quiz Section ========== */}
+              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  <span className="text-sm font-bold text-purple-700">
+                    AI Quiz Assistant
+                  </span>
+                </div>
+                <p className="mb-4 text-xs text-muted-foreground">
+                Use AI to automatically create quizzes or suggest questions from selected cases.
+                </p>
+
+                <div className="space-y-3">
+                  {/* Question Count */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Number of questions:</label>
+                    <select
+                      value={questionCount}
+                      onChange={(e) => setQuestionCount(parseInt(e.target.value))}
+                      className="rounded-md border border-border bg-card px-2 py-1 text-xs"
+                    >
+                      <option value={3}>3 questions</option>
+                      <option value={5}>5 questions</option>
+                      <option value={10}>10 questions</option>
+                      <option value={15}>15 questions</option>
+                    </select>
+                  </div>
+
+                  {/* AI Buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAIAutoGenerate}
+                      disabled={aiGenerating || !formData.topic}
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
+                    >
+                      {aiGenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          AI Auto-Generate
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAISuggestFromCases}
+                      disabled={aiSuggesting || referenceCaseIds.length === 0}
+                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
+                    >
+                      {aiSuggesting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Suggesting...
+                        </>
+                      ) : (
+                        <>
+                          <Lightbulb className="mr-2 h-4 w-4" />
+                          AI Suggest from Cases
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {!formData.topic && (
+                    <p className="text-xs text-orange-600">
+                      Please select a Topic to use AI Auto-Generate
+                    </p>
+                  )}
+                  {referenceCaseIds.length === 0 && (
+                    <p className="text-xs text-orange-600">
+                      Select Cases to use AI Suggest
+                    </p>
+                  )}
+                </div>
+              </div>
 
               <details className="rounded-lg border border-border/60 bg-muted/10 p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-card-foreground">
@@ -797,6 +1072,63 @@ export default function CreateQuizPage() {
 
             {allQuestions.length > 0 ? (
               <div>
+                {/* AI Questions Section */}
+                {aiQuestions.length > 0 && (
+                  <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-bold text-purple-700">
+                          AI Generated Questions ({aiQuestions.length})
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleAddAIQuestionsToQuiz}
+                          className="h-8 text-xs"
+                        >
+                          Add to Quiz
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={handleCreateAndAddAIQuestions}
+                          className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
+                        >
+                          Create Quiz now
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {aiQuestions.map((q, index) => (
+                        <div key={index} className="rounded-lg border border-purple-200 bg-white p-3">
+                          <div className="mb-2 flex items-start gap-2">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
+                              {index + 1}
+                            </span>
+                            <p className="text-sm font-medium">{q.questionText}</p>
+                          </div>
+                          <div className="ml-7 grid grid-cols-2 gap-1 text-xs">
+                            <span className={q.correctAnswer === 'A' ? 'text-green-600 font-bold' : ''}>A: {q.optionA}</span>
+                            <span className={q.correctAnswer === 'B' ? 'text-green-600 font-bold' : ''}>B: {q.optionB}</span>
+                            <span className={q.correctAnswer === 'C' ? 'text-green-600 font-bold' : ''}>C: {q.optionC}</span>
+                            <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
+                          </div>
+                          <div className="ml-7 mt-2">
+                            <span className="text-xs text-green-600">Correct answer: {q.correctAnswer}</span>
+                            {q.caseTitle && (
+                              <span className="ml-2 text-xs text-muted-foreground">Case: {q.caseTitle}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Questions */}
                 {allQuestions.map((question, index) => (
                   <CreateQuizQuestionPreview
                     key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
@@ -919,8 +1251,22 @@ export default function CreateQuizPage() {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 Finalize &amp; publish
               </button>
-        </div>
-      </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-cyan-500/10 p-6">
+            <div className="flex gap-3">
+              <Lightbulb className="h-5 w-5 shrink-0 text-cyan-800" />
+              <div>
+                <h4 className="text-sm font-bold text-cyan-950">Clinical tip</h4>
+                <p className="mt-1 text-xs leading-relaxed text-cyan-900/80">
+                  Include differential diagnoses for every question to improve resident critical thinking.
+                  {tags.length > 0 ? ` Topics: ${tags.slice(0, 3).join(', ')}.` : ''}
+                </p>
+                <p className="mt-2 text-[11px] text-muted-foreground">{insightsText}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

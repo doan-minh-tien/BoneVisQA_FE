@@ -11,12 +11,16 @@ type RoleKey = 'admin' | 'lecturer' | 'expert' | 'student';
 
 type AuthSnapshot = {
   token: string | null;
-  isPendingOrUnassigned: boolean;
+  /**
+   * True when a token exists but the user should not access the app shell yet
+   * (guest, pending approval, or no usable active role).
+   */
+  isGuestOrUnassigned: boolean;
 };
 
 function readAuthSnapshot(): AuthSnapshot {
   if (typeof window === 'undefined') {
-    return { token: null, isPendingOrUnassigned: false };
+    return { token: null, isGuestOrUnassigned: false };
   }
   const nextToken = localStorage.getItem('token');
   const status = (localStorage.getItem('userStatus') || '').trim().toLowerCase();
@@ -29,16 +33,18 @@ function readAuthSnapshot(): AuthSnapshot {
   const normalizedRoles = roles.map((r) => r.trim().toLowerCase()).filter(Boolean);
   const activeRole = (localStorage.getItem('activeRole') || '').trim().toLowerCase();
   const hasUsableRole = Boolean(activeRole) && activeRole !== 'none';
+  const guestStatus = status === 'guest';
   const pendingStatus = status === 'pending';
   const unassignedRole =
     normalizedRoles.length === 0 ||
     normalizedRoles.includes('none') ||
     normalizedRoles.includes('unassigned') ||
+    normalizedRoles.includes('guest') ||
     normalizedRoles.includes('pending') ||
     !hasUsableRole;
   return {
     token: nextToken,
-    isPendingOrUnassigned: Boolean(nextToken) && (pendingStatus || unassignedRole),
+    isGuestOrUnassigned: Boolean(nextToken) && (guestStatus || pendingStatus || unassignedRole),
   };
 }
 
@@ -51,46 +57,50 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [auth, setAuth] = useState<AuthSnapshot>({ token: null, isPendingOrUnassigned: false });
   const [mounted, setMounted] = useState(false);
+  const [auth, setAuth] = useState<AuthSnapshot>({
+    token: null,
+    isGuestOrUnassigned: false,
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    setAuth(readAuthSnapshot());
-    setMounted(true);
+    const timer = window.setTimeout(() => {
+      setMounted(true);
+      setAuth(readAuthSnapshot());
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  const { token, isGuestOrUnassigned } = auth;
 
   useEffect(() => {
     if (!mounted) return;
-    if (!auth.token) {
+    if (!token) {
       const redirect = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
       router.replace(`/auth/sign-in${redirect}`);
       return;
     }
-    if (auth.isPendingOrUnassigned) {
+    if (isGuestOrUnassigned) {
       router.replace('/pending-approval');
     }
-  }, [auth.isPendingOrUnassigned, auth.token, mounted, pathname, router]);
+  }, [isGuestOrUnassigned, mounted, pathname, router, token]);
 
   if (!mounted) {
     return <SessionGateSkeleton />;
   }
 
-  if (!auth.token) {
-    return <SessionGateSkeleton />;
-  }
-
-  if (auth.isPendingOrUnassigned) {
+  if (!token || isGuestOrUnassigned) {
     return <SessionGateSkeleton />;
   }
 
   const sidebarPx = sidebarCollapsed ? 72 : 260;
   const gutterPx = 24;
-  /** Full-height workbench: only inner panels scroll (avoid nested scrollbars). */
-  const shellMainScrollLocked = pathname?.startsWith('/student/qa/image') ?? false;
+  /** Full-height workbench: only inner panels scroll (applied after mount so SSR/client markup match). */
+  const shellMainScrollLocked = mounted && (pathname?.startsWith('/student/qa/image') ?? false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-text-main">
+    <div className="flex min-h-0 h-screen w-full overflow-hidden bg-background text-text-main">
       <AppSidebar
         role={role}
         collapsed={sidebarCollapsed}

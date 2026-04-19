@@ -257,7 +257,7 @@ export default function QuestionEditorDialog({
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-[#f7f9fb]/80 backdrop-blur-md dark:bg-[#191c1e]/80"
+        className="absolute inset-0 bg-[#f7f9fb]/80 backdrop-blur-md"
         aria-hidden
         onClick={onClose}
       />

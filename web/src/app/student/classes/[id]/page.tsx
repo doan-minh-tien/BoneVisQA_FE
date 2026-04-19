@@ -92,7 +92,7 @@ export default function StudentClassDetailPage() {
       <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-6 sm:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Link href="/student/classes" className="hover:text-foreground">
-            Classes
+            Class
           </Link>
           <ChevronRight className="h-4 w-4 opacity-60" aria-hidden />
           <span className="truncate text-foreground">{title}</span>
@@ -136,7 +136,7 @@ export default function StudentClassDetailPage() {
               href="/student/classes"
               className="mt-6 inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground hover:bg-muted/60"
             >
-              Back to classes
+              Back to class
             </Link>
           </div>
         ) : (
@@ -290,7 +290,7 @@ export default function StudentClassDetailPage() {
             {tab === 'quizzes' && (
               <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-foreground">Class quizzes</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Micro quizzes tied to this class.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Practice quizzes tied to this class.</p>
                 {detail.quizzes.length === 0 ? (
                   <p className="mt-6 text-sm text-muted-foreground">No quizzes assigned yet.</p>
                 ) : (

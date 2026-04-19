@@ -468,6 +468,34 @@ export default function QuizDetailPage() {
               </div>
             </div>
           </div>
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex h-32 flex-col justify-between rounded-3xl border border-secondary/20 bg-secondary/10 p-5">
+              <Users className="h-6 w-6 text-secondary" />
+              <div>
+                <p className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground">
+                  {enrolledDisplay}
+                </p>
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                  Enrolled Students
+                </p>
+              </div>
+            </div>
+            <div className="flex h-32 flex-col justify-between rounded-3xl border border-warning/20 bg-warning/10 p-5">
+              <Timer className="h-6 w-6 text-warning" />
+              <div>
+                <p
+                  className="font-['Manrope',sans-serif] text-2xl font-extrabold text-card-foreground"
+                  title="Average class quiz score (based on system data)"
+                >
+                  {avgScoreDisplay}
+                </p>
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                  Avg. quiz score
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Questions List (left column) */}

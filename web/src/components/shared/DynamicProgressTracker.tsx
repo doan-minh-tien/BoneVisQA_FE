@@ -58,7 +58,7 @@ export function DynamicProgressTracker(props: DynamicProgressTrackerProps) {
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-surface">
             <div
-              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+              className="h-full rounded-full bg-primary transition-all duration-500 ease-in-out"
               style={{ width: `${clampProgress(props.progressPercentage)}%` }}
             />
           </div>

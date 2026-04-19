@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StudentAppChrome, StudentDashboardFab } from '@/components/student/StudentAppChrome';
 import {
+  deleteQuizAttempt,
   fetchQuizAttemptReview,
   fetchStudentClasses,
+  fetchStudentQuizHistory,
   generateAndSaveAIPracticeQuiz,
   getAssignedQuizzes,
   submitAIPracticeQuiz,
@@ -14,6 +16,7 @@ import type {
   QuizAttemptReview,
   StudentClassItem,
   StudentGeneratedQuizSession,
+  StudentQuizAttemptSummary,
 } from '@/lib/api/student';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -26,11 +29,13 @@ import {
   ChevronRight,
   Clock,
   Eye,
+  Filter,
   HelpCircle,
   Loader2,
   Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   Trophy,
   XCircle,
 } from 'lucide-react';
@@ -213,9 +218,14 @@ export default function StudentQuizPage() {
   const [loading, setLoading] = useState(true);
 
   // ── Filters ──────────────────────────────────────────────────────────────
-  const [filterTab, setFilterTab] = useState<'assigned' | 'practice'>('assigned');
+  const [filterTab, setFilterTab] = useState<'assigned' | 'practice' | 'history'>('assigned');
   const [search, setSearch] = useState('');
   const [filterTopic, setFilterTopic] = useState('');
+
+  const [historyAttempts, setHistoryAttempts] = useState<StudentQuizAttemptSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'ai' | 'assigned'>('all');
+  const [historyExpanded, setHistoryExpanded] = useState<string | null>(null);
 
   // ── AI Quiz Flow ─────────────────────────────────────────────────────────
   const [showGenerator, setShowGenerator] = useState(false);
@@ -260,6 +270,45 @@ export default function StudentQuizPage() {
     setReviewActive(false);
     setCurrentReview(null);
   }, [filterTab]);
+
+  useEffect(() => {
+    if (filterTab !== 'history') return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    fetchStudentQuizHistory()
+      .then((rows) => {
+        if (!cancelled) setHistoryAttempts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryAttempts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filterTab]);
+
+  const historyStats = useMemo(() => {
+    const total = historyAttempts.length;
+    const completed = historyAttempts.filter((a) => Boolean(a.completedAt)).length;
+    const ai = historyAttempts.filter((a) => a.isAiGenerated).length;
+    const scored = historyAttempts.filter((a) => a.completedAt != null && a.score != null);
+    const avgScore =
+      scored.length > 0
+        ? scored.reduce((sum, a) => sum + (a.score ?? 0), 0) / scored.length
+        : null;
+    return { total, completed, ai, avgScore };
+  }, [historyAttempts]);
+
+  const historyFiltered = useMemo(() => {
+    return historyAttempts.filter((a) => {
+      if (historyFilter === 'ai') return a.isAiGenerated;
+      if (historyFilter === 'assigned') return !a.isAiGenerated;
+      return true;
+    });
+  }, [historyAttempts, historyFilter]);
 
   function formatDate(iso?: string | null): string {
     if (!iso) return '—';
@@ -356,6 +405,17 @@ export default function StudentQuizPage() {
     setShowGenerator(true);
   };
 
+  const handleDeleteAttempt = async (attemptId: string) => {
+    try {
+      await deleteQuizAttempt(attemptId);
+      setHistoryAttempts((prev) => prev.filter((a) => a.attemptId !== attemptId));
+      if (historyExpanded === attemptId) setHistoryExpanded(null);
+      toast.success('Attempt removed from history.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete attempt.');
+    }
+  };
+
   const aiProgress = aiSession
     ? Math.round((aiSession.questions.filter((q) => aiAnswers[q.questionId]).length / aiSession.questions.length) * 100)
     : 0;
@@ -388,7 +448,7 @@ export default function StudentQuizPage() {
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all opacity-50 cursor-not-allowed"
             >
               <Sparkles className="h-4 w-4" />
-              AI Quiz (Coming Soon)
+              Practice Quizzes
             </button>
           </div>
         </div>
@@ -396,9 +456,9 @@ export default function StudentQuizPage() {
         {/* ── Tab navigation ── */}
         <div className="mb-6 flex items-center gap-1 border-b border-[#c2c6d4]/30">
           {([
-            ['assigned', 'Assigned Quizzes', Trophy, assignedQuizzes.length] as const,
-            // TODO: Uncomment when AI Quizzes is ready for production
-            // ['practice', 'AI Quizzes', BotMessageSquare, 0] as const,
+            ['assigned', 'Assigned Practice Quizzes', Trophy, assignedQuizzes.length] as const,
+            ['practice', 'Practice Quizzes', BotMessageSquare, 0] as const,
+            ['history', 'History', Clock, historyAttempts.filter((a) => a.completedAt).length] as const,
           ]).map(([key, label, Icon, count]) => (
             <button
               key={key}
@@ -568,14 +628,14 @@ export default function StudentQuizPage() {
         )}
 
         {/* ── AI Quiz active / result ── */}
-        {false && (
+        {filterTab === 'practice' && (
           <>
             {/* AI Quiz Generator panel — inside AI tab, collapsible */}
             {showGenerator &&
               aiState !== 'active' &&
               aiState !== 'submitting' &&
               aiState !== 'result' && (
-                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm dark:from-amber-950/30 dark:to-slate-900">
+                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 shrink-0 text-[#703a00]" />
@@ -855,9 +915,269 @@ export default function StudentQuizPage() {
           </>
         )}
 
+        {/* ── Quiz History ── */}
+        {filterTab === 'history' && (
+          <>
+            {historyLoading ? (
+              <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-[#c2c6d4]/30 bg-white">
+                <div className="flex items-center gap-3 text-sm text-[#424752]">
+                  <Loader2 className="h-5 w-5 animate-spin text-[#00478d]" />
+                  Loading history…
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Summary stats */}
+                <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Total</p>
+                    <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#191c1e]">{historyStats.total}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Completed</p>
+                    <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#006a68]">{historyStats.completed}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Practice Quizzes</p>
+                    <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#924e00]">{historyStats.ai}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Avg Score</p>
+                    <p className={`mt-1 font-['Manrope',sans-serif] text-3xl font-black ${scoreColor(historyStats.avgScore)}`}>
+                      {historyStats.avgScore != null ? `${Math.round(historyStats.avgScore)}%` : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filter chips */}
+                <div className="mb-6 flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-[#424752]">
+                    <Filter className="h-3.5 w-3.5" />
+                  </div>
+                  {([
+                    ['all', 'All'],
+                    ['ai', 'Practice Quizzes'],
+                    ['assigned', 'Assigned'],
+                  ] as [typeof historyFilter, string][]).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setHistoryFilter(val)}
+                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                        historyFilter === val
+                          ? 'bg-[#00478d] text-white'
+                          : 'border border-[#c2c6d4]/40 bg-white text-[#424752] hover:bg-[#f2f4f6]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <span className="ml-auto text-xs text-[#727783]">
+                    {historyFiltered.length} attempt{historyFiltered.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* List */}
+                {historyFiltered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#c2c6d4] bg-white px-6 py-16 text-center">
+                    <Trophy className="mx-auto h-10 w-10 text-[#727783]" />
+                    <h3 className="mt-4 text-lg font-semibold text-[#191c1e]">No quiz history yet</h3>
+                    <p className="mt-2 text-sm text-[#424752]">
+                      {historyFilter === 'ai'
+                        ? 'You have not created any practice quizzes yet. Try creating one in the "Practice Quizzes" tab.'
+                        : 'Your submitted quizzes will appear here.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {historyFiltered.map((attempt) => (
+                      <div
+                        key={attempt.attemptId}
+                        className="overflow-hidden rounded-2xl border border-[#c2c6d4]/30 bg-white transition-all"
+                      >
+                        <div
+                          className="flex cursor-pointer items-center justify-between p-5 hover:bg-[#f2f4f6]/50"
+                          onClick={() => setHistoryExpanded(
+                            historyExpanded === attempt.attemptId ? null : attempt.attemptId
+                          )}
+                        >
+                          <div className="flex min-w-0 items-center gap-4">
+                            <div
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                                attempt.isAiGenerated
+                                  ? 'bg-[#ffdcc3]/30 text-[#703a00]'
+                                  : 'bg-[#d6e3ff] text-[#00478d]'
+                              }`}
+                            >
+                              {attempt.isAiGenerated ? (
+                                <BotMessageSquare className="h-5 w-5" />
+                              ) : (
+                                <Trophy className="h-5 w-5" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="truncate font-semibold text-[#191c1e]">{attempt.quizTitle}</h3>
+                                {attempt.isAiGenerated && (
+                                  <span className="shrink-0 rounded-full bg-[#ffdcc3] px-2 py-0.5 text-[10px] font-bold text-[#703a00]">
+                                    AI
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#727783]">
+                                {attempt.topic && <span>{attempt.topic}</span>}
+                                {attempt.difficulty && (
+                                  <span className="rounded bg-[#eceef0] px-1.5 py-0.5 text-[10px]">{attempt.difficulty}</span>
+                                )}
+                                {attempt.className && <span>{attempt.className}</span>}
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {formatDate(attempt.startedAt)}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <BarChart3 className="h-3 w-3" />
+                                  {attempt.totalQuestions} Qs
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-4">
+                            {attempt.completedAt ? (
+                              <div className="text-right">
+                                {attempt.score != null ? (
+                                  <>
+                                    <p className={`text-xl font-black ${scoreColor(attempt.score)}`}>
+                                      {Math.round(attempt.score)}%
+                                    </p>
+                                    <p className="text-xs text-[#727783]">
+                                      {attempt.correctAnswers}/{attempt.totalQuestions} correct
+                                    </p>
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-[#727783]">Submitted</p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="rounded-full bg-[#ffdcc3]/40 px-3 py-1 text-xs font-semibold text-[#703a00]">
+                                In Progress
+                              </span>
+                            )}
+
+                            {attempt.completedAt ? (
+                              attempt.passed ? (
+                                <CheckCircle className="h-5 w-5 text-[#006a68]" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-[#ba1a1a]" />
+                              )
+                            ) : (
+                              <RotateCcw className="h-5 w-5 text-[#727783]" />
+                            )}
+
+                            <ChevronRight
+                              className={`h-4 w-4 text-[#727783] transition-transform ${
+                                historyExpanded === attempt.attemptId ? 'rotate-90' : ''
+                              }`}
+                            />
+                          </div>
+                        </div>
+
+                        {historyExpanded === attempt.attemptId && (
+                          <div className="border-t border-[#eceef0] p-5">
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                              <div className="rounded-xl bg-[#f2f4f6] p-4 text-center">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#727783]">Started</p>
+                                <p className="mt-1 text-sm font-semibold">{formatDate(attempt.startedAt)}</p>
+                              </div>
+                              <div className="rounded-xl bg-[#f2f4f6] p-4 text-center">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#727783]">Submitted at</p>
+                                <p className="mt-1 text-sm font-semibold">{formatDate(attempt.completedAt)}</p>
+                              </div>
+                              <div className="rounded-xl bg-[#f2f4f6] p-4 text-center">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#727783]">Passing Score</p>
+                                <p className="mt-1 text-sm font-semibold">
+                                  {attempt.passingScore != null ? `${attempt.passingScore}%` : '—'}
+                                </p>
+                              </div>
+                              <div className="rounded-xl bg-[#f2f4f6] p-4 text-center">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#727783]">Result</p>
+                                <p className={`mt-1 flex items-center justify-center gap-1 text-sm font-bold ${
+                                  attempt.passed ? 'text-[#006a68]' : 'text-[#ba1a1a]'
+                                }`}>
+                                  {attempt.passed ? (
+<><CheckCircle className="h-4 w-4" /> Passed</>
+                              ) : (
+                                <><XCircle className="h-4 w-4" /> Not Passed</>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+
+                            {attempt.completedAt && (
+                              <div className="mt-4 flex flex-wrap gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => openReview(attempt.attemptId)}
+                                  className="flex items-center gap-2 rounded-xl border border-[#00478d]/30 bg-white px-4 py-2 text-xs font-semibold text-[#00478d] hover:bg-[#d6e3ff]"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  Review Answers
+                                </button>
+                                {attempt.isAiGenerated && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setGenTopic(attempt.topic ?? attempt.quizTitle);
+                                      goToAIPractice();
+                                    }}
+                                    className="flex items-center gap-2 rounded-xl border border-[#924e00]/30 bg-[#ffdcc3]/20 px-4 py-2 text-xs font-semibold text-[#703a00] transition-colors hover:bg-[#ffdcc3]/40"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Retake Quiz
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAttempt(attempt.attemptId)}
+                                  className="ml-auto flex items-center gap-2 rounded-xl border border-[#ba1a1a]/30 bg-white px-4 py-2 text-xs font-semibold text-[#ba1a1a] hover:bg-[#f8d7da]"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Review Answers Modal — shown when active, overlaid on the quiz card */}
+            {reviewActive && currentReview && (
+              <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+                {/* Modal container */}
+                <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl mt-4 md:mt-8 mb-4">
+                  <ReviewAnswersPanel
+                    review={currentReview}
+                    onClose={() => setReviewActive(false)}
+                    onRetake={() => {
+                      setGenTopic(currentReview.quizTitle.includes('AI Quiz') ? currentReview.quizTitle.replace('AI Quiz: ', '').replace(/( \(.+\)$)/, '') : currentReview.quizTitle);
+                      setReviewActive(false);
+                      goToAIPractice();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {/* ── Quick topic chips ── */}
         {!loading && filterTab === 'assigned' && (
-          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5 dark:bg-slate-900/40">
+          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#727783]">Quick practice by topic</p>
             <div className="flex flex-wrap gap-2">
               {QUICK_TOPICS.map((topic) => (

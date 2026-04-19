@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   ArrowRight,
   BarChart3,
@@ -52,7 +51,6 @@ function LandingHeader() {
           </Link>
         </nav>
         <div className="flex items-center justify-center gap-3 sm:justify-end">
-          <ThemeToggle />
           <Link
             href="/auth/sign-in"
             className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -70,7 +68,7 @@ function HeroSection() {
     <section className="border-b border-border bg-background">
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 md:grid-cols-2 md:py-24 lg:gap-16">
         <motion.div className="flex flex-col justify-center" {...fadeUp}>
-          <span className="mb-4 inline-flex w-fit rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">
+          <span className="mb-4 inline-flex w-fit rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary-700">
             Next-gen diagnostics
           </span>
           <h1 className="text-3xl font-bold tracking-tight text-text-main sm:text-4xl lg:text-[2.75rem] lg:leading-[1.15]">
@@ -91,7 +89,7 @@ function HeroSection() {
             </Link>
             <Link
               href="#university"
-              className="inline-flex items-center justify-center rounded-lg border border-primary-200 bg-primary-50/80 px-6 py-3 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-950/40 dark:text-primary-200 dark:hover:bg-primary-900/50"
+              className="inline-flex items-center justify-center rounded-lg border border-primary-200 bg-primary-50/80 px-6 py-3 text-sm font-semibold text-primary-700 transition hover:bg-primary-100"
             >
               Partner with us (University)
             </Link>
@@ -104,7 +102,7 @@ function HeroSection() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.12, ease: easeOutExpo }}
         >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-muted shadow-xl shadow-black/10 dark:shadow-black/40">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-muted shadow-xl shadow-black/10">
             <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
               <div className="relative flex aspect-[4/5] min-h-[220px] items-center justify-center bg-surface sm:aspect-auto">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary-900/90 to-sidebar" />
@@ -177,16 +175,16 @@ function FeaturesSection() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-primary-100 bg-primary-50/50 p-8 shadow-sm dark:border-primary-900/40 dark:bg-primary-950/30">
-            <Brain className="h-9 w-9 text-primary-700 dark:text-primary-400" strokeWidth={1.5} />
+          <div className="rounded-2xl border border-primary-100 bg-primary-50/50 p-8 shadow-sm">
+            <Brain className="h-9 w-9 text-primary-700" strokeWidth={1.5} />
             <h3 className="mt-4 text-lg font-bold text-text-main">Hallucination-Free RAG AI</h3>
             <p className="mt-2 text-sm text-text-muted">
               Retrieval-augmented answers cite your knowledge base so learners see where every claim comes from.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-primary-100 bg-primary-50/50 p-8 shadow-sm dark:border-primary-900/40 dark:bg-primary-950/30">
-            <ShieldCheck className="h-9 w-9 text-primary-700 dark:text-primary-400" strokeWidth={1.5} />
+          <div className="rounded-2xl border border-primary-100 bg-primary-50/50 p-8 shadow-sm">
+            <ShieldCheck className="h-9 w-9 text-primary-700" strokeWidth={1.5} />
             <h3 className="mt-4 text-lg font-bold text-text-main">Expert Workflows</h3>
             <p className="mt-2 text-sm text-text-muted">
               Escalate, review, and approve—so high-stakes outputs stay aligned with your curriculum.
@@ -282,7 +280,7 @@ function RolesSection() {
               key={role.title}
               className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:shadow-md"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50 text-primary-700 dark:bg-primary-950/50 dark:text-primary-300">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
                 <role.icon className="h-6 w-6" strokeWidth={1.75} />
               </div>
               <h3 className="mt-5 text-lg font-bold text-text-main">{role.title}</h3>
@@ -296,7 +294,7 @@ function RolesSection() {
               </ul>
               <Link
                 href={role.href}
-                className="mt-6 inline-flex w-full items-center justify-center rounded-lg border border-primary-200 bg-card py-2.5 text-sm font-semibold text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-950/40"
+                className="mt-6 inline-flex w-full items-center justify-center rounded-lg border border-primary-200 bg-card py-2.5 text-sm font-semibold text-primary-700 transition hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {role.cta}
               </Link>
@@ -319,7 +317,7 @@ function TrustSection() {
   return (
     <motion.section
       id="university"
-      className="scroll-mt-20 border-b border-border bg-primary-50/30 py-16 md:py-24 dark:bg-primary-950/20"
+      className="scroll-mt-20 border-b border-border bg-primary-50/30 py-16 md:py-24"
       {...fadeInView}
     >
       <div className="mx-auto max-w-6xl px-4">
@@ -339,14 +337,14 @@ function TrustSection() {
           ))}
         </div>
 
-        <div className="mx-auto mt-14 max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-lg shadow-black/10 md:p-10 dark:shadow-black/30">
-          <Quote className="h-10 w-10 text-primary-200 dark:text-primary-800" />
+        <div className="mx-auto mt-14 max-w-3xl rounded-2xl border border-border bg-card p-8 shadow-lg shadow-black/10 md:p-10">
+          <Quote className="h-10 w-10 text-primary-200" />
           <blockquote className="mt-4 text-lg font-medium leading-relaxed text-text-main md:text-xl">
             &ldquo;BoneVisQA has fundamentally changed how our residents connect imaging findings to
             evidence—we finally have a workflow that feels built for medicine, not generic AI.&rdquo;
           </blockquote>
           <div className="mt-6 flex items-center gap-3 border-t border-border pt-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800 dark:bg-primary-900 dark:text-primary-200">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800">
               ES
             </div>
             <div>

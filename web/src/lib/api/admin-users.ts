@@ -1,9 +1,7 @@
 import { http, getApiErrorMessage } from './client';
-import type { AdminUser } from './types';
+import type { AdminClassAssignment, AdminUser } from './types';
 
 const ADMIN_USERS = '/api/admin/users';
-const ADMIN_CLASSES = '/api/admin/classes';
-const ADMIN_CLASS_ENROLLMENTS = `${ADMIN_CLASSES}/enrollments`;
 
 // ── Normalizers ─────────────────────────────────────────────────────────────
 
@@ -25,6 +23,29 @@ function unwrapUserList(data: unknown): unknown[] {
 
   if (Array.isArray(body.result)) return body.result;
   return [];
+}
+
+function normalizeClassAssignments(raw: unknown): AdminClassAssignment[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: AdminClassAssignment[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const classId = String(r.classId ?? r.ClassId ?? r.id ?? '').trim();
+    if (!classId) continue;
+    out.push({
+      classId,
+      className: String(r.className ?? r.ClassName ?? r.name ?? 'Class').trim(),
+      roleInClass: String(r.roleInClass ?? r.RoleInClass ?? r.relationType ?? 'Student').trim(),
+      enrolledAt:
+        r.enrolledAt != null
+          ? String(r.enrolledAt)
+          : r.EnrolledAt != null
+            ? String(r.EnrolledAt)
+            : null,
+    });
+  }
+  return out.length ? out : undefined;
 }
 
 function normalizeUser(item: unknown): AdminUser | null {
@@ -50,6 +71,8 @@ function normalizeUser(item: unknown): AdminUser | null {
         ? rawIsActive > 0
         : String(rawIsActive ?? '').toLowerCase() !== 'false';
 
+  const classAssignments = normalizeClassAssignments(user.classAssignments ?? user.ClassAssignments);
+
   return {
     id,
     fullName: String(user.fullName ?? user.name ?? user.userName ?? email).trim(),
@@ -58,6 +81,7 @@ function normalizeUser(item: unknown): AdminUser | null {
     isActive,
     createdAt: user.createdAt ? String(user.createdAt) : undefined,
     schoolCohort: user.schoolCohort ? String(user.schoolCohort) : undefined,
+    ...(classAssignments ? { classAssignments } : {}),
   };
 }
 
@@ -214,156 +238,7 @@ export async function deleteAdminUser(userId: string): Promise<void> {
   }
 }
 
-// ── Class management ───────────────────────────────────────────────────────────
-
-export type ClassEnrollmentRelation = 'Lecturer' | 'Student' | 'Expert';
-
-export interface UserClassInfo {
-  id: string;
-  className: string;
-  relationType: ClassEnrollmentRelation;
-  enrolledAt: string | null;
-}
-
-export interface AvailableClass {
-  id: string;
-  className: string;
-  lecturerName: string | null;
-  studentCount: number;
-}
-
-function unwrapClassArray(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw;
-  if (!raw || typeof raw !== 'object') return [];
-  const o = raw as Record<string, unknown>;
-  if (Array.isArray(o.items)) return o.items;
-  if (Array.isArray(o.data)) return o.data;
-  if (o.result && typeof o.result === 'object') {
-    const r = o.result as Record<string, unknown>;
-    if (Array.isArray(r.items)) return r.items;
-    if (Array.isArray(r.data)) return r.data;
-    if (Array.isArray(o.result)) return o.result as unknown[];
-  }
-  return [];
-}
-
-function normalizeUserClassInfo(row: unknown): UserClassInfo | null {
-  if (!row || typeof row !== 'object') return null;
-  const r = row as Record<string, unknown>;
-  const id = String(r.id ?? r.classId ?? r.Id ?? '').trim();
-  if (!id) return null;
-  const rt = String(r.relationType ?? r.RelationType ?? 'Student').toLowerCase();
-  let relationType: ClassEnrollmentRelation = 'Student';
-  if (rt === 'lecturer') relationType = 'Lecturer';
-  else if (rt === 'expert') relationType = 'Expert';
-  return {
-    id,
-    className: String(r.className ?? r.name ?? r.title ?? 'Class'),
-    relationType,
-    enrolledAt: r.enrolledAt != null ? String(r.enrolledAt) : r.EnrolledAt != null ? String(r.EnrolledAt) : null,
-  };
-}
-
-function normalizeAvailableClass(row: unknown): AvailableClass | null {
-  if (!row || typeof row !== 'object') return null;
-  const r = row as Record<string, unknown>;
-  const id = String(r.id ?? r.classId ?? r.Id ?? '').trim();
-  if (!id) return null;
-  const lec = r.lecturer;
-  const lecturerRaw =
-    r.lecturerName ??
-    r.LecturerName ??
-    (lec && typeof lec === 'object' && lec !== null && 'name' in lec ? (lec as { name: unknown }).name : undefined);
-  return {
-    id,
-    className: String(r.className ?? r.name ?? r.title ?? 'Class'),
-    lecturerName: lecturerRaw != null ? String(lecturerRaw) : null,
-    studentCount: Number(r.studentCount ?? r.enrollmentCount ?? r.StudentCount ?? 0),
-  };
-}
-
-export async function fetchUserClasses(userId: string): Promise<UserClassInfo[]> {
-  try {
-    const { data } = await http.get<unknown>(`${ADMIN_USERS}/${userId}/classes`);
-    const list = unwrapClassArray(
-      data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data,
-    );
-    const mapped = list.map(normalizeUserClassInfo).filter((x): x is UserClassInfo => x !== null);
-    return mapped;
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
-
-export async function fetchAvailableClasses(): Promise<AvailableClass[]> {
-  const mapRows = (payload: unknown): AvailableClass[] =>
-    unwrapClassArray(payload)
-      .map(normalizeAvailableClass)
-      .filter((x): x is AvailableClass => x !== null);
-
-  try {
-    const { data } = await http.get<unknown>(ADMIN_CLASSES);
-    const list = mapRows(
-      data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data,
-    );
-    return list;
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
-
-/** Matches backend AssignClassDTO for POST/PUT /api/admin/classes/enrollments */
-export interface AssignClassEnrollmentDto {
-  classId: string;
-  studentId: string | null;
-  lecturerId: string | null;
-  expertId: string | null;
-  removeExpert: boolean;
-}
-
-export async function assignUserToClass(
-  userId: string,
-  classId: string,
-  opts: { relation: ClassEnrollmentRelation; className: string },
-): Promise<UserClassInfo> {
-  try {
-    const body: AssignClassEnrollmentDto = {
-      classId,
-      studentId: opts.relation === 'Student' ? userId : null,
-      lecturerId: opts.relation === 'Lecturer' ? userId : null,
-      expertId: opts.relation === 'Expert' ? userId : null,
-      removeExpert: false,
-    };
-    await http.post(ADMIN_CLASS_ENROLLMENTS, body);
-    return {
-      id: classId,
-      className: opts.className,
-      relationType: opts.relation,
-      enrolledAt: new Date().toISOString(),
-    };
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
-
-export async function removeUserFromClass(
-  userId: string,
-  classId: string,
-  relation: ClassEnrollmentRelation,
-): Promise<void> {
-  try {
-    const body: AssignClassEnrollmentDto = {
-      classId,
-      studentId: relation === 'Student' ? userId : null,
-      lecturerId: relation === 'Lecturer' ? userId : null,
-      expertId: relation === 'Expert' ? userId : null,
-      removeExpert: false,
-    };
-    await http.request({ method: 'DELETE', url: ADMIN_CLASS_ENROLLMENTS, data: body });
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
+// Class management moved to admin-classes.ts
 
 // ── Medical Student Verification ────────────────────────────────────────────────
 
@@ -372,7 +247,6 @@ export interface PendingVerification {
   fullName: string;
   email: string;
   schoolCohort: string | null;
-  isMedicalStudent: boolean;
   medicalSchool: string | null;
   medicalStudentId: string | null;
   verificationStatus: string | null;

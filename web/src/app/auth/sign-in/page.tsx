@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
-import {
-  GoogleOAuthProvider,
-  GoogleLogin,
-  type CredentialResponse,
-} from "@react-oauth/google";
 import {
   Activity,
   Cpu,
@@ -29,6 +25,32 @@ import { Button } from "@/components/ui/button";
 
 const motionEase = [0.22, 1, 0.36, 1] as const;
 
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (cfg: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+            auto_select?: boolean;
+            cancel_on_tap_outside?: boolean;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: Record<string, string | number | boolean>,
+          ) => void;
+          prompt?: () => void;
+        };
+      };
+    };
+  }
+}
+
 function getRouteForRole(role: string | null | undefined) {
   switch (role?.trim().toLowerCase()) {
     case "student":
@@ -39,18 +61,20 @@ function getRouteForRole(role: string | null | undefined) {
       return { activeRole: "expert", route: "/expert/dashboard" };
     case "admin":
       return { activeRole: "admin", route: "/admin/dashboard" };
+    case "guest":
+      return { activeRole: null, route: "/pending-approval" };
     default:
       return { activeRole: null, route: "/" };
   }
 }
 
-function isPendingOrUnassignedUser(payload: {
+function isGuestOrUnassignedUser(payload: {
   roles?: string[] | null;
   status?: string | null;
   userStatus?: string | null;
 }) {
   const normalizedStatus = (payload.status ?? payload.userStatus ?? '').trim().toLowerCase();
-  if (normalizedStatus === 'pending') {
+  if (normalizedStatus === 'guest') {
     return true;
   }
 
@@ -60,7 +84,7 @@ function isPendingOrUnassignedUser(payload: {
   if (roles.length === 0) {
     return true;
   }
-  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('pending')) {
+  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('guest')) {
     return true;
   }
   return false;
@@ -68,13 +92,14 @@ function isPendingOrUnassignedUser(payload: {
 
 type LoginPageInnerProps = {
   googleEnabled: boolean;
+  googleClientId: string;
 };
 
 /**
  * Renders the full login UI. When googleEnabled, this component must be a descendant of
  * GoogleOAuthProvider (single provider instance avoids extra GSI initialize warnings).
  */
-function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
+function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) {
   const router = useRouter();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
@@ -82,6 +107,9 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [gsiScriptReady, setGsiScriptReady] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const isGsiInitialized = useRef(false);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("rememberedEmail");
@@ -104,7 +132,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         localStorage.removeItem("userStatus");
       }
 
-      if (isPendingOrUnassignedUser(data)) {
+      if (isGuestOrUnassignedUser(data)) {
         localStorage.removeItem("activeRole");
         router.push("/pending-approval");
         return;
@@ -150,8 +178,8 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
     }
   };
 
-  const handleGoogleLoginSuccess = async (
-    credentialResponse: CredentialResponse,
+  const handleGoogleLoginSuccess = useCallback(async (
+    credentialResponse: GoogleCredentialResponse,
   ) => {
     setError("");
     setLoading(true);
@@ -187,10 +215,51 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [handleLoginSuccess, router, toast]);
+
+  useEffect(() => {
+    if (window.google?.accounts?.id) {
+      setGsiScriptReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!googleEnabled || !googleClientId || isGsiInitialized.current) return;
+    const gsi = window.google?.accounts?.id;
+    const target = googleButtonRef.current;
+    if (!gsiScriptReady || !gsi || !target) return;
+
+    target.innerHTML = "";
+    gsi.initialize({
+      client_id: googleClientId,
+      callback: (response) => {
+        void handleGoogleLoginSuccess(response);
+      },
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+    gsi.renderButton(target, {
+      theme: "outline",
+      size: "large",
+      shape: "pill",
+      type: "standard",
+      text: "continue_with",
+      logo_alignment: "left",
+      width: 300,
+    });
+
+    isGsiInitialized.current = true;
+  }, [googleEnabled, googleClientId, gsiScriptReady, handleGoogleLoginSuccess]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-950">
+      {googleEnabled ? (
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+          onLoad={() => setGsiScriptReady(true)}
+        />
+      ) : null}
       {/*
         dir="ltr" keeps hero on the left and form on the right regardless of browser locale.
         max-lg:hidden avoids Tailwind hidden/lg:flex ordering quirks; flex-col keeps content stacked.
@@ -400,16 +469,10 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                     <span>Sign in with Google</span>
                   </div>
                   <div className="flex justify-center">
-                    <GoogleLogin
-                      onSuccess={handleGoogleLoginSuccess}
-                      onError={() => {
-                        const msg =
-                          "Google sign-in popup failed or was closed. Check Google Cloud origins for this URL.";
-                        console.warn("Google login onError:", msg);
-                        setError(msg);
-                        toast.error(msg);
-                      }}
-                      useOneTap={false}
+                    <div
+                      ref={googleButtonRef}
+                      className="min-h-[44px]"
+                      aria-label="Google sign-in button"
                     />
                   </div>
                 </div>
@@ -435,14 +498,5 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
 export default function LoginPage() {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
   const hasGoogleClientId = googleClientId.length > 0;
-
-  if (!hasGoogleClientId) {
-    return <LoginPageInner googleEnabled={false} />;
-  }
-
-  return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <LoginPageInner googleEnabled />
-    </GoogleOAuthProvider>
-  );
+  return <LoginPageInner googleEnabled={hasGoogleClientId} googleClientId={googleClientId} />;
 }

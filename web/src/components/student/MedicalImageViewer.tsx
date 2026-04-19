@@ -9,6 +9,7 @@ import {
   cornersNormalizedToBox,
   cornersNormalizedToDraftBox,
   isValidNormalizedBoundingBox,
+  normalizeClientPointFromRect,
 } from '@/lib/utils/annotations';
 
 const MIN = 0.5;
@@ -41,7 +42,10 @@ export function MedicalImageViewer({
   const drag = useRef(false);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
+  /** Image + overlay coordinate space (matches cursor / ROI regardless of scroll or outer chrome). */
+  const imageStageRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const drawLayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (initialAnnotation === undefined) return;
@@ -73,11 +77,10 @@ export function MedicalImageViewer({
   }, []);
 
   const getNormalizedPoint = useCallback((clientX: number, clientY: number) => {
-    const rect = imgRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-    const lx = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-    const ly = Math.min(Math.max(clientY - rect.top, 0), rect.height);
-    return { x: lx / rect.width, y: ly / rect.height };
+    const rect =
+      imageStageRef.current?.getBoundingClientRect() ?? drawLayerRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
+    return normalizeClientPointFromRect(clientX, clientY, rect);
   }, []);
 
   const draftBox =
@@ -183,6 +186,7 @@ export function MedicalImageViewer({
           }}
         >
           <div
+            ref={imageStageRef}
             className="relative inline-block max-h-full max-w-full"
             style={{
               width: imageSize.width ? `${imageSize.width}px` : undefined,
@@ -207,6 +211,7 @@ export function MedicalImageViewer({
             <RectangleAnnotationOverlay closed={closedBox} draft={draftBox} label="LESION ROI" />
             {isDrawMode ? (
               <div
+                ref={drawLayerRef}
                 role="presentation"
                 className="absolute inset-0 z-20 cursor-crosshair bg-transparent"
                 aria-hidden
@@ -280,8 +285,7 @@ export function MedicalImageViewer({
         </div>
       </div>
       <p className="border-t border-border-color bg-black px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Scroll to zoom · Rectangle ROI: select square tool, click-drag on the image, release to commit (normalized x,
-        y, width, height) · Educational preview only
+        Scroll to zoom · Square tool: click-drag on the image to mark a region of interest · Educational preview only
       </p>
     </div>
   );

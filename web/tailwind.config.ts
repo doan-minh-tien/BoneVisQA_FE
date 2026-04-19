@@ -5,7 +5,6 @@ import type { Config } from "tailwindcss";
  * Scrollbar utilities: `@plugin "tailwind-scrollbar"` in globals.css (not this file).
  */
 const config: Config = {
-  darkMode: 'class',
   content: [
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -21,19 +20,19 @@ const config: Config = {
         border: "#dbe3ee",
         surface: "#ffffff",
         primary: {
-          DEFAULT: "#2563eb",
+          DEFAULT: "#0055ff",
           50: "#eff6ff",
           100: "#dbeafe",
           200: "#bfdbfe",
           300: "#93c5fd",
           400: "#60a5fa",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          800: "#1e40af",
-          900: "#1e3a8a",
+          500: "#2f6fff",
+          600: "#0055ff",
+          700: "#0047d4",
+          800: "#0039aa",
+          900: "#002d87",
         },
-        "primary-hover": "#1d4ed8",
+        "primary-hover": "#0047d4",
         "cyan-accent": "#00E5FF",
         "text-main": "#0f172a",
         "text-muted": "#475569",

@@ -147,8 +147,8 @@ export default function UploadDocumentDialog({
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to upload document.';
-      if (message.includes('Tài liệu này đã tồn tại trong hệ thống.')) {
-        setFileError('Tài liệu này đã tồn tại trong hệ thống.');
+      if (message.includes('This document already exists in the system.')) {
+        setFileError('This document already exists in the system.');
       } else {
         setSubmitError(message);
       }

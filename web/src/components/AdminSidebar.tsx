@@ -11,7 +11,6 @@ import {
   Users,
   FileText,
   BrainCircuit,
-  Activity,
   Settings,
   LogOut,
   Stethoscope,
@@ -41,7 +40,6 @@ export default function AdminSidebar() {
     { icon: Database, label: t('nav.documents', 'Documents'), href: '/admin/documents' },
     { icon: FileText, label: t('nav.cases', 'Cases'), href: '/admin/cases' },
     { icon: BrainCircuit, label: t('nav.aiConfig', 'AI Config'), href: '/admin/ai-config' },
-    { icon: Activity, label: t('nav.systemLogs', 'System Logs'), href: '/admin/logs' },
     { icon: Settings, label: t('nav.settings', 'Settings'), href: '/admin/settings' },
   ];
 

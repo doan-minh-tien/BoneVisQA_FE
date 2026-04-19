@@ -26,6 +26,7 @@ import {
   uploadMyAvatar,
   type UserProfileDto,
 } from '@/lib/api/users';
+import { emitAuthRefresh } from '@/lib/useAuth';
 import { toast } from 'sonner';
 
 const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
@@ -63,6 +64,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
+  const [pendingAvatarUrl, setPendingAvatarUrl] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [schoolCohort, setSchoolCohort] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -114,7 +116,7 @@ export default function ProfilePage() {
   }, [profile]);
 
   const displayName = fullName.trim() || profile?.email?.trim() || 'Member';
-  const avatarSrc = profile?.avatarUrl?.trim() || '';
+  const avatarSrc = pendingAvatarUrl?.trim() || profile?.avatarUrl?.trim() || '';
   const avatarDisplaySrc = useMemo(() => {
     if (!avatarSrc) return '';
     return resolveApiAssetUrl(avatarSrc);
@@ -134,12 +136,9 @@ export default function ProfilePage() {
     try {
       const { avatarUrl } = await uploadMyAvatar(file);
       const bustedUrl = `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-      setProfile((prev) => ({ ...(prev ?? {}), avatarUrl: bustedUrl }));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('avatarUrl', bustedUrl);
-        window.dispatchEvent(new Event('bonevis:auth-refresh'));
-      }
-      toast.success('Profile photo updated.');
+      // Preview immediately, but defer profile update until Save changes.
+      setPendingAvatarUrl(bustedUrl);
+      toast.success('Profile photo ready. Click Save changes to apply.');
     } catch (e) {
       setFieldErrors((err) => ({
         ...err,
@@ -162,14 +161,30 @@ export default function ProfilePage() {
       const updated = await updateMyProfile({
         fullName: fullName.trim(),
         schoolCohort: schoolCohort.trim() || null,
+        avatarUrl: pendingAvatarUrl?.trim() || undefined,
         phoneNumber: phoneNumber.trim() || null,
         bio: bio.trim() || null,
       });
-      setProfile((prev) => ({ ...(prev ?? {}), ...updated }));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('fullName', updated.fullName ?? fullName.trim());
-        window.dispatchEvent(new Event('bonevis:auth-refresh'));
-      }
+      const nextFullName = updated.fullName ?? fullName.trim();
+      const nextAvatarUrl =
+        updated.avatarUrl?.trim() || pendingAvatarUrl?.trim() || profile?.avatarUrl?.trim() || undefined;
+      setProfile((prev) => {
+        const merged = { ...(prev ?? {}), ...updated };
+        const incoming = updated.avatarUrl?.trim();
+        if (!incoming) {
+          if (pendingAvatarUrl?.trim()) {
+            merged.avatarUrl = pendingAvatarUrl;
+          } else if (prev?.avatarUrl?.trim()) {
+            merged.avatarUrl = prev.avatarUrl;
+          }
+        }
+        return merged;
+      });
+      emitAuthRefresh({
+        fullName: nextFullName,
+        ...(nextAvatarUrl ? { avatarUrl: nextAvatarUrl } : {}),
+      });
+      setPendingAvatarUrl(null);
       toast.success('Profile saved.');
     } catch (err) {
       setFieldErrors({
@@ -199,7 +214,7 @@ export default function ProfilePage() {
             {/* Hero: cover + overlapping avatar */}
             <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               <div className="relative h-36 bg-gradient-to-br from-primary/35 via-primary/15 to-muted sm:h-44">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-accent/20 via-transparent to-transparent opacity-90 dark:from-cyan-accent/10" />
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-accent/20 via-transparent to-transparent opacity-90" />
                 <div className="absolute bottom-4 right-6 hidden text-right sm:block">
                   <p className="text-xs font-medium uppercase tracking-widest text-primary-foreground/90 mix-blend-plus-lighter">
                     BoneVisQA

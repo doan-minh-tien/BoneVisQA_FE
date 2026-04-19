@@ -30,7 +30,7 @@ export default function LanguageSwitcher() {
     <button
       onClick={toggleLanguage}
       className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors shadow-sm"
-      title={i18n.language.startsWith('vi') ? "Switch to English" : "Chuyển sang Tiếng Việt"}
+      title={i18n.language.startsWith('vi') ? 'Switch to English' : 'Switch to Vietnamese'}
     >
       <Globe className="w-4 h-4 text-primary" />
       <span>{i18n.language.startsWith('vi') ? 'VI' : 'EN'}</span>
