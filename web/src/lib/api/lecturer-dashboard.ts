@@ -53,8 +53,8 @@ export async function fetchLecturerClassLeaderboard(
         ? (data as { items?: unknown[] }).items ?? []
         : [];
     return list.map(mapLeaderboardEntry).filter((item): item is NonNullable<typeof item> => item !== null);
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
+  } catch {
+    return [];
   }
 }
 

@@ -79,13 +79,23 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
     }
   };
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (options?: { questionIdToTrack?: string | null }) => {
     setError(null);
     setIsLoading(true);
     try {
       const list = await fetchExpertQuizQuestions(quizId);
+      
+      // Calculate the new page if we need to preserve position of a specific question
+      const questionIdToTrack = options?.questionIdToTrack;
+      if (questionIdToTrack && questions.length > 0) {
+        const questionIndex = list.findIndex(q => q.questionId === questionIdToTrack);
+        if (questionIndex !== -1) {
+          const newPage = Math.max(1, Math.ceil((questionIndex + 1) / Q_PAGE_SIZE));
+          setQPage(newPage);
+        }
+      }
+      
       setQuestions(list);
-      setQPage(1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load questions.';
       setError(msg);
@@ -198,6 +208,7 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       return;
     }
     setIsSaving(true);
+    const currentQuestionId = editingQuestionId; // Capture before async operations
     try {
       if (mode === 'create') {
         const resolvedCaseId = form.caseId || cases[0]?.id;
@@ -214,8 +225,8 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
         });
         toast.success('Question created successfully.');
       } else {
-        if (!editingQuestionId) throw new Error('Missing question id.');
-        await updateExpertQuizQuestion(editingQuestionId, {
+        if (!currentQuestionId) throw new Error('Missing question id.');
+        await updateExpertQuizQuestion(currentQuestionId, {
           quizId,
           caseId: form.caseId,
           questionText: form.questionText.trim(),
@@ -230,7 +241,8 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
         toast.success('Question updated successfully.');
       }
       setIsModalOpen(false);
-      await loadQuestions();
+      // Preserve page position for edited questions, reset to page 1 for new questions
+      await loadQuestions(mode === 'edit' ? { questionIdToTrack: currentQuestionId } : undefined);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Save failed.';
       toast.error(msg);

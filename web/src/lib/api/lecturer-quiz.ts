@@ -23,6 +23,9 @@ export interface UpdateQuizRequest {
   closeTime?: string | null;
   timeLimit?: number | null;
   passingScore?: number | null;
+  topic?: string | null;
+  difficulty?: string | null;
+  classification?: string | null;
 }
 
 // ========== Quiz Management ==========

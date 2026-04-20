@@ -830,6 +830,8 @@ export interface StudentClassItem {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
+  expertId?: string | null;
+  expertName?: string | null;
   totalAnnouncements: number;
   totalQuizzes: number;
   totalCases: number;
@@ -940,13 +942,13 @@ export interface StudentClassDetail {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
-  /** Clinical expert attached to this cohort when returned by the API. */
+  expertId?: string | null;
   expertName?: string | null;
   expertEmail?: string | null;
   expertAvatarUrl?: string | null;
   enrolledAt?: string | null;
-  /** Case assignments for this class (optional; depends on backend). */
-  assignedCases?: Array<{
+  /** Case assignments for this class. */
+  assignedCases: Array<{
     caseId: string;
     title: string;
     dueDate?: string | null;
@@ -1087,6 +1089,8 @@ export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
       semester: String(item.semester ?? item.Semester ?? ''),
       lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
       lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      expertId: item.expertId != null ? String(item.expertId) : item.ExpertId != null ? String(item.ExpertId) : null,
+      expertName: item.expertName != null ? String(item.expertName) : item.ExpertName != null ? String(item.ExpertName) : null,
       totalAnnouncements: Number(item.totalAnnouncements ?? item.TotalAnnouncements ?? 0),
       totalQuizzes: Number(item.totalQuizzes ?? item.TotalQuizzes ?? 0),
       totalCases: Number(item.totalCases ?? item.TotalCases ?? 0),

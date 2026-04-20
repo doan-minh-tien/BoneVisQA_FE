@@ -23,6 +23,7 @@ import {
   Ruler,
   Mail,
   Eye,
+  Hand,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview, requestRetake } from '@/lib/api/student';
@@ -90,7 +91,12 @@ export default function QuizSessionPage({
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const timeUpAutoSubmitTriggered = useRef(false);
+  const retakeRequestedRef = useRef(false); // Prevent duplicate retake requests
 
   // Tải lại thông tin quiz từ server để lấy trạng thái cập nhật (isCompleted, score)
   const reloadQuizInfo = useCallback(async () => {
@@ -127,7 +133,8 @@ export default function QuizSessionPage({
 
   // Xử lý yêu cầu làm lại quiz từ tham số URL
   useEffect(() => {
-    if (isRetakeRequested && quizInfo?.isCompleted) {
+    if (isRetakeRequested && quizInfo?.isCompleted && !retakeRequestedRef.current) {
+      retakeRequestedRef.current = true;
       void handleRetakeAndStart();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,6 +216,15 @@ export default function QuizSessionPage({
     void handleSubmit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, submitted, submitting, session?.closeTime]);
+
+  // Reset pan/zoom khi chuyển câu hỏi
+  useEffect(() => {
+    setZoomIndex(0);
+    setPanOffset({ x: 0, y: 0 });
+    setStraightenActive(false);
+    setHighContrastImg(false);
+    setIsPanning(false);
+  }, [currentIndex]);
 
   const handleSubmit = useCallback(async () => {
     if (!session) return;
@@ -392,6 +408,8 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={async () => {
+                      if (retakeRequestedRef.current) return;
+                      retakeRequestedRef.current = true;
                       setRequestingRetake(true);
                       try {
                         await requestRetake(quizId);
@@ -399,6 +417,7 @@ export default function QuizSessionPage({
                         toast.success('Retake request sent to your lecturer.');
                       } catch (e) {
                         toast.error(getApiErrorMessage(e));
+                        retakeRequestedRef.current = false;
                       } finally {
                         setRequestingRetake(false);
                       }
@@ -472,6 +491,8 @@ export default function QuizSessionPage({
                   <button
                     type="button"
                     onClick={async () => {
+                      if (retakeRequestedRef.current) return;
+                      retakeRequestedRef.current = true;
                       setRequestingRetake(true);
                       try {
                         await requestRetake(quizId);
@@ -479,6 +500,7 @@ export default function QuizSessionPage({
                         toast.success('Retake request sent to your lecturer.');
                       } catch (e) {
                         toast.error(getApiErrorMessage(e));
+                        retakeRequestedRef.current = false;
                         setRequestingRetake(false);
                       }
                     }}
@@ -693,39 +715,69 @@ export default function QuizSessionPage({
         <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           <div className="lg:col-span-7">
             <div className="lg:sticky lg:top-28 space-y-6">
-              <div className="group relative w-full min-h-[52vh] overflow-hidden rounded-2xl bg-inverse-surface shadow-lg md:min-h-[58vh] lg:min-h-[60vh]">
+              <div className="group relative w-full min-h-[52vh] overflow-visible rounded-2xl bg-inverse-surface shadow-lg md:min-h-[58vh] lg:min-h-[60vh]">
+                {/* Image wrapper with transform capabilities */}
                 <div
-                  className={`flex min-h-[52vh] w-full origin-center items-center justify-center overflow-auto p-2 transition-transform duration-300 sm:p-4 md:min-h-[58vh] lg:min-h-[60vh] ${
-                    highContrastImg ? 'contrast-125 saturate-125' : ''
-                  }`}
+                  className="relative flex h-full w-full items-center justify-center overflow-auto p-2 sm:p-4"
                   style={{
-                    transform: `scale(${ZOOM_LEVELS[zoomIndex]}) ${straightenActive ? 'rotate(-1deg)' : 'none'}`,
+                    maxHeight: 'calc(100vh - 16rem)',
                   }}
                 >
-                  {currentQ.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={resolveApiAssetUrl(currentQ.imageUrl)}
-                      alt={currentQ.caseTitle ?? 'Case image'}
-                      className="h-auto w-full max-w-full object-contain opacity-95 transition-opacity group-hover:opacity-100"
-                      style={{ maxHeight: 'min(78vh, 920px)' }}
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center px-6">
-                      <div className="text-center">
-                        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-                          <BookOpen className="h-8 w-8 text-white/60" />
+                  {/* Transform container - transform applied here to allow zoom without cropping */}
+                  <div
+                    className={`relative transition-transform duration-300 ease-out ${isPanning && zoomIndex > 0 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    style={{
+                      transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${ZOOM_LEVELS[zoomIndex]}) ${straightenActive ? 'rotate(-1deg)' : ''}`,
+                      transformOrigin: 'center center',
+                      cursor: isPanning && zoomIndex > 0 ? 'grab' : 'default',
+                    }}
+                    onMouseDown={(e) => {
+                      if (!isPanning || zoomIndex === 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(true);
+                      dragStart.current = { x: e.clientX, y: e.clientY, panX: panOffset.x, panY: panOffset.y };
+                    }}
+                    onMouseMove={(e) => {
+                      if (!isDragging || zoomIndex === 0) return;
+                      setPanOffset({
+                        x: dragStart.current.panX + (e.clientX - dragStart.current.x),
+                        y: dragStart.current.panY + (e.clientY - dragStart.current.y),
+                      });
+                    }}
+                    onMouseUp={() => setIsDragging(false)}
+                    onMouseLeave={() => setIsDragging(false)}
+                  >
+                    {currentQ.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveApiAssetUrl(currentQ.imageUrl)}
+                        alt={currentQ.caseTitle ?? 'Case image'}
+                        className={`max-h-[70vh] w-full max-w-full object-contain opacity-95 transition-all duration-300 group-hover:opacity-100 ${
+                          highContrastImg ? 'contrast-[1.25] saturate-[1.25]' : ''
+                        }`}
+                        style={{ maxHeight: '70vh' }}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center px-6">
+                        <div className="text-center">
+                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
+                            <BookOpen className="h-8 w-8 text-white/60" />
+                          </div>
+                          <p className="font-medium text-white/60">No image attached</p>
                         </div>
-                        <p className="font-medium text-white/60">No image attached</p>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl">
+                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-surface-container-lowest/80 p-2 shadow-2xl backdrop-blur-xl z-10">
                   <button
                     type="button"
-                    onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
+                    onClick={() => {
+                      setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1));
+                      setPanOffset({ x: 0, y: 0 });
+                    }}
                     className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom in"
                   >
@@ -733,7 +785,11 @@ export default function QuizSessionPage({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setZoomIndex((i) => Math.max(i - 1, 0))}
+                    onClick={() => {
+                      const newIndex = Math.max(zoomIndex - 1, 0);
+                      setZoomIndex(newIndex);
+                      if (newIndex === 0) setPanOffset({ x: 0, y: 0 });
+                    }}
                     className="rounded-full p-2 text-on-surface transition-colors hover:bg-surface-container-high"
                     title="Zoom out"
                   >
@@ -742,11 +798,21 @@ export default function QuizSessionPage({
                   <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
+                    onClick={() => setIsPanning((v) => !v)}
+                    className={`rounded-full p-2 transition-colors hover:bg-surface-container-high ${
+                      isPanning ? 'bg-secondary/20 text-secondary' : 'text-on-surface'
+                    }`}
+                    title="Pan / Move image"
+                  >
+                    <Hand className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setHighContrastImg((v) => !v)}
                     className={`rounded-full p-2 transition-colors hover:bg-surface-container-high ${
-                      highContrastImg ? 'text-secondary' : 'text-on-surface'
+                      highContrastImg ? 'bg-secondary/20 text-secondary' : 'text-on-surface'
                     }`}
-                    title="Contrast"
+                    title="High Contrast"
                   >
                     <Contrast className="h-5 w-5" />
                   </button>
@@ -754,7 +820,7 @@ export default function QuizSessionPage({
                     type="button"
                     onClick={() => setStraightenActive((v) => !v)}
                     className={`rounded-full p-2 font-bold transition-colors hover:bg-surface-container-high ${
-                      straightenActive ? 'text-secondary' : 'text-on-surface'
+                      straightenActive ? 'bg-secondary/20 text-secondary' : 'text-on-surface'
                     }`}
                     title="Straighten / align"
                   >
@@ -763,9 +829,13 @@ export default function QuizSessionPage({
                   <div className="mx-1 h-6 w-px bg-outline-variant/30" />
                   <button
                     type="button"
-                    onClick={() => setZoomIndex(0)}
+                    onClick={() => {
+                      setZoomIndex(0);
+                      setPanOffset({ x: 0, y: 0 });
+                      setStraightenActive(false);
+                    }}
                     className="rounded-full px-2 py-1.5 font-headline text-xs font-bold text-on-surface hover:bg-surface-container-high"
-                    title="Reset zoom"
+                    title="Reset view"
                   >
                     {ZOOM_LEVELS[zoomIndex]}x
                   </button>
@@ -1024,8 +1094,8 @@ export default function QuizSessionPage({
                   </div>
                 )}
 
-                {/* Multiple choice / Annotation: show ABCD answer */}
-                {currentQ.type !== 'Essay' && currentState === 'incorrect' && currentQ.correctAnswer && (
+                {/* Multiple choice / Annotation: show ABCD answer - HIDDEN to prevent answer leakage */}
+                {/* {currentQ.type !== 'Essay' && currentState === 'incorrect' && currentQ.correctAnswer && (
                   <p className="mt-3 text-sm font-semibold text-on-surface">
                     Correct answer:{' '}
                     <span className="text-success">
@@ -1033,7 +1103,7 @@ export default function QuizSessionPage({
                       {String(currentQ[`option${currentQ.correctAnswer}` as keyof QuizModeQuestion] ?? '')}
                     </span>
                   </p>
-                )}
+                )} */}
 
                 <button
                   type="button"
@@ -1136,105 +1206,7 @@ export default function QuizSessionPage({
           </div>
         </div>
 
-        {/* Review answers */}
-        {submitted && quizReview && quizReview.questions.length > 0 && (
-          <div>
-            <div className="mb-6 flex items-center gap-3">
-              <span className="h-1 w-6 rounded-full bg-primary" />
-              <h4 className="font-headline text-base font-bold text-on-surface">
-                Review answers
-              </h4>
-              <span className="ml-auto text-xs text-on-surface-variant">
-                {quizReview.questions.filter(q => q.isCorrect).length} / {quizReview.questions.length} correct
-              </span>
-            </div>
-            <div className="space-y-3">
-              {quizReview.questions.map((q, i) => {
-                const studentChoice = q.studentAnswer?.toUpperCase();
-                const correctChoice = q.correctAnswer?.toUpperCase();
-                const isCorrect = q.isCorrect;
-
-                return (
-                  <div
-                    key={q.questionId}
-                    className={`rounded-2xl border-2 p-5 transition-all ${
-                      isCorrect
-                        ? 'border-emerald-400/50 bg-emerald-50'
-                        : 'border-destructive/40 bg-destructive/5'
-                    }`}
-                  >
-                    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-headline text-sm font-extrabold text-white ${
-                            isCorrect ? 'bg-emerald-500' : 'bg-destructive'
-                          }`}
-                        >
-                          {i + 1}
-                        </span>
-                        <p className="font-semibold text-on-surface-variant">
-                          {isCorrect ? 'Correct' : 'Incorrect'}
-                        </p>
-                      </div>
-                      {q.imageUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={resolveApiAssetUrl(q.imageUrl)}
-                          alt="case"
-                          className="h-14 w-14 rounded-xl border border-outline-variant/20 object-cover"
-                        />
-                      )}
-                    </div>
-
-                    <p className="mb-4 text-sm font-semibold text-on-surface leading-snug">
-                      {q.questionText}
-                    </p>
-
-                    <div className="space-y-2">
-                      {(['A', 'B', 'C', 'D'] as const).map((key) => {
-                        const text = q[`option${key}` as keyof typeof q];
-                        if (!text) return null;
-                        const isStudent = studentChoice === key;
-                        const isCorrectKey = correctChoice === key;
-
-                        let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface';
-                        if (isCorrectKey) {
-                          cls = 'border-emerald-400/60 bg-emerald-100 text-emerald-800';
-                        } else if (isStudent && !isCorrect) {
-                          cls = 'border-destructive/50 bg-destructive/10 text-destructive';
-                        }
-
-                        return (
-                          <div
-                            key={key}
-                            className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${cls}`}
-                          >
-                            <span
-                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                                isCorrectKey
-                                  ? 'bg-emerald-500 text-white'
-                                  : isStudent
-                                    ? 'bg-destructive text-white'
-                                    : 'bg-surface-container text-on-surface-variant'
-                              }`}
-                            >
-                              {key}
-                            </span>
-                            <span className="flex-1">{text}</span>
-                            {isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
-                            {isStudent && !isCorrectKey && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
-                            {isStudent && isCorrectKey && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
+        {/* Question Navigation */}
         <div className="mt-10 border-t border-outline-variant/10 pt-10">
         <h4 className="mb-4 flex items-center gap-2 font-headline text-base font-bold text-on-surface">
           <span className="h-1 w-6 rounded-full bg-primary" />
@@ -1244,15 +1216,10 @@ export default function QuizSessionPage({
             {questions.map((q, i) => {
               const state = answerStates[q.questionId];
               const isCurrent = i === currentIndex;
-              const reviewQ = quizReview?.questions.find(rq => rq.questionId === q.questionId);
 
               let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
 
-              if (reviewQ) {
-                cls = reviewQ.isCorrect
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
-                  : 'border-destructive/40 bg-destructive/10 text-destructive';
-              } else if (state === 'correct') {
+              if (state === 'correct') {
                 cls = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600';
               } else if (state === 'incorrect') {
                 cls = 'border-destructive/40 bg-destructive/10 text-destructive';

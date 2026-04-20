@@ -21,8 +21,8 @@ export async function fetchLecturerTriageList(classId: string): Promise<Lecturer
       params: { classId },
     });
     return (data ?? []).map(normalizeTriageRow).filter((x): x is LecturerTriageRow => x !== null);
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
+  } catch {
+    return [];
   }
 }
 

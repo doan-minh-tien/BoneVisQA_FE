@@ -398,7 +398,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                 Import Questions
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Import từ file Excel (.xlsx/.xls), CSV, JSON hoặc paste trực tiếp.
+                Import from Excel (.xlsx/.xls), CSV, JSON files or paste directly.
               </p>
             </div>
             <button
@@ -441,7 +441,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
 
             {/* Sample Download */}
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>Tải file mẫu:</span>
+              <span>Download sample files:</span>
               <button type="button" onClick={() => downloadSample('csv')} className="text-primary hover:underline cursor-pointer">
                 CSV
               </button>
@@ -454,7 +454,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                 TXT
               </button>
               <span className="ml-2">
-                (Cột: questionText, type, optionA, optionB, optionC, optionD, correctAnswer, caseTitle)
+                (Columns: questionText, type, optionA, optionB, optionC, optionD, correctAnswer, caseTitle)
               </span>
             </div>
 
@@ -468,8 +468,8 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                   className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Hỗ trợ định dạng tự do: tách câu bằng &quot;Câu 1&quot;, &quot;1.&quot; hoặc &quot;Question 1&quot;;
-                  đáp án gõ &quot;Answer: X&quot; (A–D); case ghi &quot;Case: Tên case&quot;.
+                  Supports free-form format: separate questions with &quot;Q1&quot;, &quot;1.&quot; or &quot;Question 1&quot;;
+                  answers with &quot;Answer: X&quot; (A–D); case with &quot;Case: Case name&quot;.
                 </p>
               </div>
             ) : (
@@ -506,14 +506,14 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                       }}
                       className="mt-2 flex items-center gap-1 text-xs text-destructive hover:underline cursor-pointer"
                     >
-                      <Trash2 className="h-3 w-3" /> Xóa file
+                      <Trash2 className="h-3 w-3" /> Remove file
                     </button>
                   </>
                 ) : (
                   <>
                     <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                    <p className="font-semibold text-card-foreground">Kéo thả file vào đây</p>
-                    <p className="mt-1 text-xs text-muted-foreground">hoặc click để chọn file (.xlsx, .xls, .csv, .json, .txt)</p>
+                    <p className="font-semibold text-card-foreground">Drag and drop file here</p>
+                    <p className="mt-1 text-xs text-muted-foreground">or click to select file (.xlsx, .xls, .csv, .json, .txt)</p>
                   </>
                 )}
               </div>
@@ -532,14 +532,14 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
               <div className="mt-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-card-foreground">
-                    Preview — {parseResult.questions.length} câu hỏi được nhận diện
+                    Preview — {parseResult.questions.length} questions detected
                   </h3>
                   <button
                     type="button"
                     onClick={reset}
                     className="text-xs text-muted-foreground hover:text-destructive cursor-pointer"
                   >
-                    Xóa &amp; nhập lại
+                    Clear &amp; reimport
                   </button>
                 </div>
                 <div className="max-h-[min(16rem,35svh)] space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-4">
@@ -568,7 +568,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                   ))}
                   {parseResult.questions.length > 10 && (
                     <p className="text-center text-xs text-muted-foreground">
-                      … và {parseResult.questions.length - 10} câu hỏi nữa
+                      … and {parseResult.questions.length - 10} more questions
                     </p>
                   )}
                 </div>
@@ -582,8 +582,8 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {mode === 'paste'
-                  ? 'Parse tự động từ text. Kiểm tra preview trước khi import.'
-                  : 'Hỗ trợ định dạng chuẩn CSV/JSON/Excel. Kiểm tra preview trước khi import.'}
+                  ? 'Auto-parse from text. Check the preview before importing.'
+                  : 'Supports standard CSV/JSON/Excel format. Check the preview before importing.'}
               </span>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-3">
@@ -602,7 +602,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
                   className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                 >
                   {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Import {parseResult.questions.length} câu hỏi
+                  Import {parseResult.questions.length} questions
                 </button>
               ) : (
                 <button

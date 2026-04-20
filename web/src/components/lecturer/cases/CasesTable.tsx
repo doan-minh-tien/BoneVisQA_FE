@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import type { CaseDto } from '@/lib/api/types';
-import { Button } from '@/components/ui/button';
 
 const difficultyColors: Record<string, string> = {
   easy: 'bg-success/10 text-success',
@@ -17,8 +16,6 @@ interface CasesTableProps {
   selectedCases: Set<string>;
   onSelectAll: (allIds: Set<string>) => void;
   onSelect: (id: string) => void;
-  onToggleApprove: (c: CaseDto) => void;
-  togglingIds: Set<string>;
 }
 
 export default function CasesTable({
@@ -26,8 +23,6 @@ export default function CasesTable({
   selectedCases,
   onSelectAll,
   onSelect,
-  onToggleApprove,
-  togglingIds,
 }: CasesTableProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -78,15 +73,10 @@ export default function CasesTable({
             <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Created
             </th>
-            <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Actions
-            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {cases.map((c) => {
-            const isToggling = togglingIds.has(c.id);
-            return (
+          {cases.map((c) => (
               <tr key={c.id} className="transition-colors hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <input
@@ -161,17 +151,18 @@ export default function CasesTable({
                   </span>
                 </td>
                 <td className="px-5 py-3 text-center">
-                  {c.isApproved ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Yes
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
-                      <ShieldOff className="w-3.5 h-3.5" />
-                      No
-                    </span>
-                  )}
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium ${
+                      c.isApproved ? 'text-success' : 'text-warning'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        c.isApproved ? 'bg-success' : 'bg-warning'
+                      }`}
+                    />
+                    {c.isApproved ? 'Yes' : 'No'}
+                  </span>
                 </td>
                 <td className="px-5 py-3 text-sm text-muted-foreground">
                   {c.createdAt
@@ -182,27 +173,8 @@ export default function CasesTable({
                       })
                     : '—'}
                 </td>
-                <td className="px-5 py-3 text-right">
-                  <Button
-                    onClick={() => onToggleApprove(c)}
-                    disabled={isToggling}
-                    variant="outline"
-                    size="sm"
-                    className={c.isApproved ? '!text-warning' : '!text-success'}
-                  >
-                    {isToggling ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : c.isApproved ? (
-                      <ShieldOff className="w-3.5 h-3.5" />
-                    ) : (
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                    )}
-                    {isToggling ? '...' : c.isApproved ? 'Unapprove' : 'Approve'}
-                  </Button>
-                </td>
               </tr>
-            );
-          })}
+          ))}
         </tbody>
       </table>
     </div>

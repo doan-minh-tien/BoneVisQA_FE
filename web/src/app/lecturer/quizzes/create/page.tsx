@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,20 +10,17 @@ import {
   Percent,
   Save,
   X,
-  FilePenLine,
-  HelpCircle,
   ListChecks,
-  Eye,
   Send,
-  GripVertical,
   Trash2,
   Pencil,
   ArrowLeft,
   UploadCloud,
-  Upload,
-  ShieldCheck,
   Sparkles,
-  Lightbulb,
+  CheckCircle2,
+  ChevronDown,
+  Settings2,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -47,6 +44,11 @@ import type {
 } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
+import QuestionCard from '@/components/lecturer/quizzes/QuestionCard';
+
+const QUESTIONS_PER_PAGE = 3;
+const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
+const POINTS_ROTATION = [10, 15, 5] as const;
 
 const CLASSIFICATION_OPTIONS = [
   'Resident Year 1',
@@ -70,166 +72,9 @@ const DIFFICULTY_OPTIONS = [
   { value: 'Hard', label: 'Hard' },
 ] as const;
 
-const XRAY_PREVIEW =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAoOGYnw5n4ew-n9Wmv5ZA4YaIuF1gtwGKUQaTZQrkkKXdcm-gLF6sirEOSKBedDTN_IR5NoWWPVV_g4xTKmAcdr3Dtc4O9cgyKfz2Ej5jCrA6edYswSo0Z_sPwKyR-sdadFXKU0hpWlQx1J1U1PUYqeQsg_0TtMzTnYfebYjOhOdHFc6ZcHoceiHyIJJWZ9jSCSdcO4CU1GBGuLbvOK35yDpoi5jRK7YOfOZ0B-jiwF208iK89Z51TTdakoZ6oHGl_eo6h_iMcmq0';
-
-type QuestionLike = CreateQuizQuestionRequest | QuizQuestionDto;
-
-function classificationToBand(c: string): 'RESIDENT' | 'SPECIALIST' | 'FELLOW' {
-  if (c.startsWith('Resident Year 1')) return 'RESIDENT';
-  if (c.startsWith('Resident Year 2')) return 'SPECIALIST';
-  if (c.includes('Advanced')) return 'FELLOW';
-  return 'SPECIALIST';
-}
-
-function typeLabel(type: string | null | undefined): string {
-  const t = (type || 'MultipleChoice').toLowerCase();
-  if (t === 'annotation' || t === 'draw') return 'Identification (Point)';
-  if (t === 'essay') return 'Essay';
-  return 'Multiple Choice';
-}
-
-function mcOptions(q: QuestionLike) {
-  return (
-    [
-      { key: 'A' as const, text: q.optionA },
-      { key: 'B' as const, text: q.optionB },
-      { key: 'C' as const, text: q.optionC },
-      { key: 'D' as const, text: q.optionD },
-    ] as const
-  ).filter((o) => o.text);
-}
-
-function CreateQuizQuestionPreview({
-  index,
-  question,
-  onEdit,
-  onDelete,
-}: {
-  index: number;
-  question: QuestionLike;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const t = (question.type || 'MultipleChoice').toLowerCase();
-  const isEssay = t === 'essay';
-  const opts = mcOptions(question).map((o) => ({ key: o.key, text: o.text! }));
-  const correct = (question.correctAnswer || '').trim();
-  const essayAnswer = (question as any).essayAnswer || (question as any).EssayAnswer;
-
-  return (
-    <div className="group relative mb-4 rounded-xl border border-border/60 bg-muted/30 p-6 transition-all last:mb-0 hover:border-primary/30">
-      <div className="mb-4 flex justify-between">
-        <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-black uppercase tracking-tight text-primary">
-          Question {String(index).padStart(2, '0')} • {typeLabel(question.type)}
-        </span>
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="rounded p-1 text-muted-foreground hover:text-primary"
-            aria-label="Edit"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <span className="cursor-grab p-1 text-muted-foreground" aria-hidden>
-            <GripVertical className="h-4 w-4" />
-          </span>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded p-1 text-muted-foreground hover:text-destructive"
-            aria-label="Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="mb-4 w-full text-left text-sm font-semibold text-card-foreground"
-      >
-        {question.questionText}
-      </button>
-      {isEssay && essayAnswer ? (
-        <div className="rounded-lg border border-border/60 bg-card p-4">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Model Answer / Guidelines
-          </p>
-          <p className="whitespace-pre-wrap text-sm text-card-foreground">{essayAnswer}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {opts.map(({ key, text }) => {
-            const isCorrect = correct === key;
-            return (
-              <div
-                key={key}
-                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
-                  isCorrect
-                    ? 'border-primary/40 bg-primary/5'
-                    : 'border-border/60 bg-card hover:bg-muted/50'
-                }`}
-                onClick={onEdit}
-                role="presentation"
-              >
-                <div
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                    isCorrect ? 'border-primary' : 'border-muted-foreground/30'
-                  }`}
-                >
-                  {isCorrect ? <div className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
-                </div>
-                <span className="text-sm font-medium text-card-foreground">{text}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  on,
-  onChange,
-}: {
-  label: string;
-  on: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className="group flex w-full cursor-pointer items-center justify-between rounded-xl py-1 text-left"
-    >
-      <span className="text-sm font-medium text-card-foreground">{label}</span>
-      <span
-        className={`relative h-6 w-12 rounded-full transition-colors ${
-          on ? 'bg-cyan-500' : 'bg-muted'
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full border border-border bg-white shadow-sm transition-all ${
-            on ? 'right-1' : 'left-1'
-          }`}
-        />
-      </span>
-    </button>
-  );
-}
-
 export default function CreateQuizPage() {
   const router = useRouter();
   const toast = useToast();
-  const curriculaRef = useRef<HTMLElement>(null);
-  const diagnosticRef = useRef<HTMLElement>(null);
-  const [activeStep, setActiveStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,8 +97,6 @@ export default function CreateQuizPage() {
   const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>(
     'Resident Year 1',
   );
-  const [randomizeQuestions, setRandomizeQuestions] = useState(true);
-  const [allowRetakes, setAllowRetakes] = useState(false);
 
   const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
   const [casePickerOpen, setCasePickerOpen] = useState(false);
@@ -275,6 +118,11 @@ export default function CreateQuizPage() {
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<AIQuizQuestion[]>([]);
   const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
+
+  // Success dialog state
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [lastCreatedQuizId, setLastCreatedQuizId] = useState<string | null>(null);
+  const [lastCreatedQuizTitle, setLastCreatedQuizTitle] = useState<string>('');
 
   const allQuestions = createdQuizId ? questions : tempQuestions;
 
@@ -333,13 +181,6 @@ export default function CreateQuizPage() {
     setReferenceCaseIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
-  };
-
-  const band = classificationToBand(classification);
-
-  const scrollTo = (ref: { current: HTMLElement | null }, step: 1 | 2) => {
-    setActiveStep(step);
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const toUTC = (local: string) => {
@@ -524,7 +365,9 @@ export default function CreateQuizPage() {
         await addQuizQuestionsBatched(quiz.id, tempQuestions);
       }
       toast.success('Draft quiz saved.');
-      router.push(`/lecturer/quizzes/${quiz.id}`);
+      setLastCreatedQuizId(quiz.id);
+      setLastCreatedQuizTitle(quiz.title);
+      setSuccessDialogOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save draft');
       toast.error(err instanceof Error ? err.message : 'Failed to save draft');
@@ -536,12 +379,10 @@ export default function CreateQuizPage() {
   const handleCreateQuiz = async () => {
     if (!formData.title.trim()) {
       setError('Please enter an assessment title');
-      scrollTo(curriculaRef, 1);
       return;
     }
     if (allQuestions.length === 0) {
       setError('Add at least one question before publishing.');
-      scrollTo(diagnosticRef, 2);
       return;
     }
     setLoading(true);
@@ -551,13 +392,29 @@ export default function CreateQuizPage() {
       setCreatedQuizId(quiz.id);
       await addQuizQuestionsBatched(quiz.id, tempQuestions);
       toast.success('Quiz created and published successfully.');
-      router.push(`/lecturer/quizzes/${quiz.id}`);
+      setLastCreatedQuizId(quiz.id);
+      setLastCreatedQuizTitle(quiz.title);
+      setSuccessDialogOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quiz');
       toast.error(err instanceof Error ? err.message : 'Failed to create quiz');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSuccessGoToEdit = () => {
+    setSuccessDialogOpen(false);
+    if (lastCreatedQuizId) {
+      router.push(`/lecturer/quizzes/${lastCreatedQuizId}`);
+    } else {
+      router.push('/lecturer/quizzes');
+    }
+  };
+
+  const handleSuccessGoToList = () => {
+    setSuccessDialogOpen(false);
+    router.push('/lecturer/quizzes');
   };
 
   const handleAddQuestion = () => {
@@ -636,137 +493,239 @@ export default function CreateQuizPage() {
     }
   }, [createdQuizId]);
 
-  const estMinutes = Math.max(1, parseInt(formData.timeLimit, 10) || 12);
-  const complexityBadge = useMemo(() => {
-    const n = allQuestions.length;
-    if (classification.includes('Advanced')) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
-    if (n >= 5) return { label: 'LEVEL 3', className: 'bg-amber-100 text-amber-950' };
-    if (n >= 2) return { label: 'LEVEL 2', className: 'bg-sky-100 text-sky-900' };
-    return { label: 'LEVEL 1', className: 'bg-muted text-muted-foreground' };
-  }, [allQuestions.length, classification]);
-
-  const tags = useMemo(() => {
-    const raw = formData.topic?.trim();
-    return raw ? [raw] : [];
-  }, [formData.topic]);
-
-  const insightsText = useMemo(() => {
-    if (referenceCaseIds.length > 0) {
-      return `${referenceCaseIds.length} reference case(s) tagged for this assessment.`;
-    }
-    return 'Tag cases from the library to anchor questions in real imaging scenarios.';
-  }, [referenceCaseIds.length]);
-
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
-      {/* Breadcrumb header — no duplicate sticky nav */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/lecturer/quizzes"
-            className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Quizzes
-          </Link>
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-primary">Create Quiz</p>
+          <h1 className="font-['Manrope',sans-serif] text-2xl font-bold leading-tight tracking-tight text-card-foreground">
+            {formData.title || 'New Quiz'}
+          </h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Configure quiz settings and add questions.
+          </p>
         </div>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleSaveDraft}
-          className="flex items-center gap-2 rounded-full border border-border bg-card px-6 py-2.5 text-sm font-bold text-primary transition-colors hover:bg-muted/60 disabled:opacity-50"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save draft'}
-        </button>
-      </div>
-
-      {/* Stepper — Basic info / Questions */}
-      <div className="mb-2 flex justify-center">
-        <div className="relative flex w-full max-w-md items-center">
+        <div className="flex shrink-0 gap-2 mt-1">
           <button
             type="button"
-            onClick={() => scrollTo(curriculaRef, 1)}
-            className="z-10 flex flex-1 flex-col items-center"
+            disabled={loading}
+            onClick={handleSaveDraft}
+            className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground transition-all hover:bg-muted/60 disabled:opacity-50"
           >
-            <div
-              className={`mb-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-lg ${
-                activeStep === 1 ? 'bg-gradient-to-br from-primary to-primary/90' : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              1
-            </div>
-            <span
-              className={`text-xs font-bold uppercase ${activeStep === 1 ? 'text-primary' : 'text-muted-foreground'}`}
-            >
-              Basic info
-            </span>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save draft
           </button>
-          <div className="pointer-events-none absolute left-1/4 right-1/4 top-5 h-0.5 bg-border" aria-hidden />
           <button
             type="button"
-            onClick={() => scrollTo(diagnosticRef, 2)}
-            className="z-10 flex flex-1 flex-col items-center"
+            disabled={loading || allQuestions.length === 0}
+            onClick={handleCreateQuiz}
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-medium text-white transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-50"
           >
-            <div
-              className={`mb-2 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
-                activeStep === 2
-                  ? 'bg-gradient-to-br from-primary to-primary/90 text-white shadow-lg'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              2
-            </div>
-            <span
-              className={`text-xs font-bold uppercase ${activeStep === 2 ? 'text-primary' : 'text-muted-foreground'}`}
-            >
-              Questions
-            </span>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Publish
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-12 gap-8">
-        <div className="col-span-12 space-y-8 lg:col-span-8">
-          <section
-            ref={curriculaRef}
-            className="rounded-xl border border-border/40 bg-card p-8 shadow-sm"
-          >
-            <div className="mb-8">
-              <h2 className="flex items-center gap-2 text-xl font-bold text-card-foreground">
-                <HelpCircle className="h-5 w-5 text-primary" aria-hidden />
-                Curricula details
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Define the foundation of this clinical assessment.
-              </p>
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <ListChecks className="h-4 w-4 text-primary" />
             </div>
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Quiz title
-                  </label>
-                  <input
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="e.g. Advanced Musculoskeletal Pathology"
-                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
-                  />
+          </div>
+          <p className="text-xs font-medium text-muted-foreground">Questions</p>
+          <p className="text-xl font-bold text-card-foreground">{allQuestions.length}</p>
+        </div>
+        <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/10">
+              <Timer className="h-4 w-4 text-secondary" />
+            </div>
+          </div>
+          <p className="text-xs font-medium text-muted-foreground">Time Limit</p>
+          <p className="text-xl font-bold text-card-foreground">{formData.timeLimit || '—'} min</p>
+        </div>
+        <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/10">
+              <Settings2 className="h-4 w-4 text-secondary" />
+            </div>
+          </div>
+          <p className="text-xs font-medium text-muted-foreground">Difficulty</p>
+          <p className="text-xl font-bold text-card-foreground">{formData.difficulty || '—'}</p>
+        </div>
+        <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
+              <Percent className="h-4 w-4 text-warning" />
+            </div>
+          </div>
+          <p className="text-xs font-medium text-muted-foreground">Pass Score</p>
+          <p className="text-xl font-bold text-card-foreground">{formData.passingScore || '—'}%</p>
+        </div>
+      </div>
+
+      {/* Main Content - Bento Layout */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* Questions List (left column) */}
+        <div className="order-1 col-span-12 lg:order-1 lg:col-span-8">
+          <div className="rounded-2xl border border-border/40 bg-card shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="flex items-center gap-2 font-semibold text-sm text-card-foreground">
+                <Settings2 className="h-4 w-4 text-primary" />
+                Questions <span className="text-muted-foreground">({allQuestions.length})</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-card-foreground border border-border"
+                >
+                  <UploadCloud className="h-3.5 w-3.5" />
+                  Import
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddQuestion}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-primary/90"
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  Add Question
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4">
+              {/* AI Questions Section */}
+              {aiQuestions.length > 0 && (
+                <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm font-bold text-purple-700">
+                        AI Generated Questions ({aiQuestions.length})
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAddAIQuestionsToQuiz}
+                        className="h-8 text-xs"
+                      >
+                        Add to Quiz
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleCreateAndAddAIQuestions}
+                        className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
+                      >
+                        Create Quiz now
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {aiQuestions.map((q, index) => (
+                      <div key={index} className="rounded-lg border border-purple-200 bg-white p-3">
+                        <div className="mb-2 flex items-start gap-2">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
+                            {index + 1}
+                          </span>
+                          <p className="text-sm font-medium">{q.questionText}</p>
+                        </div>
+                        <div className="ml-9 grid grid-cols-2 gap-1 text-xs">
+                          <span className={q.correctAnswer === 'A' ? 'text-green-600 font-bold' : ''}>A: {q.optionA}</span>
+                          <span className={q.correctAnswer === 'B' ? 'text-green-600 font-bold' : ''}>B: {q.optionB}</span>
+                          <span className={q.correctAnswer === 'C' ? 'text-green-600 font-bold' : ''}>C: {q.optionC}</span>
+                          <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Classification
-                  </label>
+              )}
+
+              {allQuestions.length === 0 ? (
+                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/20 p-6">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+                    <PlusCircle className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="mb-2 font-medium text-sm text-card-foreground">No questions yet</h3>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddQuestion}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      <Plus className="h-3 w-3" /> Add Question
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground hover:bg-muted"
+                    >
+                      <UploadCloud className="h-3 w-3" /> Import
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {allQuestions.map((question, index) => (
+                    <QuestionCard
+                      key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
+                      question={question as QuizQuestionDto}
+                      variant="curated"
+                      onEdit={() => {
+                        if (!createdQuizId) {
+                          setEditingQuestion(question as CreateQuizQuestionRequest);
+                          setEditingTempIndex(index);
+                          setEditorOpen(true);
+                        } else {
+                          handleEditQuestion(question as QuizQuestionDto);
+                        }
+                      }}
+                      onDelete={() =>
+                        handleDeleteQuestion(
+                          !createdQuizId ? String(index) : (question as QuizQuestionDto).id,
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Quiz Settings (right column) */}
+        <div className="order-2 col-span-12 lg:order-2 lg:col-span-4">
+          <div className="rounded-2xl border border-border/40 bg-card p-5 shadow-sm">
+            <h3 className="flex items-center gap-2 font-semibold text-sm text-card-foreground mb-4">
+              <Settings2 className="h-4 w-4 text-primary" />
+              Quiz Settings
+            </h3>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Title</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Quiz title..."
+                  className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Classification</label>
                   <select
                     value={classification}
                     onChange={(e) => setClassification(e.target.value as (typeof CLASSIFICATION_OPTIONS)[number])}
-                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground focus:ring-2 focus:ring-primary"
+                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
                   >
                     {CLASSIFICATION_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>
@@ -775,31 +734,12 @@ export default function CreateQuizPage() {
                     ))}
                   </select>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Topic
-                  </label>
-                  <select
-                    value={formData.topic}
-                    onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">Select topic (optional)</option>
-                    {TOPIC_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Difficulty
-                  </label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
                   <select
                     value={formData.difficulty}
                     onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                    className="h-12 rounded-lg border-0 bg-muted/60 px-4 font-medium text-card-foreground focus:ring-2 focus:ring-primary"
+                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
                   >
                     {DIFFICULTY_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -809,462 +749,124 @@ export default function CreateQuizPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Clinical description
-                </label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Topic</label>
+                <input
+                  list="topic-options-create"
+                  type="text"
+                  value={formData.topic}
+                  onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+                  placeholder="Select or type topic..."
+                  className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                />
+                <datalist id="topic-options-create">
+                  {TOPIC_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Class</label>
+                <div className="relative">
+                  <select
+                    value={formData.classId}
+                    onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
+                    className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Select class…</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.className}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Opens</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.openTime}
+                    onChange={(e) => setFormData({ ...formData, openTime: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-muted/50 px-2 py-2 text-xs outline-none transition-all focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Closes</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.closeTime}
+                    onChange={(e) => setFormData({ ...formData, closeTime: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-muted/50 px-2 py-2 text-xs outline-none transition-all focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Time (min)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.timeLimit}
+                    onChange={(e) => setFormData({ ...formData, timeLimit: e.target.value.replace(/\D/g, '')})}
+                    className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                    placeholder="30"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Pass (%)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.passingScore}
+                    onChange={(e) => setFormData({ ...formData, passingScore: e.target.value.replace(/\D/g, '').slice(0, 3)})}
+                    className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                    placeholder="80"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Description</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Provide learning objectives and case context…"
-                  rows={3}
-                  className="rounded-lg border-0 bg-muted/60 p-4 font-medium text-card-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
+                  rows={2}
+                  placeholder="Description..."
+                  className="w-full resize-none rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <label className="flex h-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border transition-colors hover:bg-muted/50">
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                  <span className="mt-1 text-[10px] font-bold text-muted-foreground">Attach DICOM</span>
-                  <input type="file" accept=".dcm,.jpg,.jpeg,.png" className="hidden" disabled />
-                </label>
-                <div className="col-span-2 flex items-center gap-4 rounded-lg bg-secondary/15 p-4">
-                  <div className="rounded-lg bg-secondary p-2 text-white">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-secondary">Verified curriculum</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Aligns with standard radiology board learning objectives for this track.
-                    </p>
-                  </div>
-                </div>
-              </div>
+            </div>
+          </div>
 
-              <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  Schedule &amp; scoring
-                </p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs text-muted-foreground">Class</label>
-                    <select
-                      value={formData.classId}
-                      onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm"
-                    >
-                      <option value="">Optional</option>
-                      {classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>
-                          {cls.className} — {cls.semester}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                      <Timer className="h-3 w-3" /> Time limit (min)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.timeLimit}
-                      onChange={(e) => setFormData({ ...formData, timeLimit: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                      <Percent className="h-3 w-3" /> Passing (%)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={formData.passingScore}
-                      onChange={(e) => setFormData({ ...formData, passingScore: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-muted-foreground">Opens</label>
-                    <input
-                      type="datetime-local"
-                      value={formData.openTime}
-                      onChange={(e) => setFormData({ ...formData, openTime: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-muted-foreground">Closes</label>
-                    <input
-                      type="datetime-local"
-                      value={formData.closeTime}
-                      onChange={(e) => setFormData({ ...formData, closeTime: e.target.value })}
-                      className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
+          {/* Quick Actions Card */}
+          <div className="mt-4 rounded-2xl border border-secondary/20 bg-secondary/10 p-5">
+            <h3 className="font-semibold text-sm text-card-foreground mb-3">Quick Actions</h3>
+            <div className="space-y-2">
               <button
                 type="button"
                 onClick={openCasePicker}
-                className="w-full rounded-lg border border-dashed border-border py-3 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
               >
-                Tag reference cases ({referenceCaseIds.length} selected) — open library
+                Tag reference cases ({referenceCaseIds.length})
               </button>
               {referenceCaseIds.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {referenceCaseIds.map((id) => {
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {referenceCaseIds.slice(0, 3).map((id) => {
                     const c = caseLibrary.find((x) => x.id === id);
                     return (
                       <span
                         key={id}
-                        className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-3 py-1 text-xs font-semibold text-secondary"
+                        className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-semibold text-secondary"
                       >
-                        {c?.title || id.slice(0, 8)}
-                        <button
-                          type="button"
-                          onClick={() => toggleReferenceCase(id)}
-                          className="rounded p-0.5 hover:bg-secondary/20"
-                          aria-label="Remove"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        {c?.title?.slice(0, 15) || id.slice(0, 8)}
                       </span>
                     );
                   })}
+                  {referenceCaseIds.length > 3 && (
+                    <span className="text-[10px] text-muted-foreground">+{referenceCaseIds.length - 3} more</span>
+                  )}
                 </div>
               )}
-
-              {/* ========== AI Quiz Section ========== */}
-              <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-600" />
-                  <span className="text-sm font-bold text-purple-700">
-                    AI Quiz Assistant
-                  </span>
-                </div>
-                <p className="mb-4 text-xs text-muted-foreground">
-                Use AI to automatically create quizzes or suggest questions from selected cases.
-                </p>
-
-                <div className="space-y-3">
-                  {/* Question Count */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">Number of questions:</label>
-                    <select
-                      value={questionCount}
-                      onChange={(e) => setQuestionCount(parseInt(e.target.value))}
-                      className="rounded-md border border-border bg-card px-2 py-1 text-xs"
-                    >
-                      <option value={3}>3 questions</option>
-                      <option value={5}>5 questions</option>
-                      <option value={10}>10 questions</option>
-                      <option value={15}>15 questions</option>
-                    </select>
-                  </div>
-
-                  {/* AI Buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAIAutoGenerate}
-                      disabled={aiGenerating || !formData.topic}
-                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
-                    >
-                      {aiGenerating ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          AI Auto-Generate
-                        </>
-                      )}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAISuggestFromCases}
-                      disabled={aiSuggesting || referenceCaseIds.length === 0}
-                      className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-100"
-                    >
-                      {aiSuggesting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Suggesting...
-                        </>
-                      ) : (
-                        <>
-                          <Lightbulb className="mr-2 h-4 w-4" />
-                          AI Suggest from Cases
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {!formData.topic && (
-                    <p className="text-xs text-orange-600">
-                      Please select a Topic to use AI Auto-Generate
-                    </p>
-                  )}
-                  {referenceCaseIds.length === 0 && (
-                    <p className="text-xs text-orange-600">
-                      Select Cases to use AI Suggest
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <details className="rounded-lg border border-border/60 bg-muted/10 p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-card-foreground">
-                  Advanced quiz options
-                </summary>
-                <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
-                  <ToggleRow label="Randomize questions" on={randomizeQuestions} onChange={setRandomizeQuestions} />
-                  <ToggleRow label="Allow retakes" on={allowRetakes} onChange={setAllowRetakes} />
-                  <p className="text-[11px] text-muted-foreground">
-                    These options are applied when the quiz is published.
-                  </p>
-                </div>
-              </details>
-            </div>
-          </section>
-
-          <section
-            ref={diagnosticRef}
-            className="rounded-xl border border-border/40 bg-card p-8 shadow-sm"
-          >
-            <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-bold text-card-foreground">
-                  <ListChecks className="h-5 w-5 text-primary" aria-hidden />
-                  Diagnostic questions
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Populate the assessment with high-fidelity case questions.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddQuestion}
-                className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/10"
-              >
-                <PlusCircle className="h-4 w-4" />
-                New question
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted/80 hover:text-card-foreground"
-              >
-                <UploadCloud className="h-4 w-4" />
-                Import
-              </button>
-            </div>
-
-            {allQuestions.length > 0 ? (
-              <div>
-                {/* AI Questions Section */}
-                {aiQuestions.length > 0 && (
-                  <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-purple-600" />
-                        <span className="text-sm font-bold text-purple-700">
-                          AI Generated Questions ({aiQuestions.length})
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleAddAIQuestionsToQuiz}
-                          className="h-8 text-xs"
-                        >
-                          Add to Quiz
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          onClick={handleCreateAndAddAIQuestions}
-                          className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
-                        >
-                          Create Quiz now
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      {aiQuestions.map((q, index) => (
-                        <div key={index} className="rounded-lg border border-purple-200 bg-white p-3">
-                          <div className="mb-2 flex items-start gap-2">
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
-                              {index + 1}
-                            </span>
-                            <p className="text-sm font-medium">{q.questionText}</p>
-                          </div>
-                          <div className="ml-7 grid grid-cols-2 gap-1 text-xs">
-                            <span className={q.correctAnswer === 'A' ? 'text-green-600 font-bold' : ''}>A: {q.optionA}</span>
-                            <span className={q.correctAnswer === 'B' ? 'text-green-600 font-bold' : ''}>B: {q.optionB}</span>
-                            <span className={q.correctAnswer === 'C' ? 'text-green-600 font-bold' : ''}>C: {q.optionC}</span>
-                            <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
-                          </div>
-                          <div className="ml-7 mt-2">
-                            <span className="text-xs text-green-600">Correct answer: {q.correctAnswer}</span>
-                            {q.caseTitle && (
-                              <span className="ml-2 text-xs text-muted-foreground">Case: {q.caseTitle}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Manual Questions */}
-                {allQuestions.map((question, index) => (
-                  <CreateQuizQuestionPreview
-                    key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
-                    index={index + 1}
-                    question={question as QuestionLike}
-                    onEdit={() => {
-                      if (!createdQuizId) {
-                        setEditingQuestion(question as CreateQuizQuestionRequest);
-                        setEditingTempIndex(index);
-                        setEditorOpen(true);
-                      } else {
-                        handleEditQuestion(question as QuizQuestionDto);
-                      }
-                    }}
-                    onDelete={() =>
-                      handleDeleteQuestion(
-                        !createdQuizId ? String(index) : (question as QuizQuestionDto).id,
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={handleAddQuestion}
-              className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/50 py-12 text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-            >
-              <PlusCircle className="mb-2 h-10 w-10 opacity-60" />
-              <span className="text-sm font-bold uppercase tracking-widest">Add question section</span>
-            </button>
-          </section>
-        </div>
-
-        <div className="col-span-12 space-y-6 lg:col-span-4">
-          <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-6 text-white">
-            <div className="pointer-events-none absolute inset-0 opacity-25">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={XRAY_PREVIEW} alt="" className="h-full w-full object-cover" />
-            </div>
-            <div className="relative z-10">
-              <h3 className="text-lg font-bold">Quiz live preview</h3>
-              <p className="mb-6 text-xs text-white/70">
-                See how students will interact with your diagnostic modules after you publish.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  if (allQuestions.length === 0) {
-                    setError('Add at least one question to use preview.');
-                    scrollTo(diagnosticRef, 2);
-                    return;
-                  }
-                  setError(null);
-                }}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/20 bg-white/15 font-bold text-white backdrop-blur-md transition-colors hover:bg-white/25"
-              >
-                <Eye className="h-4 w-4" />
-                Preview quiz
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-6 rounded-xl border border-border/40 bg-card p-6 shadow-sm">
-            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground">
-              Assessment metrics
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Est. completion time</span>
-                <span className="text-sm font-bold text-primary">{estMinutes} min</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Complexity score</span>
-                <span
-                  className={`rounded px-2 py-0.5 text-[10px] font-bold ${complexityBadge.className}`}
-                >
-                  {complexityBadge.label}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Tagged cases</span>
-                <span className="text-sm font-bold text-primary">
-                  {String(referenceCaseIds.length).padStart(2, '0')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Students (class)</span>
-                <span className="text-sm font-bold text-primary">
-                  {!formData.classId?.trim() ||
-                  formData.classId === '00000000-0000-0000-0000-000000000000'
-                    ? '—'
-                    : createStatsLoading
-                      ? '…'
-                      : String(createClassStats?.totalStudents ?? 0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Class avg. quiz</span>
-                <span className="text-sm font-bold text-primary">
-                  {!formData.classId?.trim() ||
-                  formData.classId === '00000000-0000-0000-0000-000000000000'
-                    ? '—'
-                    : createStatsLoading
-                      ? '…'
-                      : createClassStats?.avgQuizScore != null
-                        ? `${Math.round(createClassStats.avgQuizScore)}%`
-                        : '—'}
-                </span>
-              </div>
-            </div>
-            <div className="border-t border-border/60 pt-4">
-              <button
-                type="button"
-                disabled={loading || allQuestions.length === 0}
-                onClick={handleCreateQuiz}
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-primary to-primary/90 font-bold text-primary-foreground shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                Finalize &amp; publish
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-cyan-500/10 p-6">
-            <div className="flex gap-3">
-              <Lightbulb className="h-5 w-5 shrink-0 text-cyan-800" />
-              <div>
-                <h4 className="text-sm font-bold text-cyan-950">Clinical tip</h4>
-                <p className="mt-1 text-xs leading-relaxed text-cyan-900/80">
-                  Include differential diagnoses for every question to improve resident critical thinking.
-                  {tags.length > 0 ? ` Topics: ${tags.slice(0, 3).join(', ')}.` : ''}
-                </p>
-                <p className="mt-2 text-[11px] text-muted-foreground">{insightsText}</p>
-              </div>
             </div>
           </div>
         </div>
@@ -1368,6 +970,48 @@ export default function CreateQuizPage() {
         onClose={() => setImportOpen(false)}
         onImport={handleImportQuestions}
       />
+
+      {/* Success Dialog */}
+      {successDialogOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            aria-label="Dismiss"
+            onClick={handleSuccessGoToList}
+          />
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-border/60 bg-card p-6 text-center shadow-xl">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary/15">
+                <CheckCircle2 className="h-7 w-7 text-secondary" />
+              </div>
+            </div>
+            <h3 className="mb-1 font-semibold text-base text-card-foreground">
+              {lastCreatedQuizTitle || 'Quiz'} created successfully!
+            </h3>
+            <p className="mb-5 text-sm text-muted-foreground">
+              What would you like to do next?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleSuccessGoToEdit}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-primary/90"
+              >
+                <Pencil className="h-4 w-4" />
+                Continue editing
+              </button>
+              <button
+                type="button"
+                onClick={handleSuccessGoToList}
+                className="w-full rounded-xl border border-border bg-muted/60 px-4 py-2.5 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
+              >
+                Back to Quizzes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

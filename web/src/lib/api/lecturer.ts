@@ -251,14 +251,6 @@ export async function assignQuizToClass(
 //   }
 // }
 
-export async function approveCase(caseId: string, isApproved: boolean): Promise<void> {
-  try {
-    await http.put(`/api/lecturer/cases/${caseId}/approve`, { isApproved });
-  } catch (e) {
-    throw new Error(getApiErrorMessage(e));
-  }
-}
-
 export async function getClassAnnouncements(classId: string): Promise<Announcement[]> {
   try {
     const { data } = await http.get<unknown[]>(`/api/lecturer/classes/${classId}/announcements`);
