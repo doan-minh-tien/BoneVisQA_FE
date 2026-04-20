@@ -125,7 +125,7 @@ export function shouldSuppressLeakedMedicalJsonMarkdown(markdown: string | undef
   if (s.startsWith('```')) {
     s = s
       .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```\s*$/s, '')
+      .replace(/\s*```\s*$/, '')
       .trim();
   }
   if (!s.startsWith('{')) return false;

@@ -1,5 +1,6 @@
 import { http, getApiErrorMessage } from './client';
 import type {
+  AnnouncementAssignmentInfo,
   AssignedQuizItem,
   QuizSessionDto,
   StudentAnnouncement,

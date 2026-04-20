@@ -2,6 +2,7 @@ import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type {
   Announcement,
+  AnnouncementAssignmentInfo,
   ClassAssignment,
   CaseDto,
   ClassItem,
