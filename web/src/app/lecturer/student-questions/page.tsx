@@ -41,7 +41,8 @@ interface StudentQuestion {
   studentName: string | null;
   studentEmail: string | null;
   studentCode: string | null;
-  caseId: string;
+  /** `null` = personal upload session (no catalog case). */
+  caseId: string | null;
   caseTitle: string;
   questionText: string;
   askedAt: string;
@@ -127,7 +128,9 @@ function QuestionCard({
           <span
             className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
           >
-            CASE #{question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}
+            {question.caseId != null && question.caseId.trim() !== ''
+              ? `CASE #${question.caseId.slice(0, 8).toUpperCase().replace(/-/g, '')}`
+              : 'PERSONAL UPLOAD'}
           </span>
           {sourceLabel ? (
             <span

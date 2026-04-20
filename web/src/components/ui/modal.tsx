@@ -12,12 +12,18 @@ export interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   footer?: ReactNode;
-  size?: 'md' | 'lg' | 'xl';
+  size?: 'md' | 'lg' | 'xl' | '2xl';
 }
 
 export function Modal({ open, title, children, onClose, footer, size = 'md' }: ModalProps) {
   const maxW =
-    size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-md';
+    size === 'lg'
+      ? 'max-w-2xl'
+      : size === 'xl'
+        ? 'max-w-4xl'
+        : size === '2xl'
+          ? 'max-w-5xl'
+          : 'max-w-md';
 
   return (
     <Dialog.Root
@@ -36,7 +42,7 @@ export function Modal({ open, title, children, onClose, footer, size = 'md' }: M
         />
         <Dialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-[151] flex max-h-[min(85vh,800px)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-card p-0 text-card-foreground shadow-xl outline-none',
+            'fixed left-1/2 top-1/2 z-[151] flex max-h-[min(92vh,880px)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-card p-0 text-card-foreground shadow-xl outline-none',
             'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
             maxW,

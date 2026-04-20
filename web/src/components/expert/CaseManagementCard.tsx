@@ -6,11 +6,12 @@ import { useSWRConfig } from 'swr';
 import { Edit, Trash2, Eye, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import { resolveApiAssetUrl } from '@/lib/api/client';
 import { deleteExpertCase, formatCaseDateForDisplay } from '@/lib/api/expert-cases';
+import { EXPERT_DASHBOARD_QUERY_KEY } from '@/lib/api/expert-dashboard';
 import { getApiProblemDetails } from '@/lib/api/client';
 import { useState } from 'react';
 
-const EXPERT_DASHBOARD_SWR_KEY = 'expert-dashboard';
 const EXPERT_CASE_LIBRARY_SWR_KEY = 'expert-case-library';
 
 interface CaseManagementCardProps {
@@ -24,6 +25,7 @@ interface CaseManagementCardProps {
   addedDate: string;
   viewCount: number;
   usageCount: number;
+  thumbnailUrl?: string | null;
 }
 
 const statusConfig = {
@@ -70,6 +72,7 @@ export default function CaseManagementCard({
   addedDate,
   viewCount,
   usageCount,
+  thumbnailUrl,
 }: CaseManagementCardProps) {
   const toast = useToast();
   const { mutate } = useSWRConfig();
@@ -81,6 +84,7 @@ export default function CaseManagementCard({
   const dateLabel = formatCaseDateForDisplay(addedDate);
   const locLabel = boneLocation === '—' ? 'Not specified' : boneLocation;
   const catLabel = lesionType === '—' ? 'Uncategorized' : lesionType;
+  const thumbSrc = thumbnailUrl?.trim() ? resolveApiAssetUrl(thumbnailUrl.trim()) : null;
 
   const handleDelete = async () => {
     if (!id.trim()) return;
@@ -91,7 +95,7 @@ export default function CaseManagementCard({
       toast.success(message?.trim() || 'Case deleted.');
       await Promise.all([
         mutate(EXPERT_CASE_LIBRARY_SWR_KEY),
-        mutate(EXPERT_DASHBOARD_SWR_KEY),
+        queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ['expert', 'cases'] }),
         queryClient.invalidateQueries({ queryKey: ['expert', 'case'] }),
       ]);
@@ -104,7 +108,13 @@ export default function CaseManagementCard({
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+    <div className="group rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-lg">
+      {thumbSrc ? (
+        <div className="mb-4 overflow-hidden rounded-xl border border-border bg-muted/40">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={thumbSrc} alt="" className="aspect-[16/10] w-full object-cover" loading="lazy" />
+        </div>
+      ) : null}
       <div className="mb-3 flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">

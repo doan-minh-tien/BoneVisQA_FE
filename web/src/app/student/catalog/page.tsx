@@ -3,14 +3,7 @@ import Header from '@/components/Header';
 import { StudentCatalogSkeleton } from '@/components/shared/DashboardSkeletons';
 import { CatalogPageClient } from './CatalogPageClient';
 
-/**
- * Hybrid rendering: ISR shell (rebuilt hourly). Catalog rows still load on the client with the user’s
- * session (axios + token). To cache catalog JSON on the server too, add a server `fetch` with
- * `next: { revalidate: 3600 }` and pass `initialItems` into `CatalogPageClient` when the API allows it.
- */
-export const revalidate = 3600;
-
-function CatalogFallback() {
+function CatalogSearchParamsFallback() {
   return (
     <div className="min-h-screen">
       <Header
@@ -24,9 +17,10 @@ function CatalogFallback() {
   );
 }
 
+/** CSR catalog with TanStack Query; Suspense boundary is for `useSearchParams` hydration only (not ISR). */
 export default function StudentCaseCatalogPage() {
   return (
-    <Suspense fallback={<CatalogFallback />}>
+    <Suspense fallback={<CatalogSearchParamsFallback />}>
       <CatalogPageClient />
     </Suspense>
   );

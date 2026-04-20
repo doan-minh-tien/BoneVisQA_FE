@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Eraser, Hand, RefreshCcw, ScanSearch, Square, ZoomIn, ZoomOut } from 'lucide-react';
 import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { Button } from '@/components/ui/button';
@@ -15,17 +15,24 @@ import {
 const MIN = 0.5;
 const MAX = 4;
 
-export function MedicalImageViewer({
+function MedicalImageViewerInner({
   src,
   alt,
   initialAnnotation,
+  expertAnnotation,
   onAnnotationComplete,
+  readOnly = false,
+  compact = false,
+  extraOverlay,
 }: {
   src: string | null;
   alt: string;
-  /** Restored draft ROI (normalized bounding box). */
   initialAnnotation?: NormalizedImageBoundingBox | null;
+  expertAnnotation?: NormalizedImageBoundingBox | null;
   onAnnotationComplete?: (box: NormalizedImageBoundingBox | null) => void;
+  readOnly?: boolean;
+  compact?: boolean;
+  extraOverlay?: ReactNode;
 }) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
@@ -41,8 +48,11 @@ export function MedicalImageViewer({
 
   const drag = useRef(false);
   const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const windowDrawListenersRef = useRef<{
+    move: (ev: MouseEvent) => void;
+    up: (ev: MouseEvent) => void;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  /** Image + overlay coordinate space (matches cursor / ROI regardless of scroll or outer chrome). */
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const drawLayerRef = useRef<HTMLDivElement | null>(null);
@@ -76,6 +86,21 @@ export function MedicalImageViewer({
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      const h = windowDrawListenersRef.current;
+      if (h) {
+        window.removeEventListener('mousemove', h.move);
+        window.removeEventListener('mouseup', h.up);
+        windowDrawListenersRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (readOnly) setIsDrawMode(false);
+  }, [readOnly]);
+
   const getNormalizedPoint = useCallback((clientX: number, clientY: number) => {
     const rect =
       imageStageRef.current?.getBoundingClientRect() ?? drawLayerRef.current?.getBoundingClientRect();
@@ -97,12 +122,12 @@ export function MedicalImageViewer({
     setScale(1);
     setTx(0);
     setTy(0);
-    clearAnnotation();
-  }, [clearAnnotation]);
+    if (!readOnly) clearAnnotation();
+  }, [clearAnnotation, readOnly]);
 
   const handleDrawMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (!isDrawMode) return;
+      if (readOnly || !isDrawMode) return;
       e.preventDefault();
       e.stopPropagation();
       const startPt = getNormalizedPoint(e.clientX, e.clientY);
@@ -121,6 +146,7 @@ export function MedicalImageViewer({
       const onUp = (ev: MouseEvent) => {
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
+        windowDrawListenersRef.current = null;
         const end = getNormalizedPoint(ev.clientX, ev.clientY) ?? startPt;
         setDrawStart(null);
         setDrawCurrent(null);
@@ -131,19 +157,26 @@ export function MedicalImageViewer({
         }
       };
 
+      windowDrawListenersRef.current = { move: onMove, up: onUp };
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [clearAnnotation, closedBox, getNormalizedPoint, isDrawMode, onAnnotationComplete],
+    [clearAnnotation, closedBox, getNormalizedPoint, isDrawMode, onAnnotationComplete, readOnly],
   );
+
+  const shellMin = compact
+    ? 'min-h-[180px] max-lg:min-h-[min(32vh,260px)] lg:min-h-[340px]'
+    : 'min-h-[220px] max-lg:min-h-[min(42vh,360px)] lg:min-h-[520px]';
 
   if (!src) {
     return (
-      <div className="relative flex h-full min-h-[520px] flex-col items-center justify-center overflow-hidden rounded-none bg-black p-8 text-center">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.04),transparent_55%)]" />
-        <ScanSearch className="relative mb-3 h-12 w-12 text-cyan-accent/70" />
-        <p className="relative text-sm font-medium text-text-main">Radiograph viewer idle</p>
-        <p className="relative mt-1 max-w-xs text-xs text-text-muted">
+      <div
+        className={`relative flex h-full ${shellMin} flex-col items-center justify-center overflow-hidden rounded-none border-b border-slate-200 bg-slate-50 p-6 text-center lg:p-8`}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.12),transparent_55%)]" />
+        <ScanSearch className="relative mb-3 h-12 w-12 text-primary/80" />
+        <p className="relative text-sm font-medium text-slate-900">Radiograph viewer idle</p>
+        <p className="relative mt-1 max-w-xs text-xs text-slate-600">
           Upload a DICOM, X-ray, CT, or MRI to inspect the study in the diagnostic viewport.
         </p>
       </div>
@@ -151,10 +184,12 @@ export function MedicalImageViewer({
   }
 
   return (
-    <div className="relative flex h-full min-h-[520px] flex-col overflow-hidden rounded-none bg-black shadow-panel">
+    <div
+      className={`relative flex h-full ${shellMin} flex-col overflow-hidden rounded-none border-b border-slate-200 bg-slate-50 shadow-sm`}
+    >
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-black"
+        className="relative flex-1 touch-none overflow-hidden bg-slate-50"
         style={{ cursor: isDrawMode ? undefined : undefined }}
       >
         <div
@@ -208,8 +243,23 @@ export function MedicalImageViewer({
                 });
               }}
             />
-            <RectangleAnnotationOverlay closed={closedBox} draft={draftBox} label="LESION ROI" />
-            {isDrawMode ? (
+            <RectangleAnnotationOverlay
+              closed={closedBox}
+              draft={draftBox}
+              label="LESION ROI"
+              className="z-[10]"
+            />
+            {expertAnnotation && isValidNormalizedBoundingBox(expertAnnotation) ? (
+              <RectangleAnnotationOverlay
+                tone="expert"
+                closed={expertAnnotation}
+                draft={null}
+                label="EXPERT ROI"
+                className="z-[12]"
+              />
+            ) : null}
+            {extraOverlay ? <div className="pointer-events-none absolute inset-0 z-[15]">{extraOverlay}</div> : null}
+            {isDrawMode && !readOnly ? (
               <div
                 ref={drawLayerRef}
                 role="presentation"
@@ -221,15 +271,15 @@ export function MedicalImageViewer({
           </div>
         </div>
 
-        <div className="pointer-events-none absolute left-5 top-5 rounded-full border border-cyan-accent/20 bg-black/70 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted backdrop-blur">
+        <div className="pointer-events-none absolute left-5 top-5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.22em] text-slate-600 shadow-sm backdrop-blur">
           Radiograph viewer
         </div>
 
-        <div className="absolute bottom-5 left-1/2 flex max-w-[min(100vw-2rem,42rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-full border border-border-color bg-surface/90 px-2 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur sm:gap-2 sm:px-3">
+        <div className="absolute bottom-5 left-1/2 flex max-w-[min(100vw-2rem,42rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-2 py-2 shadow-md backdrop-blur sm:gap-2 sm:px-3">
           <Button
             type="button"
             variant="ghost"
-            className="!rounded-full !px-2.5 !py-2 text-text-main"
+            className="!rounded-full !px-2.5 !py-2 text-slate-800"
             onClick={() => setScale((s) => Math.min(MAX, s + 0.15))}
             aria-label="Zoom in"
           >
@@ -238,7 +288,7 @@ export function MedicalImageViewer({
           <Button
             type="button"
             variant="ghost"
-            className="!rounded-full !px-2.5 !py-2 text-text-main"
+            className="!rounded-full !px-2.5 !py-2 text-slate-800"
             onClick={() => setScale((s) => Math.max(MIN, s - 0.15))}
             aria-label="Zoom out"
           >
@@ -247,36 +297,40 @@ export function MedicalImageViewer({
           <Button
             type="button"
             variant="ghost"
-            className={`!rounded-full !px-2.5 !py-2 ${!isDrawMode ? 'bg-cyan-accent/10 text-cyan-accent' : 'text-text-main'}`}
+            className={`!rounded-full !px-2.5 !py-2 ${!isDrawMode ? 'bg-primary/10 text-primary' : 'text-slate-800'}`}
             aria-label="Pan"
             onClick={() => setIsDrawMode(false)}
           >
             <Hand className="h-4 w-4" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className={`!rounded-full !px-2.5 !py-2 ${isDrawMode ? 'bg-cyan-accent/10 text-cyan-accent' : 'text-text-main'}`}
-            aria-label="Draw rectangle ROI"
-            onClick={() => setIsDrawMode(true)}
-          >
-            <Square className="h-4 w-4" />
-          </Button>
-          {isDrawMode ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="!rounded-full !px-2.5 !py-2 text-amber-200/90"
-              aria-label="Clear annotation"
-              onClick={clearAnnotation}
-            >
-              <Eraser className="h-4 w-4" />
-            </Button>
+          {!readOnly ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                className={`!rounded-full !px-2.5 !py-2 ${isDrawMode ? 'bg-primary/10 text-primary' : 'text-slate-800'}`}
+                aria-label="Draw rectangle ROI"
+                onClick={() => setIsDrawMode(true)}
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+              {isDrawMode ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="!rounded-full !px-2.5 !py-2 text-amber-700"
+                  aria-label="Clear annotation"
+                  onClick={clearAnnotation}
+                >
+                  <Eraser className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </>
           ) : null}
           <Button
             type="button"
             variant="ghost"
-            className="!rounded-full !px-2.5 !py-2 text-text-main"
+            className="!rounded-full !px-2.5 !py-2 text-slate-800"
             onClick={resetView}
             aria-label="Reset viewer"
           >
@@ -284,9 +338,29 @@ export function MedicalImageViewer({
           </Button>
         </div>
       </div>
-      <p className="border-t border-border-color bg-black px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Scroll to zoom · Square tool: click-drag on the image to mark a region of interest · Educational preview only
+      <p className="border-t border-slate-200 bg-white px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+        {readOnly
+          ? 'Scroll to zoom · Pan to move · Educational preview only'
+          : 'Scroll to zoom · Square tool: click-drag on the image to mark a region of interest · Educational preview only'}
       </p>
     </div>
   );
+}
+
+export const MedicalImageViewer = memo(MedicalImageViewerInner);
+
+const ALLOWED_MEDICAL_IMAGE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+]);
+
+export function isMedicalImageUploadAllowed(file: File): boolean {
+  const mime = file.type.trim().toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  const name = file.name.trim().toLowerCase();
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot) : '';
+  return ALLOWED_MEDICAL_IMAGE_EXTENSIONS.has(ext);
 }

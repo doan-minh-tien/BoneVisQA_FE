@@ -15,6 +15,7 @@ import {
   LogOut,
   Stethoscope,
   Database,
+  BadgeCheck,
 } from 'lucide-react';
 
 export default function AdminSidebar() {
@@ -37,6 +38,11 @@ export default function AdminSidebar() {
   const adminMenuItems = [
     { icon: LayoutDashboard, label: t('nav.dashboard', 'Dashboard'), href: '/admin/dashboard' },
     { icon: Users, label: t('nav.users', 'Users'), href: '/admin/users' },
+    {
+      icon: BadgeCheck,
+      label: t('nav.medicalVerifications', 'Medical Student Verification'),
+      href: '/admin/verifications',
+    },
     { icon: Database, label: t('nav.documents', 'Documents'), href: '/admin/documents' },
     { icon: FileText, label: t('nav.cases', 'Cases'), href: '/admin/cases' },
     { icon: BrainCircuit, label: t('nav.aiConfig', 'AI Config'), href: '/admin/ai-config' },
@@ -57,7 +63,7 @@ export default function AdminSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="app-scroll-y flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {adminMenuItems.map((item) => {
             const isActive =

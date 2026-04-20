@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useToast } from '@/components/ui/toast';
 import {
   createExpertCase,
+  DB_IMAGE_MODALITIES,
   fetchExpertCategories,
   fetchExpertTags,
   type CreateExpertCaseJsonInput,
@@ -15,7 +16,9 @@ import {
 import type { NormalizedImageBoundingBox } from '@/lib/api/types';
 import { isValidNormalizedBoundingBox, serializeNormalizedBoundingBox } from '@/lib/utils/annotations';
 import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
-import { Loader2 } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
+import { cn } from '@/lib/utils';
+import { Loader2, ImageIcon, FileText } from 'lucide-react';
 
 const MedicalImageViewer = dynamic(
   () =>
@@ -54,8 +57,8 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [roiBoundingBox, setRoiBoundingBox] = useState<NormalizedImageBoundingBox | null>(null);
-  const [modality, setModality] = useState('XR');
-  const [annotationLabel, setAnnotationLabel] = useState('Lesion');
+  const [modality, setModality] = useState('');
+  const [annotationLabel, setAnnotationLabel] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const metaQuery = useQuery({
@@ -119,8 +122,8 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
     setSelectedTagIds(new Set());
     setFile(null);
     setRoiBoundingBox(null);
-    setModality('XR');
-    setAnnotationLabel('Lesion');
+    setModality('');
+    setAnnotationLabel('');
     setUploadingImage(false);
   };
 
@@ -169,13 +172,19 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
       try {
         const imageUrl = await uploadExpertWorkbenchImage(file);
         const coordinates = serializeNormalizedBoundingBox(roiBoundingBox);
-        const label = annotationLabel.trim() || 'Lesion';
+        const trimmedLabel = annotationLabel.trim();
+        const annotations =
+          coordinates != null && coordinates !== ''
+            ? trimmedLabel
+              ? [{ label: trimmedLabel, coordinates }]
+              : [{ coordinates }]
+            : [];
         medicalImages = [
           {
             id: '',
             imageUrl,
             modality: modality.trim() || null,
-            annotations: coordinates ? [{ label, coordinates }] : [],
+            annotations,
           },
         ];
       } catch (err) {
@@ -199,29 +208,31 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
     });
   };
 
-  if (!open) return null;
-
   const loadingMeta = metaQuery.isPending;
   const busy = createMutation.isPending || uploadingImage;
 
   return (
-    <div className="fixed inset-0 z-[105] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-foreground/40" onClick={handleClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-case-title"
-        className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
-      >
-        <div className="max-h-[92vh] overflow-y-auto p-5 sm:p-6">
-          <h2 id="create-case-title" className="text-lg font-semibold text-card-foreground">
-            Create medical case
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-          Same workflow as Visual QA: attach an image, drag a rectangle ROI (optional), then submit. The image is
-          uploaded to Supabase storage; the API receives public URLs and normalized{' '}
-          <code className="rounded bg-muted px-1 text-xs">{'{ x, y, width, height }'}</code> JSON.
-          </p>
+    <Modal open={open} onClose={handleClose} title="Create teaching case" size="2xl">
+      <p className="text-sm text-muted-foreground">
+        Optional image upload to Supabase, then JSON to the API. ROI uses normalized{' '}
+        <code className="rounded bg-muted px-1 text-xs">{'{ x, y, width, height }'}</code> like Visual QA. Modality values
+        must match DB: X-Ray, CT, MRI, Ultrasound, Other.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold',
+            file ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted/50 text-muted-foreground',
+          )}
+        >
+          <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+          Imaging
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-semibold text-muted-foreground">
+          <FileText className="h-3.5 w-3.5" aria-hidden />
+          Case metadata
+        </span>
+      </div>
 
           {loadingMeta ? (
             <div className="mt-8 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -233,7 +244,7 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
               {metaQuery.error instanceof Error ? metaQuery.error.message : 'Failed to load form data'}
             </p>
           ) : (
-            <form onSubmit={(e) => void handleSubmit(e)} className="mt-6">
+            <form onSubmit={(e) => void handleSubmit(e)} className="mt-5">
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="flex min-h-0 flex-col gap-3">
                   <div>
@@ -255,13 +266,19 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
                     <>
                       <div>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">Modality</label>
-                        <input
+                        <select
                           value={modality}
                           onChange={(e) => setModality(e.target.value)}
                           disabled={busy}
-                          placeholder="e.g. XR, CT, MRI"
                           className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                        />
+                        >
+                          <option value="">— Default (Other) —</option>
+                          {DB_IMAGE_MODALITIES.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">ROI label</label>
@@ -269,6 +286,7 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
                           value={annotationLabel}
                           onChange={(e) => setAnnotationLabel(e.target.value)}
                           disabled={busy}
+                          placeholder="Optional — backend can use finding if empty"
                           className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                       </div>
@@ -428,8 +446,6 @@ export default function CreateExpertCaseModal({ open, onClose, onCreated }: Prop
               </div>
             </form>
           )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

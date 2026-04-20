@@ -11,10 +11,11 @@ import {
   Clock3,
   RefreshCw,
   Send,
-  Sparkles,
   User,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/toast';
 import axios from 'axios';
 import {
@@ -25,7 +26,7 @@ import {
 import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import { TRIAGE_ALREADY_ESCALATED, WORKFLOW_CONFLICT, respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassItem, LectStudentQuestionDto } from '@/lib/api/types';
+import type { ClassItem, LectStudentQuestionDto, LecturerTriageRequestKind } from '@/lib/api/types';
 import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 import type { VisualQaTurn } from '@/lib/api/types';
@@ -85,16 +86,13 @@ function confidencePercent(score: number | null | undefined): number | null {
   return Math.round(Math.min(100, Math.max(0, pct)));
 }
 
-/** BE `questionSource` when present; otherwise infer from case id vs upload-only sessions. */
-function triageWorkflowLabel(item: LectStudentQuestionDto): string {
-  if (item.questionSource === 'CaseQA') return 'Case library';
-  if (item.questionSource === 'VisualQA') return 'Upload / ROI';
-  const cid = item.caseId?.trim();
-  if (!cid) return 'Visual QA';
-  return 'Visual QA';
+/** BE: no catalog `caseId` ⇒ personal upload; trimmed empty string treated as personal. */
+function triageRequestKind(item: LectStudentQuestionDto): LecturerTriageRequestKind {
+  return item.caseId != null && item.caseId.trim() !== '' ? 'case-catalog' : 'adhoc-upload';
 }
 
-function shortCaseId(caseId: string): string {
+function shortCaseId(caseId: string | null): string {
+  if (caseId == null) return '—';
   const t = caseId.trim();
   if (!t) return '—';
   return t.length <= 10 ? t.toUpperCase() : `${t.slice(0, 8).toUpperCase()}…`;
@@ -404,9 +402,11 @@ export default function QATriagePage() {
           />
         ) : (
           <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
-            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold text-foreground">Incoming Requests ({questions.length})</h2>
-              <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Incoming Requests ({questions.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-[70vh] space-y-3 overflow-y-auto pt-0 pr-1">
                 {questions.map((question) => {
                   const isSelected =
                     selectedQuestionId != null
@@ -437,10 +437,15 @@ export default function QATriagePage() {
                           <User className="h-3 w-3" />
                           {question.studentName}
                         </span>
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                        <Badge
+                          variant={
+                            triageRequestKind(question) === 'case-catalog' ? 'secondary' : 'accent'
+                          }
+                          className="font-medium"
+                        >
                           {triageWorkflowLabel(question)}
-                        </span>
-                        {question.caseId?.trim() ? (
+                        </Badge>
+                        {question.caseId != null && question.caseId.trim() !== '' ? (
                           <span className="rounded-full bg-muted px-2 py-0.5" title={question.caseId}>
                             Case {shortCaseId(question.caseId)}
                           </span>
@@ -455,42 +460,50 @@ export default function QATriagePage() {
                     </button>
                   );
                 })}
-              </div>
-            </section>
+              </CardContent>
+            </Card>
 
-            <section className="rounded-xl border border-border bg-card p-5">
+            <Card className="border-border/60 shadow-md shadow-black/[0.04]">
               {!selectedQuestion ? null : (
                 <>
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Selected request</p>
-                      <h3 className="mt-1 text-lg font-semibold text-foreground">{selectedQuestion.studentName}</h3>
+                  <CardHeader className="flex flex-col gap-4 border-b border-border/80 bg-muted/20 pb-6 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <CardDescription className="text-xs font-semibold uppercase tracking-wider">
+                        Selected request
+                      </CardDescription>
+                      <CardTitle className="text-xl font-semibold">{selectedQuestion.studentName}</CardTitle>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Badge
+                          variant={
+                            triageRequestKind(selectedQuestion) === 'case-catalog'
+                              ? 'secondary'
+                              : 'accent'
+                          }
+                        >
+                          {triageWorkflowLabel(selectedQuestion)}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {(() => {
                         const pct = confidencePercent(selectedQuestion.aiConfidenceScore);
                         const badge = scoreLabel(selectedQuestion.aiConfidenceScore);
                         return pct != null ? (
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${badge.tone}`}
-                          >
-                            AI confidence: {pct}%
-                          </span>
+                          <Badge className={badge.tone}>{`AI confidence: ${pct}%`}</Badge>
                         ) : (
-                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                            AI confidence: N/A (AI Failed)
-                          </span>
+                          <Badge variant="muted">AI confidence: N/A (AI Failed)</Badge>
                         );
                       })()}
-                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                      <Badge variant="outline">
                         {isEscalationBlockedByStatus(selectedQuestion)
                           ? 'Already escalated'
                           : 'Pending decision'}
-                      </span>
+                      </Badge>
                     </div>
-                  </div>
+                  </CardHeader>
 
-                  <div className="mb-4 rounded-lg border border-border bg-muted/50 p-4">
+                  <CardContent className="space-y-5 pt-6">
+                  <div className="rounded-xl border border-border/80 bg-muted/40 p-4 shadow-inner">
                     <div className="mb-2 flex items-center justify-between text-xs font-semibold text-muted-foreground">
                       <span>AI confidence score</span>
                       <span className="font-mono text-foreground">
@@ -519,7 +532,7 @@ export default function QATriagePage() {
 
                   <div className="space-y-4">
                     {selectedStudyImageSrc ? (
-                      <article className="overflow-hidden rounded-lg border border-border bg-muted/30 p-3">
+                      <article className="overflow-hidden rounded-xl border border-border/80 bg-muted/30 p-4 shadow-sm">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Student study image
                         </p>
@@ -547,7 +560,7 @@ export default function QATriagePage() {
                       </article>
                     ) : null}
                     {selectedQuestion.turns && selectedQuestion.turns.length > 0 ? (
-                      <article className="rounded-lg border border-border bg-background p-4">
+                      <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Chat session context
                         </p>
@@ -574,14 +587,14 @@ export default function QATriagePage() {
                         </ol>
                       </article>
                     ) : null}
-                    <article className="rounded-lg border border-border bg-background p-4">
+                    <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Student question</p>
                       <p className="mt-2 text-sm leading-relaxed text-foreground">
                         {selectedTurn?.questionText?.trim() || selectedQuestion.questionText}
                       </p>
                     </article>
 
-                    <article className="rounded-lg border border-border bg-background p-4">
+                    <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         AI Final Assessment (latest session turn)
                       </p>
@@ -595,7 +608,7 @@ export default function QATriagePage() {
                     {selectedTurn &&
                     (selectedTurn.structuredDiagnosis?.trim() ||
                       selectedTurn.keyImagingFindings?.trim()) ? (
-                      <article className="rounded-lg border border-border bg-background p-4">
+                      <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Structured assistant fields (selected turn)
                         </p>
@@ -622,47 +635,57 @@ export default function QATriagePage() {
                       </article>
                     ) : null}
 
-                    <article className="rounded-lg border border-border bg-background p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Case metadata (catalog snapshot)
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {triageWorkflowLabel(selectedQuestion)} —{' '}
-                        {selectedQuestion.caseId?.trim()
-                          ? `Case ID: ${shortCaseId(selectedQuestion.caseId)}`
-                          : 'No library case attached (upload / ROI).'}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                          {selectedQuestion.caseTitle?.trim() || 'Untitled case'}
-                        </span>
-                      </div>
-                      {selectedQuestion.caseDescription?.trim() ? (
-                        <p className="mt-3 text-sm leading-relaxed text-foreground/90">
-                          {selectedQuestion.caseDescription.trim()}
+                    {selectedQuestion.caseId != null && selectedQuestion.caseId.trim() !== '' ? (
+                      <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Case metadata (catalog snapshot)
                         </p>
-                      ) : null}
-                      {selectedQuestion.caseSuggestedDiagnosis?.trim() ? (
-                        <div className="mt-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Case suggested diagnosis
-                          </p>
-                          <p className="mt-2 text-sm text-foreground/90">
-                            {selectedQuestion.caseSuggestedDiagnosis.trim()}
-                          </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Catalog case chat —{' '}
+                          {selectedQuestion.caseId.trim()
+                            ? `Case ID: ${shortCaseId(selectedQuestion.caseId)}`
+                            : 'Case ID pending sync.'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                            {selectedQuestion.caseTitle.trim() || 'Untitled case'}
+                          </span>
+                          {(selectedQuestion.caseTags ?? []).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                         </div>
-                      ) : null}
-                      {selectedQuestion.caseKeyFindings?.trim() ? (
-                        <div className="mt-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Case key findings
+                        {selectedQuestion.caseDescription?.trim() ? (
+                          <p className="mt-3 text-sm leading-relaxed text-foreground/90">
+                            {selectedQuestion.caseDescription.trim()}
                           </p>
-                          <p className="mt-2 text-sm text-foreground/90">
-                            {selectedQuestion.caseKeyFindings.trim()}
-                          </p>
-                        </div>
-                      ) : null}
-                    </article>
+                        ) : null}
+                        {selectedQuestion.caseSuggestedDiagnosis?.trim() ? (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Case suggested diagnosis
+                            </p>
+                            <p className="mt-2 text-sm text-foreground/90">
+                              {selectedQuestion.caseSuggestedDiagnosis.trim()}
+                            </p>
+                          </div>
+                        ) : null}
+                        {selectedQuestion.caseKeyFindings?.trim() ? (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Case key findings
+                            </p>
+                            <p className="mt-2 text-sm text-foreground/90">
+                              {selectedQuestion.caseKeyFindings.trim()}
+                            </p>
+                          </div>
+                        ) : null}
+                      </article>
+                    ) : null}
                     {selectedPairMismatch ? (
                       <article className="rounded-lg border border-amber-300 bg-amber-50 p-4">
                         <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
@@ -685,12 +708,9 @@ export default function QATriagePage() {
                       </article>
                     ) : null}
                   </div>
+                  </CardContent>
 
-                  <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                    <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Reject with reason or escalate to expert clinical auditing. Direct approval is not available.
-                    </p>
+                  <div className="flex flex-col gap-3 border-t border-border px-6 pb-6 pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                     <div className="relative z-20 flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
@@ -736,7 +756,7 @@ export default function QATriagePage() {
                   </div>
                 </>
               )}
-            </section>
+            </Card>
           </div>
         )}
       </div>

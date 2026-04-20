@@ -19,6 +19,7 @@ import {
   Plus,
   Eye,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function DocumentList() {
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
@@ -34,8 +35,9 @@ export default function DocumentList() {
       const data = await getAdminDocuments();
       setDocuments(data);
     } catch (err: unknown) {
-      console.error('Error fetching documents:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load documents');
+      const msg = err instanceof Error ? err.message : 'Failed to load documents';
+      toast.error(msg);
+      setError(msg);
     } finally {
       setLoading(false);
     }

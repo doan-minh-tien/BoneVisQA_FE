@@ -252,7 +252,6 @@ export default function QuizSessionPage({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(`Failed to submit: ${msg}`);
-      console.error('Submit failed', e);
     } finally {
       setSubmitting(false);
     }
@@ -283,7 +282,6 @@ export default function QuizSessionPage({
       } else {
         toast.error(`Cannot start quiz: ${msg}`);
       }
-      console.error('[QuizSession] error starting:', e);
     } finally {
       setLoadingSession(false);
     }

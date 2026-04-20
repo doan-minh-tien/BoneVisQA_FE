@@ -3,9 +3,6 @@
 import type { NormalizedImageBoundingBox } from '@/lib/api/types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 
-/**
- * ROI as a normalized axis-aligned rectangle (`viewBox="0 0 1 1"`).
- */
 function finiteBox(
   b: NormalizedImageBoundingBox | null | undefined,
 ): NormalizedImageBoundingBox | null {
@@ -23,12 +20,13 @@ export function RectangleAnnotationOverlay({
   draft,
   label = 'ROI',
   className = '',
+  tone = 'lesion',
 }: {
   closed: NormalizedImageBoundingBox | null;
-  /** Rubber-band while dragging (normalized, may be smaller than commit threshold). */
   draft: NormalizedImageBoundingBox | null;
   label?: string;
   className?: string;
+  tone?: 'lesion' | 'expert';
 }) {
   const closedSafe = finiteBox(closed);
   const draftSafe = finiteBox(draft);
@@ -49,6 +47,13 @@ export function RectangleAnnotationOverlay({
 
   if (!showClosed && !showDraft) return null;
 
+  const fillClosed =
+    tone === 'expert' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+  const strokeClosed = tone === 'expert' ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
+  const strokeWClosed = tone === 'expert' ? 0.0045 : 0.004;
+  const fillDraft = tone === 'expert' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+  const strokeDraft = tone === 'expert' ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
+
   return (
     <svg
       className={`pointer-events-none absolute inset-0 h-full w-full overflow-visible ${className}`.trim()}
@@ -63,9 +68,9 @@ export function RectangleAnnotationOverlay({
           y={closedSafe.y}
           width={closedSafe.width}
           height={closedSafe.height}
-          fill="rgba(239, 68, 68, 0.18)"
-          stroke="rgb(239, 68, 68)"
-          strokeWidth={0.004}
+          fill={fillClosed}
+          stroke={strokeClosed}
+          strokeWidth={strokeWClosed}
         />
       ) : null}
       {showDraft && draftSafe ? (
@@ -74,8 +79,8 @@ export function RectangleAnnotationOverlay({
           y={draftSafe.y}
           width={draftSafe.width}
           height={draftSafe.height}
-          fill="rgba(239, 68, 68, 0.08)"
-          stroke="rgb(239, 68, 68)"
+          fill={fillDraft}
+          stroke={strokeDraft}
           strokeWidth={0.003}
           strokeDasharray="0.012 0.008"
         />

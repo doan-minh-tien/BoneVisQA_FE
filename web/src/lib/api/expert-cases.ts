@@ -5,6 +5,10 @@ export type CaseDifficulty = 'Easy' | 'Medium' | 'Hard';
 /** Aligns with workbench cards: draft (inactive), pending, approved, rejected. */
 export type CaseStatus = 'draft' | 'pending' | 'approved' | 'rejected';
 
+/** Values stored in DB (`medical_images.modality` CHECK); BE normalizer maps aliases to these. */
+export const DB_IMAGE_MODALITIES = ['X-Ray', 'CT', 'MRI', 'Ultrasound', 'Other'] as const;
+export type DbImageModality = (typeof DB_IMAGE_MODALITIES)[number];
+
 export interface ExpertCaseTag {
   id: string;
   name: string;
@@ -133,9 +137,12 @@ function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undef
         .map((a) => {
           if (!a || typeof a !== 'object') return null;
           const ar = a as Record<string, unknown>;
-          const label = String(ar.label ?? ar.Label ?? '');
+          const lab = String(ar.label ?? ar.Label ?? '').trim();
           const coordinates = String(ar.coordinates ?? ar.Coordinates ?? '{}');
-          return { label, coordinates };
+          const ann: ExpertCaseMedicalImageAnnotationJson = lab
+            ? { label: lab, coordinates }
+            : { coordinates };
+          return ann;
         })
         .filter((x): x is ExpertCaseMedicalImageAnnotationJson => x != null);
     }
@@ -321,7 +328,8 @@ export interface SaveExpertCaseInput {
 
 /** Backend `CreateExpertMedicalCaseJsonRequest` — JSON POST /api/expert/cases (expert from JWT). */
 export interface ExpertCaseMedicalImageAnnotationJson {
-  label: string;
+  /** Optional; when omitted BE may persist finding text for NOT NULL column. */
+  label?: string | null;
   /** Normalized axis-aligned box JSON: `{"x","y","width","height"}` each 0–1 (same as Visual QA ROI). */
   coordinates: string;
 }
@@ -477,9 +485,19 @@ export async function createExpertImage(payload: FormData): Promise<{ id: string
   }
 }
 
-export async function createExpertAnnotation(payload: { imageId: string; label: string; coordinates: string }): Promise<void> {
+export async function createExpertAnnotation(payload: {
+  imageId: string;
+  coordinates: string;
+  label?: string | null;
+}): Promise<void> {
   try {
-    await http.post('/api/expert/annotations', payload);
+    const body: Record<string, string> = {
+      imageId: payload.imageId.trim(),
+      coordinates: payload.coordinates.trim(),
+    };
+    const lab = payload.label?.trim();
+    if (lab) body.label = lab;
+    await http.post('/api/expert/annotations', body);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

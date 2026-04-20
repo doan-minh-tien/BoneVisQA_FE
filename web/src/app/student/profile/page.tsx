@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
   fetchStudentRecentActivity,
   updateStudentProfile,
 } from '@/lib/api/student';
+import { getApiErrorMessage } from '@/lib/api/client';
 import type {
   StudentProfile,
   StudentProfileUpdatePayload,
@@ -161,7 +163,6 @@ export default function StudentProfilePage() {
     classCode: '',
   });
   const [personal, setPersonal] = useState<PersonalInfoValues>(EMPTY_PERSONAL_INFO);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [credentialsReadOnly, setCredentialsReadOnly] = useState(true);
   const [progress, setProgress] = useState<StudentProgress | null>(null);
@@ -179,58 +180,48 @@ export default function StudentProfilePage() {
     setNotif(loadNotifPrefs());
   }, []);
 
+  const bundleQuery = useQuery({
+    queryKey: ['student-profile-bundle'],
+    queryFn: async () => {
+      const [data, prog, act] = await Promise.allSettled([
+        fetchStudentProfile(),
+        fetchStudentProgress(),
+        fetchStudentRecentActivity(),
+      ]);
+      if (data.status === 'rejected') throw data.reason;
+      const p = data.value;
+      return {
+        profile: p,
+        progress: prog.status === 'fulfilled' ? prog.value : null,
+        activity:
+          act.status === 'fulfilled' && Array.isArray(act.value) ? act.value : ([] as StudentRecentActivityItem[]),
+      };
+    },
+    retry: 1,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [data, prog, act] = await Promise.allSettled([
-          fetchStudentProfile(),
-          fetchStudentProgress(),
-          fetchStudentRecentActivity(),
-        ]);
-        if (cancelled) return;
+    const d = bundleQuery.data;
+    if (!d) return;
+    setProfile(d.profile);
+    setForm({
+      fullName: d.profile.fullName ?? '',
+      schoolCohort: d.profile.schoolCohort ?? '',
+      avatarUrl: d.profile.avatarUrl ?? '',
+      classCode: d.profile.classCode ?? '',
+    });
+    setPersonal(profileToPersonalValues(d.profile));
+    if (d.progress) setProgress(d.progress);
+    setActivity(d.activity);
+  }, [bundleQuery.data]);
 
-        const profileResult = data;
-        if (profileResult.status === 'rejected') {
-          const msg = profileResult.reason instanceof Error
-            ? profileResult.reason.message
-            : 'Failed to load profile.';
-          toast.error(msg);
-          setLoading(false);
-          return;
-        }
+  useEffect(() => {
+    if (!bundleQuery.isError || !bundleQuery.error) return;
+    toast.error(getApiErrorMessage(bundleQuery.error));
+  }, [bundleQuery.isError, bundleQuery.error, toast]);
 
-        const p = profileResult.value;
-        setProfile(p);
-        setForm({
-          fullName: p.fullName ?? '',
-          schoolCohort: p.schoolCohort ?? '',
-          avatarUrl: p.avatarUrl ?? '',
-          classCode: p.classCode ?? '',
-        });
-        setPersonal(profileToPersonalValues(p));
-
-        const progResult = prog;
-        if (progResult.status === 'fulfilled' && progResult.value) {
-          setProgress(progResult.value);
-        }
-
-        const actResult = act;
-        if (actResult.status === 'fulfilled' && Array.isArray(actResult.value)) {
-          setActivity(actResult.value);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load student profile.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+  const loading = bundleQuery.isPending;
 
   const initials = useMemo(() => {
     const source = form.fullName || profile?.fullName || 'BV';
@@ -504,7 +495,7 @@ export default function StudentProfilePage() {
                 </div>
               </div>
 
-              {/* Save button — placed right below credentials for easy visibility */}
+              {/* Save action directly under password block for visibility */}
               <div className="mt-6 flex justify-end">
                 <Button
                   type="submit"

@@ -66,7 +66,7 @@ export function expertCaseToAdminDetailView(c: ExpertCase): AdminCaseDetailView 
   const imgs = (c.medicalImages ?? []).map((img, i) => ({
     id: `img-${i}`,
     filename: img.imageUrl?.split('/').pop() || `image-${i + 1}`,
-    type: img.modality?.trim() || 'X-Ray',
+    type: img.modality?.trim() || 'Other',
     anonymized: true,
   }));
   return {

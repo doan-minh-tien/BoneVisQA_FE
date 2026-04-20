@@ -14,6 +14,7 @@ import {
   Trash2,
   Info,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface ExpertParsedQuestion {
   questionText: string;
@@ -347,7 +348,7 @@ export default function ExpertQuestionImportDialog({ open, onClose, onImport }: 
       reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
       reader.readAsText(file);
     } else {
-      alert('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
+      toast.error('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
     }
   }, []);
 

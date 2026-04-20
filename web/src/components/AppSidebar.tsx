@@ -16,11 +16,11 @@ import {
   ScanSearch,
   Stethoscope,
   ClipboardList,
+  BadgeCheck,
   Users,
   FileQuestion,
   BarChart3,
   Megaphone,
-  Settings,
 
   Sparkles,
   ChevronLeft,
@@ -42,6 +42,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
+    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
@@ -58,10 +59,9 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   ],
   expert: [
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
-    { label: 'Validation Workbench', href: '/expert/reviews', icon: CheckSquare },
+    { label: 'Expert review', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
     { label: 'Quiz Library', href: '/expert/quizzes', icon: FileQuestion },
-    { label: 'Settings', href: '/settings', icon: Settings },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
@@ -76,7 +76,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
 const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel: string }> = {
   admin: { label: 'Radiology Education', actionHref: '/admin/documents', actionLabel: 'Upload Document' },
   lecturer: { label: 'Radiology Education', actionHref: '/lecturer/qa-triage', actionLabel: 'Open Triage' },
-  expert: { label: 'Radiology Education', actionHref: '/expert/reviews', actionLabel: 'Open Workbench' },
+  expert: { label: 'Radiology Education', actionHref: '/expert/reviews', actionLabel: 'Open reviews' },
   student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
 
@@ -208,7 +208,7 @@ export function AppSidebar({
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[#1e293b]/20 hover:scrollbar-thumb-[#1e293b]/35">
+      <nav className="app-scroll-y flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
         <ul className="space-y-1">
           {dashboardItem ? (
             <li key={dashboardItem.href}>

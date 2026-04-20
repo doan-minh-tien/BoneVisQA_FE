@@ -176,6 +176,12 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
     parseNormalizedBoundingBox(coordinatesFromUserMessage(userMessageRaw));
   const roiFromLegacyFields = parseNormalizedBoundingBox(roiRaw);
   const roiBoundingBox = roiFromLegacyFields ?? questionCoordsParsed;
+  const expertRoiRaw = pick(o, [
+    'expertCorrectedRoiBoundingBox',
+    'expert_corrected_roi_bounding_box',
+    'ExpertCorrectedRoiBoundingBox',
+  ]);
+  const expertCorrectedRoiBoundingBox = parseNormalizedBoundingBox(expertRoiRaw);
   const turnIndex =
     typeof turnRaw === 'number' && Number.isFinite(turnRaw)
       ? turnRaw
@@ -197,6 +203,9 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
     ...(messages.length > 0 ? { messages } : {}),
     ...(questionCoordsParsed ? { questionCoordinates: questionCoordsParsed } : {}),
     roiBoundingBox,
+    ...(expertCorrectedRoiBoundingBox
+      ? { expertCorrectedRoiBoundingBox }
+      : {}),
     diagnosis: report.diagnosis ?? '',
     ...(report.findings ? { findings: report.findings } : {}),
     ...(reflectiveTurn && reflectiveTurn.length > 0 ? { reflectiveQuestions: reflectiveTurn } : {}),
@@ -218,6 +227,26 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
       typeof pick(o, ['isReviewTarget', 'is_review_target']) === 'boolean'
         ? Boolean(pick(o, ['isReviewTarget', 'is_review_target']))
         : undefined,
+    reviewTargetAssistantMessageId: asNullableString(
+      pick(o, [
+        'reviewTargetAssistantMessageId',
+        'review_target_assistant_message_id',
+        'targetAssistantMessageId',
+        'target_assistant_message_id',
+      ]),
+    ),
+    reviewTargetTurnId: asNullableString(
+      pick(o, ['reviewTargetTurnId', 'review_target_turn_id', 'targetTurnId', 'target_turn_id']),
+    ),
+    reviewTargetTurnIndex: (() => {
+      const v = pick(o, ['reviewTargetTurnIndex', 'review_target_turn_index', 'targetTurnIndex', 'target_turn_index']);
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim()) {
+        const n = Number.parseInt(v, 10);
+        return Number.isFinite(n) ? n : undefined;
+      }
+      return undefined;
+    })(),
     policyReason: report.policyReason ?? asNullableString(pick(o, ['policyReason', 'policy_reason'])),
     systemNoticeCode:
       report.systemNoticeCode ?? asNullableString(pick(o, ['systemNoticeCode', 'system_notice_code'])),

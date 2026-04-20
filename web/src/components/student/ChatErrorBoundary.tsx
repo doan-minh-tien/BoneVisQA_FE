@@ -22,7 +22,7 @@ function ChatFallback({ error, resetErrorBoundary }: FallbackProps) {
         A malformed response or rendering error occurred. You can safely reset the chat view and continue.
       </p>
       <p className="mt-2 max-w-md text-xs text-muted-foreground">{message}</p>
-      <Button type="button" className="mt-5" onClick={resetErrorBoundary}>
+      <Button type="button" variant="outline" className="mt-5" onClick={resetErrorBoundary}>
         <RefreshCcw className="h-4 w-4" aria-hidden />
         Reset Chat
       </Button>
