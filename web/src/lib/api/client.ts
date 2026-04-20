@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { getClientAcceptLanguageHeader } from '@/lib/api/accept-language';
 
 /**
  * When `NEXT_PUBLIC_API_URL` is unset, local dev uses this origin (no `/api` suffix).
@@ -83,6 +84,50 @@ type ProblemDetailsPayload = {
  * ASP.NET / EF Core often returns ProblemDetails with a multi-line LINQ translation error.
  * End users should not see DbSet / Where stack text in toasts — the fix belongs in the API.
  */
+/** Strip UUIDs, long paths, and stack-like fragments before showing API text in toasts. */
+export function sanitizeForUserToast(raw: string): string {
+  let s = raw.trim();
+  if (!s) return 'Something went wrong. Please try again.';
+  s = s.replace(
+    /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
+    '',
+  );
+  s = s.replace(/\b[0-9a-f]{32}\b/gi, '');
+  s = s.replace(/\/[^\s]+\.(cs|dll)(:\d+)?\b/gi, '');
+  s = s.replace(/\bat\s+[^\n]+(?:line\s+\d+)?/gi, '');
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  if (s.length > 220) s = `${s.slice(0, 217)}…`;
+  if (!s || /^[\s.,;:]+$/.test(s)) return 'Something went wrong. Please try again.';
+  return s;
+}
+
+function queueSonnerErrorToast(message: string) {
+  if (typeof window === 'undefined') return;
+  void import('sonner')
+    .then(({ toast }) => toast.error(message))
+    .catch(() => {});
+}
+
+function friendlyGlobalApiToastMessage(err: AxiosError): string | null {
+  const st = err.response?.status;
+  if (st === 400) {
+    const msg = sanitizeForUserToast(getApiErrorMessage(err));
+    if (msg.length < 180 && !looksLikeTechnicalErrorMessage(msg)) return msg;
+    return 'The request could not be processed. Please check your input and try again.';
+  }
+  if (st === 403) {
+    return 'You do not have permission to perform this action.';
+  }
+  if (st !== undefined && st >= 500) {
+    const msg = sanitizeForUserToast(getApiErrorMessage(err));
+    if (looksLikeTechnicalErrorMessage(msg)) {
+      return 'The server ran into a problem. Please try again in a moment.';
+    }
+    return msg;
+  }
+  return null;
+}
+
 export function polishUserFacingApiErrorMessage(message: string): string {
   const s = message.trim();
   if (!s) return message;
@@ -102,6 +147,7 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    config.headers['Accept-Language'] = getClientAcceptLanguageHeader();
   }
   return config;
 });
@@ -109,20 +155,92 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 http.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
+    const cfg = err.config as (InternalAxiosRequestConfig & { skipApiToast?: boolean }) | undefined;
+    const skipToast = Boolean(cfg?.skipApiToast);
+    if (
+      !skipToast &&
+      typeof window !== 'undefined' &&
+      axios.isAxiosError(err) &&
+      err.response?.status &&
+      err.response.status !== 401
+    ) {
+      const friendly = friendlyGlobalApiToastMessage(err);
+      if (friendly) queueSonnerErrorToast(friendly);
+    }
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('activeRole');
       window.dispatchEvent(new Event('auth:unauthorized'));
     }
-    // Log chi tiết lỗi để debug
-    if (err.response) {
-      console.warn(`[API] HTTP ${err.response.status}: ${err.config?.url}`, err.response.data);
-    } else if (err.request) {
-      console.warn(`[API] No response from ${err.config?.url} — server may be offline or unreachable.`);
+    if (process.env.NODE_ENV === 'development') {
+      if (err.response) {
+        console.warn(`[API] HTTP ${err.response.status}: ${err.config?.url}`, err.response.data);
+      } else if (err.request) {
+        console.warn(
+          `[API] No response from ${err.config?.url} — server may be offline or unreachable.`,
+        );
+      }
     }
     return Promise.reject(err);
   },
 );
+
+function looksLikeTechnicalErrorMessage(message: string): boolean {
+  const s = message.trim();
+  if (!s || s.length > 220) return true;
+  return /exception|stack|trace|LINQ|SqlClient|DbUpdate|System\.|Microsoft\.|timeout of \d+ms/i.test(s);
+}
+
+/** Safe short messages for login / Google OAuth UI — never expose stack traces or Axios internals. */
+export function sanitizeUserFacingLoginMessage(message: string | null | undefined, fallback: string): string {
+  const s = (message ?? '').trim();
+  if (!s) return fallback;
+  if (looksLikeTechnicalErrorMessage(s)) return fallback;
+  return s;
+}
+
+const GENERIC_GOOGLE_SIGNIN_FAILED =
+  'Google sign-in could not be completed. Please try again or use email and password.';
+
+/**
+ * Maps HTTP/network failures to concise English copy for the auth screens.
+ */
+export function getPublicAuthErrorMessage(err: unknown, context: 'google' | 'credentials'): string {
+  if (axios.isAxiosError(err)) {
+    if (err.code === 'ECONNABORTED' || /timeout of \d+ms exceeded/i.test(err.message ?? '')) {
+      return context === 'google'
+        ? 'Sign-in timed out. Check that the API server is running, then try again.'
+        : 'The request timed out. Please try again.';
+    }
+    if (!err.response) {
+      return context === 'google'
+        ? 'Cannot reach the sign-in service. Check your network and ensure the backend API is running.'
+        : 'Cannot reach the server. Check your network and try again.';
+    }
+    const st = err.response.status;
+    if (context === 'credentials') {
+      if (st === 401) return 'Invalid email or password.';
+      if (st === 403) return 'Sign-in was not allowed. Contact support if this continues.';
+      if (st >= 500) return 'The server is temporarily unavailable. Please try again later.';
+      const msg = getApiErrorMessage(err);
+      return looksLikeTechnicalErrorMessage(msg) ? 'Sign-in failed. Please try again.' : msg;
+    }
+    if (st === 401 || st === 403) {
+      return 'Google sign-in could not be verified. If this continues, ask an administrator to check Google OAuth settings (client ID and authorized origins).';
+    }
+    if (st >= 500) return 'The server could not complete Google sign-in. Please try again later.';
+    if (st === 404) return 'Sign-in service was not found. Contact support if this continues.';
+    const msg = getApiErrorMessage(err);
+    return looksLikeTechnicalErrorMessage(msg) ? GENERIC_GOOGLE_SIGNIN_FAILED : msg;
+  }
+  if (err instanceof Error) {
+    if (/did not return a credential|credential token/i.test(err.message)) {
+      return 'Google did not complete sign-in. Please try again.';
+    }
+    return context === 'google' ? GENERIC_GOOGLE_SIGNIN_FAILED : 'Sign-in failed. Please try again.';
+  }
+  return context === 'google' ? GENERIC_GOOGLE_SIGNIN_FAILED : 'Sign-in failed. Please try again.';
+}
 
 export function getApiErrorMessage(err: unknown): string {
   let raw = 'Request failed';

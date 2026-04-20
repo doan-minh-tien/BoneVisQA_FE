@@ -1,6 +1,24 @@
 import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
-import type { ClassItem, LecturerTriageRow } from './types';
+import type { ClassItem, LecturerTriageRequestKind, LecturerTriageRow } from './types';
+
+function parseTriageCaseTags(r: Record<string, unknown>): string[] {
+  const direct = r.caseTags ?? r.CaseTags ?? r.tags ?? r.Tags;
+  if (Array.isArray(direct)) return direct.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct
+      .split(/[,;|]/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  const caseObj = r.case ?? r.Case;
+  if (caseObj && typeof caseObj === 'object') {
+    const c = caseObj as Record<string, unknown>;
+    const nested = c.tags ?? c.Tags;
+    if (Array.isArray(nested)) return nested.map((x) => String(x).trim()).filter(Boolean);
+  }
+  return [];
+}
 
 export const WORKFLOW_CONFLICT = 'WORKFLOW_CONFLICT';
 
@@ -126,6 +144,16 @@ function normalizeTriageRow(row: unknown): LecturerTriageRow | null {
   if (/visualqa/i.test(qs)) questionSource = 'VisualQA';
   else if (/caseqa/i.test(qs)) questionSource = 'CaseQA';
 
+  const caseIdRaw = r.caseId ?? r.CaseId;
+  const caseId =
+    caseIdRaw != null && String(caseIdRaw).trim() !== '' ? String(caseIdRaw).trim() : null;
+
+  /** BE: `caseId === null` ⇒ personal/ad-hoc upload (not a catalog case chat). */
+  const requestKind: LecturerTriageRequestKind =
+    caseId === null ? 'adhoc-upload' : 'case-catalog';
+
+  const caseTags = parseTriageCaseTags(r);
+
   return {
     id,
     studentName: String(r.studentName ?? r.StudentName ?? ''),
@@ -139,7 +167,10 @@ function normalizeTriageRow(row: unknown): LecturerTriageRow | null {
     similarityScore: Number(r.aiConfidenceScore ?? r.AiConfidenceScore ?? r.similarityScore ?? 0),
     escalated: !!(r.isEscalated ?? r.IsEscalated ?? (r.status === 'Escalated' ? true : false)),
     questionSource,
+    caseId,
     caseTitle: String(r.caseTitle ?? r.CaseTitle ?? '').trim() || null,
     caseDescription: String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null,
+    caseTags: caseTags.length > 0 ? caseTags : undefined,
+    requestKind,
   };
 }

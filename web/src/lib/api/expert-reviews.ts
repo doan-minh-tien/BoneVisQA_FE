@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
+import type { ExpertPendingReview } from './expert-dashboard';
+import { fetchExpertPendingReviews } from './expert-dashboard';
 import { normalizeVisualQaReport, normalizeVisualQaSessionReport } from './normalize-visual-qa';
 import type { Citation, ExpertReviewItem, VisualQaReport, VisualQaTurn } from './types';
 import {
@@ -9,6 +11,14 @@ import {
 } from '@/lib/utils/annotations';
 
 export const REVIEW_WORKFLOW_CONFLICT = 'REVIEW_WORKFLOW_CONFLICT';
+
+function normalizeReviewMessageId(raw: string | null | undefined): string {
+  if (raw == null) return '';
+  let s = String(raw).trim();
+  if (!s) return '';
+  if (s.startsWith('{') && s.endsWith('}')) s = s.slice(1, -1).trim();
+  return s.toLowerCase();
+}
 
 function reflectiveQuestionsToNullableString(
   rq: VisualQaReport['reflectiveQuestions'],
@@ -20,6 +30,26 @@ function reflectiveQuestionsToNullableString(
   }
   const t = String(rq).trim();
   return t || null;
+}
+
+function parseDifferentialDiagnosesList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      if (Array.isArray(p)) {
+        return p.map((x) => String(x).trim()).filter(Boolean);
+      }
+    } catch {
+      return raw
+        .split(/[\n;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
 }
 
 function mapExpertCitation(row: unknown): Citation | null {
@@ -53,10 +83,17 @@ function mapExpertCitation(row: unknown): Citation | null {
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const sessionId = String(
-    r.sessionId ?? r.SessionId ?? r.visualQaSessionId ?? r.VisualQaSessionId ?? r.id ?? r.requestId ?? '',
-  ).trim();
   const answerIdRaw = String(r.answerId ?? r.AnswerId ?? r.caseAnswerId ?? r.CaseAnswerId ?? '').trim();
+  const sessionId = String(
+    r.sessionId ??
+      r.SessionId ??
+      r.visualQaSessionId ??
+      r.VisualQaSessionId ??
+      (answerIdRaw || undefined) ??
+      r.id ??
+      r.requestId ??
+      '',
+  ).trim();
   if (!sessionId) return null;
   const turnsRaw = r.turns ?? r.Turns ?? r.history ?? r.History;
   const hasSessionTurns = Array.isArray(turnsRaw) && turnsRaw.length > 0;
@@ -81,17 +118,20 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
 
   const matchedTurn =
     normalizedSession?.turns.find((turn) => {
-      const assistantId = turn.assistantMessageId?.trim();
-      const userId = turn.userMessageId?.trim();
-      if (selectedAssistantMessageId && assistantId && selectedAssistantMessageId === assistantId) {
+      const assistantId = normalizeReviewMessageId(turn.assistantMessageId);
+      const userId = normalizeReviewMessageId(turn.userMessageId);
+      const saN = normalizeReviewMessageId(selectedAssistantMessageId);
+      const suN = normalizeReviewMessageId(selectedUserMessageId);
+      const reqN = normalizeReviewMessageId(requestedReviewMessageId);
+      if (saN && assistantId && saN === assistantId) {
         return true;
       }
-      if (selectedUserMessageId && userId && selectedUserMessageId === userId) {
+      if (suN && userId && suN === userId) {
         return true;
       }
-      if (requestedReviewMessageId) {
-        if (assistantId && assistantId === requestedReviewMessageId) return true;
-        if (userId && userId === requestedReviewMessageId) return true;
+      if (reqN) {
+        if (assistantId && assistantId === reqN) return true;
+        if (userId && userId === reqN) return true;
       }
       return false;
     }) ?? null;
@@ -137,6 +177,11 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     if (assistantContent) {
       report = { ...report, answerText: assistantContent };
     }
+  } else {
+    const currentAnswerFlat = String(r.currentAnswerText ?? r.CurrentAnswerText ?? '').trim();
+    if (currentAnswerFlat) {
+      report = { ...report, answerText: currentAnswerFlat };
+    }
   }
   if (r.keyImagingFindings !== undefined && r.keyImagingFindings !== null) {
     const v = String(r.keyImagingFindings).trim();
@@ -145,6 +190,35 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (r.reflectiveQuestions !== undefined && r.reflectiveQuestions !== null) {
     const v = String(r.reflectiveQuestions).trim();
     report = { ...report, reflectiveQuestions: v || null };
+  }
+
+  const structuredDiagnosis = String(r.structuredDiagnosis ?? r.StructuredDiagnosis ?? '').trim();
+  if (structuredDiagnosis) {
+    report = { ...report, suggestedDiagnosis: structuredDiagnosis };
+  } else {
+    const caseSugg = String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim();
+    if (caseSugg && report.suggestedDiagnosis?.trim() === caseSugg) {
+      report = { ...report, suggestedDiagnosis: '' };
+    }
+  }
+
+  const diffFromDto = parseDifferentialDiagnosesList(r.differentialDiagnoses ?? r.DifferentialDiagnoses);
+  if (diffFromDto.length > 0) {
+    report = { ...report, differentialDiagnoses: diffFromDto, keyFindings: diffFromDto };
+  } else {
+    const caseKf = String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim();
+    const kfJoined = report.keyFindings.length > 0 ? report.keyFindings.join('\n').trim() : '';
+    if (caseKf && kfJoined && kfJoined === caseKf) {
+      report = { ...report, keyFindings: [], differentialDiagnoses: report.differentialDiagnoses ?? [] };
+    }
+  }
+
+  const confRaw = r.aiConfidenceScore ?? r.AiConfidenceScore;
+  if (typeof confRaw === 'number' && Number.isFinite(confRaw)) {
+    report = { ...report, aiConfidenceScore: confRaw };
+  } else if (typeof confRaw === 'string' && confRaw.trim()) {
+    const n = parseFloat(confRaw);
+    if (Number.isFinite(n)) report = { ...report, aiConfidenceScore: n };
   }
   const customCoordinates = parsePercentageBoundingBox(
     r.customCoordinates ??
@@ -199,6 +273,17 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const caseSuggestedDiagnosis =
     String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim() || null;
   const caseKeyFindings = String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim() || null;
+  const caseTitle =
+    String(r.caseTitle ?? r.CaseTitle ?? r.caseName ?? r.CaseName ?? '').trim() || null;
+
+  const askedAtRaw =
+    r.escalatedAt ??
+    r.EscalatedAt ??
+    r.askedAt ??
+    r.AskedAt ??
+    r.submittedAt ??
+    r.SubmittedAt ??
+    '';
 
   return {
     sessionId,
@@ -209,6 +294,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     questionText,
     question: questionText,
     caseId,
+    caseTitle,
     caseDescription,
     caseSuggestedDiagnosis,
     caseKeyFindings,
@@ -229,7 +315,7 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     customCoordinates,
     customBoundingBox,
     customPolygon,
-    askedAt: String(r.askedAt ?? ''),
+    askedAt: String(askedAtRaw ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,
     turns: allTurns,
@@ -240,6 +326,35 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
     citations,
     keyImagingFindings: report.keyImagingFindings ?? null,
     reflectiveQuestions: reflectiveQuestionsToNullableString(report.reflectiveQuestions),
+    queueSource: 'queue',
+  };
+}
+
+/** When `/reviews/case-answer` and `/reviews/escalated` are empty but dashboard still lists pending items. */
+function mapDashboardPendingToExpertItem(row: ExpertPendingReview): ExpertReviewItem | null {
+  const sessionId = String(row.id ?? '').trim();
+  if (!sessionId) return null;
+  const report = normalizeVisualQaReport({
+    answerText: row.aiAnswerSnippet,
+    suggestedDiagnosis: '',
+    keyFindings: [],
+    differentialDiagnoses: [],
+  });
+  return {
+    sessionId,
+    answerId: null,
+    id: sessionId,
+    studentName: row.studentName,
+    questionText: row.questionSnippet,
+    question: row.questionSnippet,
+    caseId: row.caseId ?? null,
+    caseTitle: row.caseTitle?.trim() ? row.caseTitle : null,
+    askedAt: row.submittedAt || '',
+    status: 'PendingExpert',
+    report,
+    turns: [],
+    citations: [],
+    queueSource: 'dashboard-summary',
   };
 }
 
@@ -248,16 +363,16 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
  * If no pair IDs are present, returns false (nothing to verify client-side).
  */
 export function hasExpertReviewSelectedPairMismatch(item: ExpertReviewItem): boolean {
-  const req = item.requestedReviewMessageId?.trim();
-  const su = item.selectedUserMessageId?.trim();
-  const sa = item.selectedAssistantMessageId?.trim();
+  const req = normalizeReviewMessageId(item.requestedReviewMessageId);
+  const su = normalizeReviewMessageId(item.selectedUserMessageId);
+  const sa = normalizeReviewMessageId(item.selectedAssistantMessageId);
   if (!req && !su && !sa) return false;
   const turns = item.turns ?? [];
   if (turns.length === 0) return true;
 
   const matched = turns.find((turn) => {
-    const assistantId = turn.assistantMessageId?.trim();
-    const userId = turn.userMessageId?.trim();
+    const assistantId = normalizeReviewMessageId(turn.assistantMessageId);
+    const userId = normalizeReviewMessageId(turn.userMessageId);
     if (sa && assistantId && sa === assistantId) return true;
     if (su && userId && su === userId) return true;
     if (req) {
@@ -267,34 +382,57 @@ export function hasExpertReviewSelectedPairMismatch(item: ExpertReviewItem): boo
     return false;
   });
   if (!matched) return true;
-  if (su && matched.userMessageId?.trim() && su !== matched.userMessageId.trim()) return true;
-  if (sa && matched.assistantMessageId?.trim() && sa !== matched.assistantMessageId.trim()) return true;
-  if (
-    req &&
-    req !== matched.userMessageId?.trim() &&
-    req !== matched.assistantMessageId?.trim()
-  ) {
+  const mUser = normalizeReviewMessageId(matched.userMessageId);
+  const mAsst = normalizeReviewMessageId(matched.assistantMessageId);
+  if (su && mUser && su !== mUser) return true;
+  if (sa && mAsst && sa !== mAsst) return true;
+  if (req && req !== mUser && req !== mAsst) {
     return true;
   }
   return false;
 }
 
+const REVIEW_LIST_ARRAY_KEYS = [
+  'pendingReviews',
+  'sessions',
+  'reviews',
+  'escalated',
+  'caseAnswers',
+  'queue',
+] as const;
+
+function firstArrayFromRecord(rec: Record<string, unknown>): unknown[] | null {
+  for (const key of REVIEW_LIST_ARRAY_KEYS) {
+    const v = rec[key];
+    if (Array.isArray(v)) return v;
+  }
+  return null;
+}
+
+/** Align envelopes with `expert-dashboard` `unwrapList` plus common Visual QA queue property names. */
 function unwrapReviewList(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return [];
   const b = data as Record<string, unknown>;
   if (Array.isArray(b.items)) return b.items;
   if (Array.isArray(b.data)) return b.data;
+  if (Array.isArray(b.results)) return b.results;
+  const fromRoot = firstArrayFromRecord(b);
+  if (fromRoot) return fromRoot;
   const res = b.result;
   if (Array.isArray(res)) return res;
   if (res && typeof res === 'object') {
     const r = res as Record<string, unknown>;
     if (Array.isArray(r.items)) return r.items;
+    if (Array.isArray(r.data)) return r.data;
+    if (Array.isArray(r.results)) return r.results;
+    const nested = firstArrayFromRecord(r);
+    if (nested) return nested;
   }
   return [];
 }
 
-/** Primary queue: case-answer reviews; fallback to escalated. */
+/** Primary queue: case-answer reviews; fallback to escalated; then dashboard pending list if both are empty. */
 export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   try {
     const { data } = await http.get<unknown>('/api/expert/reviews/case-answer');
@@ -307,11 +445,20 @@ export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   }
   try {
     const { data } = await http.get<unknown>('/api/expert/reviews/escalated');
-    return unwrapReviewList(data)
+    const secondary = unwrapReviewList(data)
       .map(mapExpertItem)
       .filter((x): x is ExpertReviewItem => x !== null);
+    if (secondary.length > 0) return secondary;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
+  }
+  try {
+    const pending = await fetchExpertPendingReviews();
+    return pending
+      .map(mapDashboardPendingToExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
+  } catch {
+    return [];
   }
 }
 
@@ -322,31 +469,68 @@ export interface ExpertReviewUpdatePayload {
   reviewNote: string;
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
+  correctedRoiBoundingBox?: number[] | null;
+  decision?: 'approve' | 'reject';
 }
 
-/**
- * BE `ResolveEscalatedAnswerRequestDto.DifferentialDiagnoses` is `JsonElement?`.
- * Sending a JSON array inline can bind inconsistently; a stringified array parses reliably,
- * then `NormalizeDifferentialDiagnosesForStorage` handles String vs Array.
- */
-const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => ({
-  answerText: payload.answerText,
-  structuredDiagnosis: payload.structuredDiagnosis,
-  differentialDiagnoses:
-    payload.differentialDiagnoses.length > 0
-      ? JSON.stringify(payload.differentialDiagnoses)
-      : null,
-  reviewNote: payload.reviewNote,
-  keyImagingFindings: payload.keyImagingFindings ?? null,
-  reflectiveQuestions: payload.reflectiveQuestions ?? null,
-});
+const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => {
+  const roi = payload.correctedRoiBoundingBox;
+  const roiBody =
+    Array.isArray(roi) && roi.length >= 4 && roi.slice(0, 4).every((n) => Number.isFinite(n))
+      ? { correctedRoiBoundingBox: roi.slice(0, 4) }
+      : {};
+  const decisionBody =
+    payload.decision !== undefined ? { decision: payload.decision } : {};
+  return {
+    answerText: payload.answerText,
+    structuredDiagnosis: payload.structuredDiagnosis,
+    differentialDiagnoses:
+      payload.differentialDiagnoses.length > 0
+        ? JSON.stringify(payload.differentialDiagnoses)
+        : null,
+    reviewNote: payload.reviewNote,
+    keyImagingFindings: payload.keyImagingFindings ?? null,
+    reflectiveQuestions: payload.reflectiveQuestions ?? null,
+    ...roiBody,
+    ...decisionBody,
+  };
+};
 
-/**
- * Persist expert-reviewed outcome (answer text, diagnoses, notes).
- * BE: POST `/api/expert/reviews/{sessionId}/resolve` — this also sets session status to ExpertApproved.
- * Status-only finalize without storing expert content uses `approveExpertReview` (POST `.../approve`).
- */
-export async function putExpertReview(
+export interface ExpertReviewDraftPayload {
+  reviewNote?: string;
+  correctedRoiBoundingBox?: number[];
+}
+
+export async function putExpertReviewDraft(
+  sessionId: string,
+  payload: ExpertReviewDraftPayload,
+): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  const body: Record<string, unknown> = {};
+  if (payload.reviewNote !== undefined) body.reviewNote = payload.reviewNote;
+  const roi = payload.correctedRoiBoundingBox;
+  if (Array.isArray(roi) && roi.length >= 4 && roi.slice(0, 4).every((n) => Number.isFinite(n))) {
+    body.correctedRoiBoundingBox = roi.slice(0, 4);
+  }
+  try {
+    await http.put(`/api/expert/reviews/${encodeURIComponent(id)}/draft`, body);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function deleteExpertReviewDraft(sessionId: string): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  try {
+    await http.delete(`/api/expert/reviews/${encodeURIComponent(id)}/draft`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function resolveExpertReview(
   sessionId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
@@ -364,15 +548,19 @@ export async function putExpertReview(
 export async function postExpertResponse(
   sessionId: string,
   content: string,
+  options?: { correctedRoiBoundingBox?: number[] | null },
 ): Promise<void> {
   const id = String(sessionId ?? '').trim();
   const message = String(content ?? '').trim();
   if (!id) throw new Error('Session id is required.');
   if (!message) throw new Error('Feedback content is required.');
+  const roi = options?.correctedRoiBoundingBox;
+  const body: { content: string; correctedRoiBoundingBox?: number[] } = { content: message };
+  if (Array.isArray(roi) && roi.length >= 4) {
+    body.correctedRoiBoundingBox = roi.slice(0, 4);
+  }
   try {
-    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/respond`, {
-      content: message,
-    });
+    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/respond`, body);
   } catch (e) {
     if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
       throw new Error(REVIEW_WORKFLOW_CONFLICT);

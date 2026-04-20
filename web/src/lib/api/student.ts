@@ -287,7 +287,7 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
 export async function fetchStudentProfile(): Promise<StudentProfile> {
   try {
     // BE: UsersController — GET /api/users/me (không dùng /api/student/profile)
-    const { data } = await http.get<StudentProfile>('/api/users/me');
+    const { data } = await http.get<StudentProfile>('/api/users/me', { skipApiToast: true });
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -332,7 +332,7 @@ export async function updateStudentProfile(
 
 export async function fetchStudentProgress(): Promise<StudentProgress> {
   try {
-    const { data } = await http.get<StudentProgress>('/api/student/progress');
+    const { data } = await http.get<StudentProgress>('/api/student/progress', { skipApiToast: true });
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -787,7 +787,9 @@ export async function fetchStudentTopicStats(): Promise<StudentTopicStat[]> {
 
 export async function fetchStudentRecentActivity(): Promise<StudentRecentActivityItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/student/progress/recent-activity');
+    const { data } = await http.get<unknown>('/api/student/progress/recent-activity', {
+      skipApiToast: true,
+    });
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data

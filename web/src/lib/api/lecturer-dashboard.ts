@@ -425,3 +425,5 @@ export async function updateAdminProfile(
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+export { fetchLecturerTriageList } from './lecturer-triage';

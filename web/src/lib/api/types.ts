@@ -69,6 +69,7 @@ export interface VisualQaTurn {
   questionCoordinates?: NormalizedImageBoundingBox | null;
   /** Message-level ROI for this specific Q/A turn (normalized 0-1). */
   roiBoundingBox?: NormalizedImageBoundingBox | null;
+  expertCorrectedRoiBoundingBox?: NormalizedImageBoundingBox | null;
   /** Assistant structured diagnosis (JSON string or plain text) from triage / thread DTOs. */
   structuredDiagnosis?: string | null;
   /** Assistant key imaging line (string or JSON) from triage DTOs. */
@@ -88,8 +89,13 @@ export interface VisualQaTurn {
   lastResponderRole?: string | null;
   actorRole?: string | null;
   isReviewTarget?: boolean;
+  reviewTargetAssistantMessageId?: string | null;
+  reviewTargetTurnId?: string | null;
+  reviewTargetTurnIndex?: number | null;
   policyReason?: string | null;
   systemNoticeCode?: string | null;
+  /** FE-only: optimistic row waiting for assistant payload (merged away when BE echoes same `clientRequestId`). */
+  awaitingAssistant?: boolean;
 }
 
 export interface VisualQaMessage {
@@ -187,7 +193,13 @@ export interface DocumentIngestionStatusDto {
   currentPageIndexing?: number;
   progressPercentage?: number;
   operation?: string;
+  /** Backend pipeline phase hint (e.g. Download, Parsing, Vectorizing). */
+  phase?: string;
+  /** Failure detail when status is Failed. */
+  errorMessage?: string;
 }
+
+export type LecturerTriageRequestKind = 'case-catalog' | 'adhoc-upload';
 
 export interface LecturerTriageRow {
   id: string;
@@ -202,9 +214,15 @@ export interface LecturerTriageRow {
   selectedAssistantMessageId?: string | null;
   /** BE triage row: VisualQA vs CaseQA when present. */
   questionSource?: 'CaseQA' | 'VisualQA' | null;
+  /** Resolved catalog case id when session references a library case. */
+  caseId?: string | null;
   /** Short case snapshot for list (e.g. medical_cases.description). */
   caseDescription?: string | null;
   caseTitle?: string | null;
+  /** Parsed tag labels when BE sends tags / CSV / nested case tags. */
+  caseTags?: string[];
+  /** Derived UX bucket for conditional metadata UI. */
+  requestKind: LecturerTriageRequestKind;
 }
 
 export interface ClassItem {
@@ -250,7 +268,9 @@ export interface LectStudentQuestionDto {
   studentId: string;
   studentName: string;
   studentEmail: string;
-  caseId: string;
+  /** `null` when the session is a personal/ad-hoc upload (no catalog case). */
+  caseId: string | null;
+  /** Catalog snapshot title; empty string when ad-hoc / missing. */
   caseTitle: string;
   questionText: string;
   language?: string | null;
@@ -275,6 +295,10 @@ export interface LectStudentQuestionDto {
   caseDescription?: string | null;
   caseSuggestedDiagnosis?: string | null;
   caseKeyFindings?: string | null;
+  /** BE: explicit personal / ad-hoc upload session (hide catalog metadata when true). */
+  isPersonalUpload?: boolean | null;
+  /** Normalized tag labels from BE (`caseTags`, `tags`, or nested `case.tags`). */
+  caseTags?: string[] | null;
 }
 
 export interface Announcement {
@@ -730,6 +754,8 @@ export interface ExpertReviewItem {
   caseDescription?: string | null;
   caseSuggestedDiagnosis?: string | null;
   caseKeyFindings?: string | null;
+  /** Snapshot title from catalog case when present. */
+  caseTitle?: string | null;
   imageUrl?: string;
   imageId?: string | null;
   customImageUrl?: string | null;
@@ -750,6 +776,10 @@ export interface ExpertReviewItem {
   citations?: Citation[];
   keyImagingFindings?: string | null;
   reflectiveQuestions?: string | null;
+  /**
+   * `dashboard-summary`: row từ fallback `/expert/dashboard/pending-reviews` (không đủ ảnh/citations như queue chính).
+   */
+  queueSource?: 'queue' | 'dashboard-summary';
 }
 
 export interface Citation {
