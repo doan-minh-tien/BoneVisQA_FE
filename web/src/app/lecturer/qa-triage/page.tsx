@@ -91,6 +91,10 @@ function triageRequestKind(item: LectStudentQuestionDto): LecturerTriageRequestK
   return item.caseId != null && item.caseId.trim() !== '' ? 'case-catalog' : 'adhoc-upload';
 }
 
+function triageWorkflowLabel(item: LectStudentQuestionDto): string {
+  return triageRequestKind(item) === 'case-catalog' ? 'Case Catalog' : 'Ad-hoc Upload';
+}
+
 function shortCaseId(caseId: string | null): string {
   if (caseId == null) return '—';
   const t = caseId.trim();

@@ -825,7 +825,6 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
             <p className="mt-1 text-sm text-muted-foreground">
               Chọn quiz từ thư viện của Expert để gán vào lớp học của bạn.
             </p>
-            </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={loadQuizzes} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
