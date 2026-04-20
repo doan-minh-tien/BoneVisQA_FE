@@ -6,7 +6,7 @@ import type { AdminRecentUser } from '@/lib/api/admin-dashboard';
 interface RecentUsersTableProps {
   users: AdminRecentUser[];
   isLoading?: boolean;
-  /** Khi đổi trang và đang tải lại chỉ danh sách user */
+  /** When changing pages while reloading user list */
   isPaging?: boolean;
   page: number;
   pageSize: number;

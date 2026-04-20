@@ -18,7 +18,7 @@ import type { ClassAssignment, ClassItem } from '@/lib/api/types';
 
 type Props = {
   announcement: Announcement;
-  /** Hiện tên lớp (trang xem tất cả lớp) */
+  /** Show class name (all classes view) */
   showClassName?: boolean;
   /** Lecturer ID (required for class list when editing) */
   lecturerId?: string;
@@ -175,13 +175,13 @@ export function LecturerAnnouncementRow({
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  {new Date(a.createdAt).toLocaleString('vi-VN', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                {new Date(a.createdAt).toLocaleString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
                 </span>
                 {showClassName && a.className && (
                   <span className="flex items-center gap-1">
@@ -342,7 +342,7 @@ export function LecturerAnnouncementRow({
                       <option key={assignment.id} value={assignment.id}>
                         [{assignment.type.toUpperCase()}] {assignment.title}
                         {assignment.dueDate
-                          ? ` (Due: ${new Date(assignment.dueDate).toLocaleDateString('vi-VN')})`
+                          ? ` (Due: ${new Date(assignment.dueDate).toLocaleDateString('en-GB')})`
                           : ''}
                       </option>
                     ))}

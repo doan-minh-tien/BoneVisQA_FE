@@ -41,7 +41,7 @@ function isExpertSlotRow(e: ClassEnrollment): boolean {
   return Boolean(e.expertId?.trim()) && !e.studentId?.trim();
 }
 
-/** Dòng enrollment của sinh viên — không trùng ô Lecturer/Expert-only. */
+/** Student enrollment row — does not collide with Lecturer/Expert-only slots. */
 function isStudentEnrollmentRow(e: ClassEnrollment): boolean {
   if (e.studentId?.trim()) return true;
   if (/student|learner/i.test(e.role ?? '')) return true;

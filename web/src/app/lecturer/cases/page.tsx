@@ -59,7 +59,7 @@ export default function LecturerCasesPage() {
     setShowAssign(false);
     setSelectedCases(new Set());
 
-    // Lưu composite keys (classId_caseId) để highlight trong trang Assignments
+    // Save composite keys (classId_caseId) for highlight on Assignments page
     const newKeys = assignments.map(a => `${a.classId}_${a.caseId}`);
     sessionStorage.setItem('newAssignmentIds', JSON.stringify(newKeys));
 

@@ -65,7 +65,7 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', {
+  return d.toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -78,7 +78,7 @@ function formatDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('vi-VN', {
+  return d.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: '2-digit',
@@ -856,10 +856,10 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
           <div>
             <h3 className="flex items-center gap-2 text-lg font-bold text-card-foreground">
               <BookOpen className="h-5 w-5 text-primary" />
-              Expert Quiz Library
+              Quiz Library
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Select quizzes from the Expert library to assign to your classes.
+              Select quizzes from the library to assign to your classes.
             </p>
           </div>
           <button

@@ -58,7 +58,7 @@ function computeAssignmentStatus(
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleString('vi-VN', {
+  return new Date(dateStr).toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

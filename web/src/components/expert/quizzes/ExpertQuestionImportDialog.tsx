@@ -71,11 +71,11 @@ A) Femur  B) Tibia  C) Fibula  D) Humerus
 Answer: B
 Case: Case 1: Femur Fracture`;
 
-/** Split pasted text into one block per question */
+/** Split pasted text into one block per question (numbered "Q1", "1.", "Question 1", etc.). */
 function splitPasteBlocks(raw: string): string[] {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   return normalized
-    .split(/\n(?=\s*(?:Câu\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
+    .split(/\n(?=\s*(?:Q\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -88,7 +88,7 @@ function parsePaste(raw: string): ExpertParsedQuestion[] {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length < 2) continue;
 
-    while (lines.length && /^Câu\s*\d+\s*$/i.test(lines[0])) {
+    while (lines.length && /^Q\s*\d+\s*$/i.test(lines[0])) {
       lines.shift();
     }
     if (lines.length < 2) continue;
@@ -104,8 +104,8 @@ function parsePaste(raw: string): ExpertParsedQuestion[] {
     let caseTitle = '';
 
     for (const line of lines) {
-      if (/^answer\s*[:\)]/i.test(line) || /^đáp án\s*[:\)]/i.test(line)) {
-        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').trim();
+      if (/^answer\s*[:\)]/i.test(line)) {
+        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').trim();
         correctAnswer = val.charAt(0).toUpperCase();
       }
       if (/^case\s*[:\)]/i.test(line) || /^ca\s*[:\)]/i.test(line)) {

@@ -57,20 +57,20 @@ function formatReviewStateLabel(reviewState?: string | null): string | null {
   return reviewState ?? null;
 }
 
-/** Maps BE system notice codes to Vietnamese; unknown technical codes are hidden (no raw SCREAMING_SNAKE in UI). */
+/** Maps BE system notice codes to English; unknown technical codes are hidden (no raw SCREAMING_SNAKE in UI). */
 function formatSystemNoticeCodeLabel(code: string | null | undefined): string | null {
   const c = code?.trim().toUpperCase();
   if (!c) return null;
   const map: Record<string, string> = {
-    SESSION_READ_ONLY: 'Phiên đang ở chế độ chỉ đọc theo quy định hệ thống.',
-    SESSION_LOCKED: 'Phiên đã khóa.',
-    SESSION_EXPIRED: 'Phiên đã hết hạn.',
-    TURN_LIMIT_EXCEEDED: 'Đã hết lượt hỏi trong phiên Visual QA.',
-    MISSING_IMAGE: 'Thiếu ảnh minh họa.',
-    MISSING_QUESTION: 'Thiếu nội dung câu hỏi.',
-    AI_SERVICE_UNAVAILABLE: 'Dịch vụ AI tạm không khả dụng.',
-    AI_RESPONSE_INVALID_FORMAT: 'Định dạng phản hồi AI không hợp lệ.',
-    INTERNAL_SERVER_ERROR: 'Lỗi xử lý phía máy chủ.',
+    SESSION_READ_ONLY: 'Session is in read-only mode per system policy.',
+    SESSION_LOCKED: 'Session is locked.',
+    SESSION_EXPIRED: 'Session has expired.',
+    TURN_LIMIT_EXCEEDED: 'Question limit exceeded for this Visual QA session.',
+    MISSING_IMAGE: 'Image is missing.',
+    MISSING_QUESTION: 'Question content is missing.',
+    AI_SERVICE_UNAVAILABLE: 'AI service is temporarily unavailable.',
+    AI_RESPONSE_INVALID_FORMAT: 'AI response format is invalid.',
+    INTERNAL_SERVER_ERROR: 'Server-side processing error.',
   };
   return map[c] ?? null;
 }
@@ -85,9 +85,9 @@ function formatTurnTimestamp(value?: string | null): string | null {
     date.getMonth() === now.getMonth() &&
     date.getDate() === now.getDate();
   if (sameCalendarDay) {
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
-  return date.toLocaleString('vi-VN', {
+  return date.toLocaleString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     day: '2-digit',

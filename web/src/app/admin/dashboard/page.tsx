@@ -104,7 +104,7 @@ export default function AdminDashboardPage() {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ refetch khi đổi trang
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch when page changes
   }, [recentPage]);
 
   const totalUsers = userStats?.totalUsers || 0;

@@ -16,12 +16,13 @@ import {
 } from 'lucide-react';
 import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
 import {
-  // getAvailableStudents,    // DISABLED: Lecturer không CRUD student trong lớp
-  // enrollManyStudents,       // DISABLED: Lecturer không CRUD student trong lớp
+  // getAvailableStudents,    // DISABLED: Lecturer cannot CRUD students in class
+  // enrollManyStudents,       // DISABLED: Lecturer cannot CRUD students in class
   getLecturerCases,
   assignCasesToClass,
+  getAssignedCasesForClass,
 } from '@/lib/api/lecturer';
-import type { CaseDto } from '@/lib/api/types';
+import type { CaseDto, ClassCaseAssignmentDto } from '@/lib/api/types';
 
 export interface ClassManagementWorkbenchProps {
   classId: string;
@@ -30,7 +31,7 @@ export interface ClassManagementWorkbenchProps {
   caseActivityCount: number;
   /** Optional denominator for enrolled display, e.g. mock capacity. */
   enrolledCapacity?: number;
-  /** DISABLED: onRosterChanged — Lecturer không CRUD student trong lớp */
+  /** DISABLED: onRosterChanged — Lecturer cannot CRUD students in class */
   // onRosterChanged?: () => void;
 }
 
@@ -41,16 +42,17 @@ export default function ClassManagementWorkbench({
   enrolledCapacity,
 }: ClassManagementWorkbenchProps) {
   const [showImport, setShowImport] = useState(false);
-  // DISABLED: showBulk — Lecturer không CRUD student trong lớp
+  // DISABLED: showBulk — Lecturer cannot CRUD students in class
   // const [showBulk, setShowBulk] = useState(false);
 
   const [cases, setCases] = useState<CaseDto[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
+  const [assignedCaseIds, setAssignedCaseIds] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [assigningIds, setAssigningIds] = useState<Set<string>>(new Set());
   const [justAssigned, setJustAssigned] = useState<Set<string>>(new Set());
 
-// DISABLED: Bulk enrollment state — Lecturer không CRUD student trong lớp
+// DISABLED: Bulk enrollment state — Lecturer cannot CRUD students in class
 // const [bulkList, setBulkList] = useState<StudentEnrollment[]>([]);
 // const [bulkLoading, setBulkLoading] = useState(false);
 // const [bulkSearch, setBulkSearch] = useState('');
@@ -58,7 +60,7 @@ export default function ClassManagementWorkbench({
 // const [bulkSubmitting, setBulkSubmitting] = useState(false);
 // const [bulkError, setBulkError] = useState('');
 
-  // DISABLED: refreshRoster — Lecturer không CRUD student trong lớp
+  // DISABLED: refreshRoster — Lecturer cannot CRUD students in class
   // const refreshRoster = useCallback(() => {
   //   onRosterChanged?.();
   // }, [onRosterChanged]);
@@ -68,8 +70,20 @@ export default function ClassManagementWorkbench({
     (async () => {
       setCasesLoading(true);
       try {
-        const data = await getLecturerCases();
-        if (!cancelled) setCases(data);
+        // Fetch all available cases and assigned cases in parallel
+        const [allCasesData, assignedData] = await Promise.all([
+          getLecturerCases(),
+          getAssignedCasesForClass(classId),
+        ]);
+        if (!cancelled) {
+          setCases(allCasesData);
+          // Build a Set of assigned case IDs for quick lookup
+          const assignedIds = new Set<string>();
+          assignedData.forEach((item: ClassCaseAssignmentDto) => {
+            assignedIds.add(item.caseId);
+          });
+          setAssignedCaseIds(assignedIds);
+        }
       } catch {
         if (!cancelled) setCases([]);
       } finally {
@@ -79,7 +93,7 @@ export default function ClassManagementWorkbench({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [classId]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -94,7 +108,7 @@ export default function ClassManagementWorkbench({
     return cases.filter((c) => c.categoryName === categoryFilter);
   }, [cases, categoryFilter]);
 
-  // DISABLED: openBulk — Lecturer không CRUD student trong lớp
+  // DISABLED: openBulk — Lecturer cannot CRUD students in class
   // const openBulk = async () => {
   //   setShowBulk(true);
   //   setBulkError('');
@@ -111,7 +125,7 @@ export default function ClassManagementWorkbench({
   //   }
   // };
 
-  // DISABLED: toggleBulk — Lecturer không CRUD student trong lớp
+  // DISABLED: toggleBulk — Lecturer cannot CRUD students in class
   // const toggleBulk = (studentId: string) => {
   //   setBulkSelected((prev) => {
   //     const next = new Set(prev);
@@ -121,7 +135,7 @@ export default function ClassManagementWorkbench({
   //   });
   // };
 
-  // DISABLED: submitBulkEnroll — Lecturer không CRUD student trong lớp
+  // DISABLED: submitBulkEnroll — Lecturer cannot CRUD students in class
   // const submitBulkEnroll = async () => {
   //   if (bulkSelected.size === 0) return;
   //   setBulkSubmitting(true);
@@ -144,7 +158,9 @@ export default function ClassManagementWorkbench({
         caseIds: [caseId],
         isMandatory: true,
       });
+      // Update both justAssigned (for UI feedback) and assignedCaseIds (for persistent state)
       setJustAssigned((prev) => new Set(prev).add(caseId));
+      setAssignedCaseIds((prev) => new Set(prev).add(caseId));
     } catch {
       // keep UI unchanged
     } finally {
@@ -156,7 +172,7 @@ export default function ClassManagementWorkbench({
     }
   };
 
-  // DISABLED: filteredBulk — Lecturer không CRUD student trong lớp
+  // DISABLED: filteredBulk — Lecturer cannot CRUD students in class
   // const filteredBulk = bulkList.filter((s) => {
   //   const q = bulkSearch.toLowerCase();
   //   return (
@@ -172,8 +188,8 @@ export default function ClassManagementWorkbench({
     <div className="mb-10 space-y-8">
       <div className="flex flex-wrap justify-end gap-3">
         {/*
-          DISABLED: Import students button — Lecturer không CRUD student trong lớp
-          Nếu cần import students, Admin sẽ làm việc đó.
+          DISABLED: Import students button — Lecturer cannot CRUD students in class.
+          If needed, Admin will handle student imports.
         */}
         {/* <button
           type="button"
@@ -302,7 +318,8 @@ export default function ClassManagementWorkbench({
         ) : (
           <div className="relative z-10 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {displayCases.map((c) => {
-              const assigned = justAssigned.has(c.id);
+              // Case is assigned if it was assigned before OR just assigned in this session
+              const assigned = justAssigned.has(c.id) || assignedCaseIds.has(c.id);
               const busy = assigningIds.has(c.id);
               const tag = (c.categoryName || c.difficulty || 'Case').slice(0, 12).toUpperCase();
               return (
@@ -358,8 +375,8 @@ export default function ClassManagementWorkbench({
       </div>
 
       {/*
-        DISABLED: ImportPreviewDialog — Lecturer không CRUD student trong lớp
-        Nếu cần import students, Admin sẽ làm việc đó.
+        DISABLED: ImportPreviewDialog — Lecturer cannot CRUD students in class.
+        If needed, Admin will handle student imports.
       */}
       {/* <ImportPreviewDialog
         open={showImport}
@@ -369,7 +386,7 @@ export default function ClassManagementWorkbench({
       /> */}
 
       {/*
-        DISABLED: Bulk enrollment modal — Lecturer không CRUD student trong lớp
+        DISABLED: Bulk enrollment modal — Lecturer cannot CRUD students in class.
       */}
       {/* {showBulk && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

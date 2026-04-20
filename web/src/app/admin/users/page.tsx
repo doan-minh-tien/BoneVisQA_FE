@@ -69,7 +69,7 @@ function normalizeUser(user: AdminUser): UiUser {
     email: user.email,
     role: displayRole,
     status: user.isActive ? 'Active' : 'Inactive',
-    joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A',
+    joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB') : 'N/A',
     className: user.schoolCohort,
     ...(classListFromApi?.length ? { classList: classListFromApi } : {}),
   };

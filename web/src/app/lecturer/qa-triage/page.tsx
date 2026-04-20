@@ -87,7 +87,7 @@ function confidencePercent(score: number | null | undefined): number | null {
 
 /** BE `questionSource` when present; otherwise infer from case id vs upload-only sessions. */
 function triageWorkflowLabel(item: LectStudentQuestionDto): string {
-  if (item.questionSource === 'CaseQA') return 'Thư viện case';
+  if (item.questionSource === 'CaseQA') return 'Case library';
   if (item.questionSource === 'VisualQA') return 'Upload / ROI';
   const cid = item.caseId?.trim();
   if (!cid) return 'Visual QA';
@@ -448,7 +448,7 @@ export default function QATriagePage() {
                         {question.createdAt ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
                             <Clock3 className="h-3 w-3" />
-                            {new Date(question.createdAt).toLocaleString('vi-VN')}
+                            {new Date(question.createdAt).toLocaleString('en-GB')}
                           </span>
                         ) : null}
                       </div>
@@ -630,7 +630,7 @@ export default function QATriagePage() {
                         {triageWorkflowLabel(selectedQuestion)} —{' '}
                         {selectedQuestion.caseId?.trim()
                           ? `Case ID: ${shortCaseId(selectedQuestion.caseId)}`
-                          : 'Không gắn case thư viện (upload / ROI).'}
+                          : 'No library case attached (upload / ROI).'}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">

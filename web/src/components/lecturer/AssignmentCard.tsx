@@ -12,15 +12,15 @@ export interface AssignmentCardProps {
   submitted?: number;
   graded?: number;
   status?: 'active' | 'overdue' | 'completed';
-  /** "case" | "quiz" — hiển thị badge loại assignment */
+  /** Badge showing assignment type */
   type?: string;
   isMandatory?: boolean;
   assignedAt?: string | null;
-  /** Hiển thị checkbox để chọn/bỏ chọn assignment */
+  /** Show checkbox to select/deselect assignment */
   selectable?: boolean;
   selected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
-  /** Highlight assignment vừa được assign */
+  /** Highlight newly assigned assignment */
   isNew?: boolean;
 }
 
@@ -37,7 +37,7 @@ function computeStatus(
 function formatDueDate(dueDate: string | null | undefined): string {
   if (!dueDate) return '—';
   const d = new Date(dueDate);
-  return d.toLocaleDateString('vi-VN', {
+  return d.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

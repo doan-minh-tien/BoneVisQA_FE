@@ -165,7 +165,7 @@ export default function LecturerClassDetailPage({
         isMandatory: caseMandatory,
       });
 
-      // Lưu composite keys (classId_caseId) để highlight trong trang Assignments
+      // Save composite keys (classId_caseId) for highlight on Assignments page
       const newKeys = result.map(a => `${a.classId}_${a.caseId}`);
       sessionStorage.setItem('newAssignmentIds', JSON.stringify(newKeys));
 
@@ -212,7 +212,7 @@ export default function LecturerClassDetailPage({
         passingScore: Number(quizPassingScore) || undefined,
       });
 
-      // Lưu composite key (classId_sessionId) để highlight
+      // Save composite key (classId_sessionId) for highlight
       const newKeys = [`${classId}_${result.id}`];
       sessionStorage.setItem('newAssignmentIds', JSON.stringify(newKeys));
 

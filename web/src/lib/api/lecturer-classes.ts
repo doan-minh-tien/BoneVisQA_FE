@@ -2,7 +2,7 @@
 
 import axios from 'axios';
 import { getApiErrorMessage, http } from './client';
-import type { CaseDto, ClassItem, QuizDto, StudentEnrollment, ClassCaseAssignmentDto, ClassQuizSessionDto } from './types';
+import type { CaseDto, ClassItem, QuizDto, StudentEnrollment, ClassQuizSessionDto } from './types';
 
 export class ForbiddenApiError extends Error {
   constructor(message = 'You are not allowed to access this resource.') {
@@ -91,8 +91,18 @@ export async function assignQuizToLecturerClass(
 
 export async function fetchAssignedCases(classId: string): Promise<CaseDto[]> {
   try {
-    const { data } = await http.get<CaseDto[]>(`/api/lecturer/classes/${classId}/cases`);
-    return Array.isArray(data) ? data : [];
+    const { data } = await http.get<unknown>(`/api/lecturer/classes/${classId}/assignments/cases`);
+    const items = Array.isArray(data) ? data : [];
+    // Map response to CaseDto for compatibility with the UI
+    return items.map((item: Record<string, unknown>) => ({
+      id: String(item.caseId ?? item.CaseId ?? item.caseID ?? ''),
+      title: String(item.caseTitle ?? item.CaseTitle ?? item.title ?? item.Title ?? ''),
+      description: '',
+      categoryName: '',
+      difficulty: '',
+      isActive: true,
+      isApproved: true,
+    }));
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 404) {
       return [];

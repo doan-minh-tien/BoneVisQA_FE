@@ -612,7 +612,7 @@ function CreateAssignmentPageContent({
                               return {
                                 ...prev,
                                 quizId: e.target.value,
-                                // Auto-fill timeLimit và passingScore từ quiz
+                                // Auto-fill timeLimit and passingScore from quiz
                                 timeLimitMinutes: selectedQuiz?.timeLimit ?? prev.timeLimitMinutes,
                                 passingScore: selectedQuiz?.passingScore ?? prev.passingScore,
                               };

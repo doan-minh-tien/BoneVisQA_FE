@@ -504,7 +504,7 @@ export default function StudentProfilePage() {
                 </div>
               </div>
 
-              {/* Nút Lưu — đặt ngay dưới phần credentials để dễ thấy */}
+              {/* Save button — placed right below credentials for easy visibility */}
               <div className="mt-6 flex justify-end">
                 <Button
                   type="submit"
