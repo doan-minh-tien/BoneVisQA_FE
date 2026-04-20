@@ -39,6 +39,39 @@ export function removeOptimisticTurnByClientRequestId(turns: VisualQaTurn[], cli
  * Optimistic Visual QA turn: student question is visible immediately; assistant side waits for BE.
  * Replaced automatically when merge brings a server turn with the same `clientRequestId`.
  */
+function turnRichnessScore(t: VisualQaTurn): number {
+  let s = 0;
+  if (t.turnId?.trim()) s += 10_000;
+  if (!t.awaitingAssistant) s += 1_000;
+  const body = `${t.answerText ?? ''}${t.diagnosis ?? ''}`.trim();
+  s += Math.min(body.length, 50_000);
+  return s;
+}
+
+/**
+ * BE đôi khi trả về cùng một `turnIndex` hai lần: hàng optimistic (`request:…`) và hàng server (`turn:…`)
+ * không trùng identity → merge không gộp được. Giữ một dòng (ưu tiên bản có turnId / đã có trả lời).
+ */
+export function dedupeTurnsSameIndexPreferServer(turns: VisualQaTurn[]): VisualQaTurn[] {
+  const byIdx = new Map<number, VisualQaTurn[]>();
+  for (const t of turns) {
+    const list = byIdx.get(t.turnIndex) ?? [];
+    list.push(t);
+    byIdx.set(t.turnIndex, list);
+  }
+  const out: VisualQaTurn[] = [];
+  for (const idx of [...byIdx.keys()].sort((a, b) => a - b)) {
+    const group = byIdx.get(idx)!;
+    if (group.length === 1) {
+      out.push(group[0]);
+      continue;
+    }
+    const best = [...group].sort((a, b) => turnRichnessScore(b) - turnRichnessScore(a))[0];
+    out.push(best);
+  }
+  return out;
+}
+
 export function appendOptimisticQuestionTurn(
   base: VisualQaTurn[],
   question: string,

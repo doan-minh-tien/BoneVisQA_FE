@@ -366,7 +366,7 @@ export async function requestStudentVisualQaReview(
         const { data } = await http.post<unknown>(
           `/api/student/visual-qa/turns/${encodeURIComponent(turnId.trim())}/request-review`,
           undefined,
-          { params: { sessionId: id } },
+          { params: { sessionId: id }, clearSessionOn401: false },
         );
         const payload = unwrapVisualQaPayload(data);
         return normalizeVisualQaSessionReport(payload);
@@ -377,7 +377,11 @@ export async function requestStudentVisualQaReview(
       }
     }
 
-    const { data } = await http.post<unknown>(`/api/student/visual-qa/${encodeURIComponent(id)}/request-review`);
+    const { data } = await http.post<unknown>(
+      `/api/student/visual-qa/${encodeURIComponent(id)}/request-review`,
+      undefined,
+      { clearSessionOn401: false },
+    );
     const payload = unwrapVisualQaPayload(data);
     return normalizeVisualQaSessionReport(payload);
   } catch (e) {

@@ -6,11 +6,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AlertTriangle, ArrowDown, Loader2 } from 'lucide-react';
 import { AiMessageBubble } from '@/components/student/AiMessageBubble';
+import { mergeDiagnosisForDisplay } from '@/components/student/VisualQaRichAnswer';
 import { ChatErrorBoundary } from '@/components/student/ChatErrorBoundary';
 import { StudentMessageBubble } from '@/components/student/StudentMessageBubble';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import { VISUAL_QA_MESSAGE_IN } from '@/components/student/visualQaMessageClasses';
 import { Button } from '@/components/ui/button';
+import type { ExpertSupportInline } from '@/components/student/AiMessageBubble';
 import type { VisualQaSessionReport, VisualQaTurn } from '@/lib/api/types';
 
 type OptimisticMessage = {
@@ -37,6 +39,11 @@ type Props = {
   onRequestExpertSupport?: (turn: VisualQaTurn) => void;
   onSendMessage: (message: string) => void | Promise<void>;
   onClear: () => void;
+  /** Trạng thái gửi expert theo assistantMessageId — không render thành message mới. */
+  expertSupportByAssistantId?: Record<
+    string,
+    { phase: 'awaiting' } | { phase: 'resolved'; tone: 'success' | 'danger'; message: string }
+  >;
 };
 
 function normalizeResponseKind(kind?: string | null): 'analysis' | 'refusal' | 'clarification' | 'review_update' | 'system_notice' {
@@ -51,11 +58,11 @@ function normalizeResponseKind(kind?: string | null): 'analysis' | 'refusal' | '
 type DisplayResponseKind = ReturnType<typeof normalizeResponseKind>;
 
 function turnHasStructuredAssistantPayload(turn: VisualQaTurn): boolean {
-  if (turn.diagnosis?.trim()) return true;
+  /** Trùng với card Diagnosis trong VisualQaStructuredAnswer — BE có thể chỉ gửi JSON trong `structuredDiagnosis`. */
+  if (mergeDiagnosisForDisplay(turn.diagnosis, turn.structuredDiagnosis).trim()) return true;
   if (turn.findings?.some((item) => item?.trim())) return true;
   if (turn.differentialDiagnoses?.some((item) => item?.trim())) return true;
   if (turn.reflectiveQuestions?.some((item) => item?.trim())) return true;
-  if (turn.structuredDiagnosis?.trim()) return true;
   if (turn.keyImagingFindings?.trim()) return true;
   return false;
 }
@@ -170,6 +177,7 @@ export function ChatConversation({
   onRequestExpertSupport,
   onSendMessage,
   onClear,
+  expertSupportByAssistantId = {},
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [activeAiMenuKey, setActiveAiMenuKey] = useState<string | null>(null);
@@ -349,16 +357,34 @@ export function ChatConversation({
                       isLoading &&
                       isLastTurn &&
                       (responseKind === 'clarification' || responseKind === 'refusal');
+                    const provisionalEmptyAnalysis =
+                      isLoading &&
+                      isLastTurn &&
+                      responseKind === 'analysis' &&
+                      !assistantText &&
+                      !turn.awaitingAssistant;
                     const awaitingAssistant =
                       deferLatestNonAnalysisWhileBusy ||
+                      provisionalEmptyAnalysis ||
                       (turn.awaitingAssistant === true &&
                         !assistantText &&
                         responseKind === 'analysis');
                     const turnMenuKey = turn.turnId ?? String(turn.turnIndex);
+                    const assistantKey = turn.assistantMessageId?.trim() ?? '';
+                    const rawSupport = assistantKey ? expertSupportByAssistantId[assistantKey] : undefined;
+                    const expertSupportInline: ExpertSupportInline | null =
+                      rawSupport?.phase === 'awaiting'
+                        ? { kind: 'awaiting' }
+                        : rawSupport?.phase === 'resolved'
+                          ? { kind: 'resolved', tone: rawSupport.tone, text: rawSupport.message }
+                          : null;
                     return (
-                  <div
+                  <motion.div
                     key={turn.turnId ?? turn.clientRequestId ?? `${turn.turnIndex}-${turn.createdAt ?? ''}`}
                     className="w-full rounded-xl text-left"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, ease: 'easeOut' }}
                   >
                     <div className="space-y-2">
                       <div className="flex justify-center">
@@ -387,6 +413,7 @@ export function ChatConversation({
                           setActiveAiMenuKey(null);
                           onRequestExpertSupport?.(turn);
                         }}
+                        expertSupportInline={expertSupportInline}
                       />
 
                       {responseKind !== 'review_update' && reviewerNotes.length > 0 && !inlineReviewMarkdown ? (
@@ -431,7 +458,7 @@ export function ChatConversation({
                           </div>
                         ) : null}
                     </div>
-                  </div>
+                  </motion.div>
                 );
                 })}
 

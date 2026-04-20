@@ -14,6 +14,7 @@ import type {
   NormalizedImageBoundingBox,
   VisualQaReport,
 } from '@/lib/api/types';
+import type { ExpertCategory } from '@/lib/api/expert-cases';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import { putExpertReviewDraft } from '@/lib/api/expert-reviews';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
@@ -139,7 +140,7 @@ function EvidencePanel({
         <div className="scrollbar-hide max-h-[640px] space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
           {citations.map((citation, index) => (
             <article
-              key={citation.chunkId}
+              key={`${citation.chunkId}-${index}`}
               className={`rounded-xl border p-4 shadow-sm ${
                 citation.flagged
                   ? 'border-red-400 bg-red-50'
@@ -406,6 +407,16 @@ export type ExpertReviewWorkspaceProps = {
   canPromote: boolean;
   saving: boolean;
   onFlagCitation: (chunkId: string) => void;
+  /** Trường bắt buộc trước khi đưa case vào thư viện công khai. */
+  libraryTitle: string;
+  libraryCategoryId: string;
+  libraryDifficulty: string;
+  libraryTagsCsv: string;
+  categories: ExpertCategory[];
+  onLibraryTitleChange: (v: string) => void;
+  onLibraryCategoryIdChange: (v: string) => void;
+  onLibraryDifficultyChange: (v: string) => void;
+  onLibraryTagsCsvChange: (v: string) => void;
 };
 
 export function ExpertReviewWorkspace({
@@ -433,6 +444,15 @@ export function ExpertReviewWorkspace({
   canPromote,
   saving,
   onFlagCitation,
+  libraryTitle,
+  libraryCategoryId,
+  libraryDifficulty,
+  libraryTagsCsv,
+  categories,
+  onLibraryTitleChange,
+  onLibraryCategoryIdChange,
+  onLibraryDifficultyChange,
+  onLibraryTagsCsvChange,
 }: ExpertReviewWorkspaceProps) {
   const [correctedRoi, setCorrectedRoi] = useState<NormalizedImageBoundingBox | null>(null);
   useEffect(() => {
@@ -654,6 +674,69 @@ export function ExpertReviewWorkspace({
           />
         </div>
       </div>
+
+      {canPromote ? (
+        <Card className="mt-6 border-emerald-200 bg-emerald-50/40 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-emerald-950">Publish to student library</CardTitle>
+            <CardDescription className="text-xs text-emerald-900/90">
+              Bắt buộc: tiêu đề, category, độ khó, tags. Mô tả case và findings lấy từ báo cáo AI (chỉnh ở khối phía trên).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-xs font-semibold text-slate-800">Title</span>
+              <input
+                type="text"
+                value={libraryTitle}
+                onChange={(e) => onLibraryTitleChange(e.target.value)}
+                disabled={pairMismatch}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 disabled:opacity-60"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-slate-800">Category</span>
+              <select
+                value={libraryCategoryId}
+                onChange={(e) => onLibraryCategoryIdChange(e.target.value)}
+                disabled={pairMismatch}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 disabled:opacity-60"
+              >
+                <option value="">— Chọn category —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-slate-800">Difficulty</span>
+              <select
+                value={libraryDifficulty}
+                onChange={(e) => onLibraryDifficultyChange(e.target.value)}
+                disabled={pairMismatch}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 disabled:opacity-60"
+              >
+                <option value="basic">Basic</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </label>
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-xs font-semibold text-slate-800">Tags (comma-separated)</span>
+              <input
+                type="text"
+                value={libraryTagsCsv}
+                onChange={(e) => onLibraryTagsCsvChange(e.target.value)}
+                disabled={pairMismatch}
+                placeholder="e.g. fracture, pediatric, follow-up"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 disabled:opacity-60"
+              />
+            </label>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {!isTerminal(item.status) && (
         <div className="sticky bottom-0 z-10 mt-8 space-y-3 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">

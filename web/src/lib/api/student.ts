@@ -6,8 +6,10 @@ import type {
   StudentAnnouncement,
   StudentCaseCatalogItem,
   StudentCaseCatalogDetail,
+  StudentCaseCatalogOrigin,
   StudentCaseHistoryItem,
   StudentHistoryKind,
+  StudentCatalogCaseImage,
   StudentPracticeQuiz,
   StudentProfile,
   StudentProfileUpdatePayload,
@@ -20,6 +22,7 @@ import type {
   StudentSubmitQuestionDto,
   StudentTopicStat,
 } from './types';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty'] {
   const value = String(raw ?? '').toLowerCase();
@@ -36,6 +39,66 @@ function pickStringAny(item: Record<string, unknown>, keys: string[]): string | 
     if (normalized.length > 0) return normalized;
   }
   return null;
+}
+
+/** Hai nhãn catalog: expert tạo vs promote từ request sinh viên (theo field BE hoặc heuristic). */
+function inferCatalogCaseOrigin(item: Record<string, unknown>): StudentCaseCatalogOrigin {
+  const raw =
+    pickStringAny(item, [
+      'caseOrigin',
+      'CaseOrigin',
+      'origin',
+      'Origin',
+      'source',
+      'Source',
+      'caseSource',
+      'CaseSource',
+      'libraryCaseSource',
+    ])?.toLowerCase() ?? '';
+  const promoted =
+    item.isPromotedFromStudentRequest === true ||
+    item.promotedFromStudentRequest === true ||
+    item.wasPromotedFromStudent === true ||
+    item.fromStudentRequest === true ||
+    item.IsPromotedFromStudentRequest === true;
+  if (
+    promoted ||
+    raw.includes('community') ||
+    raw.includes('studentrequest') ||
+    raw.includes('student_request') ||
+    raw.includes('promoted') ||
+    raw.includes('request')
+  ) {
+    return 'communityPromoted';
+  }
+  return 'expertCreated';
+}
+
+function parseTagsFromCatalogRow(item: Record<string, unknown>): string[] {
+  const tags = item.tags ?? item.Tags ?? item.tagNames ?? item.TagNames ?? item.caseTags;
+  if (Array.isArray(tags)) {
+    return tags.map((t) => String(t ?? '').trim()).filter(Boolean);
+  }
+  if (typeof tags === 'string' && tags.trim()) {
+    return tags.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/** Không ép mọi giá trị lạ thành Basic — hiển thị raw hoặc "—". */
+function normalizeCatalogDifficultyLabel(raw: unknown): {
+  tier: 'basic' | 'intermediate' | 'advanced' | null;
+  label: string;
+} {
+  const rawStr = String(raw ?? '').trim();
+  if (!rawStr) return { tier: null, label: '—' };
+  const value = rawStr.toLowerCase();
+  if (value === 'advanced' || value === 'expert') return { tier: 'advanced', label: rawStr };
+  if (value === 'intermediate' || value === 'moderate') return { tier: 'intermediate', label: rawStr };
+  if (value === 'basic' || value === 'beginner' || value === 'intro' || value === 'easy') {
+    return { tier: 'basic', label: rawStr };
+  }
+  return { tier: null, label: rawStr };
 }
 
 /**
@@ -232,6 +295,21 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
   const id = String(item.id ?? item.caseId ?? '');
   if (!id) return null;
 
+  const categoryName =
+    pickStringAny(item, ['categoryName', 'CategoryName', 'category', 'Category']) ?? '';
+  const boneLocation =
+    pickStringAny(item, ['location', 'boneLocation', 'regionName', 'bone_location']) ?? '';
+  const lesionType =
+    pickStringAny(item, ['lesionType', 'lesion_type', 'caseType']) ??
+    (categoryName || 'Unknown lesion');
+  const location = boneLocation || categoryName || 'Unknown location';
+  const { tier, label: difficultyLabel } = normalizeCatalogDifficultyLabel(
+    item.difficulty ?? item.level ?? item.Difficulty,
+  );
+  const createdAt =
+    pickStringAny(item, ['createdAt', 'CreatedAt', 'approvedAt', 'ApprovedAt', 'publishedAt']) ??
+    undefined;
+
   return {
     id,
     title: String(item.title ?? 'Untitled case'),
@@ -240,11 +318,57 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
         ? String(item.imageUrl)
         : item.thumbnailUrl != null
           ? String(item.thumbnailUrl)
-          : undefined,
-    location: String(item.location ?? item.boneLocation ?? item.regionName ?? 'Unknown location'),
-    lesionType: String(item.lesionType ?? item.categoryName ?? 'Unknown lesion'),
-    difficulty: normalizeDifficulty(item.difficulty),
+          : item.primaryImageUrl != null
+            ? String(item.primaryImageUrl)
+            : undefined,
+    location,
+    categoryDisplay: categoryName || undefined,
+    lesionType,
+    difficultyTier: tier,
+    difficultyLabel,
+    difficulty: tier ?? undefined,
+    tags: parseTagsFromCatalogRow(item),
+    createdAt,
+    caseOrigin: inferCatalogCaseOrigin(item),
   };
+}
+
+function parseCatalogDetailImages(item: Record<string, unknown>): StudentCatalogCaseImage[] {
+  const rawList =
+    item.images ??
+    item.Images ??
+    item.caseImages ??
+    item.CaseImages ??
+    item.anonymousImages ??
+    item.AnonymousImages;
+  if (!Array.isArray(rawList)) return [];
+  const out: StudentCatalogCaseImage[] = [];
+  for (const row of rawList) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const url =
+      pickStringAny(r, ['imageUrl', 'ImageUrl', 'url', 'Url', 'thumbnailUrl', 'ThumbnailUrl']) ?? '';
+    if (!url.trim()) continue;
+    const boxRaw =
+      r.roiBoundingBox ??
+      r.RoiBoundingBox ??
+      r.boundingBox ??
+      r.normalizedBoundingBox ??
+      r.NormalizedBoundingBox;
+    let roiBoundingBox: StudentCatalogCaseImage['roiBoundingBox'] = null;
+    if (boxRaw && typeof boxRaw === 'object') {
+      const b = boxRaw as Record<string, unknown>;
+      const cand = {
+        x: Number(b.x ?? b.X),
+        y: Number(b.y ?? b.Y),
+        width: Number(b.width ?? b.Width),
+        height: Number(b.height ?? b.Height),
+      };
+      if (isValidNormalizedBoundingBox(cand)) roiBoundingBox = cand;
+    }
+    out.push({ imageUrl: url.trim(), roiBoundingBox });
+  }
+  return out;
 }
 
 function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | null {
@@ -253,17 +377,38 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
   if (!base) return null;
   const item = row as Record<string, unknown>;
 
-  // 获取 CategoryName 作为基础
-  const categoryName = item.categoryName != null ? String(item.categoryName) : '';
+  const categoryName = pickStringAny(item, ['categoryName', 'CategoryName', 'category', 'Category']) ?? '';
+  const images = parseCatalogDetailImages(item);
+  const keyLearningRaw =
+    item.keyLearningPoints ??
+    item.KeyLearningPoints ??
+    item.keyLearnings ??
+    item.KeyLearnings ??
+    item.keyLearning ??
+    item.teachingPoints;
+  let keyLearningPoints: string[] | undefined;
+  if (Array.isArray(keyLearningRaw)) {
+    keyLearningPoints = (keyLearningRaw as unknown[])
+      .map((x) => String(x ?? '').trim())
+      .filter(Boolean);
+  } else if (typeof keyLearningRaw === 'string' && keyLearningRaw.trim()) {
+    keyLearningPoints = keyLearningRaw
+      .split(/[\n•]/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const diagnosis =
+    pickStringAny(item, ['diagnosis', 'Diagnosis', 'structuredDiagnosis', 'StructuredDiagnosis']) ??
+    undefined;
 
   return {
     ...base,
-    // imageUrl: 优先使用 base 已有的 imageUrl (来自 imageUrl/thumbnailUrl)，否则使用 PrimaryImageUrl
     imageUrl: base.imageUrl ?? (item.primaryImageUrl != null ? String(item.primaryImageUrl) : undefined),
-    // location: 从 CategoryName 或从 base 继承
-    location: categoryName || base.location,
-    // lesionType: 由于后端没有明确的 lesionType，使用 CategoryName 或默认值
-    lesionType: categoryName || base.lesionType,
+    location: base.location || categoryName || 'Unknown location',
+    lesionType:
+      pickStringAny(item, ['lesionType', 'lesion_type', 'caseType']) ?? (categoryName || base.lesionType),
+    categoryDisplay: categoryName || base.categoryDisplay,
     description: item.description != null ? String(item.description) : undefined,
     expertSummary:
       item.expertSummary != null
@@ -282,6 +427,10 @@ function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | n
         : item.updatedAt != null
           ? String(item.updatedAt)
           : undefined,
+    diagnosis: diagnosis ?? undefined,
+    keyLearningPoints,
+    images: images.length > 0 ? images : undefined,
+    communityReferenceOnly: base.caseOrigin === 'communityPromoted',
   };
 }
 
@@ -681,11 +830,20 @@ export async function fetchCaseCatalog(filters: {
   location?: string;
   lesionType?: string;
   difficulty?: string;
+  /** Tìm kiếm text — gửi lên BE (một số bản BE dùng `q`, một số dùng `search`). */
+  q?: string;
 }): Promise<StudentCaseCatalogItem[]> {
   try {
+    const qTrim = filters.q?.trim();
     const params = Object.fromEntries(
-      Object.entries(filters).filter(([, value]) => value && String(value).trim().length > 0),
+      Object.entries(filters).filter(
+        ([key, value]) => key !== 'q' && value && String(value).trim().length > 0,
+      ),
     );
+    if (qTrim) {
+      params.q = qTrim;
+      params.search = qTrim;
+    }
     const { data } = await http.get<unknown>('/api/student/cases/catalog', { params });
     const list = Array.isArray(data)
       ? data

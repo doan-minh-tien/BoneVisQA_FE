@@ -36,10 +36,17 @@ export function readAndClearSessionPrefillImage(sessionId: string): string | nul
 type Props = {
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
+  /** Bump sau khi tạo phiên chat mới để refetch danh sách không cần reload trang. */
+  refreshNonce?: number;
   className?: string;
 };
 
-export function VisualQaSessionHistorySidebar({ selectedSessionId, onSelectSession, className }: Props) {
+export function VisualQaSessionHistorySidebar({
+  selectedSessionId,
+  onSelectSession,
+  refreshNonce = 0,
+  className,
+}: Props) {
   const [items, setItems] = useState<StudentCaseHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +68,7 @@ export function VisualQaSessionHistorySidebar({ selectedSessionId, onSelectSessi
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshNonce]);
 
   const sorted = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -91,7 +98,9 @@ export function VisualQaSessionHistorySidebar({ selectedSessionId, onSelectSessi
         ) : error ? (
           <p className="px-3 py-4 text-xs text-destructive">{error}</p>
         ) : sorted.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-muted-foreground">No sessions yet. Start from History or upload here.</p>
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+            No sessions yet. Upload an image below or open a catalog case from Case Library.
+          </p>
         ) : (
           <ul className="divide-y divide-border/80 p-1">
             {sorted.map((row) => {

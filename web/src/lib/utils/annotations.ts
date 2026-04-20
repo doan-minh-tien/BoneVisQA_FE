@@ -46,6 +46,18 @@ export function isValidPercentageBoundingBox(
   );
 }
 
+/** Convert stored % ROI (0–100) to normalized 0–1 box for overlays / expert UI. */
+export function percentageBoundingBoxToNormalized(
+  box: PercentageBoundingBox,
+): NormalizedImageBoundingBox {
+  return {
+    x: box.xPct / 100,
+    y: box.yPct / 100,
+    width: box.widthPct / 100,
+    height: box.heightPct / 100,
+  };
+}
+
 export function clampPercentageBoundingBox(
   box: PercentageBoundingBox,
 ): PercentageBoundingBox | null {
@@ -79,10 +91,38 @@ export function parsePercentageBoundingBox(raw: unknown): PercentageBoundingBox 
     if (!source || typeof source !== 'object') return null;
     const candidate = source as Record<string, unknown>;
     const parsed = {
-      xPct: Number(candidate.xPct ?? candidate.XPct),
-      yPct: Number(candidate.yPct ?? candidate.YPct),
-      widthPct: Number(candidate.widthPct ?? candidate.WidthPct),
-      heightPct: Number(candidate.heightPct ?? candidate.HeightPct),
+      xPct: Number(
+        candidate.xPct ??
+          candidate.XPct ??
+          candidate.left ??
+          candidate.Left ??
+          candidate.x ??
+          candidate.X,
+      ),
+      yPct: Number(
+        candidate.yPct ??
+          candidate.YPct ??
+          candidate.top ??
+          candidate.Top ??
+          candidate.y ??
+          candidate.Y,
+      ),
+      widthPct: Number(
+        candidate.widthPct ??
+          candidate.WidthPct ??
+          candidate.width ??
+          candidate.Width ??
+          candidate.w ??
+          candidate.W,
+      ),
+      heightPct: Number(
+        candidate.heightPct ??
+          candidate.HeightPct ??
+          candidate.height ??
+          candidate.Height ??
+          candidate.h ??
+          candidate.H,
+      ),
     };
 
     if (Object.values(parsed).some((value) => Number.isNaN(value))) {

@@ -42,7 +42,8 @@
 | POST | `/api/student/visual-qa/turns/{assistantMessageId}/request-review` | query `sessionId`; path id is the **assistant (AI) message** id for that turn |
 | GET | `/api/student/visual-qa/history/cases` | |
 | GET | `/api/student/visual-qa/history/personal` | |
-| GET | `/api/student/cases/catalog` | query params |
+| GET | `/api/student/cases/catalog` | query: `location`, `lesionType`, `difficulty`, `q` / `search` (optional text; FE gửi cả hai nếu BE hỗ trợ một trong hai). Response item nên có: `thumbnailUrl`/`imageUrl`, `tags` (string[]), `categoryName`/`category`, `difficulty` (raw enum), `createdAt`, `caseOrigin` hoặc `source` (`ExpertCreated` / `CommunityPromoted` / tương đương). |
+| GET | `/api/student/cases/{id}` | Chi tiết: `description`, `diagnosis`, `keyLearningPoints` / `keyLearnings`, `images[]` (url + `roiBoundingBox` / annotations), `caseOrigin` để FE khóa Visual QA. |
 | GET | `/api/cases/filters` | |
 | GET | `/api/student/quizzes` | |
 | GET | `/api/student/quizzes/practice` | |
@@ -81,6 +82,7 @@
 | POST | `/api/expert/case-tag` |
 | GET | `/api/expert/reviews/case-answer` |
 | GET | `/api/expert/reviews/escalated` |
+| GET | `/api/expert/reviews/{sessionId}` | Chi tiết session review (cùng shape queue); alias `GET /api/expert/reviews/{sessionId}/session`. |
 | GET | `/api/expert/dashboard/stats` |
 | GET | `/api/expert/dashboard/pending-reviews` |
 | GET | `/api/expert/dashboard/recent-cases` |
@@ -98,6 +100,8 @@
 | GET/POST | `/api/admin/classes` | enrollments, … |
 | GET | `/api/admin/cases` |
 | GET | `/api/admin/documents` |
+| GET | `/api/admin/documents/chunks/flagged` | Alias: `GET /api/admin/rag/flagged-chunks` — chunk RAG bị expert flag (`chunkId`, `documentId`, `documentTitle`, `preview`, `reason`, …). |
+| PATCH | `/api/admin/documents/chunks/{chunkId}/flag` | Body: `{ "resolved": true }` — alias: `PATCH /api/admin/rag/chunks/{chunkId}/flag`. |
 | GET | `/api/admin/monitoring/users` |
 | GET | `/api/admin/monitoring/activity` | `from`, `to` ISO |
 | GET | `/api/admin/monitoring/rag` |
@@ -115,6 +119,11 @@
 ## SignalR (không phải REST)
 
 - Hub theo cấu hình FE (`useSignalR`): nhận `ReceiveNotification`, payload khớp `NotificationDto` (có `route`, `targetUrl`, …).
+- Trang Visual QA student có thể dùng `notifications` từ context để refetch session khi `type` liên quan `visual_qa` / expert reply (bổ sung khi BE chuẩn hóa type).
+
+## Expert promote case library
+
+- `POST /api/expert/reviews/{sessionId}/promote` — FE gửi thêm (camelCase, BE có thể bỏ qua field chưa hỗ trợ): `title`, `categoryId`, `categoryName`, `difficulty`, `tagNames` (string[]), `description`, `suggestedDiagnosis`, `keyFindings`, `reflectiveQuestions`, `imageAnnotations` / `turnAnnotations` (ROI theo turn).
 
 ## Visual QA thread (REST)
 

@@ -64,12 +64,18 @@ import { isAiModelOverloadError } from '@/lib/utils/ai-overload-error';
 import { cn } from '@/lib/utils';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { useAuth } from '@/lib/useAuth';
+import { useSignalR } from '@/hooks/useSignalR';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import {
   appendOptimisticQuestionTurn,
+  dedupeTurnsSameIndexPreferServer,
   mergeTurnsByIdentity,
   removeOptimisticTurnByClientRequestId,
 } from '@/lib/student/visual-qa-chat-turns';
+import {
+  buildExpertSupportMapFromSession,
+  type ExpertSupportUiState,
+} from '@/lib/student/visual-qa-expert-support';
 import { useVisualQaChatSubmit } from '@/hooks/useVisualQaChatSubmit';
 
 type VisualQaDraft = {
@@ -114,6 +120,7 @@ export default function StudentVisualQaImagePage() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
+  const { notifications } = useSignalR();
   const toast = useToast();
   const searchParams = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
@@ -148,6 +155,16 @@ export default function StudentVisualQaImagePage() {
   const [pendingOutgoingMessage, setPendingOutgoingMessage] = useState<PendingOutgoingMessage | null>(null);
   const [restoringSession, setRestoringSession] = useState(false);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  /** Remount viewer khi New Chat hoặc chọn session khác (tránh overlay/zoom “dính” state cũ). */
+  const [viewerSessionSurfaceKey, setViewerSessionSurfaceKey] = useState(0);
+  /** Refetch danh sách chat history sau khi có session mới từ BE. */
+  const [historySidebarRefreshNonce, setHistorySidebarRefreshNonce] = useState(0);
+  const [expertSupportByAssistantId, setExpertSupportByAssistantId] = useState<
+    Record<string, ExpertSupportUiState>
+  >({});
+  const expertSupportRef = useRef(expertSupportByAssistantId);
+  expertSupportRef.current = expertSupportByAssistantId;
+  const lastHandledNotificationIdRef = useRef<string | null>(null);
   const localQuestionByRequestIdRef = useRef<Record<string, string>>({});
   const draftStorageKey = `student-visual-qa-draft:${user?.email ?? 'anonymous'}:${pathname}`;
   const [draft, setDraft, clearDraft] = useLocalStorageState<VisualQaDraft>(
@@ -290,12 +307,11 @@ export default function StudentVisualQaImagePage() {
     if (!historySessionId?.trim()) return;
     let cancelled = false;
     setRestoringSession(true);
-    setChatTurns([]);
     (async () => {
       try {
         const restored = await fetchStudentVisualQaSession(historySessionId);
         if (cancelled) return;
-        const restoredTurns = withLocalQuestionFallback(restored.turns);
+        const restoredTurns = dedupeTurnsSameIndexPreferServer(withLocalQuestionFallback(restored.turns));
         pruneResolvedLocalQuestions(restoredTurns);
         setSession({
           ...restored,
@@ -581,7 +597,9 @@ export default function StudentVisualQaImagePage() {
         return mergedWithLatest;
       };
 
-      const immediateTurns = withLocalQuestionFallback(normalizeTurnsWithLivePayload());
+      const immediateTurns = dedupeTurnsSameIndexPreferServer(
+        withLocalQuestionFallback(normalizeTurnsWithLivePayload()),
+      );
       pruneResolvedLocalQuestions(immediateTurns);
       const immediateLatest = res.latest ?? immediateTurns[immediateTurns.length - 1] ?? null;
       setChatPolicyReason(res.policyReason ?? null);
@@ -605,12 +623,13 @@ export default function StudentVisualQaImagePage() {
       toast.success('Diagnostic report generated.');
       clearDraft();
       if (res.sessionId?.trim()) {
+        setHistorySidebarRefreshNonce((n) => n + 1);
         void (async () => {
           try {
             const restored = await fetchStudentVisualQaSession(res.sessionId);
             setSession((prev) => {
-              const mergedTurns = withLocalQuestionFallback(
-                mergeTurnsByIdentity(prev?.turns ?? [], restored.turns),
+              const mergedTurns = dedupeTurnsSameIndexPreferServer(
+                withLocalQuestionFallback(mergeTurnsByIdentity(prev?.turns ?? [], restored.turns)),
               );
               pruneResolvedLocalQuestions(mergedTurns);
               return {
@@ -620,7 +639,9 @@ export default function StudentVisualQaImagePage() {
               };
             });
             setChatTurns((prev) => {
-              const mergedTurns = withLocalQuestionFallback(mergeTurnsByIdentity(prev, restored.turns));
+              const mergedTurns = dedupeTurnsSameIndexPreferServer(
+                withLocalQuestionFallback(mergeTurnsByIdentity(prev, restored.turns)),
+              );
               pruneResolvedLocalQuestions(mergedTurns);
               return mergedTurns;
             });
@@ -958,11 +979,102 @@ export default function StudentVisualQaImagePage() {
     return active === 'guest' || roles.includes('guest') || status === 'guest';
   }, [user]);
 
+  /** Hydrate + merge trạng thái expert từ GET session (reason trong review_update / policyReason) và giữ awaiting sau khi user vừa gửi request. */
+  useEffect(() => {
+    if (!session?.sessionId || !session.turns?.length) return;
+    setExpertSupportByAssistantId((prev) => {
+      const fromApi = buildExpertSupportMapFromSession(session);
+      const merged: Record<string, ExpertSupportUiState> = { ...fromApi };
+      for (const [aid, v] of Object.entries(prev)) {
+        if (v.phase !== 'awaiting') continue;
+        const resolved = fromApi[aid];
+        if (resolved?.phase === 'resolved') continue;
+        merged[aid] = { phase: 'awaiting' };
+      }
+      return merged;
+    });
+  }, [session]);
+
+  /** Poll nhẹ khi đang chờ expert (bổ sung SignalR). */
+  useEffect(() => {
+    if (!session?.sessionId?.trim()) return;
+    const tick = window.setInterval(() => {
+      const hasAwaiting = Object.values(expertSupportRef.current).some((v) => v.phase === 'awaiting');
+      if (!hasAwaiting) return;
+      void (async () => {
+        try {
+          const updated = await fetchStudentVisualQaSession(session.sessionId);
+          setSession((prev) => {
+            const base = prev ?? updated;
+            const mergedTurns = dedupeTurnsSameIndexPreferServer(
+              withLocalQuestionFallback(mergeTurnsByIdentity(base.turns ?? [], updated.turns)),
+            );
+            pruneResolvedLocalQuestions(mergedTurns);
+            return {
+              ...updated,
+              turns: mergedTurns,
+              latest: updated.latest ?? mergedTurns[mergedTurns.length - 1] ?? null,
+            };
+          });
+          setChatTurns((prev) => {
+            const mergedTurns = dedupeTurnsSameIndexPreferServer(
+              withLocalQuestionFallback(mergeTurnsByIdentity(prev, updated.turns)),
+            );
+            pruneResolvedLocalQuestions(mergedTurns);
+            return mergedTurns;
+          });
+        } catch {
+          /* bỏ qua lỗi mạng tạm thời */
+        }
+      })();
+    }, 12_000);
+    return () => window.clearInterval(tick);
+  }, [session?.sessionId]);
+
+  const notifHeadId = notifications[0]?.id ?? null;
+  useEffect(() => {
+    if (!notifHeadId || !session?.sessionId?.trim()) return;
+    const n = notifications[0];
+    const typeLc = n.type.trim().toLowerCase();
+    if (!typeLc.includes('visual') && !typeLc.includes('qa')) return;
+    if (lastHandledNotificationIdRef.current === notifHeadId) return;
+    lastHandledNotificationIdRef.current = notifHeadId;
+    void (async () => {
+      try {
+        const updated = await fetchStudentVisualQaSession(session.sessionId);
+        setSession((prev) => {
+          const base = prev ?? updated;
+          const mergedTurns = dedupeTurnsSameIndexPreferServer(
+            withLocalQuestionFallback(mergeTurnsByIdentity(base.turns ?? [], updated.turns)),
+          );
+          pruneResolvedLocalQuestions(mergedTurns);
+          return {
+            ...updated,
+            turns: mergedTurns,
+            latest: updated.latest ?? mergedTurns[mergedTurns.length - 1] ?? null,
+          };
+        });
+        setChatTurns((prev) => {
+          const mergedTurns = dedupeTurnsSameIndexPreferServer(
+            withLocalQuestionFallback(mergeTurnsByIdentity(prev, updated.turns)),
+          );
+          pruneResolvedLocalQuestions(mergedTurns);
+          return mergedTurns;
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [notifHeadId, notifications, session?.sessionId]);
+
+  const conversationPanelLoading = loading || (restoringSession && chatTurns.length === 0);
+
   const startNewSession = useCallback(() => {
     if (loading || isSubmittingRef.current) {
       toast.info('Please wait for the current AI response before starting a new chat.');
       return;
     }
+    setViewerSessionSurfaceKey((k) => k + 1);
     setSession(null);
     setChatTurns([]);
     setSelectedTurnIndex(null);
@@ -981,6 +1093,7 @@ export default function StudentVisualQaImagePage() {
     setPendingOutgoingMessage(null);
     setChatPolicyReason(null);
     setChatSystemNoticeCode(null);
+    setExpertSupportByAssistantId({});
     localQuestionByRequestIdRef.current = {};
     clearDraft();
     const params = new URLSearchParams(searchParams.toString());
@@ -1006,7 +1119,9 @@ export default function StudentVisualQaImagePage() {
       setSession((prev) => {
         const base = prev ?? session;
         const mergedTurns =
-          updated.turns.length > 0 ? mergeTurnsByIdentity(base.turns, updated.turns) : base.turns;
+          updated.turns.length > 0
+            ? dedupeTurnsSameIndexPreferServer(mergeTurnsByIdentity(base.turns, updated.turns))
+            : base.turns;
         return {
           ...base,
           ...updated,
@@ -1020,9 +1135,15 @@ export default function StudentVisualQaImagePage() {
         };
       });
       if (updated.turns.length > 0) {
-        setChatTurns((prev) => mergeTurnsByIdentity(prev, updated.turns));
+        setChatTurns((prev) =>
+          dedupeTurnsSameIndexPreferServer(mergeTurnsByIdentity(prev, updated.turns)),
+        );
       }
       setChatSystemNoticeCode(updated.systemNoticeCode ?? null);
+      const aid = targetTurnId?.trim();
+      if (aid) {
+        setExpertSupportByAssistantId((prev) => ({ ...prev, [aid]: { phase: 'awaiting' } }));
+      }
       toast.success('Support request has been sent to your lecturer.');
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -1107,6 +1228,7 @@ export default function StudentVisualQaImagePage() {
       ) : null}
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] lg:items-stretch">
         <VisualQaSessionHistorySidebar
+          refreshNonce={historySidebarRefreshNonce}
           className={cn(
             'min-h-0',
             mobileHistoryOpen
@@ -1117,6 +1239,7 @@ export default function StudentVisualQaImagePage() {
           selectedSessionId={historySessionId?.trim() || session?.sessionId?.trim() || null}
           onSelectSession={(id) => {
             setMobileHistoryOpen(false);
+            setViewerSessionSurfaceKey((k) => k + 1);
             const params = new URLSearchParams(searchParams.toString());
             params.set('sessionId', id);
             router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, {
@@ -1128,7 +1251,7 @@ export default function StudentVisualQaImagePage() {
         <aside className="flex min-h-0 shrink-0 flex-col overflow-hidden border-b border-border-color max-lg:max-h-[min(46vh,440px)] lg:min-h-0 lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="app-scroll-y min-h-0 min-h-[32vh] flex-1 overflow-y-auto max-lg:max-h-[min(46vh,440px)] lg:min-h-0 lg:max-h-none">
             <MedicalImageViewer
-              key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
+              key={`qa-viewer-${viewerSessionSurfaceKey}`}
               src={previewUrl}
               alt="Study image for diagnostic request"
               initialAnnotation={hydratingDraft ? undefined : (viewerAnnotation ?? undefined)}
@@ -1151,7 +1274,7 @@ export default function StudentVisualQaImagePage() {
                   variant="outline"
                   size="sm"
                   className="transition-all hover:opacity-90 active:scale-95 lg:hidden"
-                  disabled={loading || restoringSession}
+                  disabled={loading}
                   onClick={() => setMobileHistoryOpen((o) => !o)}
                 >
                   <History className="h-4 w-4 shrink-0" aria-hidden />
@@ -1162,7 +1285,7 @@ export default function StudentVisualQaImagePage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0 transition-all hover:opacity-90 active:scale-95"
-                  disabled={loading || restoringSession}
+                  disabled={loading}
                   onClick={startNewSession}
                 >
                   New Chat
@@ -1182,7 +1305,7 @@ export default function StudentVisualQaImagePage() {
                     ]
                   : []
               }
-              isLoading={loading || restoringSession}
+              isLoading={conversationPanelLoading}
               chatRequestPhase={loading ? loadingPhase : 'idle'}
               capabilities={session?.capabilities}
               isError={Boolean(aiOverload || chatErrorCode)}
@@ -1204,6 +1327,7 @@ export default function StudentVisualQaImagePage() {
                 handleComposerSubmit(message);
               }}
               onClear={startNewSession}
+              expertSupportByAssistantId={expertSupportByAssistantId}
             />
             {!isReadOnlyMode ? (
               <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/60 bg-card p-3 md:p-4">
@@ -1242,7 +1366,7 @@ export default function StudentVisualQaImagePage() {
                     onSubmit={handleComposerSubmit}
                     onChooseFile={() => bottomFileInputRef.current?.click()}
                     disabled={isSessionInteractionLocked}
-                    isLoading={loading || restoringSession}
+                    isLoading={conversationPanelLoading}
                     canAttachFile={!isOngoingSession && !isSessionInteractionLocked}
                     placeholder={composerPlaceholder}
                   />
