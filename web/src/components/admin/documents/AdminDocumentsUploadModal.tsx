@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -31,6 +32,7 @@ export default function AdminDocumentsUploadModal({
   tags,
   loadingMeta,
 }: AdminDocumentsUploadModalProps) {
+  const router = useRouter();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -80,17 +82,21 @@ export default function AdminDocumentsUploadModal({
     setSubmitting(true);
     setUploadProgress(0);
     try {
-      await uploadDocument({
+      const created = await uploadDocument({
         file,
         title: title.trim(),
         categoryId: categoryId.trim(),
         tagIds,
         onUploadProgress: (pct) => setUploadProgress(Math.min(100, Math.max(0, pct))),
       });
-      toast.success('Upload successful. Document is now pending indexing.');
+      toast.success('Upload successful. Opening document detail…');
       reset();
       onSuccess();
       onClose();
+      const newId = created.documentId?.trim();
+      if (newId) {
+        router.push(`/admin/documents/${newId}`);
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Upload failed.');
     } finally {
