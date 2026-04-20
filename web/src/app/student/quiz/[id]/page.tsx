@@ -1092,8 +1092,8 @@ export default function QuizSessionPage({
                   </div>
                 )}
 
-                {/* Multiple choice / Annotation: show ABCD answer - HIDDEN to prevent answer leakage */}
-                {/* {currentQ.type !== 'Essay' && currentState === 'incorrect' && currentQ.correctAnswer && (
+                {/* Multiple choice / Annotation: show ABCD answer */}
+                {currentQ.type !== 'Essay' && currentState === 'incorrect' && currentQ.correctAnswer && (
                   <p className="mt-3 text-sm font-semibold text-on-surface">
                     Correct answer:{' '}
                     <span className="text-success">
@@ -1101,7 +1101,7 @@ export default function QuizSessionPage({
                       {String(currentQ[`option${currentQ.correctAnswer}` as keyof QuizModeQuestion] ?? '')}
                     </span>
                   </p>
-                )} */}
+                )}
 
                 <button
                   type="button"

@@ -465,7 +465,7 @@ export default function AIQuizPage() {
                     </div>
                     <div className="absolute -top-12 left-12 px-3 py-1.5 rounded-lg bg-white/80 backdrop-blur-xl border border-white/20 shadow-xl whitespace-nowrap">
                       <p className="text-[10px] font-bold text-[#00478d] flex items-center gap-1">
-                        <span className="text-xs">🔍</span> AI INSIGHT: XEM XÉT VÙNG TỔN THƯƠNG
+                        <span className="text-xs">🔍</span> AI INSIGHT: EXAMINE ROI
                       </p>
                     </div>
                   </div>

@@ -67,15 +67,15 @@ Answer: Transverse fracture`;
 function detectType(text: string): ParsedQuestion['type'] {
   const lower = text.toLowerCase();
   if (lower.includes('identify') || lower.includes('label') || lower.includes('point')) return 'Annotation';
-  if (lower.includes('essay') || lower.includes('tự luận') || lower.includes('viết')) return 'Essay';
+  if (lower.includes('essay') || lower.includes('written')) return 'Essay';
   return 'MultipleChoice';
 }
 
-/** Split pasted text into one block per question (numbered "1.", "Q1", "Question 1", "Câu 1", etc.). */
+/** Split pasted text into one block per question (numbered "1.", "Q1", "Question 1", etc.). */
 function splitPasteBlocks(raw: string): string[] {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   return normalized
-    .split(/\n(?=\s*(?:Q\s*\d+\b|Question\s*\d+\b|Câu\s*\d+\b|\d+\.[\s\)]))/i)
+    .split(/\n(?=\s*(?:Q\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -88,12 +88,12 @@ function parsePaste(raw: string): ParsedQuestion[] {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length < 2) continue;
 
-    while (lines.length && (/^Q\s*\d+\s*$/i.test(lines[0]) || /^Câu\s*\d+\s*$/i.test(lines[0]))) {
+    while (lines.length && (/^Q\s*\d+\s*$/i.test(lines[0]))) {
       lines.shift();
     }
     if (lines.length < 2) continue;
 
-    const firstLine = lines[0].replace(/^(?:Câu\s*\d+\s*[\.\)\:]?\s*|[\d.]+\s*[\.\)]\s*)/i, '').trim();
+    const firstLine = lines[0].replace(/^(?:[\d.]+\s*[\.\)]\s*)/i, '').trim();
 
     let questionText = firstLine;
     let type: ParsedQuestion['type'] = 'MultipleChoice';
@@ -104,10 +104,10 @@ function parsePaste(raw: string): ParsedQuestion[] {
     let correctAnswer = '';
 
     const answerLineIdx = lines.findIndex((l) =>
-      /^answer\s*[:\)]/i.test(l) || /^correct answer\s*[:\)]/i.test(l) || /^đáp án\s*[:\)]/i.test(l) || /^dap an\s*[:\)]/i.test(l)
+      /^answer\s*[:\)]/i.test(l) || /^correct answer\s*[:\)]/i.test(l)
     );
     if (answerLineIdx !== -1) {
-      const ansRaw = lines[answerLineIdx].replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').replace(/^dap an\s*[:\)\-]+\s*/i, '').trim();
+      const ansRaw = lines[answerLineIdx].replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').trim();
       correctAnswer = ansRaw.charAt(0).toUpperCase();
     }
 
@@ -120,8 +120,8 @@ function parsePaste(raw: string): ParsedQuestion[] {
     }
 
     for (const line of lines) {
-      if (/^answer\s*[:\)]/i.test(line) || /^correct answer\s*[:\)]/i.test(line) || /^đáp án\s*[:\)]/i.test(line) || /^dap an\s*[:\)]/i.test(line)) {
-        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').replace(/^dap an\s*[:\)\-]+\s*/i, '').trim();
+      if (/^answer\s*[:\)]/i.test(line) || /^correct answer\s*[:\)]/i.test(line)) {
+        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').trim();
         correctAnswer = val.charAt(0).toUpperCase();
       }
       if (/^[A-D][\)\.\-\:]\s*/.test(line)) {
@@ -502,8 +502,8 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Flexible format / Định dạng linh hoạt: split questions with &quot;Q1&quot;, &quot;1.&quot;, &quot;Câu 1&quot;,
-                or &quot;Question 1&quot;; answers as &quot;Answer: X&quot;, &quot;Đáp án: X&quot;, or &quot;Correct Answer: X&quot; (A–D or
+                Flexible format: split questions with &quot;Q1&quot;, &quot;1.&quot;, or &quot;Question 1&quot;;
+                or &quot;Question 1&quot;; answers as &quot;Answer: X&quot; or &quot;Correct Answer: X&quot; (A–D or
                 True/False).
               </p>
             </div>
@@ -606,7 +606,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           )}
         </div>
 
-        {/* Footer — căn phải để dễ thao tác */}
+        {/* Footer */}
         <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-border px-8 py-6 sm:flex-row sm:items-center sm:justify-end sm:gap-6">
           <div className="flex items-start justify-end gap-2 text-right text-xs text-muted-foreground sm:max-w-[55%]">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />

@@ -209,6 +209,17 @@ export async function assignCasesToClass(
   }
 }
 
+export async function getAssignedCasesForClass(classId: string): Promise<ClassCaseAssignmentDto[]> {
+  try {
+    const { data } = await http.get<ClassCaseAssignmentDto[]>(
+      `/api/lecturer/classes/${classId}/assignments/cases`,
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function assignQuizToClass(
   classId: string,
   payload: {

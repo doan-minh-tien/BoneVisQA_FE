@@ -65,7 +65,7 @@ export default function QuizAssignScorePanel() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabKey>('score');
 
-  // ─── dữ liệu chia sẻ ───────────────────────────────────────────────────────────
+  // ─── shared data ───────────────────────────────────────────────────────────
   const [quizzesList, setQuizzesList] = useState<{ id: string; title: string }[]>([]);
   const [classesList, setClassesList] = useState<{ id: string; className: string }[]>([]);
   const [expertsList, setExpertsList] = useState<{ id: string; fullName: string }[]>([]);
@@ -94,7 +94,7 @@ export default function QuizAssignScorePanel() {
     loadShared();
   }, [loadShared]);
 
-  // ─── Tab: Tra cứu điểm ─────────────────────────────────────────────────────
+  // ─── Tab: Score Lookup ─────────────────────────────────────────────────────
   const [scoreQuizId, setScoreQuizId] = useState('');
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
@@ -121,7 +121,7 @@ export default function QuizAssignScorePanel() {
     [attempts, selectedStudentId],
   );
 
-  // ─── Tab: Quiz đã gán ─────────────────────────────────────────────────
+  // ─── Tab: Assigned Quizzes ───────────────────────────────────────────────
   const [assignedList, setAssignedList] = useState<AssignedQuizRecord[]>([]);
   const [assignedLoading, setAssignedLoading] = useState(false);
   const [assignedLoaded, setAssignedLoaded] = useState(false);
@@ -158,7 +158,7 @@ export default function QuizAssignScorePanel() {
     );
   }, [assignedList, assignedSearch]);
 
-  // reset trang khi tìm kiếm thay đổi
+  // reset page when search changes
   useEffect(() => { setAssignedPage(1); }, [assignedSearch]);
 
   const assignedTotalPages = Math.max(1, Math.ceil(filteredAssigned.length / ASSIGNED_PAGE_SIZE));
@@ -167,7 +167,7 @@ export default function QuizAssignScorePanel() {
     return filteredAssigned.slice(start, start + ASSIGNED_PAGE_SIZE);
   }, [filteredAssigned, assignedPage]);
 
-  // ─── Tab: Gán Quiz (form modal) ────────────────────────────────────────
+  // ─── Tab: Assign Quiz (form modal) ────────────────────────────────────────
   const [assignOpen, setAssignOpen] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [quizId, setQuizId] = useState('');
@@ -218,7 +218,7 @@ export default function QuizAssignScorePanel() {
     try {
       setIsAssigning(true);
       
-      // Gán quiz cho từng lớp đã chọn
+      // Assign quiz to each selected class
       await Promise.all(
         selectedClassIds.map((cid) =>
           assignQuiz({
@@ -250,7 +250,7 @@ export default function QuizAssignScorePanel() {
     }
   };
 
-  // ─── Cấu hình tabs ─────────────────────────────────────────────────────────
+  // ─── Tab configuration ─────────────────────────────────────────────────────────
   const tabs: { key: TabKey; label: string; icon: typeof Search }[] = [
     { key: 'score', label: 'Score Lookup', icon: BadgeCheck },
     { key: 'assigned', label: 'Assigned Quizzes', icon: BookOpen },
@@ -532,7 +532,7 @@ export default function QuizAssignScorePanel() {
                     </div>
                   )}
 
-              {/* Dropdown cho chọn class */}
+              {/* Dropdown for class selection */}
               <div className="relative">
                 <button
                   type="button"

@@ -78,7 +78,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
   const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
   const [page, setPage] = useState(quizDraft.page || 1);
 
-  // Trạng thái Quiz AI
+  // AI Quiz state
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<Array<{
     questionText: string;

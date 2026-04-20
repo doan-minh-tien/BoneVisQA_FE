@@ -21,6 +21,9 @@ import {
   ChevronDown,
   Settings2,
   Plus,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -113,6 +116,9 @@ export default function CreateQuizPage() {
   const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
   const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+
   const [questionCount, setQuestionCount] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiSuggesting, setAiSuggesting] = useState(false);
@@ -125,6 +131,20 @@ export default function CreateQuizPage() {
   const [lastCreatedQuizTitle, setLastCreatedQuizTitle] = useState<string>('');
 
   const allQuestions = createdQuizId ? questions : tempQuestions;
+
+  // Filter and pagination
+  const filteredQuestions = allQuestions.filter(
+    (q) =>
+      q.questionText?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false
+  );
+
+  const totalPages = Math.ceil(filteredQuestions.length / QUESTIONS_PER_PAGE);
+  const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
+  const displayedQuestions = filteredQuestions.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [allQuestions.length]);
 
   useEffect(() => {
     loadClasses();
@@ -534,7 +554,7 @@ export default function CreateQuizPage() {
             </div>
           </div>
           <p className="text-xs font-medium text-muted-foreground">Questions</p>
-          <p className="text-xl font-bold text-card-foreground">{allQuestions.length}</p>
+          <p className="text-xl font-bold text-card-foreground">{filteredQuestions.length}</p>
         </div>
         <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
@@ -573,9 +593,19 @@ export default function CreateQuizPage() {
             <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="flex items-center gap-2 font-semibold text-sm text-card-foreground">
                 <Settings2 className="h-4 w-4 text-primary" />
-                Questions <span className="text-muted-foreground">({allQuestions.length})</span>
+                Questions <span className="text-muted-foreground">({filteredQuestions.length})</span>
               </h3>
               <div className="flex items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search questions..."
+                    className="h-8 w-48 rounded-lg border border-border bg-card pl-8 pr-3 text-xs outline-none transition-all focus:border-primary"
+                  />
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                </div>
                 <button
                   type="button"
                   onClick={() => setImportOpen(true)}
@@ -671,15 +701,15 @@ export default function CreateQuizPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {allQuestions.map((question, index) => (
+                  {displayedQuestions.map((question, index) => (
                     <QuestionCard
-                      key={!createdQuizId ? `t-${index}` : (question as QuizQuestionDto).id}
+                      key={!createdQuizId ? `t-${startIndex + index}` : (question as QuizQuestionDto).id}
                       question={question as QuizQuestionDto}
                       variant="curated"
                       onEdit={() => {
                         if (!createdQuizId) {
                           setEditingQuestion(question as CreateQuizQuestionRequest);
-                          setEditingTempIndex(index);
+                          setEditingTempIndex(startIndex + index);
                           setEditorOpen(true);
                         } else {
                           handleEditQuestion(question as QuizQuestionDto);
@@ -687,11 +717,52 @@ export default function CreateQuizPage() {
                       }}
                       onDelete={() =>
                         handleDeleteQuestion(
-                          !createdQuizId ? String(index) : (question as QuizQuestionDto).id,
+                          !createdQuizId ? String(startIndex + index) : (question as QuizQuestionDto).id,
                         )
                       }
                     />
                   ))}
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-card-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                        Previous
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setCurrentPage(page)}
+                            className={`h-8 w-8 rounded-lg text-xs font-medium transition-colors ${
+                              currentPage === page
+                                ? 'bg-primary text-white'
+                                : 'text-muted-foreground hover:bg-muted hover:text-card-foreground'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-card-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        Next
+                        <ChevronRight className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -88,7 +88,7 @@ function formatQuizInstant(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatQuizCompact(iso: string | null | undefined): string {
@@ -203,7 +203,8 @@ export default function QuizListPage() {
         );
         successCount = results.filter((r) => r.status === 'fulfilled').length;
         failedCount = results.length - successCount;
-        await loadAssignedQuizzes();
+        // Reload both tabs so unassigned quizzes appear back in "My Quizzes"
+        await Promise.all([loadMyQuizzes(), loadAssignedQuizzes()]);
       }
 
       setBulkDeleteTarget(null);
@@ -243,7 +244,8 @@ export default function QuizListPage() {
       } else if (activeTab === 'assigned-quizzes') {
         const target = deleteTarget as EnrichedAssignedQuiz;
         await removeQuizFromClass(target.classId, target.quizId);
-        await loadAssignedQuizzes();
+        // Reload both tabs so the quiz moves back to "My Quizzes"
+        await Promise.all([loadMyQuizzes(), loadAssignedQuizzes()]);
         toast.success('Quiz unassigned from class.');
       }
       setDeleteTarget(null);
@@ -266,8 +268,20 @@ export default function QuizListPage() {
         setError('Not logged in. Please log in again.');
         return;
       }
-      const data = await getLecturerQuizzes(lecturerId);
-      const enriched: EnrichedQuiz[] = data.map((q) => {
+      
+      // Load both all quizzes and assigned quizzes to filter out assigned ones for "My Quizzes"
+      const [allQuizzesData, assignedData] = await Promise.all([
+        getLecturerQuizzes(lecturerId),
+        getAssignedQuizzes(lecturerId),
+      ]);
+      
+      // Get set of quizIds that are already assigned
+      const assignedQuizIds = new Set(assignedData.map((aq) => aq.quizId));
+      
+      // Filter to only unassigned quizzes for "My Quizzes"
+      const unassignedQuizzes = allQuizzesData.filter((q) => !assignedQuizIds.has(q.quizId));
+      
+      const enriched: EnrichedQuiz[] = unassignedQuizzes.map((q) => {
         const now = new Date();
         const open = q.openTime ? new Date(q.openTime) : null;
         const close = q.closeTime ? new Date(q.closeTime) : null;
@@ -455,7 +469,7 @@ export default function QuizListPage() {
           className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${activeTab === 'expert-library' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           <BookOpen className="h-4 w-4" />
-          Expert Library
+          Quiz Library
         </button>
         <button
           type="button"
@@ -467,7 +481,7 @@ export default function QuizListPage() {
         </button>
       </div>
 
-      {/* Expert Library Tab */}
+      {/* Quiz Library Tab */}
       {activeTab === 'expert-library' ? (
         <div className="rounded-2xl border border-border bg-card p-6">
           <ExpertQuizLibrary onAssignSuccess={() => handleTabChange('assigned-quizzes')} />
@@ -833,7 +847,8 @@ export default function QuizListPage() {
           onClose={() => setAssignQuiz(null)}
           onAssigned={() => {
             setAssignQuiz(null);
-            loadMyQuizzes();
+            // Reload both tabs so the assigned quiz moves from "My Quizzes" to "Assigned Quizzes"
+            Promise.all([loadMyQuizzes(), loadAssignedQuizzes()]);
           }}
         />
       )}

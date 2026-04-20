@@ -166,7 +166,7 @@ export default function CasesTable({
                 </td>
                 <td className="px-5 py-3 text-sm text-muted-foreground">
                   {c.createdAt
-                    ? new Date(c.createdAt).toLocaleDateString('vi-VN', {
+                    ? new Date(c.createdAt).toLocaleDateString('en-GB', {
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',

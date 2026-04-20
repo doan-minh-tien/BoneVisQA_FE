@@ -97,9 +97,8 @@ function triageRequestKind(item: LectStudentQuestionDto): LecturerTriageRequestK
   return item.caseId != null && item.caseId.trim() !== '' ? 'case-catalog' : 'adhoc-upload';
 }
 
-/** Short label for queue rows / chips. */
 function triageWorkflowLabel(item: LectStudentQuestionDto): string {
-  return triageRequestKind(item) === 'case-catalog' ? 'Case chat' : 'Personal Upload';
+  return triageRequestKind(item) === 'case-catalog' ? 'Case Catalog' : 'Ad-hoc Upload';
 }
 
 function shortCaseId(caseId: string | null): string {
@@ -473,7 +472,7 @@ export default function QATriagePage() {
                         {question.createdAt ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
                             <Clock3 className="h-3 w-3" />
-                            {new Date(question.createdAt).toLocaleString('vi-VN')}
+                            {new Date(question.createdAt).toLocaleString('en-GB')}
                           </span>
                         ) : null}
                       </div>

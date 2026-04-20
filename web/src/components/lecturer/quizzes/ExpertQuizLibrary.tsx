@@ -64,7 +64,7 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('vi-VN', {
+  return d.toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -77,7 +77,7 @@ function formatDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('vi-VN', {
+  return d.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: '2-digit',
@@ -114,11 +114,11 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
 
   const handleSave = async () => {
     if (!form.questionText.trim()) {
-      toast.error('Vui lòng nhập nội dung câu hỏi.');
+      toast.error('Please enter the question content.');
       return;
     }
     if (!form.optionA.trim() || !form.optionB.trim()) {
-      toast.error('Vui lòng nhập ít nhất 2 đáp án.');
+      toast.error('Please enter at least 2 answer options.');
       return;
     }
 
@@ -146,11 +146,11 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
         correctAnswer: form.correctAnswer,
       };
 
-      toast.success('Cập nhật câu hỏi thành công!');
+      toast.success('Question updated successfully!');
       onSave(updated);
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Lỗi khi cập nhật câu hỏi.');
+      toast.error(e instanceof Error ? e.message : 'Error updating question.');
     } finally {
       setSaving(false);
     }
@@ -162,8 +162,8 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
       <Card className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden border-border/60 bg-card/85 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 border-b border-border/60 pb-4">
           <div>
-            <CardTitle className="text-lg">Chỉnh sửa câu hỏi</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Cập nhật thông tin câu hỏi</p>
+            <CardTitle className="text-lg">Edit Question</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Update question information</p>
           </div>
           <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
             <X className="h-5 w-5" />
@@ -173,20 +173,20 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
         <CardContent className="flex-1 space-y-4 overflow-y-auto p-6">
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
-              Nội dung câu hỏi <span className="text-destructive">*</span>
+              Question Content <span className="text-destructive">*</span>
             </label>
             <textarea
               value={form.questionText}
               onChange={(e) => setForm({ ...form, questionText: e.target.value })}
               rows={3}
               className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-              placeholder="Nhập nội dung câu hỏi..."
+              placeholder="Enter question content..."
             />
           </div>
 
           {question.imageUrl && (
             <div>
-              <label className="block text-sm font-medium text-card-foreground mb-2">Hình ảnh</label>
+              <label className="block text-sm font-medium text-card-foreground mb-2">Image</label>
               <img
                 src={resolveApiAssetUrl(question.imageUrl)}
                 alt="Question image"
@@ -196,7 +196,7 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
           )}
 
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-card-foreground">Đáp án</label>
+              <label className="block text-sm font-medium text-card-foreground">Answer Options</label>
             {(['A', 'B', 'C', 'D'] as const).map((key) => (
               <div key={key} className="flex items-center gap-3">
                 <Button
@@ -218,22 +218,22 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
                     else if (key === 'C') setForm({ ...form, optionC: value });
                     else setForm({ ...form, optionD: value });
                   }}
-                  placeholder={`Đáp án ${key}`}
+                  placeholder={`Option ${key}`}
                   className="flex-1 rounded-lg border border-border bg-input px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">Nhấn vào chữ cái (A, B, C, D) để chọn đáp án đúng</p>
+            <p className="text-xs text-muted-foreground">Click the letter (A, B, C, D) to select the correct answer</p>
           </div>
         </CardContent>
 
         <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
           <Button type="button" variant="outline" onClick={onClose}>
-            Hủy
+            Cancel
           </Button>
           <Button type="button" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Lưu thay đổi
+            Save Changes
           </Button>
         </div>
       </Card>
@@ -278,7 +278,7 @@ function PreviewModal({
 
   const handleCopyQuiz = async () => {
     const newTitle = window.prompt(
-      'Nhập tiêu đề cho bản copy của quiz này:',
+      'Enter a title for the copy of this quiz:',
       `Copy of ${quiz.title}`
     );
     if (newTitle === null) return;
@@ -286,11 +286,11 @@ function PreviewModal({
     setCopying(true);
     try {
       const result = await copyExpertQuiz(quiz.id, { title: newTitle || undefined });
-      toast.success(`Đã tạo bản copy: "${result.newQuizTitle}" với ${result.questionCount} câu hỏi.`);
+      toast.success(`Created copy: "${result.newQuizTitle}" with ${result.questionCount} questions.`);
       onCopied?.(result.newQuizId, result.newQuizTitle);
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Lỗi khi copy quiz.');
+      toast.error(e instanceof Error ? e.message : 'Error copying quiz.');
     } finally {
       setCopying(false);
     }
@@ -311,7 +311,7 @@ function PreviewModal({
             <div className="min-w-0 pr-2">
               <CardTitle className="text-xl">{quiz.title}</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                {quiz.questionCount} câu hỏi • Độ khó: {quiz.difficulty ?? '—'}
+                {quiz.questionCount} questions • Difficulty: {quiz.difficulty ?? '—'}
               </p>
             </div>
             <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
@@ -330,7 +330,7 @@ function PreviewModal({
                 <span>{error}</span>
               </div>
             ) : questions.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Quiz này chưa có câu hỏi nào.</p>
+              <p className="text-center text-muted-foreground py-8">This quiz has no questions yet.</p>
             ) : (
               <div className="space-y-6">
                 {questions.map((q, idx) => (
@@ -364,7 +364,7 @@ function PreviewModal({
                           onClick={() => setEditingQuestion(q)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                          Sửa
+                          Edit
                         </Button>
                       </div>
 
@@ -411,23 +411,23 @@ function PreviewModal({
 
           <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
             <Button type="button" variant="outline" onClick={onClose}>
-              Đóng
+              Close
             </Button>
             <Button type="button" variant="outline" onClick={handleCopyQuiz} disabled={copying}>
               {copying ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang copy...
+                  Copying...
                 </>
               ) : (
                 <>
                   <Copy className="h-4 w-4" />
-                  Copy quiz
+                  Copy Quiz
                 </>
               )}
             </Button>
             <Button type="button" onClick={onAssign}>
-              Gán vào lớp
+              Assign to Class
             </Button>
           </div>
         </Card>
@@ -495,18 +495,18 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
   const handleAssign = async () => {
     if (selectedClassIds.length === 0) {
-      toast.error('Vui lòng chọn ít nhất một lớp.');
+      toast.error('Please select at least one class.');
       return;
     }
 
     const warnings: string[] = [];
     if (openTime && closeTime && new Date(openTime) >= new Date(closeTime)) {
-      warnings.push('Thời gian mở phải trước thời gian đóng.');
+      warnings.push('Open time must be before close time.');
     }
 
     if (warnings.length > 0) {
       const confirmed = window.confirm(
-        'Có một số cảnh báo:\n\n' + warnings.join('\n') + '\n\nBạn vẫn muốn tiếp tục?'
+        'There are some warnings:\n\n' + warnings.join('\n') + '\n\nDo you want to continue?'
       );
       if (!confirmed) return;
     }
@@ -538,21 +538,21 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
       const failedResults = results.filter(r => !r.success);
 
       if (alreadyAssignedCount > 0 && newlyAssignedCount > 0) {
-        toast.success(`Gán quiz thành công cho ${newlyAssignedCount} lớp. ${alreadyAssignedCount} lớp đã được gán quiz này trước đó.`);
+        toast.success(`Quiz assigned successfully to ${newlyAssignedCount} class(es). ${alreadyAssignedCount} class(es) already have this quiz.`);
       } else if (alreadyAssignedCount > 0 && newlyAssignedCount === 0 && failedResults.length === 0) {
-        toast.info(`Quiz này đã được gán cho tất cả ${alreadyAssignedCount} lớp đã chọn.`);
+        toast.info(`This quiz has already been assigned to all ${alreadyAssignedCount} selected classes.`);
       } else if (newlyAssignedCount > 0 && alreadyAssignedCount === 0 && failedResults.length === 0) {
-        toast.success(`Gán quiz vào ${newlyAssignedCount} lớp thành công!`);
+        toast.success(`Quiz assigned to ${newlyAssignedCount} class(es) successfully!`);
       } else if (newlyAssignedCount === 0 && alreadyAssignedCount === 0 && failedResults.length > 0) {
-        toast.error(`Gán quiz thất bại: ${failedResults[0].error}`);
+        toast.error(`Failed to assign quiz: ${failedResults[0].error}`);
       } else {
-        toast.success(`Gán quiz: ${newlyAssignedCount} thành công, ${alreadyAssignedCount} đã có sẵn, ${failedResults.length} thất bại.`);
+        toast.success(`Assign quiz: ${newlyAssignedCount} success, ${alreadyAssignedCount} already have, ${failedResults.length} failed.`);
       }
 
       onAssigned();
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gán quiz thất bại.');
+      toast.error(e instanceof Error ? e.message : 'Failed to assign quiz.');
     } finally {
       setAssigning(false);
     }
@@ -564,7 +564,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
       <Card className="relative w-full max-w-lg overflow-hidden border-border/60 bg-card/85 shadow-xl backdrop-blur-xl">
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b border-border/60 pb-4">
           <div className="min-w-0 pr-2">
-            <CardTitle className="text-lg">Gán Quiz vào Lớp</CardTitle>
+            <CardTitle className="text-lg">Assign Quiz to Class</CardTitle>
             <p className="text-sm text-muted-foreground mt-1 truncate">{quiz.title}</p>
           </div>
           <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
@@ -575,12 +575,12 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
         <CardContent className="space-y-4 p-6">
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-1.5">
-              Chọn lớp học <span className="text-destructive">*</span>
+              Select Class <span className="text-destructive">*</span>
             </label>
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Đang tải...
+                Loading...
               </div>
             ) : (
               <>
@@ -652,7 +652,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
-              Thời gian mở (tùy chọn)
+              Open Time (optional)
             </label>
             <input
               type="datetime-local"
@@ -664,7 +664,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
-              Thời gian đóng (tùy chọn)
+              Close Time (optional)
             </label>
             <input
               type="datetime-local"
@@ -676,7 +676,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
-              Giới hạn thời gian làm bài (phút, tùy chọn)
+              Time Limit (minutes, optional)
             </label>
             <input
               type="number"
@@ -688,14 +688,14 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             />
             {quiz.timeLimit != null && (
               <p className="text-xs text-muted-foreground mt-1">
-                Đề bài gốc: {quiz.timeLimit} phút
+                Original setting: {quiz.timeLimit} minutes
               </p>
             )}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
-              Điểm Passing (tùy chọn)
+              Passing Score (optional)
             </label>
             <input
               type="number"
@@ -708,7 +708,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             />
             {quiz.passingScore != null && (
               <p className="text-xs text-muted-foreground mt-1">
-                Đề bài gốc: {quiz.passingScore} điểm
+                Original setting: {quiz.passingScore} points
               </p>
             )}
           </div>
@@ -716,7 +716,7 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
         <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
           <Button type="button" variant="outline" disabled={assigning} onClick={onClose}>
-            Hủy
+            Cancel
           </Button>
           <Button
             type="button"
@@ -726,10 +726,10 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             {assigning ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Đang gán...
+                Assigning...
               </>
             ) : (
-              'Gán vào lớp'
+              'Assign to Class'
             )}
           </Button>
         </div>
@@ -820,15 +820,15 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
           <div>
             <h3 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-card-foreground">
               <BookOpen className="h-5 w-5 text-primary" aria-hidden />
-              Expert Quiz Library
+              Quiz Library
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Chọn quiz từ thư viện của Expert để gán vào lớp học của bạn.
+              Select quizzes from the library to assign to your classes.
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={loadQuizzes} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Làm mới
+            Refresh
           </Button>
         </div>
 
@@ -892,7 +892,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
             <BookOpen className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-            <p className="text-muted-foreground">Không tìm thấy quiz nào.</p>
+            <p className="text-muted-foreground">No quizzes found.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -922,7 +922,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <ImageIcon className="h-3.5 w-3.5" />
-                        {quiz.questionCount} câu
+                        {quiz.questionCount} questions
                       </span>
                       <span className="flex items-center gap-1">
                         <Target className="h-3.5 w-3.5" />
@@ -940,13 +940,13 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                         {quiz.openTime && (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            Mở: {formatDateShort(quiz.openTime)}
+                            Open: {formatDateShort(quiz.openTime)}
                           </span>
                         )}
                         {quiz.closeTime && (
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            Đóng: {formatDateShort(quiz.closeTime)}
+                            Close: {formatDateShort(quiz.closeTime)}
                           </span>
                         )}
                       </div>
@@ -956,21 +956,11 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                   <div className="flex shrink-0 flex-wrap justify-end gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => setPreviewQuiz(quiz)}>
                       <Eye className="h-3.5 w-3.5" />
-                      Xem trước
+                      Preview
                     </Button>
                     <Button type="button" variant="default" size="sm" onClick={() => setAssignQuiz(quiz)}>
                       <CheckCircle className="h-3.5 w-3.5" />
-                      Gán
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setDeleteTarget(quiz)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Xóa
+                      Assign
                     </Button>
                   </div>
                 </div>
@@ -1017,7 +1007,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
             setPreviewQuiz(null);
           }}
           onCopied={(newQuizId, newQuizTitle) => {
-            toast.success(`Đã tạo bản copy: "${newQuizTitle}". Vui lòng chỉnh sửa câu hỏi trong quiz của bạn.`);
+            toast.success(`Created copy: "${newQuizTitle}". Please edit questions in your quiz.`);
           }}
         />
       )}
@@ -1042,8 +1032,8 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                 <Trash2 className="h-7 w-7 text-destructive" />
               </div>
               <div className="min-w-0 flex-1 pt-1">
-                <CardTitle className="text-xl">Xóa Quiz</CardTitle>
-                <p className="mt-0.5 text-sm text-muted-foreground">Hành động không thể hoàn tác</p>
+                <CardTitle className="text-xl">Delete Quiz</CardTitle>
+                <p className="mt-0.5 text-sm text-muted-foreground">This action cannot be undone</p>
               </div>
               <Button
                 type="button"
@@ -1068,7 +1058,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <ImageIcon className="h-3 w-3" />
-                        {deleteTarget.questionCount} câu hỏi
+                        {deleteTarget.questionCount} questions
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1">
@@ -1083,9 +1073,9 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
               <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
                 <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
                 <div className="text-sm leading-relaxed text-muted-foreground">
-                  <p>Bạn có chắc chắn muốn xóa quiz này không?</p>
+                  <p>Are you sure you want to delete this quiz?</p>
                   <p className="mt-2 font-medium text-foreground/90">
-                    Quiz và tất cả câu hỏi bên trong sẽ bị xóa vĩnh viễn.
+                    The quiz and all its questions will be permanently deleted.
                   </p>
                 </div>
               </div>
@@ -1100,7 +1090,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                 disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
               >
-                Hủy bỏ
+                Cancel
               </Button>
               <Button
                 type="button"
@@ -1113,12 +1103,12 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                 {deleting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Đang xóa...
+                    Deleting...
                   </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4" />
-                    Xóa Quiz
+                    Delete Quiz
                   </>
                 )}
               </Button>
