@@ -820,10 +820,10 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
           <div>
             <h3 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-card-foreground">
               <BookOpen className="h-5 w-5 text-primary" aria-hidden />
-              Expert Quiz Library
+              Quiz Library
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Chọn quiz từ thư viện của Expert để gán vào lớp học của bạn.
+              Chọn quiz từ thư viện để gán vào lớp học của bạn.
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={loadQuizzes} disabled={loading}>
@@ -961,16 +961,6 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                     <Button type="button" variant="default" size="sm" onClick={() => setAssignQuiz(quiz)}>
                       <CheckCircle className="h-3.5 w-3.5" />
                       Gán
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setDeleteTarget(quiz)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Xóa
                     </Button>
                   </div>
                 </div>
