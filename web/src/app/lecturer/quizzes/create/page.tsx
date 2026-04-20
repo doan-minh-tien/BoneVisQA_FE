@@ -312,7 +312,7 @@ export default function CreateQuizPage() {
       const data = await getLecturerClasses(userId);
       setClasses(data);
     } catch (err) {
-      console.error('Failed to load classes:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to load classes.');
     }
   };
 

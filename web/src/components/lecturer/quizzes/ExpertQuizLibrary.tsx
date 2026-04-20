@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import {
   fetchExpertQuizzesForLecturer,
@@ -36,14 +39,10 @@ import {
   Trash2,
 } from 'lucide-react';
 
-// ========== TYPES ==========
-
 interface EnrichedQuiz extends ExpertQuizForLecturer {
   status: 'Active' | 'Draft' | 'Completed';
   formattedCreatedAt: string;
 }
-
-// ========== HELPERS ==========
 
 function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -94,8 +93,6 @@ function getStatus(openTime: string | null, closeTime: string | null): 'Active' 
   if (open && now < open) return 'Draft';
   return 'Active';
 }
-
-// ========== QUESTION EDIT MODAL ==========
 
 interface QuestionEditModalProps {
   question: ExpertQuizQuestion;
@@ -161,22 +158,19 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <Card className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden border-border/60 bg-card/85 shadow-xl backdrop-blur-xl">
+        <CardHeader className="flex shrink-0 flex-row items-start justify-between space-y-0 border-b border-border/60 pb-4">
           <div>
-            <h2 className="text-lg font-bold text-card-foreground">Chỉnh sửa câu hỏi</h2>
+            <CardTitle className="text-lg">Chỉnh sửa câu hỏi</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">Cập nhật thông tin câu hỏi</p>
           </div>
-          <button
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
-        </div>
+          <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </CardHeader>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <CardContent className="flex-1 space-y-4 overflow-y-auto p-6">
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-2">
               Nội dung câu hỏi <span className="text-destructive">*</span>
@@ -205,17 +199,15 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
             <label className="block text-sm font-medium text-card-foreground">Đáp án</label>
             {(['A', 'B', 'C', 'D'] as const).map((key) => (
               <div key={key} className="flex items-center gap-3">
-                <button
+                <Button
                   type="button"
+                  variant={form.correctAnswer === key ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="h-8 w-8 shrink-0 rounded-full px-0 font-bold text-sm"
                   onClick={() => setForm({ ...form, correctAnswer: key })}
-                  className={`w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center transition-colors cursor-pointer ${
-                    form.correctAnswer === key
-                      ? 'bg-secondary text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
                 >
                   {key}
-                </button>
+                </Button>
                 <input
                   type="text"
                   value={key === 'A' ? form.optionA : key === 'B' ? form.optionB : key === 'C' ? form.optionC : form.optionD}
@@ -233,30 +225,21 @@ function QuestionEditModal({ question, onClose, onSave }: QuestionEditModalProps
             ))}
             <p className="text-xs text-muted-foreground">Nhấn vào chữ cái (A, B, C, D) để chọn đáp án đúng</p>
           </div>
-        </div>
+        </CardContent>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
+          <Button type="button" variant="outline" onClick={onClose}>
             Hủy
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-          >
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             Lưu thay đổi
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
-
-// ========== PREVIEW MODAL ==========
 
 function PreviewModal({
   quiz,
@@ -322,24 +305,21 @@ function PreviewModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-        <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
-            <div>
-              <h2 className="text-xl font-bold text-card-foreground">{quiz.title}</h2>
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <Card className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden border-border/60 bg-card/85 shadow-xl backdrop-blur-xl">
+          <CardHeader className="shrink-0 flex-row items-start justify-between space-y-0 border-b border-border/60 pb-4">
+            <div className="min-w-0 pr-2">
+              <CardTitle className="text-xl">{quiz.title}</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {quiz.questionCount} câu hỏi • Độ khó: {quiz.difficulty ?? '—'}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5 text-muted-foreground" />
-            </button>
-          </div>
+            <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </CardHeader>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <CardContent className="flex-1 overflow-y-auto p-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -354,7 +334,10 @@ function PreviewModal({
             ) : (
               <div className="space-y-6">
                 {questions.map((q, idx) => (
-                  <div key={q.questionId} className="rounded-xl border border-border bg-input/20 overflow-hidden">
+                  <Card
+                    key={q.questionId}
+                    className="overflow-hidden border-border/50 bg-muted/10 shadow-sm backdrop-blur-sm"
+                  >
                     {q.imageUrl && (
                       <div className="bg-muted/50 p-4 border-b border-border">
                         <img
@@ -373,13 +356,16 @@ function PreviewModal({
                         <p className="text-base font-medium text-card-foreground leading-relaxed flex-1">
                           {q.questionText}
                         </p>
-                        <button
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 gap-1.5 text-xs"
                           onClick={() => setEditingQuestion(q)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer shrink-0"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Sửa
-                        </button>
+                        </Button>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 ml-11">
@@ -417,24 +403,17 @@ function PreviewModal({
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             )}
-          </div>
+          </CardContent>
 
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
-            <button
-              onClick={onClose}
-              className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
-            >
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
+            <Button type="button" variant="outline" onClick={onClose}>
               Đóng
-            </button>
-            <button
-              onClick={handleCopyQuiz}
-              disabled={copying}
-              className="px-6 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2"
-            >
+            </Button>
+            <Button type="button" variant="outline" onClick={handleCopyQuiz} disabled={copying}>
               {copying ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -446,15 +425,12 @@ function PreviewModal({
                   Copy quiz
                 </>
               )}
-            </button>
-            <button
-              onClick={onAssign}
-              className="px-6 py-2.5 rounded-lg bg-primary text-sm font-medium text-white hover:bg-primary/90 transition-colors cursor-pointer"
-            >
+            </Button>
+            <Button type="button" onClick={onAssign}>
               Gán vào lớp
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
 
       {editingQuestion && (
@@ -467,8 +443,6 @@ function PreviewModal({
     </>
   );
 }
-
-// ========== ASSIGN MODAL ==========
 
 interface AssignModalProps {
   quiz: EnrichedQuiz;
@@ -586,22 +560,19 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between p-6 border-b border-border shrink-0">
-          <div>
-            <h2 className="text-lg font-bold text-card-foreground">Gán Quiz vào Lớp</h2>
-            <p className="text-sm text-muted-foreground mt-1">{quiz.title}</p>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <Card className="relative w-full max-w-lg overflow-hidden border-border/60 bg-card/85 shadow-xl backdrop-blur-xl">
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b border-border/60 pb-4">
+          <div className="min-w-0 pr-2">
+            <CardTitle className="text-lg">Gán Quiz vào Lớp</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1 truncate">{quiz.title}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
-        </div>
+          <Button type="button" variant="ghost" size="sm" className="h-10 w-10 shrink-0 rounded-full p-0" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </CardHeader>
 
-        <div className="p-6 space-y-4">
+        <CardContent className="space-y-4 p-6">
           <div>
             <label className="block text-sm font-medium text-card-foreground mb-1.5">
               Chọn lớp học <span className="text-destructive">*</span>
@@ -614,22 +585,25 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             ) : (
               <>
                 {selectedClassIds.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2 p-2 bg-primary/5 border border-primary/20 rounded-lg">
+                  <div className="mb-2 flex flex-wrap gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2">
                     {selectedClassIds.map((classId) => {
                       const cls = classes.find((c) => c.id === classId);
                       if (!cls) return null;
                       return (
                         <span
                           key={classId}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-primary text-white rounded-full text-xs font-medium"
+                          className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
                         >
-                          {cls.className}
-                          <button
+                          <span className="max-w-[12rem] truncate">{cls.className}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 shrink-0 p-0 text-primary-foreground hover:bg-primary-foreground/15"
                             onClick={() => removeClass(classId)}
-                            className="hover:bg-primary-foreground/20 rounded-full p-0.5 cursor-pointer"
                           >
-                            <X className="w-3 h-3" />
-                          </button>
+                            <X className="h-3 w-3" />
+                          </Button>
                         </span>
                       );
                     })}
@@ -640,19 +614,17 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
                   {classes.map((cls) => {
                     const isSelected = selectedClassIds.includes(cls.id);
                     return (
-                      <button
+                      <Button
                         key={cls.id}
                         type="button"
+                        variant={isSelected ? 'default' : 'outline'}
+                        size="sm"
+                        className="gap-1.5 rounded-lg font-medium"
                         onClick={() => toggleClass(cls.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-primary text-white'
-                            : 'bg-muted text-card-foreground hover:bg-muted/80'
-                        }`}
                       >
                         {isSelected && <Check className="h-3.5 w-3.5" />}
                         {cls.className}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -740,22 +712,16 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
               </p>
             )}
           </div>
-        </div>
+        </CardContent>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-border shrink-0">
-          <button
-            type="button"
-            disabled={assigning}
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-          >
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/60 p-6">
+          <Button type="button" variant="outline" disabled={assigning} onClick={onClose}>
             Hủy
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={assigning || selectedClassIds.length === 0}
             onClick={handleAssign}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
           >
             {assigning ? (
               <>
@@ -765,14 +731,12 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
             ) : (
               'Gán vào lớp'
             )}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
-
-// ========== MAIN COMPONENT ==========
 
 interface ExpertQuizLibraryProps {
   onAssignSuccess?: () => void;
@@ -851,29 +815,26 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
 
   return (
     <>
-      <div className="space-y-4">
+      <Card className="space-y-6 border-border/40 bg-card/45 p-5 shadow-sm backdrop-blur-xl md:p-6 dark:bg-card/25">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="flex items-center gap-2 text-lg font-bold text-card-foreground">
-              <BookOpen className="h-5 w-5 text-primary" />
+            <h3 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-card-foreground">
+              <BookOpen className="h-5 w-5 text-primary" aria-hidden />
               Expert Quiz Library
             </h3>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="mt-1 text-sm text-muted-foreground">
               Chọn quiz từ thư viện của Expert để gán vào lớp học của bạn.
             </p>
           </div>
-          <button
-            onClick={loadQuizzes}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-muted transition-colors disabled:opacity-50 cursor-pointer"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={loadQuizzes} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Làm mới
-          </button>
+          </Button>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchTerm}
@@ -882,7 +843,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                 setPage(1);
               }}
               placeholder="Search quizzes, topics, Expert..."
-              className="h-10 w-full rounded-full border border-border bg-input pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-10 w-full rounded-full border border-border/60 bg-background/50 pl-10 pr-4 text-sm shadow-sm backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <select
@@ -891,7 +852,7 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
               setSelectedDifficulty(e.target.value);
               setPage(1);
             }}
-            className="h-10 rounded-full border border-border bg-input px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
+            className="h-10 cursor-pointer appearance-none rounded-full border border-border/60 bg-background/50 px-4 text-sm shadow-sm backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {difficultyOptions.map((d) => (
               <option key={d} value={d}>
@@ -902,8 +863,26 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="min-h-[7.25rem] border-border/40 bg-card/55 p-4 shadow-sm backdrop-blur-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <Skeleton className="h-5 w-[min(100%,20rem)]" />
+                    <div className="flex flex-wrap gap-2">
+                      <Skeleton className="h-4 w-16 rounded-md" />
+                      <Skeleton className="h-4 w-14 rounded-md" />
+                      <Skeleton className="h-4 w-28 rounded-md" />
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Skeleton className="h-9 w-[5.75rem] rounded-md" />
+                    <Skeleton className="h-9 w-14 rounded-md" />
+                    <Skeleton className="h-9 w-9 rounded-md" />
+                  </div>
+                </div>
+              </Card>
+            ))}
           </div>
         ) : error ? (
           <div className="flex items-center gap-2 text-destructive py-8">
@@ -918,9 +897,9 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
         ) : (
           <div className="space-y-3">
             {paged.map((quiz) => (
-              <div
+              <Card
                 key={quiz.id}
-                className="rounded-xl border border-border bg-card p-4 hover:border-primary/30 transition-colors"
+                className="border-border/50 bg-card/65 p-4 shadow-sm backdrop-blur-sm transition-colors hover:border-primary/40"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -974,50 +953,60 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                     )}
                   </div>
 
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={() => setPreviewQuiz(quiz)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-card-foreground hover:bg-muted transition-colors cursor-pointer"
-                    >
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPreviewQuiz(quiz)}>
                       <Eye className="h-3.5 w-3.5" />
                       Xem trước
-                    </button>
-                    <button
-                      onClick={() => setAssignQuiz(quiz)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors cursor-pointer"
-                    >
+                    </Button>
+                    <Button type="button" variant="default" size="sm" onClick={() => setAssignQuiz(quiz)}>
                       <CheckCircle className="h-3.5 w-3.5" />
                       Gán
-                    </button>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setDeleteTarget(quiz)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Xóa
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
 
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-4">
-                <button
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 px-0"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage <= 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="text-xs font-medium text-muted-foreground">
+                </Button>
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">
                   {currentPage} / {totalPages}
                 </span>
-                <button
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 px-0"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/30 bg-white text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   <ChevronRight className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             )}
           </div>
         )}
-      </div>
+      </Card>
 
       {previewQuiz && (
         <PreviewModal
@@ -1044,43 +1033,32 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
         />
       )}
 
-      {/* Delete confirmation dialog */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !deleting && setDeleteTarget(null)} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
-            {/* Header with gradient accent */}
-            <div className="relative px-6 pt-6 pb-5">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-destructive/50 via-destructive to-destructive/50" />
-              
-              <div className="flex items-start gap-4">
-                {/* Icon with pulsing animation */}
-                <div className="relative">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 ring-4 ring-destructive/10">
-                    <Trash2 className="h-7 w-7 text-destructive" />
-                  </div>
-                  <div className="absolute inset-0 rounded-2xl bg-destructive/20 animate-ping opacity-50" />
-                </div>
-                
-                <div className="flex-1 pt-1">
-                  <h2 className="text-xl font-bold text-card-foreground">Xóa Quiz</h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">Hành động không thể hoàn tác</p>
-                </div>
-                
-                <button
-                  onClick={() => !deleting && setDeleteTarget(null)}
-                  disabled={deleting}
-                  className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <X className="h-5 w-5 text-muted-foreground" />
-                </button>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !deleting && setDeleteTarget(null)} />
+          <Card className="relative w-full max-w-md overflow-hidden border-border/60 bg-card/90 shadow-2xl backdrop-blur-xl">
+            <CardHeader className="flex flex-row items-start gap-4 space-y-0 pb-2 pt-6">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-destructive/10 ring-2 ring-destructive/15">
+                <Trash2 className="h-7 w-7 text-destructive" />
               </div>
-            </div>
+              <div className="min-w-0 flex-1 pt-1">
+                <CardTitle className="text-xl">Xóa Quiz</CardTitle>
+                <p className="mt-0.5 text-sm text-muted-foreground">Hành động không thể hoàn tác</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 shrink-0 rounded-full p-0"
+                disabled={deleting}
+                onClick={() => !deleting && setDeleteTarget(null)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </CardHeader>
 
-            {/* Content */}
-            <div className="px-6 pb-5">
-              {/* Quiz info card */}
-              <div className="bg-muted/40 rounded-xl p-4 mb-4 border border-border/50">
+            <CardContent className="space-y-4 px-6 pb-5">
+              <div className="rounded-xl border border-border/50 bg-muted/40 p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                     <BookOpen className="h-5 w-5 text-primary" />
@@ -1101,51 +1079,51 @@ export default function ExpertQuizLibrary({ onAssignSuccess }: ExpertQuizLibrary
                   </div>
                 </div>
               </div>
-              
-              {/* Warning message */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/5 border border-destructive/20">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div className="text-sm text-muted-foreground leading-relaxed">
-                  <p>
-                    Bạn có chắc chắn muốn xóa quiz này không?
-                  </p>
-                  <p className="mt-2 font-medium text-foreground/80">
+
+              <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div className="text-sm leading-relaxed text-muted-foreground">
+                  <p>Bạn có chắc chắn muốn xóa quiz này không?</p>
+                  <p className="mt-2 font-medium text-foreground/90">
                     Quiz và tất cả câu hỏi bên trong sẽ bị xóa vĩnh viễn.
                   </p>
                 </div>
               </div>
-            </div>
+            </CardContent>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3 px-6 pb-6">
-              <button
+            <div className="flex gap-3 px-6 pb-6">
+              <Button
                 type="button"
+                variant="outline"
+                size="lg"
+                className="flex-1 rounded-xl"
                 disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-card-foreground transition-all hover:bg-muted hover:border-muted-foreground/30 disabled:opacity-50 cursor-pointer"
               >
                 Hủy bỏ
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="destructive"
+                size="lg"
+                className="flex-1 rounded-xl"
                 disabled={deleting}
                 onClick={handleDelete}
-                className="flex-1 rounded-xl bg-destructive px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-destructive/90 hover:shadow-lg hover:shadow-destructive/25 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
                 {deleting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Đang xóa...</span>
+                    Đang xóa...
                   </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4" />
-                    <span>Xóa Quiz</span>
+                    Xóa Quiz
                   </>
                 )}
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       )}
     </>

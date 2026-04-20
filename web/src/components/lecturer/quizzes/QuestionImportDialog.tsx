@@ -14,6 +14,7 @@ import {
   Trash2,
   Info,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface ParsedQuestion {
   questionText: string;
@@ -372,7 +373,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
       reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
       reader.readAsText(file);
     } else {
-      alert('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
+      toast.error('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
     }
   }, []);
 
