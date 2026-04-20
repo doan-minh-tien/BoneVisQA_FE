@@ -12,7 +12,6 @@ import {
   GraduationCap,
   Sparkles,
   UserCheck,
-  Copy,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -212,11 +211,6 @@ export function ClassEnrollmentsDialog({ cls, onCancel }: ClassEnrollmentsDialog
     unenrollMutation.mutate({ enrollmentId, role });
   };
 
-  const copyClassId = () => {
-    void navigator.clipboard.writeText(cls.id);
-    toast.success('Class ID copied.');
-  };
-
   return (
     <Dialog.Root
       open
@@ -255,17 +249,6 @@ export function ClassEnrollmentsDialog({ cls, onCancel }: ClassEnrollmentsDialog
                     {cls.semester}
                   </span>
                 </Dialog.Title>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <button
-                    type="button"
-                    onClick={copyClassId}
-                    title={cls.id}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted"
-                  >
-                    <Copy className="h-3 w-3" />
-                    Copy class ID
-                  </button>
-                </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Lecturer, expert, and students load from enrollments for this class; names also align with GET class when available.
                 </p>

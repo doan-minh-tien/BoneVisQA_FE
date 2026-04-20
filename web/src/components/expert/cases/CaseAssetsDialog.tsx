@@ -7,6 +7,7 @@ import {
   createExpertImage,
   createExpertAnnotation,
   createExpertCaseTag,
+  DB_IMAGE_MODALITIES,
   fetchExpertTags,
   fetchExpertImages,
   fetchExpertAnnotations,
@@ -38,7 +39,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
 
   // ── Image upload ──────────────────────────────────────────────────────────
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [modality, setModality] = useState('MRI');
+  const [modality, setModality] = useState<string>(DB_IMAGE_MODALITIES[0]);
   const [uploadedImageId, setUploadedImageId] = useState<string | null>(null);
 
   // ── Annotation form ───────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
     if (effectiveMode === 'tags') {
       fetchExpertTags(1, 100)
         .then(setTagsList)
-        .catch((e) => console.error('fetch tags failed', e));
+        .catch(() => toast.error('Could not load tags.'));
     }
 
     if (effectiveMode === 'annotation') {
@@ -149,14 +150,13 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
 
   const handleAddAnnotation = async () => {
     if (!annotImageId) return toast.error('Please select an image');
-    if (!label) return toast.error('Please provide a label');
     if (!coordinates.trim()) return toast.error('Click and drag on the image to draw a rectangle ROI');
     setIsMutating(true);
     try {
       await createExpertAnnotation({
         imageId: annotImageId.trim(),
-        label: label.trim(),
         coordinates: coordinates.trim(),
+        ...(label.trim() ? { label: label.trim() } : {}),
       });
       toast.success('Annotation added successfully!');
       setLabel('');
@@ -311,11 +311,11 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
                   onChange={(e) => setModality(e.target.value)}
                   className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none appearance-none cursor-pointer"
                 >
-                  <option value="X-Ray">X-Ray</option>
-                  <option value="CT">CT</option>
-                  <option value="MRI">MRI</option>
-                  <option value="Ultrasound">Ultrasound</option>
-                  <option value="Other">Other</option>
+                  {DB_IMAGE_MODALITIES.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
                 </select>
               </div>
               <button
@@ -368,7 +368,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
 
                     <input
                       type="text"
-                      placeholder="Label"
+                      placeholder="Label (optional)"
                       value={label}
                       onChange={(e) => setLabel(e.target.value)}
                       className="px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none"
@@ -427,7 +427,7 @@ export default function CaseAssetsDialog({ caseId, mode, onClose, allowModeSwitc
                   )}
 
                   <button
-                    disabled={isMutating || !annotImageId || !label || !coordinates.trim()}
+                    disabled={isMutating || !annotImageId || !coordinates.trim()}
                     onClick={handleAddAnnotation}
                     className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
                   >

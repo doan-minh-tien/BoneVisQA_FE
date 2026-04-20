@@ -17,7 +17,11 @@ import {
 const AUTH_HERO_HAND_IMAGE =
   "https://lh3.googleusercontent.com/aida-public/AB6AXuAiGfyZ6N39coIC7rt9DV9aTzXRG6RQ_nWQrUfzvseTJTzVHZoXBwSIv12MmBhmdXCKbWX0yOvO1cYV7PD9UfLA4HJ5LJYbR5a7WCRZcFGuxPOQFKKtjmvoRikeflzrb1pXA0mbuqokEkhF31OBtOpjFP3RpC7nRzCvmcywMrtx7pTIWOhPMdPOVWxuysyjObpLWjp8rLnbU0NHM3ZEABxi3ERbJ1OOoVoLkfdOfqi-tAhLVrWIPi3aK0AnSjh9PsC7a76wlp81auU";
 import { login } from "@/lib/api/auth";
-import { http, getApiErrorMessage } from "@/lib/api/client";
+import {
+  http,
+  getPublicAuthErrorMessage,
+  sanitizeUserFacingLoginMessage,
+} from "@/lib/api/client";
 import type { LoginResponse } from "@/lib/api/types";
 import { useToast } from "@/components/ui/toast";
 import { motion } from "framer-motion";
@@ -39,6 +43,7 @@ declare global {
             callback: (response: GoogleCredentialResponse) => void;
             auto_select?: boolean;
             cancel_on_tap_outside?: boolean;
+            locale?: string;
           }) => void;
           renderButton: (
             parent: HTMLElement,
@@ -95,10 +100,7 @@ type LoginPageInnerProps = {
   googleClientId: string;
 };
 
-/**
- * Renders the full login UI. When googleEnabled, this component must be a descendant of
- * GoogleOAuthProvider (single provider instance avoids extra GSI initialize warnings).
- */
+/** Renders the full login UI. Google Sign-In uses the GSI script and `/api/auths/google-login`. */
 function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) {
   const router = useRouter();
   const toast = useToast();
@@ -166,13 +168,16 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
         return;
       }
 
-      const msg = data.message || "Invalid email or password.";
+      const msg = sanitizeUserFacingLoginMessage(
+        data.message,
+        "Invalid email or password.",
+      );
       setError(msg);
       toast.error(msg);
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err);
-      setError(message || "Cannot connect to server. Please try again.");
-      toast.error(message || "Cannot connect to server. Please try again.");
+      const message = getPublicAuthErrorMessage(err, "credentials");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -203,19 +208,45 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
         toast.success(data.message || "Please confirm your medical information to complete registration.");
         router.push("/auth/medical-verification");
       } else {
-        const message = data.message || "Google login failed.";
+        const message = sanitizeUserFacingLoginMessage(
+          data.message,
+          "Google sign-in was not accepted. Please try again or use email and password.",
+        );
         setError(message);
         toast.error(message);
       }
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err);
-      console.warn("Google login failed:", message);
-      setError(message || "Cannot connect to server. Please try again later.");
-      toast.error(message || "Google login failed.");
+      const message = getPublicAuthErrorMessage(err, "google");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Google sign-in]", err);
+      }
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   }, [handleLoginSuccess, router, toast]);
+
+  const triggerGoogleSignIn = useCallback(() => {
+    const tryClick = (attempt: number) => {
+      const root = googleButtonRef.current;
+      if (!root) {
+        toast.error("Google sign-in is still loading. Please try again.");
+        return;
+      }
+      const el = root.querySelector<HTMLElement>('[role="button"]');
+      if (el) {
+        el.click();
+        return;
+      }
+      if (attempt < 15) {
+        window.setTimeout(() => tryClick(attempt + 1), 50);
+        return;
+      }
+      toast.error("Google sign-in is still loading. Please try again.");
+    };
+    tryClick(0);
+  }, [toast]);
 
   useEffect(() => {
     if (window.google?.accounts?.id) {
@@ -235,6 +266,7 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
       callback: (response) => {
         void handleGoogleLoginSuccess(response);
       },
+      locale: "en",
       auto_select: false,
       cancel_on_tap_outside: true,
     });
@@ -243,7 +275,7 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
       size: "large",
       shape: "pill",
       type: "standard",
-      text: "continue_with",
+      text: "signin_with",
       logo_alignment: "left",
       width: 300,
     });
@@ -458,7 +490,7 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
 
               {!googleEnabled ? (
                 <div className="w-full rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-                  Missing Google Client ID in .env file
+                  Google sign-in is disabled: set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment file.
                 </div>
               ) : (
                 <div className="rounded-xl border border-border-color bg-background p-3">
@@ -466,14 +498,23 @@ function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) 
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
                       <span className="text-sm font-bold text-[#4285F4]">G</span>
                     </div>
-                    <span>Sign in with Google</span>
+                    <span>Google Login</span>
                   </div>
-                  <div className="flex justify-center">
+                  <div className="relative w-full">
                     <div
                       ref={googleButtonRef}
-                      className="min-h-[44px]"
-                      aria-label="Google sign-in button"
+                      className="fixed left-[-10000px] top-0 min-h-[44px] w-[300px] overflow-hidden opacity-0"
+                      aria-hidden
+                      tabIndex={-1}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={triggerGoogleSignIn}
+                    >
+                      Google Login
+                    </Button>
                   </div>
                 </div>
               )}

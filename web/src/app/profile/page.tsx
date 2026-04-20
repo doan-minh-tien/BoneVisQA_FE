@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   Camera,
   GraduationCap,
@@ -19,7 +20,7 @@ import {
 import Header from '@/components/Header';
 import { SkeletonBlock } from '@/components/shared/DashboardSkeletons';
 import { Button } from '@/components/ui/button';
-import { resolveApiAssetUrl } from '@/lib/api/client';
+import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import {
   fetchMyProfile,
   updateMyProfile,
@@ -59,8 +60,8 @@ function ProfileHeroSkeleton() {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [clientReady, setClientReady] = useState(false);
+  const seededFromQueryRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState<UserProfileDto | null>(null);
@@ -76,35 +77,38 @@ export default function ProfilePage() {
   }>({});
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) {
+    setClientReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!clientReady || typeof window === 'undefined') return;
+    if (!localStorage.getItem('token')) {
       router.replace('/auth/sign-in');
-      return;
     }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await fetchMyProfile();
-        if (!cancelled) {
-          setProfile(data);
-          setFullName(data.fullName?.trim() ?? '');
-          setSchoolCohort(data.schoolCohort?.trim() ?? '');
-          setPhoneNumber(typeof data.phoneNumber === 'string' ? data.phoneNumber : '');
-          setBio(typeof data.bio === 'string' ? data.bio : '');
-          setLoadError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setLoadError(e instanceof Error ? e.message : 'Failed to load profile.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+  }, [clientReady, router]);
+
+  const profileQuery = useQuery({
+    queryKey: ['my-profile'],
+    queryFn: fetchMyProfile,
+    enabled:
+      clientReady && typeof window !== 'undefined' && Boolean(localStorage.getItem('token')),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    const data = profileQuery.data;
+    if (!data || seededFromQueryRef.current) return;
+    seededFromQueryRef.current = true;
+    setProfile(data);
+    setFullName(data.fullName?.trim() ?? '');
+    setSchoolCohort(data.schoolCohort?.trim() ?? '');
+    setPhoneNumber(typeof data.phoneNumber === 'string' ? data.phoneNumber : '');
+    setBio(typeof data.bio === 'string' ? data.bio : '');
+  }, [profileQuery.data]);
+
+  const loading = profileQuery.isPending;
+  const loadError = profileQuery.isError ? getApiErrorMessage(profileQuery.error) : null;
 
   const roleLabel = useMemo(() => {
     const role = profile?.activeRole ?? profile?.role ?? profile?.roles?.[0] ?? 'Member';

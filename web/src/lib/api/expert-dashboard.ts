@@ -13,6 +13,7 @@ export interface ExpertPendingReview {
   id: string;
   studentName: string;
   caseTitle: string;
+  caseId?: string | null;
   questionSnippet: string;
   aiAnswerSnippet: string;
   submittedAt: string;
@@ -31,6 +32,7 @@ export interface ExpertRecentCase {
   addedDate: string;
   viewCount: number;
   usageCount: number;
+  thumbnailUrl?: string | null;
 }
 
 export interface ExpertDailyActivity {
@@ -80,16 +82,40 @@ function mapPendingReview(row: unknown): ExpertPendingReview | null {
   const id = String(item.id ?? '');
   if (!id) return null;
 
+  const caseIdRaw = item.caseId ?? item.CaseId;
+  const caseId =
+    caseIdRaw != null && String(caseIdRaw).trim() !== '' ? String(caseIdRaw).trim() : null;
+
   return {
     id,
     studentName: String(item.studentName ?? 'Unknown'),
     caseTitle: String(item.caseTitle ?? 'Unknown Case'),
+    caseId,
     questionSnippet: String(item.questionSnippet ?? ''),
     aiAnswerSnippet: String(item.aiAnswerSnippet ?? ''),
     submittedAt: String(item.submittedAt ?? item.submittedAt ?? ''),
     priority: mapPriority(item.priority),
     category: String(item.category ?? 'General'),
   };
+}
+
+function pickRecentCaseThumbnailUrl(item: Record<string, unknown>): string | null {
+  const direct =
+    item.thumbnailUrl ??
+    item.ThumbnailUrl ??
+    item.coverImageUrl ??
+    item.CoverImageUrl ??
+    item.previewImageUrl;
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+  const flatImg = item.imageUrl ?? item.ImageUrl;
+  if (typeof flatImg === 'string' && flatImg.trim()) return flatImg.trim();
+  const raw = item.medicalImages ?? item.MedicalImages;
+  if (Array.isArray(raw) && raw.length > 0 && raw[0] && typeof raw[0] === 'object') {
+    const m0 = raw[0] as Record<string, unknown>;
+    const u = m0.imageUrl ?? m0.ImageUrl ?? m0.url ?? m0.Url;
+    if (typeof u === 'string' && u.trim()) return u.trim();
+  }
+  return null;
 }
 
 function mapRecentCase(row: unknown): ExpertRecentCase | null {
@@ -110,6 +136,8 @@ function mapRecentCase(row: unknown): ExpertRecentCase | null {
     item.addedDate ?? item.AddedDate ?? item.createdAt ?? item.created_at ?? item.CreatedAt ?? '',
   ).trim();
 
+  const thumbnailUrl = pickRecentCaseThumbnailUrl(item);
+
   return {
     id,
     title: pickDisplayStr(item.title ?? item.Title, 'Untitled'),
@@ -124,6 +152,7 @@ function mapRecentCase(row: unknown): ExpertRecentCase | null {
     addedDate: addedRaw,
     viewCount: Number(item.viewCount ?? item.ViewCount ?? 0),
     usageCount: Number(item.usageCount ?? item.UsageCount ?? 0),
+    thumbnailUrl,
   };
 }
 
@@ -156,7 +185,7 @@ function unwrapList(data: unknown): unknown[] {
 
 export async function fetchExpertDashboardStats(): Promise<ExpertDashboardStats> {
   try {
-    const { data } = await http.get<unknown>('/api/expert/dashboard/stats');
+    const { data } = await http.get<unknown>('/api/expert/dashboard/stats', { skipApiToast: true });
     if (data && typeof data === 'object' && 'result' in data && (data as { result: unknown }).result) {
       return (data as { result: ExpertDashboardStats }).result;
     }
@@ -179,7 +208,9 @@ export async function fetchExpertPendingReviews(): Promise<ExpertPendingReview[]
 
 export async function fetchExpertRecentCases(): Promise<ExpertRecentCase[]> {
   try {
-    const { data } = await http.get<unknown>('/api/expert/dashboard/recent-cases');
+    const { data } = await http.get<unknown>('/api/expert/dashboard/recent-cases', {
+      skipApiToast: true,
+    });
     return unwrapList(data)
       .map(mapRecentCase)
       .filter((item): item is ExpertRecentCase => item !== null);
@@ -191,7 +222,7 @@ export async function fetchExpertRecentCases(): Promise<ExpertRecentCase[]> {
 
 export async function fetchExpertActivity(): Promise<ExpertActivity> {
   try {
-    const { data } = await http.get<unknown>('/api/expert/dashboard/activity');
+    const { data } = await http.get<unknown>('/api/expert/dashboard/activity', { skipApiToast: true });
     const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
     const nested =
       body.result && typeof body.result === 'object' ? (body.result as Record<string, unknown>) : null;
@@ -212,7 +243,8 @@ export async function fetchExpertActivity(): Promise<ExpertActivity> {
   }
 }
 
-/** Single bundle for SWR — one cache key, parallel requests, shared loading/error. */
+export const EXPERT_DASHBOARD_QUERY_KEY = ['expert-dashboard'] as const;
+
 export type ExpertDashboardBundle = {
   stats: ExpertDashboardStats;
   pendingReviews: ExpertPendingReview[];

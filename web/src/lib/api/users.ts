@@ -61,7 +61,7 @@ function mapSearchItem(row: unknown, idx: number): SearchResultItem | null {
 /** Canonical current user profile — `GET /api/profile`. */
 export async function fetchMyProfile(): Promise<UserProfileDto> {
   try {
-    const { data } = await http.get<UserProfileDto>('/api/profile');
+    const { data } = await http.get<UserProfileDto>('/api/profile', { skipApiToast: true });
     return data ?? {};
   } catch (e) {
     throw new Error(getApiErrorMessage(e));

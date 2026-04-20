@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowUpRight, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
 import type { LecturerTriageRow } from '@/lib/api/types';
@@ -25,10 +26,11 @@ export function TriageQueueTable({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-slate-50/60 text-xs uppercase tracking-wider text-slate-500">
               <th className="px-4 py-3">Student</th>
+              <th className="px-4 py-3">Context</th>
               <th className="px-4 py-3">Question</th>
               <th className="px-4 py-3">Image</th>
               <th className="px-4 py-3">Time</th>
@@ -42,11 +44,11 @@ export function TriageQueueTable({
                 icon={AlertTriangle}
                 title="Choose a class scope"
                 description="Select a lecturer class to load its diagnostic triage queue."
-                colSpan={6}
+                colSpan={7}
               />
             ) : loadingRows ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin" />
                 </td>
               </tr>
@@ -55,7 +57,7 @@ export function TriageQueueTable({
                 icon={AlertTriangle}
                 title="No diagnostic requests"
                 description="This class does not currently have any requests waiting for lecturer triage."
-                colSpan={6}
+                colSpan={7}
               />
             ) : (
               rows.map((row) => {
@@ -66,10 +68,23 @@ export function TriageQueueTable({
                     : sim < 0.72
                       ? 'bg-warning/15 text-warning'
                       : 'bg-success/15 text-success';
+                const isCatalog = row.caseId != null && row.caseId.trim() !== '';
 
                 return (
                   <tr key={row.id} className="transition-colors even:bg-slate-50/45 hover:bg-slate-50/80">
                     <td className="px-4 py-3 font-medium text-card-foreground">{row.studentName}</td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <Badge variant={isCatalog ? 'secondary' : 'accent'} className="w-fit font-semibold">
+                          {isCatalog ? 'Case chat' : 'Personal Upload'}
+                        </Badge>
+                        {isCatalog && row.caseTitle?.trim() ? (
+                          <span className="max-w-[12rem] text-xs text-muted-foreground line-clamp-2">
+                            {row.caseTitle.trim()}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="max-w-xs px-4 py-3 text-muted-foreground">
                       <span className="line-clamp-2">{row.questionSnippet}</span>
                     </td>

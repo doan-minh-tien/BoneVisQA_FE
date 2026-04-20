@@ -431,6 +431,43 @@ function normalizeQuestionSource(raw: unknown): LectStudentQuestionDto['question
   return null;
 }
 
+function parseCaseTagLabels(r: Record<string, unknown>): string[] {
+  const direct = r.caseTags ?? r.CaseTags ?? r.tags ?? r.Tags;
+  if (Array.isArray(direct)) {
+    return direct.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct
+      .split(/[,;|]/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  const caseObj = r.case ?? r.Case;
+  if (caseObj && typeof caseObj === 'object') {
+    const c = caseObj as Record<string, unknown>;
+    const nested = c.tags ?? c.Tags ?? c.labels ?? c.Labels;
+    if (Array.isArray(nested)) return nested.map((x) => String(x).trim()).filter(Boolean);
+    if (typeof nested === 'string' && nested.trim()) {
+      return nested
+        .split(/[,;|]/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function normalizePersonalUploadFlag(r: Record<string, unknown>): boolean | null {
+  const v = r.isPersonalUpload ?? r.IsPersonalUpload ?? r.isAdHoc ?? r.IsAdHoc;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === 'true' || s === '1' || s === 'yes') return true;
+    if (s === 'false' || s === '0' || s === 'no') return false;
+  }
+  return null;
+}
+
 /**
  * Maps GET /api/lecturer/classes/{classId}/questions rows to camelCase and ensures
  * `answerId` is populated when the backend sends PascalCase or alternate keys.
@@ -600,6 +637,13 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     ? turnsRaw.map(normalizeTurn).filter((t): t is VisualQaTurn => t !== null)
     : undefined;
 
+  const caseIdRaw = r.caseId ?? r.CaseId;
+  const caseId: string | null =
+    caseIdRaw != null && String(caseIdRaw).trim() !== '' ? String(caseIdRaw).trim() : null;
+  const caseTitle = String(r.caseTitle ?? r.CaseTitle ?? '').trim();
+  const tagLabels = parseCaseTagLabels(r);
+  const isPersonalUpload = normalizePersonalUploadFlag(r);
+
   return {
     id: questionId,
     answerId,
@@ -607,8 +651,8 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     studentId: String(r.studentId ?? r.StudentId ?? ''),
     studentName: String(r.studentName ?? r.StudentName ?? ''),
     studentEmail: String(r.studentEmail ?? r.StudentEmail ?? ''),
-    caseId: String(r.caseId ?? r.CaseId ?? ''),
-    caseTitle: String(r.caseTitle ?? r.CaseTitle ?? ''),
+    caseId,
+    caseTitle,
     questionText: String(r.questionText ?? r.QuestionText ?? ''),
     language: r.language == null && r.Language == null ? null : String(r.language ?? r.Language ?? ''),
     createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
@@ -657,6 +701,8 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     caseDescription: String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null,
     caseSuggestedDiagnosis: String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim() || null,
     caseKeyFindings: String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim() || null,
+    isPersonalUpload,
+    caseTags: tagLabels.length > 0 ? tagLabels : null,
   };
 }
 

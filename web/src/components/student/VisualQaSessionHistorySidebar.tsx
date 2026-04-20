@@ -82,7 +82,7 @@ export function VisualQaSessionHistorySidebar({ selectedSessionId, onSelectSessi
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Chat history</p>
         <p className="text-xs text-muted-foreground">Personal Visual QA sessions</p>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+      <div className="app-scroll-y min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

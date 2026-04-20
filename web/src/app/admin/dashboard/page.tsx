@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
 import StatCard from '@/components/StatCard';
 import {
@@ -11,101 +12,60 @@ import {
   FileText,
   Award,
   Clock,
-  Loader2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import RecentUsersTable from '@/components/admin/dashboard/RecentUsersTable';
 import RoleDistributionChart from '@/components/admin/dashboard/RoleDistributionChart';
 import SystemActivityFeed from '@/components/admin/dashboard/SystemActivityFeed';
+import { AdminDashboardSkeleton } from '@/components/shared/DashboardSkeletons';
 import {
   fetchAdminUserStats,
   fetchAdminActivityStats,
   fetchAdminRagStats,
   fetchAdminExpertReviewStats,
   fetchAdminRecentUsersPage,
-  type AdminUserStat,
-  type AdminActivityStat,
-  type AdminRagStat,
-  type AdminExpertReviewStat,
-  type AdminRecentUser,
 } from '@/lib/api/admin-dashboard';
-import { useToast } from '@/components/ui/toast';
-
 const RECENT_USERS_PAGE_SIZE = 8;
 
 export default function AdminDashboardPage() {
-  const toast = useToast();
   const { t } = useTranslation();
-  const recentListReady = useRef(false);
-  const [userStats, setUserStats] = useState<AdminUserStat | null>(null);
-  const [activityStats, setActivityStats] = useState<AdminActivityStat | null>(null);
-  const [ragStats, setRagStats] = useState<AdminRagStat | null>(null);
-  const [expertStats, setExpertStats] = useState<AdminExpertReviewStat | null>(null);
-  const [recentUsers, setRecentUsers] = useState<AdminRecentUser[]>([]);
   const [recentPage, setRecentPage] = useState(1);
-  const [recentTotal, setRecentTotal] = useState(0);
-  const [recentPaging, setRecentPaging] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [user, rag, expert, recentData, activity] = await Promise.all([
-          fetchAdminUserStats(),
-          fetchAdminRagStats(),
-          fetchAdminExpertReviewStats(),
-          fetchAdminRecentUsersPage(1, RECENT_USERS_PAGE_SIZE),
-          fetchAdminActivityStats(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date()),
-        ]);
-        if (!cancelled) {
-          setUserStats(user);
-          setRagStats(rag);
-          setExpertStats(expert);
-          setRecentUsers(recentData.users);
-          setRecentTotal(recentData.totalCount);
-          setRecentPage(1);
-          setActivityStats(activity);
-          recentListReady.current = true;
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Failed to load dashboard data.';
-          console.error('Failed to fetch admin stats:', msg);
-          setStatsError(msg);
-          toast.error(msg);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [toast]);
+  const overviewQuery = useQuery({
+    queryKey: ['admin', 'dashboard-overview'],
+    queryFn: async () => {
+      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const to = new Date();
+      const [userStats, ragStats, expertStats, activityStats] = await Promise.all([
+        fetchAdminUserStats(),
+        fetchAdminRagStats(),
+        fetchAdminExpertReviewStats(),
+        fetchAdminActivityStats(from, to),
+      ]);
+      return { userStats, ragStats, expertStats, activityStats };
+    },
+  });
 
-  useEffect(() => {
-    if (!recentListReady.current) return;
-    let cancelled = false;
-    (async () => {
-      setRecentPaging(true);
-      try {
-        const recentData = await fetchAdminRecentUsersPage(recentPage, RECENT_USERS_PAGE_SIZE);
-        if (!cancelled) {
-          setRecentUsers(recentData.users);
-          setRecentTotal(recentData.totalCount);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : 'Failed to load users.');
-        }
-      } finally {
-        if (!cancelled) setRecentPaging(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ refetch khi đổi trang
-  }, [recentPage]);
+  const recentUsersQuery = useQuery({
+    queryKey: ['admin', 'recent-users', recentPage, RECENT_USERS_PAGE_SIZE],
+    queryFn: () => fetchAdminRecentUsersPage(recentPage, RECENT_USERS_PAGE_SIZE),
+    staleTime: 0,
+  });
+
+  const userStats = overviewQuery.data?.userStats ?? null;
+  const ragStats = overviewQuery.data?.ragStats ?? null;
+  const expertStats = overviewQuery.data?.expertStats ?? null;
+  const activityStats = overviewQuery.data?.activityStats ?? null;
+  const recentUsers = recentUsersQuery.data?.users ?? [];
+  const recentTotal = recentUsersQuery.data?.totalCount ?? 0;
+
+  const statsError =
+    overviewQuery.error instanceof Error
+      ? overviewQuery.error.message
+      : overviewQuery.error
+        ? String(overviewQuery.error)
+        : null;
 
   const totalUsers = userStats?.totalUsers || 0;
   const newUsers = userStats?.newUsersThisMonth || 0;
@@ -114,15 +74,21 @@ export default function AdminDashboardPage() {
   const experts = userStats?.usersByRole?.['Expert'] || 0;
   const admins = userStats?.usersByRole?.['Admin'] || 0;
 
-  const roleDistribution = [
-    { role: 'Students', count: students, color: 'bg-primary' },
-    { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
-    { role: 'Experts', count: experts, color: 'bg-warning' },
-    { role: 'Admins', count: admins, color: 'bg-destructive' },
-  ].map(item => ({
-    ...item,
-    percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0
-  })).sort((a,b) => b.count - a.count);
+  const roleDistribution = useMemo(
+    () =>
+      [
+        { role: 'Students', count: students, color: 'bg-primary' },
+        { role: 'Lecturers', count: lecturers, color: 'bg-accent' },
+        { role: 'Experts', count: experts, color: 'bg-warning' },
+        { role: 'Admins', count: admins, color: 'bg-destructive' },
+      ]
+        .map((item) => ({
+          ...item,
+          percentage: totalUsers > 0 ? Number(((item.count / totalUsers) * 100).toFixed(1)) : 0,
+        }))
+        .sort((a, b) => b.count - a.count),
+    [admins, experts, lecturers, students, totalUsers],
+  );
 
   const currentStats = [
     {
@@ -159,36 +125,33 @@ export default function AdminDashboardPage() {
     },
   ];
 
+  const dashboardBootLoading = overviewQuery.isPending || recentUsersQuery.isPending;
+
   return (
     <div className="min-h-screen">
       <Header title={t('nav.dashboard', 'Dashboard')} subtitle={t('dashboard.systemHealth', 'System overview and management')} />
 
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border bg-card">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Loading dashboard data...
-            </div>
-          </div>
+      <div className="mx-auto max-w-[1600px] p-6">
+        {dashboardBootLoading ? (
+          <AdminDashboardSkeleton />
         ) : statsError ? (
           <div className="rounded-2xl border border-destructive bg-destructive/10 px-6 py-8 text-center">
-            <p className="text-destructive font-medium">{statsError}</p>
+            <p className="font-medium text-destructive">{statsError}</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {currentStats.map((stat) => (
                 <StatCard key={stat.title} {...stat} />
               ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-              <div className="lg:col-span-2 space-y-6">
+            <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="space-y-6 lg:col-span-2">
                 <RecentUsersTable
                   users={recentUsers}
-                  isLoading={isLoading}
-                  isPaging={recentPaging}
+                  isLoading={false}
+                  isPaging={recentUsersQuery.isFetching}
                   page={recentPage}
                   pageSize={RECENT_USERS_PAGE_SIZE}
                   totalCount={recentTotal}
@@ -199,15 +162,15 @@ export default function AdminDashboardPage() {
 
               <div className="space-y-6">
                 <SystemActivityFeed activityStats={activityStats} />
-                <div className="bg-card rounded-xl border border-border p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <TrendingUp className="w-5 h-5 text-primary" />
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <div className="mb-4 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
                     <h2 className="font-semibold text-card-foreground">Platform Stats</h2>
                   </div>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm text-card-foreground">Total Cases</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
@@ -216,7 +179,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Award className="w-4 h-4 text-muted-foreground" />
+                        <Award className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm text-card-foreground">Total Reviews</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
@@ -225,7 +188,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <Clock className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm text-card-foreground">Pending Reviews</span>
                       </div>
                       <span className="text-sm font-semibold text-warning">
@@ -234,7 +197,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm text-card-foreground">Document Chunks</span>
                       </div>
                       <span className="text-sm font-semibold text-card-foreground">
@@ -246,30 +209,30 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-card rounded-xl p-4 border border-border text-center">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
                 <p className="text-3xl font-bold text-primary">
                   {expertStats?.approvedReviews?.toLocaleString() ?? '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Approved Reviews</p>
+                <p className="mt-1 text-sm text-muted-foreground">Approved Reviews</p>
               </div>
-              <div className="bg-card rounded-xl p-4 border border-border text-center">
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
                 <p className="text-3xl font-bold text-success">
                   {ragStats?.totalCitations?.toLocaleString() ?? '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Total Citations</p>
+                <p className="mt-1 text-sm text-muted-foreground">Total Citations</p>
               </div>
-              <div className="bg-card rounded-xl p-4 border border-border text-center">
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
                 <p className="text-3xl font-bold text-warning">
                   {ragStats?.outdatedDocuments?.toLocaleString() ?? '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Outdated Documents</p>
+                <p className="mt-1 text-sm text-muted-foreground">Outdated Documents</p>
               </div>
-              <div className="bg-card rounded-xl p-4 border border-border text-center">
+              <div className="rounded-xl border border-border bg-card p-4 text-center">
                 <p className="text-3xl font-bold text-accent">
                   {userStats?.pendingUsers?.toLocaleString() ?? '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Pending Users</p>
+                <p className="mt-1 text-sm text-muted-foreground">Pending Users</p>
               </div>
             </div>
           </>

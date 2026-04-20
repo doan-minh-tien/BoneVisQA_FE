@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AlertTriangle, ArrowDown, Loader2, MoreHorizontal } from 'lucide-react';
+import { AlertTriangle, ArrowDown, Loader2 } from 'lucide-react';
+import { AiMessageBubble } from '@/components/student/AiMessageBubble';
 import { ChatErrorBoundary } from '@/components/student/ChatErrorBoundary';
-import { VisualQaStructuredAnswer } from '@/components/student/VisualQaRichAnswer';
+import { StudentMessageBubble } from '@/components/student/StudentMessageBubble';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
+import { VISUAL_QA_MESSAGE_IN } from '@/components/student/visualQaMessageClasses';
 import { Button } from '@/components/ui/button';
 import type { VisualQaSessionReport, VisualQaTurn } from '@/lib/api/types';
 
@@ -22,13 +24,12 @@ type Props = {
   capabilities?: VisualQaSessionReport['capabilities'];
   optimisticMessages?: OptimisticMessage[];
   isLoading: boolean;
+  chatRequestPhase?: 'idle' | 'upload' | 'analyzing';
   isError?: boolean;
-  isRestoring?: boolean;
   networkWarning?: string | null;
   errorCode?: string | null;
   policyReason?: string | null;
   systemNoticeCode?: string | null;
-  /** Session-level blocking message from GET thread (VisualQaThreadDto.blockingNotice). */
   blockingNotice?: string | null;
   errorMessage?: string | null;
   canRequestReview?: boolean;
@@ -47,14 +48,70 @@ function normalizeResponseKind(kind?: string | null): 'analysis' | 'refusal' | '
   return 'analysis';
 }
 
-function formatReviewStateLabel(reviewState?: string | null): string | null {
-  const normalized = reviewState?.trim().toLowerCase();
-  if (!normalized || normalized === 'none') return null;
-  if (normalized === 'pending') return 'Awaiting expert review';
-  if (normalized === 'escalated') return 'Escalated to expert review';
-  if (normalized === 'reviewed') return 'Review feedback received';
-  if (normalized === 'resolved') return 'Review resolved';
-  return reviewState ?? null;
+type DisplayResponseKind = ReturnType<typeof normalizeResponseKind>;
+
+function turnHasStructuredAssistantPayload(turn: VisualQaTurn): boolean {
+  if (turn.diagnosis?.trim()) return true;
+  if (turn.findings?.some((item) => item?.trim())) return true;
+  if (turn.differentialDiagnoses?.some((item) => item?.trim())) return true;
+  if (turn.reflectiveQuestions?.some((item) => item?.trim())) return true;
+  if (turn.structuredDiagnosis?.trim()) return true;
+  if (turn.keyImagingFindings?.trim()) return true;
+  return false;
+}
+
+function coerceDisplayResponseKind(turn: VisualQaTurn, base: DisplayResponseKind): DisplayResponseKind {
+  if (base === 'system_notice' || base === 'review_update') return base;
+  if (base === 'clarification' && turnHasStructuredAssistantPayload(turn)) return 'analysis';
+  return base;
+}
+
+function normalizeResponseKindRaw(kind?: string | null): string {
+  return kind?.trim().toLowerCase() ?? '';
+}
+
+function resolveReviewUpdateTarget(reviewTurn: VisualQaTurn, sortedTurns: VisualQaTurn[]): VisualQaTurn | null {
+  const aid = reviewTurn.reviewTargetAssistantMessageId?.trim();
+  if (aid) {
+    const hit = sortedTurns.find((t) => t.assistantMessageId?.trim() === aid);
+    if (hit) return hit;
+  }
+  const tid = reviewTurn.reviewTargetTurnId?.trim();
+  if (tid) {
+    const hit = sortedTurns.find((t) => t.turnId?.trim() === tid);
+    if (hit) return hit;
+  }
+  const tidx = reviewTurn.reviewTargetTurnIndex;
+  if (typeof tidx === 'number' && Number.isFinite(tidx)) {
+    const hit = sortedTurns.find((t) => t.turnIndex === tidx);
+    if (hit) return hit;
+  }
+  const reviewIdx = sortedTurns.findIndex((t) =>
+    reviewTurn.turnId && t.turnId ? t.turnId === reviewTurn.turnId : t.turnIndex === reviewTurn.turnIndex,
+  );
+  const start = reviewIdx >= 0 ? reviewIdx - 1 : sortedTurns.length - 1;
+  for (let i = start; i >= 0; i--) {
+    const t = sortedTurns[i];
+    const rk = normalizeResponseKindRaw(t.responseKind);
+    if (rk === 'review_update' || rk === 'system_notice') continue;
+    return t;
+  }
+  return null;
+}
+
+function buildReviewFeedbackMap(messages: VisualQaTurn[]): Map<string, string> {
+  const sorted = [...messages].sort((a, b) => a.turnIndex - b.turnIndex);
+  const map = new Map<string, string>();
+  for (const t of sorted) {
+    if (normalizeResponseKindRaw(t.responseKind) !== 'review_update') continue;
+    const target = resolveReviewUpdateTarget(t, sorted);
+    if (!target) continue;
+    const text = t.answerText?.trim() ?? '';
+    if (!text) continue;
+    const key = target.turnId ?? String(target.turnIndex);
+    map.set(key, text);
+  }
+  return map;
 }
 
 /** Maps BE system notice codes to Vietnamese; unknown technical codes are hidden (no raw SCREAMING_SNAKE in UI). */
@@ -96,23 +153,13 @@ function formatTurnTimestamp(value?: string | null): string | null {
   });
 }
 
-function reviewUpdateRoleLabel(turn: VisualQaTurn, normalizedMessages: { role: string; content: string }[]): string {
-  const fromMsg = normalizedMessages.find((m) => m.role === 'expert' || m.role === 'lecturer');
-  if (fromMsg?.role === 'expert') return 'Expert';
-  if (fromMsg?.role === 'lecturer') return 'Lecturer';
-  const actor = (turn.actorRole ?? turn.lastResponderRole ?? '').trim().toLowerCase();
-  if (actor === 'expert') return 'Expert';
-  if (actor === 'lecturer' || actor === 'instructor') return 'Lecturer';
-  return 'Instructor';
-}
-
 export function ChatConversation({
   messages,
   capabilities,
   optimisticMessages = [],
   isLoading,
+  chatRequestPhase = 'idle',
   isError = false,
-  isRestoring = false,
   networkWarning,
   errorCode,
   systemNoticeCode,
@@ -128,6 +175,11 @@ export function ChatConversation({
   const [activeAiMenuKey, setActiveAiMenuKey] = useState<string | null>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const retryMessage = optimisticMessages[optimisticMessages.length - 1]?.content?.trim() || '';
+  const hasInlineAwaitingAssistant = messages.some((m) => m.awaitingAssistant === true);
+  const showGlobalTyping =
+    isLoading &&
+    chatRequestPhase === 'analyzing' &&
+    !hasInlineAwaitingAssistant;
   const canAskNext = capabilities?.canAskNext ?? true;
   const capabilityReason = capabilities?.reason?.trim() || '';
   const sessionFooterNoticeLabel = formatSystemNoticeCodeLabel(systemNoticeCode);
@@ -149,6 +201,8 @@ export function ChatConversation({
     (sessionFooterText.toLowerCase() === blockingTrim.toLowerCase() ||
       (sessionFooterText.toLowerCase().includes('read-only') &&
         blockingTrim.toLowerCase().includes('read-only')));
+
+  const reviewFeedbackByTargetKey = useMemo(() => buildReviewFeedbackMap(messages), [messages]);
 
   const renderedTurns = useMemo(() => {
     const blockingLower = blockingNotice?.trim().toLowerCase() ?? '';
@@ -172,14 +226,12 @@ export function ChatConversation({
           turn.diagnosis?.trim() ||
           turn.findings?.find((item) => item.trim()) ||
           '',
-        responseKind: normalizeResponseKind(turn.responseKind),
+        responseKind: coerceDisplayResponseKind(turn, normalizeResponseKind(turn.responseKind)),
         policyReason: turn.policyReason?.trim() ?? '',
         systemNoticeCode: turn.systemNoticeCode?.trim() ?? '',
-        reviewStateLabel: formatReviewStateLabel(turn.reviewState),
         reviewerNotes: normalizedMessages.filter(
           (message) => message.role === 'lecturer' || message.role === 'expert',
         ),
-        reviewUpdateLabel: reviewUpdateRoleLabel(turn, normalizedMessages),
       };
     });
 
@@ -201,17 +253,21 @@ export function ChatConversation({
       seenSystemNotice.add(fingerprint);
       return true;
     });
-    return dedupedRows.map((row, idx) => ({
+    const withoutReviewUpdates = dedupedRows.filter((row) => row.responseKind !== 'review_update');
+    return withoutReviewUpdates.map((row, idx) => ({
       ...row,
       sequenceNo: idx + 1,
     }));
   }, [messages, blockingNotice]);
 
+  const isRestoring =
+    isLoading && renderedTurns.length === 0 && optimisticMessages.length === 0;
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !isPinnedToBottom) return;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [renderedTurns, optimisticMessages, isLoading, networkWarning, isError, isPinnedToBottom]);
+  }, [renderedTurns, optimisticMessages, isLoading, chatRequestPhase, networkWarning, isError, isPinnedToBottom]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -231,7 +287,7 @@ export function ChatConversation({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="scrollbar-hide min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4 md:px-5"
+      className="app-scroll-y min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4 md:px-5"
     >
       <ChatErrorBoundary onReset={onClear}>
         {networkWarning ? (
@@ -253,13 +309,15 @@ export function ChatConversation({
         ) : null}
 
         {isRestoring ? (
-          <div className="flex min-h-[240px] items-center justify-center">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              Restoring conversation…
-            </div>
+          <div
+            className="flex min-h-[28vh] w-full flex-col items-center justify-center gap-2 py-12"
+            aria-busy="true"
+            aria-label="Loading messages"
+          >
+            <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden />
+            <span className="text-xs font-medium text-muted-foreground">Loading conversation…</span>
           </div>
-        ) : renderedTurns.length === 0 && optimisticMessages.length === 0 && !isLoading ? (
+        ) : renderedTurns.length === 0 && optimisticMessages.length === 0 && !isLoading && !hasInlineAwaitingAssistant ? (
           <div className="flex min-h-[45vh] w-full flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-12 text-center">
             <p className="text-sm font-medium text-foreground">No messages yet</p>
             <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
@@ -271,21 +329,35 @@ export function ChatConversation({
             <div className="space-y-6">
               <div className="space-y-5">
                 {renderedTurns.map(
-                  ({
-                    turn,
-                    reviewerNotes,
-                    studentMessage,
-                    assistantText,
-                    responseKind,
-                    systemNoticeCode: turnSystemNoticeCode,
-                    reviewStateLabel,
-                    reviewUpdateLabel,
-                    sequenceNo,
-                  }) => {
+                  (
+                    {
+                      turn,
+                      reviewerNotes,
+                      studentMessage,
+                      assistantText,
+                      responseKind,
+                      systemNoticeCode: turnSystemNoticeCode,
+                      sequenceNo,
+                    },
+                    idx,
+                  ) => {
                     const systemNoticeLabel = formatSystemNoticeCodeLabel(turnSystemNoticeCode);
+                    const turnKey = turn.turnId ?? String(turn.turnIndex);
+                    const inlineReviewMarkdown = reviewFeedbackByTargetKey.get(turnKey) ?? null;
+                    const isLastTurn = idx === renderedTurns.length - 1;
+                    const deferLatestNonAnalysisWhileBusy =
+                      isLoading &&
+                      isLastTurn &&
+                      (responseKind === 'clarification' || responseKind === 'refusal');
+                    const awaitingAssistant =
+                      deferLatestNonAnalysisWhileBusy ||
+                      (turn.awaitingAssistant === true &&
+                        !assistantText &&
+                        responseKind === 'analysis');
+                    const turnMenuKey = turn.turnId ?? String(turn.turnIndex);
                     return (
                   <div
-                    key={turn.turnId ?? `${turn.turnIndex}-${turn.createdAt ?? ''}`}
+                    key={turn.turnId ?? turn.clientRequestId ?? `${turn.turnIndex}-${turn.createdAt ?? ''}`}
                     className="w-full rounded-xl text-left"
                   >
                     <div className="space-y-2">
@@ -294,155 +366,30 @@ export function ChatConversation({
                           {formatTurnTimestamp(turn.createdAt) ?? `Turn #${sequenceNo}`}
                         </span>
                       </div>
-                      {studentMessage ? (
-                        <motion.div
-                          className="chat-send-rise flex justify-end"
-                          initial={{ y: 20, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                          layout
-                        >
-                          <div className="max-w-[92%] overflow-hidden break-words rounded-2xl border border-[#003ebd] bg-[#0055ff] px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                ...markdownExternalLinkComponents,
-                                p: ({ children }) => (
-                                  <p className="text-contrast-outline mb-2 last:mb-0 leading-relaxed">{children}</p>
-                                ),
-                              }}
-                            >
-                              {studentMessage}
-                            </ReactMarkdown>
-                          </div>
-                        </motion.div>
-                      ) : null}
+                      {studentMessage ? <StudentMessageBubble content={studentMessage} /> : null}
 
-                      <motion.div
-                        className="group flex justify-start"
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-                        layout
-                      >
-                        <div className="relative max-w-[92%] overflow-hidden break-words rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm leading-relaxed text-slate-950 shadow-sm [&_a]:break-all [&_pre]:overflow-x-auto">
-                          {responseKind === 'analysis' ? (
-                            <VisualQaStructuredAnswer
-                              markdown={turn.answerText}
-                              diagnosis={turn.diagnosis}
-                              findings={turn.findings}
-                              differentialDiagnoses={turn.differentialDiagnoses}
-                              reflectiveQuestions={turn.reflectiveQuestions}
-                              citations={turn.citations ?? []}
-                            />
-                          ) : responseKind === 'clarification' || responseKind === 'refusal' ? (
-                            <div className="space-y-2">
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  ...markdownExternalLinkComponents,
-                                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                                }}
-                              >
-                                {assistantText || 'The assistant returned a non-analysis response.'}
-                              </ReactMarkdown>
-                            </div>
-                          ) : responseKind === 'system_notice' ? (
-                            <div className="space-y-2">
-                              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
-                                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                                System notice
-                              </p>
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  ...markdownExternalLinkComponents,
-                                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                                }}
-                              >
-                                {assistantText || 'This session has a new system notice.'}
-                              </ReactMarkdown>
-                              {systemNoticeLabel ? (
-                                <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                                  {systemNoticeLabel}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : responseKind === 'review_update' ? (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                                {reviewUpdateLabel}:
-                              </p>
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  ...markdownExternalLinkComponents,
-                                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                                }}
-                              >
-                                {assistantText || reviewStateLabel || ''}
-                              </ReactMarkdown>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  ...markdownExternalLinkComponents,
-                                  p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-                                }}
-                              >
-                                {assistantText || 'The assistant returned a response.'}
-                              </ReactMarkdown>
-                            </div>
-                          )}
+                      <AiMessageBubble
+                        turn={turn}
+                        assistantText={assistantText}
+                        responseKind={responseKind}
+                        awaitingAssistant={awaitingAssistant}
+                        chatRequestPhase={chatRequestPhase}
+                        systemNoticeLabel={systemNoticeLabel}
+                        inlineReviewFeedbackMarkdown={inlineReviewMarkdown}
+                        canRequestReview={canRequestReview}
+                        requestingExpertSupport={requestingExpertSupport}
+                        activeMenuTurnKey={activeAiMenuKey}
+                        turnMenuKey={turnMenuKey}
+                        onToggleMenu={() =>
+                          setActiveAiMenuKey((prev) => (prev === turnMenuKey ? null : turnMenuKey))
+                        }
+                        onRequestExpertSupport={() => {
+                          setActiveAiMenuKey(null);
+                          onRequestExpertSupport?.(turn);
+                        }}
+                      />
 
-                          {reviewStateLabel && responseKind !== 'review_update' ? (
-                            <div className="mt-3 rounded-lg border border-violet-500/30 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900">
-                              {reviewStateLabel}
-                            </div>
-                          ) : null}
-
-                          {canRequestReview &&
-                          (turn.actorRole?.trim().toLowerCase() === 'assistant' ||
-                            turn.isReviewTarget === true ||
-                            responseKind === 'analysis') ? (
-                            <div className="absolute right-2 top-2">
-                              <button
-                                type="button"
-                                className="rounded-md p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-slate-200"
-                                onClick={() =>
-                                  setActiveAiMenuKey((prev) =>
-                                    prev === (turn.turnId ?? String(turn.turnIndex))
-                                      ? null
-                                      : (turn.turnId ?? String(turn.turnIndex)),
-                                  )
-                                }
-                                aria-label="More actions"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </button>
-                              {activeAiMenuKey === (turn.turnId ?? String(turn.turnIndex)) ? (
-                                <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-white p-1 shadow-lg">
-                                  <button
-                                    type="button"
-                                    disabled={requestingExpertSupport}
-                                    className="w-full rounded-md px-3 py-2 text-left text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
-                                    onClick={() => {
-                                      setActiveAiMenuKey(null);
-                                      onRequestExpertSupport?.(turn);
-                                    }}
-                                  >
-                                    {requestingExpertSupport ? 'Sending…' : 'Request Expert Support'}
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      </motion.div>
-
-                      {responseKind !== 'review_update' && reviewerNotes.length > 0 ? (
+                      {responseKind !== 'review_update' && reviewerNotes.length > 0 && !inlineReviewMarkdown ? (
                           <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                               Instructor async feedback notes
@@ -492,37 +439,28 @@ export function ChatConversation({
                   {optimisticMessages.map((message) => (
                     <motion.div
                       key={message.id}
-                      className="flex justify-end"
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
+                      initial={false}
                       exit={{ y: -8, opacity: 0 }}
-                      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                      transition={{ duration: 0.2 }}
                       layout
                     >
-                      <div className="max-w-[92%] rounded-2xl border border-[#003ebd] bg-[#0055ff] px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
-                        <p className="text-contrast-outline mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
-                          {message.status === 'failed'
-                            ? 'Failed'
-                            : message.status === 'sent'
-                              ? 'Sent'
-                              : 'Sending'}
-                        </p>
-                        <div className="text-contrast-outline">{message.content}</div>
-                      </div>
+                      <StudentMessageBubble
+                        content={message.content}
+                        status={message.status}
+                      />
                     </motion.div>
                   ))}
                 </AnimatePresence>
               </div>
 
               <AnimatePresence initial={false}>
-                {isLoading ? (
+                {showGlobalTyping ? (
                   <motion.div
                     key="typing"
-                    className="flex justify-start"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
+                    className={`flex justify-start ${VISUAL_QA_MESSAGE_IN}`}
+                    initial={false}
                     exit={{ y: -8, opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                    transition={{ duration: 0.2 }}
                     layout
                   >
                     <div className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-slate-100 px-4 py-3" aria-hidden>
@@ -535,16 +473,15 @@ export function ChatConversation({
               </AnimatePresence>
 
               {!isLoading &&
+              !showGlobalTyping &&
               !hideSessionFooterAsDuplicate &&
               ((!canAskNext && capabilityReason) || (isError && displayedErrorMessage)) ? (
                 <motion.div
-                  className="flex justify-start"
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                  className={`flex justify-start ${VISUAL_QA_MESSAGE_IN}`}
+                  initial={false}
                   layout
                 >
-                  <div className="max-w-[92%] rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 shadow-sm">
+                  <div className="max-w-[min(92vw,92%)] rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 shadow-sm sm:max-w-[92%]">
                     <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
                       <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
                       System notice

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import useSWRMutation from 'swr/mutation';
 import Header from '@/components/Header';
 import { ChatComposer } from '@/components/student/ChatComposer';
 import { ChatConversation } from '@/components/student/ChatConversation';
@@ -47,10 +46,13 @@ const MedicalImageViewer = dynamic(
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
+  askVisualQaStream,
   fetchStudentVisualQaSession,
-  postStudentVisualQa,
   requestStudentVisualQaReview,
+  VisualQaStreamPartialDisconnectError,
 } from '@/lib/api/student-visual-qa';
+import { isMedicalImageUploadAllowed } from '@/components/student/MedicalImageViewer';
+import { toast as sonnerToast } from 'sonner';
 import type {
   NormalizedImageBoundingBox,
   NormalizedPolygonPoint,
@@ -63,6 +65,12 @@ import { cn } from '@/lib/utils';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import { useAuth } from '@/lib/useAuth';
 import { resolveApiAssetUrl } from '@/lib/api/client';
+import {
+  appendOptimisticQuestionTurn,
+  mergeTurnsByIdentity,
+  removeOptimisticTurnByClientRequestId,
+} from '@/lib/student/visual-qa-chat-turns';
+import { useVisualQaChatSubmit } from '@/hooks/useVisualQaChatSubmit';
 
 type VisualQaDraft = {
   question: string;
@@ -84,39 +92,14 @@ const EMPTY_DRAFT: VisualQaDraft = {
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const DRAFT_TTL_MS = 10_800_000;
+/** Session draft when 401/403 forces re-login so the typed question is not lost. */
+const PENDING_VISUAL_QA_AUTH_KEY = 'bonevisqa:visual-qa:pending-auth-draft';
 
 type PendingOutgoingMessage = {
   id: string;
   content: string;
   status: 'sending' | 'failed';
 };
-
-function turnIdentity(turn: VisualQaTurn): string {
-  if (turn.turnId?.trim()) return `turn:${turn.turnId.trim()}`;
-  if (turn.clientRequestId?.trim()) return `request:${turn.clientRequestId.trim()}`;
-  if (typeof turn.turnIndex === 'number' && Number.isFinite(turn.turnIndex)) return `index:${turn.turnIndex}`;
-  return `fallback:${turn.createdAt ?? ''}:${turn.answerText ?? ''}`;
-}
-
-function mergeTurnsByIdentity(base: VisualQaTurn[], incoming: VisualQaTurn[]): VisualQaTurn[] {
-  const merged = [...base];
-  const identityToIndex = new Map<string, number>();
-  merged.forEach((turn, idx) => identityToIndex.set(turnIdentity(turn), idx));
-  incoming.forEach((turn) => {
-    const key = turnIdentity(turn);
-    const existingIndex = identityToIndex.get(key);
-    if (typeof existingIndex === 'number') {
-      merged[existingIndex] = turn;
-      return;
-    }
-    merged.push(turn);
-    identityToIndex.set(key, merged.length - 1);
-  });
-  return merged.sort((a, b) => {
-    if (a.turnIndex !== b.turnIndex) return a.turnIndex - b.turnIndex;
-    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
-  });
-}
 
 function hasQuestionText(turn: VisualQaTurn): boolean {
   if (turn.questionText?.trim()) return true;
@@ -154,8 +137,9 @@ export default function StudentVisualQaImagePage() {
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [hydratingDraft, setHydratingDraft] = useState(true);
-  /** Synchronous guard against double-submit before React applies `loading`. */
-  const isSubmittingRef = useRef(false);
+  const { isSubmittingRef, beginSubmit, endSubmit } = useVisualQaChatSubmit();
+  const chatTurnsRef = useRef(chatTurns);
+  chatTurnsRef.current = chatTurns;
   /** Remount file input on New Chat so the native picker and preview fully reset. */
   const [fileInputKey, setFileInputKey] = useState(0);
   const bottomFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -185,34 +169,6 @@ export default function StudentVisualQaImagePage() {
     searchParams.get('catalogImageId') ??
     searchParams.get('imageId') ??
     searchParams.get('catalogImageID');
-
-  const { trigger: askVisualQa } = useSWRMutation(
-    'student-visual-qa-session-ask',
-    async (
-      _key,
-      {
-        arg,
-      }: {
-        arg: {
-          file?: File | null;
-          questionText: string;
-          sessionId?: string | null;
-          caseId?: string | null;
-          imageId?: string | null;
-          roiBoundingBox?: NormalizedImageBoundingBox | null;
-          clientRequestId?: string | null;
-        };
-      },
-    ) =>
-      postStudentVisualQa(arg.file, arg.questionText, {
-        sessionId: arg.sessionId,
-        caseId: arg.caseId,
-        imageId: arg.imageId,
-        roiBoundingBox: arg.roiBoundingBox,
-        clientRequestId: arg.clientRequestId,
-        onUploadProgress: handleUploadProgress,
-      }),
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +209,23 @@ export default function StudentVisualQaImagePage() {
   }, []);
 
   useEffect(() => {
+    if (hydratingDraft) return;
+    try {
+      const raw = sessionStorage.getItem(PENDING_VISUAL_QA_AUTH_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(PENDING_VISUAL_QA_AUTH_KEY);
+      const parsed = JSON.parse(raw) as { questionText?: string };
+      const qt = parsed.questionText?.trim();
+      if (qt) {
+        setQuestion(qt);
+        setDraft((prev) => ({ ...prev, question: qt }));
+      }
+    } catch {
+      sessionStorage.removeItem(PENDING_VISUAL_QA_AUTH_KEY);
+    }
+  }, [hydratingDraft, setDraft]);
+
+  useEffect(() => {
     if (!file) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
@@ -288,6 +261,10 @@ export default function StudentVisualQaImagePage() {
         const prefilledFile = new File([blob], `${safeTitle}.${extension}`, {
           type: blob.type || 'image/jpeg',
         });
+        if (!isMedicalImageUploadAllowed(prefilledFile)) {
+          sonnerToast.error('Định dạng file không được hỗ trợ.');
+          return;
+        }
         setFile(prefilledFile);
       } catch (error) {
         if (!cancelled) {
@@ -312,8 +289,9 @@ export default function StudentVisualQaImagePage() {
   useEffect(() => {
     if (!historySessionId?.trim()) return;
     let cancelled = false;
+    setRestoringSession(true);
+    setChatTurns([]);
     (async () => {
-      setRestoringSession(true);
       try {
         const restored = await fetchStudentVisualQaSession(historySessionId);
         if (cancelled) return;
@@ -365,6 +343,11 @@ export default function StudentVisualQaImagePage() {
       }
       const f = e.target.files?.[0];
       if (!f) return;
+      if (!isMedicalImageUploadAllowed(f)) {
+        sonnerToast.error('Định dạng file không được hỗ trợ.');
+        e.target.value = '';
+        return;
+      }
       if (f.size > MAX_IMAGE_SIZE_BYTES) {
         setFile(null);
         setImageError('Image must be smaller than 5MB.');
@@ -447,7 +430,6 @@ export default function StudentVisualQaImagePage() {
   }
 
   const submitQuestion = async (questionOverride?: string) => {
-    if (isSubmittingRef.current) return;
     if (isSessionInteractionLocked) {
       const lockMessage = sessionCapabilityReason || 'This chat is read-only for now. Start a new chat to continue.';
       appendLocalSystemNotice(lockMessage, session?.systemNoticeCode ?? 'SESSION_LOCKED');
@@ -474,15 +456,23 @@ export default function StudentVisualQaImagePage() {
       setImageError('Image must be smaller than 5MB.');
       return;
     }
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
+    if (requiresFile && file && !isMedicalImageUploadAllowed(file)) {
+      sonnerToast.error('Định dạng file không được hỗ trợ.');
+      return;
+    }
+    if (!beginSubmit()) return;
     const q = nextQuestion;
     const requestId =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `client-${Date.now()}`;
     localQuestionByRequestIdRef.current[requestId] = q;
-    setPendingOutgoingMessage({ id: requestId, content: q, status: 'sending' });
+    setChatTurns((prev) => {
+      const next = appendOptimisticQuestionTurn(prev, q, requestId);
+      const last = next[next.length - 1];
+      if (last) setSelectedTurnIndex(last.turnIndex);
+      return next;
+    });
     setQuestion('');
     setImageError(null);
     setQuestionError(null);
@@ -496,24 +486,49 @@ export default function StudentVisualQaImagePage() {
     setLoadingPhase(file ? 'upload' : 'analyzing');
     setUploadPct(0);
     let overloadExit = false;
+    const rollbackOptimisticTurn = () => {
+      setChatTurns((prev) => removeOptimisticTurnByClientRequestId(prev, requestId));
+    };
     try {
-      const res = await askVisualQa({
-        file,
-        questionText: q,
+      const res = await askVisualQaStream(file, q, {
         sessionId: session?.sessionId ?? null,
         caseId: catalogCaseId,
         imageId: catalogImageId,
         roiBoundingBox,
         clientRequestId: requestId,
+        onUploadProgress: handleUploadProgress,
+        onAssistantTextDelta: (assistantTextSoFar) => {
+          setChatTurns((prev) =>
+            prev.map((turn) =>
+              turn.clientRequestId === requestId && turn.awaitingAssistant === true
+                ? { ...turn, answerText: assistantTextSoFar }
+                : turn,
+            ),
+          );
+          setSession((prev) => {
+            if (!prev) return prev;
+            const turns = prev.turns.map((turn) =>
+              turn.clientRequestId === requestId && turn.awaitingAssistant === true
+                ? { ...turn, answerText: assistantTextSoFar }
+                : turn,
+            );
+            return {
+              ...prev,
+              turns,
+              latest: turns[turns.length - 1] ?? prev.latest,
+            };
+          });
+        },
       });
+      const baseTurns = chatTurnsRef.current;
       const normalizeTurnsWithLivePayload = (): VisualQaTurn[] => {
-        const byServerTurns = res.turns.length > 0 ? mergeTurnsByIdentity(chatTurns, res.turns) : [...chatTurns];
+        const byServerTurns = res.turns.length > 0 ? mergeTurnsByIdentity(baseTurns, res.turns) : [...baseTurns];
         const latestTurnFromResponse: VisualQaTurn | null =
           res.latest ??
           (res.turns.length === 0
             ? {
                 turnId: null,
-                turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
+                turnIndex: (baseTurns[baseTurns.length - 1]?.turnIndex ?? 0) + 1,
                 questionText: q,
                 ...(res.answerText ? { answerText: res.answerText } : {}),
                 diagnosis: res.diagnosis ?? '',
@@ -620,7 +635,35 @@ export default function StudentVisualQaImagePage() {
         })();
       }
     } catch (err) {
+      if (err instanceof VisualQaStreamPartialDisconnectError) {
+        return;
+      }
       if (axios.isAxiosError(err)) {
+        const authStatus = err.response?.status;
+        if (authStatus === 401 || authStatus === 403) {
+          rollbackOptimisticTurn();
+          try {
+            const returnPath = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+            sessionStorage.setItem(
+              PENDING_VISUAL_QA_AUTH_KEY,
+              JSON.stringify({
+                questionText: q,
+                returnPath,
+                savedAt: Date.now(),
+              }),
+            );
+          } catch {
+            /* storage full / private mode */
+          }
+          setDraft((prev) => ({ ...prev, question: q }));
+          setQuestion(q);
+          toast.info('Please sign in again to continue. Your question has been saved for when you return.');
+          const returnUrl = encodeURIComponent(
+            `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`,
+          );
+          router.replace(`/auth/sign-in?returnUrl=${returnUrl}`);
+          return;
+        }
         const errorPayload = err.response?.data as
           | {
               errorCode?: string;
@@ -646,16 +689,14 @@ export default function StudentVisualQaImagePage() {
           )?.code ??
           null;
         if (errCode === 'AI_SERVICE_UNAVAILABLE' || err.response?.status === 503) {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           toast.info('The AI service is currently busy. Your question quota was not consumed; please try again shortly.');
           return;
         }
         if (errCode === 'AI_RESPONSE_INVALID_FORMAT') {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           setChatErrorCode(errCode);
           setChatErrorMessage('AI returned an invalid format. Try resending or ask a simpler question.');
           setChatPolicyReason(payloadPolicyReason);
@@ -664,16 +705,14 @@ export default function StudentVisualQaImagePage() {
           return;
         }
         if (errCode === 'INTERNAL_SERVER_ERROR' || err.response?.status === 500) {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           toast.error('A processing error occurred. Your uploaded file was safely cleaned up. Please try again.');
           return;
         }
         if (errCode === 'SESSION_EXPIRED') {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           setServerForcedExpired(true);
           toast.info('This Q&A session has expired. Please start a new session.');
           return;
@@ -687,29 +726,29 @@ export default function StudentVisualQaImagePage() {
               err.response?.data as { message?: string; detail?: string } | undefined
             )?.detail?.trim() ||
             'This session is read-only after requesting expert support. Start a new chat to continue.';
-          const systemTurn: VisualQaTurn = {
-            turnId: null,
-            turnIndex: (chatTurns[chatTurns.length - 1]?.turnIndex ?? 0) + 1,
-            answerText: readOnlyMessage,
-            diagnosis: '',
-            findings: [],
-            reflectiveQuestions: [],
-            differentialDiagnoses: [],
-            citations: [],
-            createdAt: new Date().toISOString(),
-            responseKind: 'system_notice',
-            policyReason: payloadPolicyReason,
-            systemNoticeCode: payloadSystemNoticeCode,
-            actorRole: 'system',
-            lastResponderRole: 'system',
-            isReviewTarget: false,
-          };
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           setSession((prev) => {
             if (!prev) return prev;
-            const mergedTurns = mergeTurnsByIdentity(prev.turns, [systemTurn]);
+            const cleared = removeOptimisticTurnByClientRequestId(prev.turns, requestId);
+            const nextTurnIndex = (cleared[cleared.length - 1]?.turnIndex ?? 0) + 1;
+            const systemTurn: VisualQaTurn = {
+              turnId: null,
+              turnIndex: nextTurnIndex,
+              answerText: readOnlyMessage,
+              diagnosis: '',
+              findings: [],
+              reflectiveQuestions: [],
+              differentialDiagnoses: [],
+              citations: [],
+              createdAt: new Date().toISOString(),
+              responseKind: 'system_notice',
+              policyReason: payloadPolicyReason,
+              systemNoticeCode: payloadSystemNoticeCode,
+              actorRole: 'system',
+              lastResponderRole: 'system',
+              isReviewTarget: false,
+            };
+            const mergedTurns = mergeTurnsByIdentity(cleared, [systemTurn]);
             return {
               ...prev,
               turns: mergedTurns,
@@ -722,16 +761,36 @@ export default function StudentVisualQaImagePage() {
               },
             };
           });
-          setChatTurns((prev) => mergeTurnsByIdentity(prev, [systemTurn]));
+          setChatTurns((prev) => {
+            const cleared = removeOptimisticTurnByClientRequestId(prev, requestId);
+            const nextTurnIndex = (cleared[cleared.length - 1]?.turnIndex ?? 0) + 1;
+            const systemTurn: VisualQaTurn = {
+              turnId: null,
+              turnIndex: nextTurnIndex,
+              answerText: readOnlyMessage,
+              diagnosis: '',
+              findings: [],
+              reflectiveQuestions: [],
+              differentialDiagnoses: [],
+              citations: [],
+              createdAt: new Date().toISOString(),
+              responseKind: 'system_notice',
+              policyReason: payloadPolicyReason,
+              systemNoticeCode: payloadSystemNoticeCode,
+              actorRole: 'system',
+              lastResponderRole: 'system',
+              isReviewTarget: false,
+            };
+            return mergeTurnsByIdentity(cleared, [systemTurn]);
+          });
           setChatPolicyReason(payloadPolicyReason);
           setChatSystemNoticeCode(payloadSystemNoticeCode);
           toast.info(readOnlyMessage);
           return;
         }
         if (errCode === 'TURN_LIMIT_EXCEEDED') {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           setChatErrorCode(errCode);
           setChatErrorMessage('You have reached the billable analysis-turn limit for this session.');
           setChatPolicyReason(payloadPolicyReason);
@@ -741,9 +800,8 @@ export default function StudentVisualQaImagePage() {
         }
       }
       if (axios.isAxiosError(err) && err.response?.status === 429) {
-        setPendingOutgoingMessage((prev) =>
-          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-        );
+        rollbackOptimisticTurn();
+        setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
         toast.info('Requests are being sent too quickly. Please wait about 1 minute before submitting again.');
         return;
       }
@@ -756,9 +814,8 @@ export default function StudentVisualQaImagePage() {
           (err.response?.data as { code?: string; errorCode?: string; title?: string } | undefined)
             ?.title;
         if (typeof code === 'string' && code.toUpperCase().includes('INVALID_IMAGE_NOT_XRAY')) {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           toast.error('Image rejected: Only Human Bone X-Rays are supported.');
           setImageError('Image rejected: Only Human Bone X-Rays are supported.');
           return;
@@ -766,9 +823,8 @@ export default function StudentVisualQaImagePage() {
       }
       if (isAiModelOverloadError(err)) {
         overloadExit = true;
-        setPendingOutgoingMessage((prev) =>
-          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-        );
+        rollbackOptimisticTurn();
+        setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
         setAiOverload(true);
         setLoading(false);
         setUploadPct(0);
@@ -779,17 +835,15 @@ export default function StudentVisualQaImagePage() {
         const isNetworkDrop = !err.response;
         const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message ?? '');
         if (isNetworkDrop || isTimeout) {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           const warning =
             'Network connection lost. The AI is still processing your request on the server. Please check your History tab in a few minutes to see the result.';
           setNetworkWarning(warning);
           toast.info('Connection interrupted. You can continue safely and check History shortly.');
         } else {
-          setPendingOutgoingMessage((prev) =>
-            prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-          );
+          rollbackOptimisticTurn();
+          setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
           const maybeData = err.response?.data;
           const apiMessage =
             typeof maybeData === 'string'
@@ -800,13 +854,12 @@ export default function StudentVisualQaImagePage() {
           toast.error(apiMessage || err.message || 'Request failed');
         }
       } else {
-        setPendingOutgoingMessage((prev) =>
-          prev ? { ...prev, status: 'failed' } : { id: requestId, content: q, status: 'failed' },
-        );
+        rollbackOptimisticTurn();
+        setPendingOutgoingMessage({ id: requestId, content: q, status: 'failed' });
         toast.error(err instanceof Error ? err.message : 'Request failed');
       }
     } finally {
-      isSubmittingRef.current = false;
+      endSubmit();
       if (!overloadExit) {
         setLoading(false);
         setUploadPct(0);
@@ -844,16 +897,35 @@ export default function StudentVisualQaImagePage() {
     if (fromThread) return fromThread;
     return roiBoundingBox;
   }, [roiBoundingBox, selectedTurn, session?.roiBoundingBox]);
+  const viewerExpertAnnotation = useMemo(() => {
+    const raw = selectedTurn?.expertCorrectedRoiBoundingBox;
+    return raw && isValidNormalizedBoundingBox(raw) ? raw : null;
+  }, [selectedTurn?.expertCorrectedRoiBoundingBox]);
   const canAskNext = session?.capabilities?.canAskNext ?? true;
   const isSessionReadOnly = session?.capabilities?.isReadOnly ?? false;
+  const cap = session?.capabilities;
+  const capReasonUpper = (cap?.reason ?? '').trim().toUpperCase();
+  const isTurnLimitExceededReason =
+    capReasonUpper === 'TURN_LIMIT_EXCEEDED' || capReasonUpper.includes('TURN_LIMIT_EXCEEDED');
+  const turnsUsedCount = cap?.turnsUsed;
+  const turnsLimitCount = cap?.turnLimit;
+  const isTurnLimitLock =
+    isTurnLimitExceededReason ||
+    session?.systemNoticeCode?.trim().toUpperCase() === 'TURN_LIMIT_EXCEEDED' ||
+    chatErrorCode === 'TURN_LIMIT_EXCEEDED' ||
+    (typeof turnsUsedCount === 'number' &&
+      typeof turnsLimitCount === 'number' &&
+      turnsLimitCount > 0 &&
+      turnsUsedCount >= turnsLimitCount);
   const sessionCapabilityReason =
     session?.capabilities?.reason?.trim() ||
-    (typeof session?.capabilities?.turnsUsed === 'number' &&
-    typeof session?.capabilities?.turnLimit === 'number' &&
-    session.capabilities.turnLimit > 0
-      ? `Analysis-turn limit reached (${session.capabilities.turnsUsed}/${session.capabilities.turnLimit}).`
+    (isTurnLimitLock &&
+    typeof turnsUsedCount === 'number' &&
+    typeof turnsLimitCount === 'number' &&
+    turnsLimitCount > 0
+      ? `Analysis-turn limit reached (${turnsUsedCount}/${turnsLimitCount}).`
       : '');
-  const isSessionInteractionLocked = !canAskNext || isSessionReadOnly || serverForcedExpired;
+  const isSessionInteractionLocked = isSessionReadOnly || serverForcedExpired || isTurnLimitLock;
   const composerPlaceholder = isSessionInteractionLocked
     ? sessionCapabilityReason || 'This chat is read-only. Start a new chat to continue.'
     : 'What would you like to ask about this image?';
@@ -920,7 +992,14 @@ export default function StudentVisualQaImagePage() {
 
   const handleRequestLecturerReview = useCallback(async (turn?: VisualQaTurn | null) => {
     if (!session?.sessionId || requestingLecturerReview) return;
-    const targetTurnId = turn?.turnId?.trim() || latestTurn?.turnId?.trim() || null;
+    // BE expects {turnId} in /visual-qa/turns/{turnId}/request-review to be the assistant (AI) message id.
+    const fromTurn = turn ?? latestTurn;
+    const targetTurnId =
+      fromTurn?.assistantMessageId?.trim() ||
+      fromTurn?.turnId?.trim() ||
+      latestTurn?.assistantMessageId?.trim() ||
+      latestTurn?.turnId?.trim() ||
+      null;
     setRequestingLecturerReview(true);
     try {
       const updated = await requestStudentVisualQaReview(session.sessionId, targetTurnId);
@@ -954,7 +1033,13 @@ export default function StudentVisualQaImagePage() {
     } finally {
       setRequestingLecturerReview(false);
     }
-  }, [latestTurn?.turnId, requestingLecturerReview, session, toast]);
+  }, [
+    latestTurn?.assistantMessageId,
+    latestTurn?.turnId,
+    requestingLecturerReview,
+    session,
+    toast,
+  ]);
 
   useEffect(() => {
     if (!isGuestUser) return;
@@ -1039,14 +1124,15 @@ export default function StudentVisualQaImagePage() {
             });
           }}
         />
-        <div className="grid min-h-0 min-h-[50vh] flex-1 grid-cols-1 overflow-hidden border-t border-border-color lg:min-h-0 lg:grid-cols-2 lg:border-l lg:border-t-0">
-        <aside className="flex min-h-0 flex-col overflow-hidden border-b border-border-color lg:min-h-0 lg:border-b-0 lg:border-r">
-          <div className="min-h-0 min-h-[36vh] flex-1 overflow-y-auto custom-scrollbar lg:min-h-0">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden border-t border-border-color max-lg:min-h-[50vh] lg:min-h-0 lg:grid-cols-2 lg:border-l lg:border-t-0">
+        <aside className="flex min-h-0 shrink-0 flex-col overflow-hidden border-b border-border-color max-lg:max-h-[min(46vh,440px)] lg:min-h-0 lg:max-h-none lg:border-b-0 lg:border-r">
+          <div className="app-scroll-y min-h-0 min-h-[32vh] flex-1 overflow-y-auto max-lg:max-h-[min(46vh,440px)] lg:min-h-0 lg:max-h-none">
             <MedicalImageViewer
               key={hydratingDraft ? 'hydrating' : (previewUrl ?? 'no-preview')}
               src={previewUrl}
               alt="Study image for diagnostic request"
               initialAnnotation={hydratingDraft ? undefined : (viewerAnnotation ?? undefined)}
+              expertAnnotation={viewerExpertAnnotation ?? undefined}
               onAnnotationComplete={setRoiBoundingBox}
             />
           </div>
@@ -1086,7 +1172,7 @@ export default function StudentVisualQaImagePage() {
             <ChatConversation
               messages={chatTurns}
               optimisticMessages={
-                pendingOutgoingMessage
+                pendingOutgoingMessage?.status === 'failed'
                   ? [
                       {
                         id: pendingOutgoingMessage.id,
@@ -1096,10 +1182,10 @@ export default function StudentVisualQaImagePage() {
                     ]
                   : []
               }
-              isLoading={loading}
+              isLoading={loading || restoringSession}
+              chatRequestPhase={loading ? loadingPhase : 'idle'}
               capabilities={session?.capabilities}
               isError={Boolean(aiOverload || chatErrorCode)}
-              isRestoring={restoringSession}
               networkWarning={networkWarning}
               errorCode={chatErrorCode}
               policyReason={chatPolicyReason ?? session?.policyReason ?? null}
@@ -1156,11 +1242,23 @@ export default function StudentVisualQaImagePage() {
                     onSubmit={handleComposerSubmit}
                     onChooseFile={() => bottomFileInputRef.current?.click()}
                     disabled={isSessionInteractionLocked}
-                    isLoading={loading}
+                    isLoading={loading || restoringSession}
                     canAttachFile={!isOngoingSession && !isSessionInteractionLocked}
                     placeholder={composerPlaceholder}
                   />
                 </div>
+                {typeof turnsUsedCount === 'number' &&
+                typeof turnsLimitCount === 'number' &&
+                turnsLimitCount > 0 ? (
+                  <p
+                    className={cn(
+                      'mt-2 text-xs',
+                      isTurnLimitLock ? 'font-medium text-red-600' : 'text-muted-foreground',
+                    )}
+                  >
+                    ({turnsUsedCount}/{turnsLimitCount}) {isTurnLimitLock ? 'Limit Reached' : 'Analysis turns'}
+                  </p>
+                ) : null}
                 {hydratingDraft && !isOngoingSession ? (
                   <p className="mt-2 text-xs text-muted-foreground">Restoring your unsent draft…</p>
                 ) : null}

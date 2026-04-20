@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import useSWR, { useSWRConfig } from 'swr';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -10,10 +12,15 @@ import CaseManagementCard from '@/components/expert/CaseManagementCard';
 import CaseAssetsDialog from '@/components/expert/cases/CaseAssetsDialog';
 import CreateExpertCaseModal from '@/components/expert/cases/CreateExpertCaseModal';
 import { Button } from '@/components/ui/button';
-import { FolderCog, FolderOpen, Plus } from 'lucide-react';
-import { fetchExpertRecentCases, type ExpertRecentCase } from '@/lib/api/expert-dashboard';
+import { FolderCog, FolderOpen, Plus, Search, Sparkles } from 'lucide-react';
+import {
+  EXPERT_DASHBOARD_QUERY_KEY,
+  fetchExpertRecentCases,
+  type ExpertRecentCase,
+} from '@/lib/api/expert-dashboard';
 import { getApiProblemDetails } from '@/lib/api/client';
 import { useToast } from '@/components/ui/toast';
+import { cn } from '@/lib/utils';
 
 type StatusTab = 'all' | 'pending' | 'approved' | 'draft';
 
@@ -22,9 +29,11 @@ export default function ExpertCasesPage() {
   const toast = useToast();
   const toastedErrorRef = useRef<string | null>(null);
   const { mutate } = useSWRConfig();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [assetsCaseId, setAssetsCaseId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const { data, isLoading, error } = useSWR<ExpertRecentCase[]>('expert-case-library', fetchExpertRecentCases, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
@@ -42,9 +51,11 @@ export default function ExpertCasesPage() {
   }, [cases]);
 
   const filtered = useMemo(() => {
-    if (activeTab === 'all') return cases;
-    return cases.filter((c) => c.status === activeTab);
-  }, [activeTab, cases]);
+    const byTab = activeTab === 'all' ? cases : cases.filter((c) => c.status === activeTab);
+    const q = query.trim().toLowerCase();
+    if (!q) return byTab;
+    return byTab.filter((c) => c.title.toLowerCase().includes(q));
+  }, [activeTab, cases, query]);
 
   useEffect(() => {
     if (!error) {
@@ -60,24 +71,45 @@ export default function ExpertCasesPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header title="Case library" subtitle="Teaching cases, categories, and approval status" />
-      <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="rounded-xl border border-border bg-card px-4 py-3 text-card-foreground shadow-sm sm:min-w-[12rem]">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total cases</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{counts.all}</p>
+      <Header title="Teaching case library" subtitle="Author, curate, and publish cases for Visual QA and coursework" />
+      <div className="mx-auto max-w-[1240px] space-y-8 px-4 py-8 sm:px-6">
+        <section className="overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-primary/5 shadow-sm">
+          <div className="grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="min-w-0 space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                Expert workspace
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-card-foreground sm:text-2xl">Cases you own</h2>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Create cases with optional imaging and ROI. After save, add tags or annotations from the follow-up
+                dialog. Escalated student reviews live under{' '}
+                <Link href="/expert/reviews" className="font-medium text-primary underline-offset-4 hover:underline">
+                  Expert review
+                </Link>
+                .
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center md:flex-col md:items-stretch">
+              <Button type="button" className="h-11 gap-2 shadow-md" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                New case
+              </Button>
+              <Link
+                href="/expert/reviews"
+                className={cn(
+                  'inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium tracking-[0.01em] text-foreground',
+                  'cursor-pointer transition-all duration-150 hover:bg-slate-50 active:scale-[0.98]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                )}
+              >
+                Open review queue
+              </Link>
+            </div>
           </div>
-          <Button type="button" className="w-full gap-2 shadow-sm sm:w-auto" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add new case
-          </Button>
-        </div>
+        </section>
 
-        <div
-          className="mb-2 flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1"
-          role="tablist"
-          aria-label="Case status tabs"
-        >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(
             [
               ['all', 'All', counts.all],
@@ -89,16 +121,30 @@ export default function ExpertCasesPage() {
             <button
               key={id}
               type="button"
-              role="tab"
-              aria-selected={activeTab === id}
-              className={`flex min-w-[calc(50%-4px)] flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors sm:min-w-0 ${
-                activeTab === id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
               onClick={() => setActiveTab(id)}
+              className={cn(
+                'rounded-xl border px-4 py-3 text-left transition-colors',
+                activeTab === id
+                  ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary/20'
+                  : 'border-border bg-card hover:bg-muted/40',
+              )}
             >
-              {label} ({count})
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-card-foreground">{count}</p>
             </button>
           ))}
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by title…"
+            className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-sm shadow-sm outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+            aria-label="Search cases"
+          />
         </div>
 
         {isLoading ? (
@@ -134,12 +180,31 @@ export default function ExpertCasesPage() {
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={<FolderOpen className="h-7 w-7 text-primary" />}
-            title={`No ${activeTab === 'all' ? '' : activeTab + ' '}cases yet`}
-            description="Publish or review more cases to populate this workspace."
-            action={<Button onClick={() => setActiveTab('all')}>Show all cases</Button>}
+            title={query.trim() ? 'No matches' : `No ${activeTab === 'all' ? '' : activeTab + ' '}cases`}
+            description={
+              query.trim()
+                ? 'Try another search or clear the filter.'
+                : 'Create a case or switch tabs to see other statuses.'
+            }
+            action={
+              query.trim() ? (
+                <Button type="button" variant="outline" onClick={() => setQuery('')}>
+                  Clear search
+                </Button>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button type="button" onClick={() => setActiveTab('all')}>
+                    Show all
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setCreateOpen(true)}>
+                    Create case
+                  </Button>
+                </div>
+              )
+            }
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {filtered.map((item) => (
               <CaseManagementCard
                 key={item.id}
@@ -153,6 +218,7 @@ export default function ExpertCasesPage() {
                 addedDate={item.addedDate}
                 viewCount={item.viewCount}
                 usageCount={item.usageCount}
+                thumbnailUrl={item.thumbnailUrl}
               />
             ))}
           </div>
@@ -164,7 +230,7 @@ export default function ExpertCasesPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={(newId) => {
           void mutate('expert-case-library');
-          void mutate('expert-dashboard');
+          void queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY });
           if (newId) setAssetsCaseId(newId);
           else
             toast.info(

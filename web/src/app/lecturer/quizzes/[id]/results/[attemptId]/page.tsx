@@ -87,7 +87,7 @@ export default function QuizAttemptReviewPage({
         const quiz = await getQuiz(quizId);
         setClassId(quiz.classId);
       } catch (e) {
-        console.error('Failed to load quiz:', e);
+        toast.error(e instanceof Error ? e.message : 'Failed to load quiz metadata.');
       }
     }
     void loadQuiz();
