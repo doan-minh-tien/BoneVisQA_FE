@@ -301,6 +301,13 @@ export interface LectStudentQuestionDto {
   caseTags?: string[] | null;
 }
 
+export interface AnnouncementAssignmentInfo {
+  assignmentId?: string | null;
+  assignmentTitle?: string | null;
+  /** "case" or "quiz" */
+  assignmentType?: string | null;
+}
+
 export interface Announcement {
   id: string;
   classId: string;
@@ -309,8 +316,11 @@ export interface Announcement {
   content: string;
   sendEmail: boolean;
   createdAt: string;
+  /** Optional: related assignment info to help students identify related work */
+  relatedAssignment?: AnnouncementAssignmentInfo | null;
 }
 
+// Forward declaration for ClassAssignment
 export interface ClassAssignment {
   id: string;
   classId: string;
@@ -1033,6 +1043,8 @@ export interface StudentAnnouncement {
   title: string;
   content: string;
   createdAt: string | null;
+  /** Optional: related assignment info to help students identify related work */
+  relatedAssignment?: AnnouncementAssignmentInfo | null;
 }
 
 // ========== Lecturer Missing Types ==========

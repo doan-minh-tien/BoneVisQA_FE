@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bell, Check } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
-import { getPublicApiOrigin } from '@/lib/api/client';
+import { useSignalR } from '@/hooks/useSignalR';
 import { fetchNotifications, markNotificationRead } from '@/lib/api/notifications';
-import { notificationTargetToAppPath } from '@/lib/notification-app-path';
 import type { AppNotificationItem } from '@/lib/api/types';
 
 const PANEL_WIDTH = 320;
@@ -26,16 +25,9 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const { notifications: realtimeNotifications } = useSignalR();
+
   const unreadCount = notifications.filter((n) => !n.isRead).length;
-  const sortedNotifications = useMemo(
-    () =>
-      [...notifications].sort((a, b) => {
-        const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-        const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-        return tb - ta;
-      }),
-    [notifications],
-  );
 
   useEffect(() => {
     setMounted(true);
@@ -48,7 +40,7 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
       return;
     }
     if (item.route?.trim()) {
-      router.push(notificationTargetToAppPath(item.route));
+      router.push(item.route);
       setOpen(false);
     }
   }
@@ -56,16 +48,13 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
   async function fetchNotifs(silent = false) {
     if (!silent) setLoading(true);
     try {
-      if (!getPublicApiOrigin()) return;
       const data = await fetchNotifications();
       setNotifications(data);
-      if (!silent && data.some((n) => !n.isRead)) {
-        if (!open) {
-          const newNotif = data.find((n) => !n.isRead);
-          if (newNotif) {
-            const body = newNotif.message?.trim();
-            toast.info(body ? `${newNotif.title}: ${body}` : newNotif.title);
-          }
+      if (!silent && data.some((n) => !n.isRead) && !open) {
+        const newNotif = data.find((n) => !n.isRead);
+        if (newNotif) {
+          const body = newNotif.message?.trim();
+          toast.info(body ? `${newNotif.title}: ${body}` : newNotif.title);
         }
       }
     } catch {
@@ -80,6 +69,35 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
     const interval = setInterval(() => void fetchNotifs(true), 30_000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (realtimeNotifications.length === 0) return;
+    setNotifications((prev) => {
+      const map = new Map<string, AppNotificationItem>();
+      for (const n of prev) {
+        map.set(n.id, n);
+      }
+      for (const r of realtimeNotifications) {
+        const existing = map.get(r.id);
+        map.set(r.id, {
+          id: r.id,
+          type: r.type ?? existing?.type ?? 'general',
+          title: r.title ?? existing?.title ?? 'Notification',
+          message: r.message || existing?.message,
+          route: r.route || existing?.route,
+          isRead: r.isRead ?? existing?.isRead ?? false,
+          createdAt: r.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
+        });
+      }
+      return Array.from(map.values()).sort(
+        (a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        }
+      );
+    });
+  }, [realtimeNotifications]);
 
   useLayoutEffect(() => {
     if (!open || !buttonRef.current) return;
@@ -120,7 +138,6 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
 
   async function markRead(id: string) {
     try {
-      if (!getPublicApiOrigin()) return;
       await markNotificationRead(id);
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
@@ -132,7 +149,7 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
 
   function timeAgo(iso: string | undefined): string {
     if (!iso?.trim()) return '—';
-    const t = Date.parse(iso);
+    const t = new Date(iso).getTime();
     if (!Number.isFinite(t)) return '—';
     const diff = Date.now() - t;
     if (diff < 60_000) return 'Just now';
@@ -140,6 +157,12 @@ export function NotificationBell({ variant = 'sidebar' }: { variant?: Notificati
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`;
     return new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   }
+
+  const sortedNotifications = [...notifications].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
 
   const isHeader = variant === 'header';
   const buttonClass = isHeader

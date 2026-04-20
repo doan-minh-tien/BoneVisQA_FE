@@ -299,6 +299,19 @@ function normalizeStudentAnnouncement(raw: unknown): StudentAnnouncement | null 
   const r = raw as Record<string, unknown>;
   const id = String(r.id ?? r.Id ?? '');
   if (!id) return null;
+
+  // Normalize related assignment
+  const relRaw = r.relatedAssignment ?? r.RelatedAssignment;
+  let relatedAssignment: AnnouncementAssignmentInfo | undefined = undefined;
+  if (relRaw && typeof relRaw === 'object') {
+    const rel = relRaw as Record<string, unknown>;
+    relatedAssignment = {
+      assignmentId: rel.assignmentId != null ? String(rel.assignmentId) : undefined,
+      assignmentTitle: rel.assignmentTitle != null ? String(rel.assignmentTitle) : undefined,
+      assignmentType: rel.assignmentType != null ? String(rel.assignmentType) : undefined,
+    };
+  }
+
   return {
     id,
     classId: String(r.classId ?? r.ClassId ?? ''),
@@ -306,6 +319,7 @@ function normalizeStudentAnnouncement(raw: unknown): StudentAnnouncement | null 
     title: String(r.title ?? r.Title ?? ''),
     content: String(r.content ?? r.Content ?? ''),
     createdAt: r.createdAt != null ? String(r.createdAt) : null,
+    relatedAssignment,
   };
 }
 
@@ -818,6 +832,8 @@ export interface StudentClassItem {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
+  expertId?: string | null;
+  expertName?: string | null;
   totalAnnouncements: number;
   totalQuizzes: number;
   totalCases: number;
@@ -928,13 +944,13 @@ export interface StudentClassDetail {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
-  /** Clinical expert attached to this cohort when returned by the API. */
+  expertId?: string | null;
   expertName?: string | null;
   expertEmail?: string | null;
   expertAvatarUrl?: string | null;
   enrolledAt?: string | null;
-  /** Case assignments for this class (optional; depends on backend). */
-  assignedCases?: Array<{
+  /** Case assignments for this class. */
+  assignedCases: Array<{
     caseId: string;
     title: string;
     dueDate?: string | null;
@@ -962,6 +978,7 @@ export interface StudentClassDetail {
     title: string;
     content: string;
     createdAt?: string | null;
+    relatedAssignment?: AnnouncementAssignmentInfo | null;
   }>;
 }
 
@@ -1045,6 +1062,18 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
         title: String(a.title ?? a.Title ?? ''),
         content: String(a.content ?? a.Content ?? ''),
         createdAt: a.createdAt != null ? String(a.createdAt) : a.CreatedAt != null ? String(a.CreatedAt) : null,
+        relatedAssignment: (() => {
+          const rel = a.relatedAssignment ?? a.RelatedAssignment;
+          if (rel && typeof rel === 'object') {
+            const r = rel as Record<string, unknown>;
+            return {
+              assignmentId: r.assignmentId != null ? String(r.assignmentId) : r.AssignmentId != null ? String(r.AssignmentId) : undefined,
+              assignmentTitle: r.assignmentTitle != null ? String(r.assignmentTitle) : r.AssignmentTitle != null ? String(r.AssignmentTitle) : undefined,
+              assignmentType: r.assignmentType != null ? String(r.assignmentType) : r.AssignmentType != null ? String(r.AssignmentType) : undefined,
+            };
+          }
+          return null;
+        })(),
       })),
     };
   } catch (e) {
@@ -1062,6 +1091,8 @@ export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
       semester: String(item.semester ?? item.Semester ?? ''),
       lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
       lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      expertId: item.expertId != null ? String(item.expertId) : item.ExpertId != null ? String(item.ExpertId) : null,
+      expertName: item.expertName != null ? String(item.expertName) : item.ExpertName != null ? String(item.ExpertName) : null,
       totalAnnouncements: Number(item.totalAnnouncements ?? item.TotalAnnouncements ?? 0),
       totalQuizzes: Number(item.totalQuizzes ?? item.TotalQuizzes ?? 0),
       totalCases: Number(item.totalCases ?? item.TotalCases ?? 0),

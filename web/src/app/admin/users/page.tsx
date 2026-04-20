@@ -15,6 +15,7 @@ import {
   CreateUserDialog,
   EditUserDialog,
   DeleteConfirmDialog,
+  ImportUsersDialog,
 } from '@/components/admin/users/UserDialogs';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
 import { UserManagementTableSkeleton } from '@/components/shared/DashboardSkeletons';
@@ -31,7 +32,7 @@ import {
   type CreateUserPayload,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
-import { BookOpen, ChevronDown, Filter, Loader2, Plus, Search, Users, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Filter, Loader2, Plus, Search, Upload, Users, X } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
 /** Directory tabs: Admin accounts are excluded by BE on GET /api/admin/users. */
@@ -91,6 +92,7 @@ export default function AdminUsersPage() {
   const [editTarget, setEditTarget] = useState<UiUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const {
     data: adminUsersRaw,
@@ -260,6 +262,14 @@ export default function AdminUsersPage() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold text-foreground shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+            >
+              <Upload className="h-4 w-4" />
+              Import
+            </button>
+            <button
+              type="button"
               onClick={() => setCreateOpen(true)}
               className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md transition-all hover:opacity-95 active:scale-95"
             >
@@ -333,6 +343,15 @@ export default function AdminUsersPage() {
             setSubmitting(false);
           }}
           onConfirm={handleCreateUser}
+        />
+      ) : null}
+
+      {importOpen ? (
+        <ImportUsersDialog
+          onCancel={() => setImportOpen(false)}
+          onSuccess={() => {
+            setImportOpen(false);
+          }}
         />
       ) : null}
 

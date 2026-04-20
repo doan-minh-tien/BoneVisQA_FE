@@ -20,15 +20,15 @@ interface DeleteConfirmDialogProps {
 
 export default function DeleteConfirmDialog({
   open,
-  title = 'Xóa mục này?',
-  description = 'Hành động này không thể hoàn tác.',
+  title = 'Delete this item?',
+  description = 'This action cannot be undone.',
   itemName,
-  itemType = 'mục',
+  itemType = 'item',
   onConfirm,
   onCancel,
   deleting = false,
-  confirmText = 'Xóa',
-  cancelText = 'Hủy',
+  confirmText = 'Delete',
+  cancelText = 'Cancel',
   dangerLevel = 'high',
 }: DeleteConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -160,7 +160,7 @@ export default function DeleteConfirmDialog({
                 'hover:bg-muted',
                 'disabled:opacity-50',
               )}
-              aria-label="Đóng"
+              aria-label="Close"
             >
               <X className="h-5 w-5 text-muted-foreground" />
             </button>
@@ -205,7 +205,7 @@ export default function DeleteConfirmDialog({
           >
             <AlertTriangle className={cn('h-4 w-4 mt-0.5 shrink-0', config.icon)} />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Dữ liệu liên quan sẽ bị xóa vĩnh viễn và không thể khôi phục được. Vui lòng xác nhận trước khi tiếp tục.
+              Related data will be permanently deleted and cannot be recovered. Please confirm before proceeding.
             </p>
           </div>
 
@@ -245,7 +245,7 @@ export default function DeleteConfirmDialog({
               {deleting ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Đang xóa...
+                  Deleting...
                 </>
               ) : (
                 <>

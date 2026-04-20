@@ -18,6 +18,7 @@ import {
   FileText,
   RotateCcw,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { getQuiz } from '@/lib/api/lecturer-quiz';
 import {
@@ -26,6 +27,7 @@ import {
   allowRetakeForAttempt,
   allowRetakeAll,
   updateQuizAttempt,
+  exportQuizResultsExcel,
 } from '@/lib/api/lecturer';
 import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import type { QuizDto, StudentQuizAttemptDto, QuizAttemptDetailDto, QuestionWithAnswerDto, UpdateAnswerDto } from '@/lib/api/types';
@@ -59,8 +61,61 @@ function ScoreBadge({ score, maxScore }: { score: number | null; maxScore: numbe
   );
 }
 
-function QuestionReviewCard({ q, index }: { q: QuestionWithAnswerDto; index: number }) {
-  const [expanded, setExpanded] = useState(false);
+function CompactQuestionNav({
+  questions,
+  currentIndex,
+  onSelect,
+}: {
+  questions: QuestionWithAnswerDto[];
+  currentIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {questions.map((q, i) => {
+        const isCurrent = i === currentIndex;
+        const isCorrect = q.isCorrect === true;
+        const isIncorrect = q.isCorrect === false;
+        const isEssay = q.type?.toLowerCase() === 'essay';
+
+        let cls = 'border-outline-variant/30 bg-surface-container-low text-on-surface-variant';
+        if (isCorrect) {
+          cls = 'border-emerald-500/50 bg-emerald-500/15 text-emerald-600';
+        } else if (isIncorrect) {
+          cls = 'border-destructive/50 bg-destructive/10 text-destructive';
+        } else if (q.isCorrect === null) {
+          cls = 'border-amber-500/50 bg-amber-500/10 text-amber-600';
+        }
+
+        if (isCurrent) {
+          cls += ' ring-2 ring-primary ring-offset-2 ring-offset-background';
+        }
+
+        return (
+          <button
+            key={q.questionId}
+            type="button"
+            onClick={() => onSelect(i)}
+            className={`relative flex h-10 w-10 items-center justify-center rounded-xl border-2 text-sm font-bold transition-all ${cls}`}
+          >
+            {i + 1}
+            {isEssay && (
+              <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function QuestionReviewContent({
+  q,
+  index,
+}: {
+  q: QuestionWithAnswerDto;
+  index: number;
+}) {
   const [imgFullscreen, setImgFullscreen] = useState(false);
   const isEssay = q.type?.toLowerCase() === 'essay';
   const options = [
@@ -72,16 +127,25 @@ function QuestionReviewCard({ q, index }: { q: QuestionWithAnswerDto; index: num
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold">
+      <div className="space-y-4">
+        {/* Question image */}
+        {q.imageUrl && (
+          <div className="rounded-xl border border-border overflow-hidden bg-muted/30">
+            <img
+              src={resolveApiAssetUrl(q.imageUrl)}
+              alt={`Question ${index + 1} image`}
+              className="w-full h-auto max-h-56 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setImgFullscreen(true)}
+            />
+          </div>
+        )}
+
+        {/* Question text */}
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">
             {index + 1}
           </span>
-          <span className="flex-1 text-sm font-medium line-clamp-1">{q.questionText}</span>
+          <span className="flex-1 text-sm font-medium">{q.questionText}</span>
           {isEssay && (
             <span className="rounded-full bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 font-semibold">
               Essay
@@ -90,90 +154,69 @@ function QuestionReviewCard({ q, index }: { q: QuestionWithAnswerDto; index: num
           {q.isCorrect === true && <CheckCircle className="h-5 w-5 text-success shrink-0" />}
           {q.isCorrect === false && <XCircle className="h-5 w-5 text-destructive shrink-0" />}
           {q.isCorrect === null && <Clock className="h-5 w-5 text-muted-foreground shrink-0" />}
-          <ChevronRight className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-        </button>
-        {expanded && (
-          <div className="px-4 pb-4 space-y-3">
-            {/* Image display */}
-            {q.imageUrl && (
-              <div className="rounded-lg border border-border overflow-hidden bg-muted/30">
-                <img
-                  src={resolveApiAssetUrl(q.imageUrl)}
-                  alt={`Question ${index + 1} image`}
-                  className="w-full h-auto max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => setImgFullscreen(true)}
-                />
-                <p className="text-xs text-center text-muted-foreground py-1 px-2 bg-muted/50">
-                  Click to view full size
-                </p>
-              </div>
-            )}
-
-            {/* Essay question: show student's essay answer */}
-            {isEssay ? (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:bg-amber-900/20 dark:border-amber-800">
-                <h5 className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200 mb-2">
-                  Student's Essay Answer
-                </h5>
-                <p className="whitespace-pre-wrap text-sm text-card-foreground leading-relaxed">
-                  {q.essayAnswer || '(No answer submitted)'}
-                </p>
-              </div>
-              {q.referenceAnswer && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
-                    Reference / Model Answer
-                  </h5>
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
-                    {q.referenceAnswer}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Multiple choice: show options */
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {options.map((opt) => {
-                const isCorrect = opt.key === q.correctAnswer;
-                const isStudent = opt.key === q.studentAnswer;
-                let cls = 'flex items-center gap-2 p-2 rounded-lg border text-sm';
-                if (isCorrect) cls += ' border-success bg-success/10 text-success font-medium';
-                else if (isStudent && !isCorrect) cls += ' border-destructive bg-destructive/10 text-destructive';
-                else cls += ' border-border bg-muted/50 text-muted-foreground';
-                return (
-                  <div key={opt.key} className={cls}>
-                    <span className="font-bold">{opt.key}.</span>
-                    <span className="flex-1">{opt.value ?? '—'}</span>
-                    {isCorrect && <CheckCircle className="h-4 w-4 shrink-0" />}
-                    {isStudent && !isCorrect && <XCircle className="h-4 w-4 shrink-0" />}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            {q.type !== 'essay' && q.type !== 'Essay' && (
-              <span>
-                <strong>Correct:</strong> {q.correctAnswer ?? '—'}
-              </span>
-            )}
-            <span>
-              <strong>Student answered:</strong> {isEssay ? '(See essay above)' : (q.studentAnswer ?? '—')}
-            </span>
-            <span>
-              <strong>Status:</strong>{' '}
-              {q.isCorrect === true ? (
-                <span className="text-success font-medium">Correct</span>
-              ) : q.isCorrect === false ? (
-                <span className="text-destructive font-medium">Incorrect</span>
-              ) : (
-                <span className="text-muted-foreground">Not graded</span>
-              )}
-            </span>
-          </div>
         </div>
-      )}
+
+        {/* Answer section */}
+        {isEssay ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:bg-amber-900/20 dark:border-amber-800">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200 mb-2">
+                Student&apos;s Answer
+              </h5>
+              <p className="whitespace-pre-wrap text-sm text-card-foreground leading-relaxed">
+                {q.essayAnswer || '(No answer submitted)'}
+              </p>
+            </div>
+            {q.referenceAnswer && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
+                  Reference / Model Answer
+                </h5>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
+                  {q.referenceAnswer}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {options.map((opt) => {
+              const isCorrect = opt.key === q.correctAnswer;
+              const isStudent = opt.key === q.studentAnswer;
+              let cls = 'flex items-center gap-2 p-3 rounded-lg border text-sm';
+              if (isCorrect) cls += ' border-success bg-success/10 text-success font-medium';
+              else if (isStudent && !isCorrect) cls += ' border-destructive bg-destructive/10 text-destructive';
+              else cls += ' border-border bg-muted/50 text-muted-foreground';
+              return (
+                <div key={opt.key} className={cls}>
+                  <span className="font-bold">{opt.key}.</span>
+                  <span className="flex-1">{opt.value ?? '—'}</span>
+                  {isCorrect && <CheckCircle className="h-4 w-4 shrink-0" />}
+                  {isStudent && !isCorrect && <XCircle className="h-4 w-4 shrink-0" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Status summary */}
+        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+          {q.type !== 'essay' && q.type !== 'Essay' && (
+            <span>
+              <strong>Correct:</strong> {q.correctAnswer ?? '—'}
+            </span>
+          )}
+          <span>
+            <strong>Status:</strong>{' '}
+            {q.isCorrect === true ? (
+              <span className="text-success font-medium">Correct</span>
+            ) : q.isCorrect === false ? (
+              <span className="text-destructive font-medium">Incorrect</span>
+            ) : (
+              <span className="text-muted-foreground">Not graded</span>
+            )}
+          </span>
+        </div>
       </div>
 
       {/* Fullscreen Image Modal */}
@@ -189,7 +232,6 @@ function QuestionReviewCard({ q, index }: { q: QuestionWithAnswerDto; index: num
           >
             <XCircle className="h-8 w-8" />
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={resolveApiAssetUrl(q.imageUrl)}
             alt={`Question ${index + 1} full size`}
@@ -209,13 +251,17 @@ function AttemptDetailModal({
   detail: QuizAttemptDetailDto | null;
   onClose: () => void;
 }) {
+  const [currentQIndex, setCurrentQIndex] = useState(0);
+
   if (!detail) return null;
-  const maxScore = 100; // Score is percentage (0-100)
+  const maxScore = 100;
+  const currentQ = detail.questions[currentQIndex];
 
   return (
     <Modal open={!!detail} onClose={onClose} title={`Quiz Review: ${detail.studentName}`} size="xl">
       <div className="space-y-4">
-        <div className="flex flex-wrap gap-4 text-sm">
+        {/* Summary bar */}
+        <div className="flex flex-wrap gap-4 text-sm p-3 rounded-lg border border-border bg-muted/30">
           <div>
             <span className="text-muted-foreground">Quiz:</span>{' '}
             <span className="font-medium">{detail.quizTitle}</span>
@@ -232,24 +278,58 @@ function AttemptDetailModal({
             <span className="text-muted-foreground">Score:</span>{' '}
             <ScoreBadge score={detail.score} maxScore={maxScore} />
           </div>
-          {detail.passingScore && (
-            <div>
-              <span className="text-muted-foreground">Passing:</span>{' '}
-              <span className="font-medium">{detail.passingScore}%</span>
-            </div>
-          )}
         </div>
 
+        {/* Question Navigation - Compact horizontal bar */}
         <div className="border-t border-border pt-4">
-          <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Questions ({detail.questions.length})
-          </h4>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-            {detail.questions.map((q, i) => (
-              <QuestionReviewCard key={q.questionId} q={q} index={i} />
-            ))}
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Questions ({detail.questions.length})
+            </h4>
+            <span className="text-xs text-muted-foreground">
+              {detail.questions.filter(q => q.isCorrect === true).length} correct ·{' '}
+              {detail.questions.filter(q => q.isCorrect === false).length} incorrect ·{' '}
+              {detail.questions.filter(q => q.isCorrect === null).length} pending
+            </span>
           </div>
+          <CompactQuestionNav
+            questions={detail.questions}
+            currentIndex={currentQIndex}
+            onSelect={setCurrentQIndex}
+          />
+        </div>
+
+        {/* Current Question Content */}
+        {currentQ && (
+          <div className="border-t border-border pt-4">
+            <QuestionReviewContent q={currentQ} index={currentQIndex} />
+          </div>
+        )}
+
+        {/* Navigation arrows */}
+        <div className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onClick={() => setCurrentQIndex(Math.max(0, currentQIndex - 1))}
+            disabled={currentQIndex === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+            Previous
+          </button>
+          <span className="text-sm text-muted-foreground">
+            Question {currentQIndex + 1} of {detail.questions.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCurrentQIndex(Math.min(detail.questions.length - 1, currentQIndex + 1))}
+            disabled={currentQIndex === detail.questions.length - 1}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </Modal>
@@ -359,12 +439,12 @@ function EditScoreModal({
             <span className="font-medium">{detail.studentName}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Tổng điểm:</span>
+            <span className="text-muted-foreground">Total score:</span>
             <span className="font-bold text-lg text-primary">{localScore ?? 0}%</span>
             <span className="text-xs text-muted-foreground">(auto)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Điểm thủ công:</span>
+            <span className="text-muted-foreground">Manual score:</span>
             <input
               type="number"
               min={0}
@@ -381,7 +461,7 @@ function EditScoreModal({
         {/* Progress bar */}
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Tiến độ chấm điểm</span>
+            <span>Grading progress</span>
             <span>{Math.round(localScore ?? 0)}%</span>
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -501,9 +581,9 @@ function EditScoreModal({
 
                     {/* Manual score entry (for essay questions or override) */}
                     <div className="flex items-center gap-2 bg-muted/30 p-2 rounded">
-                      <span className="text-xs text-muted-foreground">
-                        Điểm câu {i + 1}:
-                      </span>
+                    <span className="text-xs text-muted-foreground">
+                      Q{i + 1} score:
+                    </span>
                       <input
                         type="number"
                         min={0}
@@ -606,12 +686,26 @@ export default function QuizResultsPage({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [retakingId, setRetakingId] = useState<string | null>(null);
   const [retakingAll, setRetakingAll] = useState(false);
+  const [exporting, setExporting] = useState(false);
   /** In-app confirmation instead of window.confirm */
   const [retakeDialog, setRetakeDialog] = useState<
     null | { kind: 'single'; attempt: StudentQuizAttemptDto } | { kind: 'all'; count: number }
   >(null);
 
   const classId = quiz?.classId ?? '';
+
+  const handleExportExcel = async () => {
+    if (!classId || !quizId) return;
+    setExporting(true);
+    try {
+      await exportQuizResultsExcel(classId, quizId);
+      toast.success('Quiz results exported successfully!');
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   function openRetakeSingleDialog(attempt: StudentQuizAttemptDto) {
     setRetakeDialog({ kind: 'single', attempt });
@@ -819,13 +913,31 @@ export default function QuizResultsPage({
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold">Quiz Results</h1>
-        {quiz && (
-          <p className="text-muted-foreground text-sm mt-1">
-            {quiz.title}
-            {quiz.topic ? ` · ${quiz.topic}` : ''}
-          </p>
-        )}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Quiz Results</h1>
+            {quiz && (
+              <p className="text-muted-foreground text-sm mt-1">
+                {quiz.title}
+                {quiz.topic ? ` · ${quiz.topic}` : ''}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={exporting || attempts.length === 0}
+            className="shrink-0 border-success/30 bg-success/5 font-semibold text-success hover:bg-success/10"
+          >
+            {exporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}

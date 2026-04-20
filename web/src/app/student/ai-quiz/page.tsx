@@ -99,7 +99,7 @@ export default function AIQuizPage() {
 
   const handleGenerate = async () => {
     if (!selectedTopic.trim()) {
-      toast.error('Vui lòng chọn một chủ đề.');
+      toast.error('Please select a topic.');
       return;
     }
     setQuizState('generating');
@@ -110,13 +110,13 @@ export default function AIQuizPage() {
     try {
       const data = await generateAndSaveAIPracticeQuiz(selectedTopic, questionCount, difficulty || undefined);
       if (!data.attemptId || data.attemptId === '00000000-0000-0000-0000-000000000000') {
-        toast.info('AI không thể tạo câu hỏi. Vui lòng thử chủ đề khác.');
+        toast.info('AI cannot generate questions. Please try a different topic.');
         setQuizState('config');
         return;
       }
       setSession(data);
       setQuizState('active');
-      toast.success(`Đã tạo quiz "${data.title}"! Bắt đầu luyện tập.`);
+      toast.success(`Quiz "${data.title}" created! Start practicing.`);
     } catch (e) {
       toast.error(getApiErrorMessage(e));
       setQuizState('config');
@@ -133,7 +133,7 @@ export default function AIQuizPage() {
       const result = await submitAIPracticeQuiz(session.attemptId, payload);
       setQuizResult(result);
       setQuizState('result');
-      toast.success(`Đã nộp bài! Điểm: ${Math.round(result.score)}%`);
+      toast.success(`Submitted! Score: ${Math.round(result.score)}%`);
       // Load review
       try {
         const review = await fetchQuizAttemptReview(session.attemptId);
@@ -190,18 +190,18 @@ export default function AIQuizPage() {
             <aside className="w-80 bg-[#f2f4f6] p-6 flex flex-col gap-8 border-r border-slate-200/60">
               <div>
                 <h2 className="font-['Manrope',sans-serif] font-bold text-[#191c1e] text-lg mb-1">Quiz Configuration</h2>
-                <p className="text-xs text-[#424752]">Tùy chỉnh phiên luyện tập AI của bạn</p>
+                <p className="text-xs text-[#424752]">Customize your AI practice session</p>
               </div>
 
               {/* Topic Selection */}
               <div className="space-y-3">
-                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Chủ đề</label>
+                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Topic</label>
                 <div className="space-y-2">
                   <button
                     onClick={() => setShowAllTopics(!showAllTopics)}
                     className="w-full text-left p-3 rounded-xl bg-white text-[#00478d] font-semibold text-sm border border-[#00478d]/20 flex justify-between items-center shadow-sm"
                   >
-                    {selectedTopic || 'Chọn chủ đề...'}
+                    {selectedTopic || 'Select topic...'}
                     <ChevronDown className={`h-4 w-4 transition-transform ${showAllTopics ? 'rotate-180' : ''}`} />
                   </button>
                   {showAllTopics && (
@@ -236,7 +236,7 @@ export default function AIQuizPage() {
 
               {/* Question Count */}
               <div className="space-y-3">
-                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Số câu hỏi</label>
+                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Number of questions</label>
                 <div className="grid grid-cols-5 gap-2">
                   {[5, 10, 15, 20, 25].map((n) => (
                     <button
@@ -256,7 +256,7 @@ export default function AIQuizPage() {
 
               {/* Difficulty */}
               <div className="space-y-3">
-                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Độ khó</label>
+                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Difficulty</label>
                 <div className="flex p-1 bg-white rounded-full border border-slate-200">
                   {['', 'Easy', 'Medium', 'Hard'].map((d) => (
                     <button
@@ -276,14 +276,14 @@ export default function AIQuizPage() {
 
               {/* AI Mode Info */}
               <div className="space-y-3">
-                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">Chế độ AI</label>
+                <label className="text-xs font-bold text-[#424752] uppercase tracking-wider">AI Mode</label>
                 <div className="p-4 rounded-2xl bg-[#00478d]/10 border border-[#00478d]/10">
                   <div className="flex items-start gap-3">
                     <Star className="h-5 w-5 text-[#00478d] mt-0.5" />
                     <div>
                       <p className="text-xs font-bold text-[#00478d]">RAG Knowledge Base</p>
                       <p className="text-[10px] text-[#424752] leading-relaxed mt-1">
-                        AI tổng hợp câu hỏi từ các tạp chí y khoa lâm sàng và cơ sở dữ liệu bệnh lý xương.
+                        AI synthesizes questions from clinical medical journals and bone pathology databases.
                       </p>
                     </div>
                   </div>
@@ -299,12 +299,12 @@ export default function AIQuizPage() {
                   {quizState === 'generating' ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Đang tạo câu hỏi...
+                      Generating questions...
                     </>
                   ) : (
                     <>
                       <Star className="h-5 w-5" />
-                      Tạo &amp; Bắt đầu Quiz
+                      Create &amp; Start Quiz
                     </>
                   )}
                 </button>
@@ -321,8 +321,8 @@ export default function AIQuizPage() {
                   AI Quiz Practice
                 </h2>
                 <p className="text-[#424752] leading-relaxed mb-8">
-                  Chọn chủ đề bạn muốn luyện tập, AI sẽ tạo câu hỏi dựa trên cơ sở tri thức y khoa. 
-                  Sau khi nộp bài, bạn có thể xem lại đáp án và điểm số.
+                  Select a topic you want to practice, and AI will generate questions based on medical knowledge.
+                  After submitting, you can review answers and scores.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   {['Long Bone Fractures', 'Spine Lesions', 'Joint Diseases'].map((topic) => (
@@ -364,7 +364,7 @@ export default function AIQuizPage() {
             {quizState === 'active' && (
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                <span className="text-xs font-semibold text-green-600">Đang làm bài</span>
+                <span className="text-xs font-semibold text-green-600">In progress</span>
               </div>
             )}
           </div>
@@ -379,7 +379,7 @@ export default function AIQuizPage() {
                 <div className="h-6 w-px bg-slate-300/60" />
                 <span className="text-sm">
                   <span className="font-bold text-[#00478d]">{answeredCount}</span>
-                  <span className="text-[#424752]"> đã trả lời</span>
+                  <span className="text-[#424752]"> answered</span>
                 </span>
               </div>
             )}
@@ -391,7 +391,7 @@ export default function AIQuizPage() {
               className="flex items-center gap-2 rounded-xl border border-slate-200/60 px-4 py-2 text-sm font-bold text-[#424752] hover:bg-slate-50 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-              Thoát
+              Exit
             </button>
           </div>
         </header>
@@ -403,9 +403,9 @@ export default function AIQuizPage() {
               {/* Progress Bar */}
               <div className="mb-6 bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="font-semibold text-[#191c1e]">Tiến độ: Câu {currentIndex + 1} / {totalQ}</span>
+                  <span className="font-semibold text-[#191c1e]">Progress: Question {currentIndex + 1} / {totalQ}</span>
                   <span className="text-[#424752]">
-                    <span className="font-bold text-[#00478d]">{answeredPct}%</span> hoàn thành ({answeredCount}/{totalQ})
+                    <span className="font-bold text-[#00478d]">{answeredPct}%</span> completed ({answeredCount}/{totalQ})
                   </span>
                 </div>
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#eceef0]">
@@ -543,7 +543,7 @@ export default function AIQuizPage() {
               <div className="bg-[#f2f4f6] rounded-3xl p-8 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-xs font-bold text-[#00478d] uppercase tracking-tighter">
-                    Câu hỏi {currentIndex + 1} / {totalQ}
+                    Question {currentIndex + 1} / {totalQ}
                   </span>
                   {currentQ?.type && (
                     <span className="rounded-full bg-[#00478d]/10 px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#00478d]">
@@ -617,9 +617,9 @@ export default function AIQuizPage() {
                 {showAIReasoning && (
                   <div className="mt-3 bg-white/60 rounded-xl p-3 border border-white/20">
                     <p className="text-[11px] text-[#424752] leading-relaxed">
-                      Câu hỏi này được AI tạo dựa trên phân tích hình ảnh X-quang và cơ sở tri thức y khoa.
+                      This question was generated by AI based on X-ray image analysis and medical knowledge base.
                       <span className="block mt-2 font-semibold text-[#00478d]">
-                        Nguồn: Journal of Orthopedic Trauma (2023), Vol 42.
+                        Source: Journal of Orthopedic Trauma (2023), Vol 42.
                       </span>
                     </p>
                   </div>
@@ -638,7 +638,7 @@ export default function AIQuizPage() {
                   className="flex-1 py-4 bg-[#eceef0] text-[#191c1e] font-bold rounded-2xl hover:bg-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <ArrowLeft className="h-5 w-5" />
-                  Trước
+                  Previous
                 </button>
                 <button
                   type="button"
@@ -646,7 +646,7 @@ export default function AIQuizPage() {
                   disabled={currentIndex >= totalQ - 1}
                   className="flex-1 py-4 bg-gradient-to-r from-[#00478d] to-[#005eb8] text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Tiếp
+                  Next
                   <ArrowRight className="h-5 w-5" />
                 </button>
               </div>
@@ -672,7 +672,7 @@ export default function AIQuizPage() {
                           {Math.round(quizResult.score)}%
                         </p>
                         <p className="text-sm text-[#424752]">
-                          {quizResult.correctAnswers}/{quizResult.totalQuestions} câu đúng
+                          {quizResult.correctAnswers}/{quizResult.totalQuestions} correct
                         </p>
                       </div>
                     </div>
@@ -683,14 +683,14 @@ export default function AIQuizPage() {
                     className="w-full py-4 bg-gradient-to-r from-[#00478d] to-[#005eb8] text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2"
                   >
                     <Star className="h-5 w-5" />
-                    Tạo Quiz Mới
+                    Create New Quiz
                   </button>
                   <Link
                     href="/student/quiz"
                     className="w-full py-4 bg-[#eceef0] text-[#191c1e] font-bold rounded-2xl flex items-center justify-center gap-2"
                   >
                     <ArrowLeft className="h-5 w-5" />
-                    Quay lại Quiz List
+                    Back to Quiz List
                   </Link>
 
                   {/* Review Answers Button */}
@@ -700,15 +700,15 @@ export default function AIQuizPage() {
                       onClick={() => setShowReview(!showReview)}
                       className="w-full py-3 bg-[#00478d]/10 text-[#00478d] font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-[#00478d]/20 transition-colors"
                     >
-                      <Eye className="h-5 w-5" />
-                      {showReview ? 'Ẩn đáp án' : 'Xem đáp án'}
+                    <Eye className="h-5 w-5" />
+                    {showReview ? 'Hide answers' : 'View answers'}
                     </button>
                   )}
 
                   {/* Review Panel */}
                   {showReview && quizReview && (
                     <div className="border-t border-slate-200/60 pt-4 mt-4 space-y-4">
-                      <h4 className="text-sm font-bold text-[#191c1e]">Đáp án chi tiết</h4>
+                      <h4 className="text-sm font-bold text-[#191c1e]">Answer details</h4>
                       {quizReview.questions.map((q, idx) => {
                         const isCorrect = q.isCorrect;
                         const studentAns = q.studentAnswer ?? '-';
@@ -728,18 +728,18 @@ export default function AIQuizPage() {
                               ) : (
                                 <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
                               )}
-                              <p className="text-sm font-semibold text-[#191c1e] flex-1">
-                                Câu {idx + 1}: {q.questionText}
-                              </p>
+                            <p className="text-sm font-semibold text-[#191c1e] flex-1">
+                              Question {idx + 1}: {q.questionText}
+                            </p>
                             </div>
                             <div className="ml-7 space-y-1">
                               <p className="text-xs">
-                                <span className="font-semibold text-[#424752]">Đáp án của bạn: </span>
+                                <span className="font-semibold text-[#424752]">Your answer: </span>
                                 <span className={`font-bold ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>{studentAns}</span>
                               </p>
                               {!isCorrect && (
                                 <p className="text-xs">
-                                  <span className="font-semibold text-[#424752]">Đáp án đúng: </span>
+                                  <span className="font-semibold text-[#424752]">Correct answer: </span>
                                   <span className="font-bold text-green-600">{correctAns}</span>
                                 </p>
                               )}
@@ -755,7 +755,7 @@ export default function AIQuizPage() {
                   type="button"
                   onClick={() => {
                     if (answeredCount === 0) {
-                      toast.error('Vui lòng trả lời ít nhất 1 câu hỏi trước khi nộp bài.');
+                      toast.error('Please answer at least 1 question before submitting.');
                       return;
                     }
                     void handleSubmit();
@@ -774,7 +774,7 @@ export default function AIQuizPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin relative z-10" />
-                      <span className="relative z-10">Đang nộp bài...</span>
+                      <span className="relative z-10">Submitting...</span>
                     </>
                   ) : answeredCount > 0 ? (
                     <>
@@ -782,7 +782,7 @@ export default function AIQuizPage() {
                         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
                           <CheckCircle2 className="h-5 w-5" />
                         </span>
-                        <span>Nộp Quiz</span>
+                        <span>Submit Quiz</span>
                         <span className="ml-2 rounded-full bg-white/20 px-3 py-1 text-sm font-bold">
                           {answeredCount}/{totalQ}
                         </span>
@@ -794,7 +794,7 @@ export default function AIQuizPage() {
                         <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-current">
                           !
                         </span>
-                        <span>Chưa trả lời câu nào</span>
+                        <span>No questions answered</span>
                       </span>
                     </>
                   )}
@@ -803,7 +803,7 @@ export default function AIQuizPage() {
 
               {/* Progress indicator */}
               <div className="text-center text-xs text-[#727783]">
-                {answeredCount}/{totalQ} câu đã trả lời
+                {answeredCount}/{totalQ} questions answered
               </div>
             </div>
           </aside>

@@ -23,6 +23,9 @@ export interface UpdateQuizRequest {
   closeTime?: string | null;
   timeLimit?: number | null;
   passingScore?: number | null;
+  topic?: string | null;
+  difficulty?: string | null;
+  classification?: string | null;
 }
 
 // ========== Quiz Management ==========
@@ -107,6 +110,8 @@ export interface MyQuizWithClasses {
   isAiGenerated: boolean;
   isFromExpertLibrary: boolean;
   difficulty: string | null;
+  creatorName?: string | null;
+  creatorType?: string | null;
   classes: MyQuizClassInfo[];
 }
 

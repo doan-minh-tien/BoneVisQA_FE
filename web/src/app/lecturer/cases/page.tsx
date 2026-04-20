@@ -17,7 +17,6 @@ import {
 import {
   getLecturerCases,
   getLecturerClasses,
-  approveCase,
 } from '@/lib/api/lecturer';
 import { useToast } from '@/components/ui/toast';
 import type { CaseDto, ClassItem, ClassCaseAssignmentDto } from '@/lib/api/types';
@@ -32,7 +31,6 @@ export default function LecturerCasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // Assign dialog
   const [showAssign, setShowAssign] = useState(false);
@@ -56,24 +54,6 @@ export default function LecturerCasesPage() {
     }
     fetchData();
   }, []);
-
-  const handleToggleApprove = async (c: CaseDto) => {
-    setTogglingIds((prev) => new Set(prev).add(c.id));
-    try {
-      await approveCase(c.id, !c.isApproved);
-      setCases((prev) =>
-        prev.map((item) => (item.id === c.id ? { ...item, isApproved: !item.isApproved } : item)),
-      );
-    } catch {
-      // silently fail
-    } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(c.id);
-        return next;
-      });
-    }
-  };
 
   const handleAssignSuccess = (assignments: ClassCaseAssignmentDto[]) => {
     setShowAssign(false);
@@ -221,8 +201,6 @@ export default function LecturerCasesPage() {
               selectedCases={selectedCases}
               onSelectAll={setSelectedCases}
               onSelect={toggleCaseSelection}
-              onToggleApprove={handleToggleApprove}
-              togglingIds={togglingIds}
             />
         )}
       </div>

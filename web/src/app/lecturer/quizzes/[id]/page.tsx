@@ -8,6 +8,9 @@ import {
   Loader2,
   Plus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
   Save,
   Settings2,
   Users,
@@ -34,9 +37,31 @@ import { getLecturerClasses, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
 import type { QuizDto, QuizQuestionDto, ClassItem, ClassStats } from '@/lib/api/types';
 
-const QUESTIONS_PAGE_SIZE = 10;
+const QUESTIONS_PER_PAGE = 3;
 const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
 const POINTS_ROTATION = [10, 15, 5] as const;
+
+const CLASSIFICATION_OPTIONS = [
+  'Resident Year 1',
+  'Resident Year 2',
+  'Advanced Diagnostics',
+  'Continuing Med Ed',
+] as const;
+
+const TOPIC_OPTIONS = [
+  { value: 'Long Bone Fractures', label: 'Long Bone Fractures' },
+  { value: 'Spine Lesions', label: 'Spine Lesions' },
+  { value: 'Joint Diseases', label: 'Joint Diseases' },
+  { value: 'Bone Tumors', label: 'Bone Tumors' },
+  { value: 'Upper Extremity', label: 'Upper Extremity' },
+  { value: 'Lower Extremity', label: 'Lower Extremity' },
+] as const;
+
+const DIFFICULTY_OPTIONS = [
+  { value: 'Easy', label: 'Easy' },
+  { value: 'Medium', label: 'Medium' },
+  { value: 'Hard', label: 'Hard' },
+] as const;
 
 function isoToDatetimeLocal(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -77,11 +102,15 @@ export default function QuizDetailPage() {
   const [closeTimeLocal, setCloseTimeLocal] = useState('');
   const [timeLimit, setTimeLimit] = useState('');
   const [passingScore, setPassingScore] = useState('');
+  const [topic, setTopic] = useState('');
+  const [difficulty, setDifficulty] = useState('Medium');
+  const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>('Resident Year 1');
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
-  const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
   const [classStats, setClassStats] = useState<ClassStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [savedDialogOpen, setSavedDialogOpen] = useState(false);
@@ -129,6 +158,12 @@ export default function QuizDetailPage() {
       setCloseTimeLocal(isoToDatetimeLocal(quizData.closeTime));
       setTimeLimit(quizData.timeLimit?.toString() || '');
       setPassingScore(quizData.passingScore != null ? String(quizData.passingScore) : '');
+      // Load additional quiz settings
+      setTopic(quizData.topic || '');
+      setDifficulty(quizData.difficulty || 'Medium');
+      if (quizData.classification && (CLASSIFICATION_OPTIONS as readonly string[]).includes(quizData.classification)) {
+        setClassification(quizData.classification as (typeof CLASSIFICATION_OPTIONS)[number]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load quiz');
     } finally {
@@ -141,8 +176,8 @@ export default function QuizDetailPage() {
   }, [loadData]);
 
   useEffect(() => {
-    setQuestionPagesLoaded(1);
-  }, [quizId, questions.length]);
+    setCurrentPage(1);
+  }, [quizId]);
 
   useEffect(() => {
     const id = selectedClassId?.trim();
@@ -177,6 +212,9 @@ export default function QuizDetailPage() {
         closeTime: datetimeLocalToIso(closeTimeLocal),
         timeLimit: timeLimit ? parseInt(timeLimit, 10) : null,
         passingScore: passingScore ? parseInt(passingScore, 10) : null,
+        topic: topic || null,
+        difficulty: difficulty || null,
+        classification: classification || null,
       });
       setQuiz(updated);
       if (selectedClassId && selectedClassId !== originalClassId) {
@@ -299,9 +337,15 @@ export default function QuizDetailPage() {
         ? `${Math.round(classStats.avgQuizScore)}%`
         : '—';
 
-  const visibleQuestionLimit = questionPagesLoaded * QUESTIONS_PAGE_SIZE;
-  const displayedQuestions = questions.slice(0, visibleQuestionLimit);
-  const canLoadMoreQuestions = displayedQuestions.length < questions.length;
+  const filtered = questions.filter(
+    (q) =>
+      q.questionText?.toLowerCase().includes(searchTerm.toLowerCase()) ??
+      false
+  );
+
+  const totalPages = Math.ceil(filtered.length / QUESTIONS_PER_PAGE);
+  const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
+  const displayedQuestions = filtered.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
@@ -395,6 +439,52 @@ export default function QuizDetailPage() {
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Classification</label>
+                  <select
+                    value={classification}
+                    onChange={(e) => setClassification(e.target.value as (typeof CLASSIFICATION_OPTIONS)[number])}
+                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                  >
+                    {CLASSIFICATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                  >
+                    {DIFFICULTY_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Topic</label>
+                <input
+                  list="topic-options-edit"
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Select or type topic..."
+                  className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                />
+                <datalist id="topic-options-edit">
+                  {TOPIC_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} />
+                  ))}
+                </datalist>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Class</label>
@@ -501,31 +591,43 @@ export default function QuizDetailPage() {
         {/* Questions List (left column) */}
         <div className="order-1 col-span-12 lg:order-1 lg:col-span-8">
           <div className="rounded-2xl border border-border/40 bg-card shadow-sm">
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 p-4">
+            <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="flex items-center gap-2 font-semibold text-sm text-card-foreground">
                 <Settings2 className="h-4 w-4 text-primary" />
-                Questions <span className="text-muted-foreground">({questions.length})</span>
+                Questions <span className="text-muted-foreground">({filtered.length})</span>
               </h3>
-              {quiz && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setImportOpen(true)}
-                    className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-card-foreground border border-border"
-                  >
-                    <UploadCloud className="h-3.5 w-3.5" />
-                    Import
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddQuestion}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-primary/90"
-                  >
-                    <PlusCircle className="h-3.5 w-3.5" />
-                    Add Question
-                  </button>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search questions..."
+                    className="h-8 w-48 rounded-lg border border-border bg-card pl-8 pr-3 text-xs outline-none transition-all focus:border-primary"
+                  />
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
-              )}
+                {quiz && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-card-foreground border border-border"
+                    >
+                      <UploadCloud className="h-3.5 w-3.5" />
+                      Import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddQuestion}
+                      className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-primary/90"
+                    >
+                      <PlusCircle className="h-3.5 w-3.5" />
+                      Add Question
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4">
@@ -569,17 +671,47 @@ export default function QuizDetailPage() {
                       />
                     );
                   })}
-                  {canLoadMoreQuestions ? (
-                    <div className="flex justify-center pt-4">
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-4">
                       <button
                         type="button"
-                        onClick={() => setQuestionPagesLoaded((p) => p + 1)}
-                        className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-card-foreground hover:bg-muted px-3 py-1.5 rounded-lg"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-card-foreground hover:bg-muted disabled:opacity-40"
                       >
-                        Load More <ChevronDown className="h-3 w-3" />
+                        <ChevronLeft className="h-3 w-3" />
+                        Previous
+                      </button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setCurrentPage(page)}
+                            className={`h-8 w-8 rounded-lg text-xs font-medium transition-colors ${
+                              currentPage === page
+                                ? 'bg-primary text-white'
+                                : 'text-muted-foreground hover:bg-muted hover:text-card-foreground'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-card-foreground hover:bg-muted disabled:opacity-40"
+                      >
+                        Next
+                        <ChevronRight className="h-3 w-3" />
                       </button>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               )}
             </div>
@@ -618,15 +750,15 @@ export default function QuizDetailPage() {
       {/* Delete question confirmation dialog */}
       <DeleteConfirmDialog
         open={deleteDialog !== null}
-        title="Xóa câu hỏi?"
-        description="Câu hỏi này sẽ bị xóa vĩnh viễn khỏi quiz."
+        title="Delete question?"
+        description="This question will be permanently deleted from the quiz."
         itemName={deleteDialog?.questionText || ''}
-        itemType="Câu hỏi"
+        itemType="Question"
         onConfirm={handleDeleteQuestion}
         onCancel={() => setDeleteDialog(null)}
         deleting={deletingQuestion}
-        confirmText="Xóa câu hỏi"
-        cancelText="Hủy"
+        confirmText="Delete question"
+        cancelText="Cancel"
         dangerLevel="high"
       />
 

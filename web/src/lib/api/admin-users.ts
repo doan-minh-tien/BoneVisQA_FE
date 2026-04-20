@@ -286,3 +286,51 @@ export async function approveMedicalVerification(
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// ── Bulk Import Users ─────────────────────────────────────────────────────────
+
+export interface BulkImportUserItem {
+  email: string;
+  fullName: string;
+  password: string;
+  schoolCohort?: string;
+  role: string;
+  sendWelcomeEmail?: boolean;
+}
+
+export interface BulkImportResult {
+  totalRequested: number;
+  successCount: number;
+  failureCount: number;
+  successes: Array<{
+    email: string;
+    fullName: string;
+    role: string;
+  }>;
+  errors: Array<{
+    email: string;
+    fullName?: string;
+    error: string;
+    row: number;
+  }>;
+}
+
+export async function bulkCreateUsers(
+  users: BulkImportUserItem[],
+): Promise<BulkImportResult> {
+  try {
+    const { data } = await http.post<{
+      result?: BulkImportResult;
+      Result?: BulkImportResult;
+    }>(`${ADMIN_USERS}/import`, { users });
+    const result =
+      'result' in data && data.result
+        ? data.result
+        : 'Result' in data && data.Result
+          ? data.Result
+          : (data as BulkImportResult);
+    return result;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

@@ -5,14 +5,15 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { LecturerAnnouncementRow } from '@/components/lecturer/LecturerAnnouncementRow';
 import { useToast } from '@/components/ui/toast';
-import { Bell, Plus, Send, Loader2 } from 'lucide-react';
+import { Bell, Plus, Send, Loader2, Link, X } from 'lucide-react';
 import {
   getLecturerClasses,
   getClassAnnouncements,
+  getClassAssignments,
   createAnnouncement,
   isValidGuidString,
 } from '@/lib/api/lecturer';
-import type { ClassItem, Announcement } from '@/lib/api/types';
+import type { ClassItem, Announcement, ClassAssignment } from '@/lib/api/types';
 
 function LecturerAnnouncementsContent() {
   const toast = useToast();
@@ -32,6 +33,12 @@ function LecturerAnnouncementsContent() {
   const [sendEmail, setSendEmail] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Assignment selection
+  const [classAssignments, setClassAssignments] = useState<ClassAssignment[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState('');
+  const [selectedQuizId, setSelectedQuizId] = useState('');
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
 
   // Filter
   const [filterClass, setFilterClass] = useState('all');
@@ -74,6 +81,23 @@ function LecturerAnnouncementsContent() {
     if (openNewFromUrl) setShowCreate(true);
   }, [loading, classes, classIdFromUrl, openNewFromUrl]);
 
+  // Load assignments when class is selected
+  useEffect(() => {
+    if (!selectedClassId) {
+      setClassAssignments([]);
+      return;
+    }
+    setLoadingAssignments(true);
+    setSelectedCaseId('');
+    setSelectedQuizId('');
+    getClassAssignments(selectedClassId)
+      .then((assignments) => {
+        setClassAssignments(assignments);
+      })
+      .catch(() => setClassAssignments([]))
+      .finally(() => setLoadingAssignments(false));
+  }, [selectedClassId]);
+
   const handleSend = async () => {
     if (!newTitle.trim() || !newContent.trim() || !selectedClassId) {
       setCreateError('Please fill in all fields and select a class.');
@@ -86,12 +110,15 @@ function LecturerAnnouncementsContent() {
         title: newTitle.trim(),
         content: newContent.trim(),
         sendEmail,
+        assignmentId: selectedCaseId || selectedQuizId || null,
       });
       setAnnouncements((prev) => [created, ...prev]);
       setShowCreate(false);
       setNewTitle('');
       setNewContent('');
       setSendEmail(true);
+      setSelectedCaseId('');
+      setSelectedQuizId('');
       // Keep class selected when filtering one class (e.g. from class page)
       if (filterClass === 'all') {
         setSelectedClassId('');
@@ -174,7 +201,11 @@ function LecturerAnnouncementsContent() {
                 </label>
                 <select
                   value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedClassId(e.target.value);
+                    setSelectedCaseId('');
+                    setSelectedQuizId('');
+                  }}
                   className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
                 >
                   <option value="">Select a class...</option>
@@ -185,6 +216,59 @@ function LecturerAnnouncementsContent() {
                   ))}
                 </select>
               </div>
+
+              {/* Assignment Selection - Combined dropdown for Case and Quiz */}
+              {selectedClassId && (
+                <div>
+                  <label className="block text-sm font-medium text-card-foreground mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Link className="w-3.5 h-3.5" />
+                      Related Assignment (Optional)
+                    </div>
+                  </label>
+                  {loadingAssignments ? (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading assignments...
+                    </div>
+                  ) : classAssignments.length === 0 ? (
+                    <div className="px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-muted-foreground">
+                      No assignments assigned to this class yet.
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedCaseId || selectedQuizId || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedCaseId('');
+                        setSelectedQuizId('');
+                        if (val) {
+                          const selected = classAssignments.find((a) => a.id === val);
+                          if (selected?.type.toLowerCase() === 'case') {
+                            setSelectedCaseId(val);
+                          } else {
+                            setSelectedQuizId(val);
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2.5 rounded-lg border border-border bg-input text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+                    >
+                      <option value="">None - General announcement</option>
+                      {classAssignments.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          [{a.type.toUpperCase()}] {a.title}
+                          {a.dueDate && ` — Due: ${new Date(a.dueDate).toLocaleDateString()}`}
+                          {a.isMandatory && ' ★'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Link this announcement to a case or quiz to help students identify related work.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-card-foreground mb-1.5">
                   Title
@@ -252,6 +336,8 @@ function LecturerAnnouncementsContent() {
                   setNewTitle('');
                   setNewContent('');
                   setSendEmail(true);
+                  setSelectedCaseId('');
+                  setSelectedQuizId('');
                   if (filterClass === 'all') setSelectedClassId('');
                   else setSelectedClassId(filterClass);
                 }}

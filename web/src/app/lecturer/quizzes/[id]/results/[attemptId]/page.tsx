@@ -546,12 +546,19 @@ export default function QuizAttemptReviewPage({
               </div>
             )}
 
-            {/* Question Navigation Thumbnails */}
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-3 py-2 border-b border-border">
-                <h3 className="text-xs font-semibold">All Questions ({totalQ})</h3>
+            {/* Question Navigation - Compact horizontal bar */}
+            <div className="bg-card border border-border rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-semibold text-muted-foreground">
+                  All Questions ({totalQ})
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  <span className="text-success">{editAnswers.filter(a => a.isCorrect === true).length}</span> ·{' '}
+                  <span className="text-destructive">{editAnswers.filter(a => a.isCorrect === false).length}</span> ·{' '}
+                  <span className="text-amber-500">{editAnswers.filter(a => a.isCorrect === null).length}</span>
+                </span>
               </div>
-              <div className="p-2 grid grid-cols-5 gap-1.5 max-h-[160px] overflow-y-auto">
+              <div className="flex flex-wrap gap-1">
                 {detail.questions.map((q, i) => {
                   const ans = editAnswers[i];
                   const isEssayQ = q.type?.toLowerCase() === 'essay';
@@ -560,22 +567,21 @@ export default function QuizAttemptReviewPage({
                       key={q.questionId}
                       type="button"
                       onClick={() => setCurrentIndex(i)}
-                      className={`relative aspect-square rounded-md border text-[10px] font-bold flex items-center justify-center transition-all ${
-                        i === currentIndex ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
+                      className={`relative flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-bold transition-all ${
+                        i === currentIndex 
+                          ? 'border-2 border-primary bg-primary/15 text-primary' 
+                          : editAnswers[i]?.isCorrect === true
+                            ? 'bg-success/15 text-success border border-success/30'
+                            : editAnswers[i]?.isCorrect === false
+                              ? 'bg-destructive/15 text-destructive border border-destructive/30'
+                              : editAnswers[i]?.isCorrect === null
+                                ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30'
+                                : 'bg-muted/50 text-muted-foreground border border-border hover:border-primary/30'
                       }`}
                     >
                       {i + 1}
                       {isEssayQ && (
-                        <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      )}
-                      {ans?.isCorrect === true && (
-                        <CheckCircle className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 text-success bg-white rounded-full" />
-                      )}
-                      {ans?.isCorrect === false && (
-                        <XCircle className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 text-destructive bg-white rounded-full" />
-                      )}
-                      {ans?.isCorrect === null && !isEssayQ && (
-                        <Clock className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 text-muted-foreground bg-white rounded-full" />
+                        <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
                       )}
                     </button>
                   );

@@ -309,8 +309,8 @@ export function ClassEnrollmentsDialog({ cls, onCancel }: ClassEnrollmentsDialog
                               )}
                             </button>
                           ) : (
-                            <span className="shrink-0 text-[10px] text-amber-600" title="Chưa có dòng enrollment — gán lại từ cột phải">
-                              Catalog only
+                            <span className="shrink-0 text-[10px] text-amber-600" title="No enrollment row yet — assign from the right panel">
+                              Not enrolled
                             </span>
                           )}
                         </div>
