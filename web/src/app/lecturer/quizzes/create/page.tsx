@@ -251,7 +251,6 @@ export default function CreateQuizPage() {
       if (result.success && result.questions.length > 0) {
         setAiQuestions(result.questions);
         setTempQuestions([]);
-        setActiveStep(2);
       } else {
         setError(result.message || 'Cannot create questions from AI');
       }
@@ -290,7 +289,6 @@ export default function CreateQuizPage() {
       if (result.success && result.questions.length > 0) {
         setAiQuestions(result.questions);
         setTempQuestions([]);
-        setActiveStep(2);
       } else {
         setError(result.message || 'Cannot suggest questions from AI');
       }
@@ -317,7 +315,6 @@ export default function CreateQuizPage() {
     setTempQuestions([...tempQuestions, ...newQuestions]);
     setAiQuestions([]);
     setAiSuggestionMode(null);
-    setActiveStep(2);
   };
 
   const handleCreateAndAddAIQuestions = async () => {

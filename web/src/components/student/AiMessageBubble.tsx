@@ -17,6 +17,19 @@ import {
   visualQaMdHeadingsBold,
 } from '@/components/student/visualQaMarkdownComponents';
 
+function hasDisplayableAnalysisContent(turn: VisualQaTurn): boolean {
+  if (turn.diagnosis?.trim()) return true;
+  if (turn.findings?.some((item) => item?.trim())) return true;
+  if (turn.differentialDiagnoses?.some((item) => item?.trim())) return true;
+  if (turn.reflectiveQuestions?.some((item) => item?.trim())) return true;
+  if (turn.structuredDiagnosis?.trim()) return true;
+  if (turn.keyImagingFindings?.trim()) return true;
+  /** Citations alone must not flip to structured layout — avoid empty Diagnosis + duplicate prose. */
+  const md = turn.answerText?.trim();
+  if (md && !shouldSuppressLeakedMedicalJsonMarkdown(md)) return true;
+  return false;
+}
+
 function sanitizeSystemNoticeMarkdownBody(text: string, noticeCode?: string | null): string {
   const t = text.trim();
   if (!t) return '';
@@ -33,6 +46,10 @@ export type AiResponseKind =
   | 'review_update'
   | 'system_notice';
 
+export type ExpertSupportInline =
+  | { kind: 'awaiting' }
+  | { kind: 'resolved'; tone: 'success' | 'danger'; text: string };
+
 export type AiMessageBubbleProps = {
   turn: VisualQaTurn;
   assistantText: string;
@@ -47,6 +64,8 @@ export type AiMessageBubbleProps = {
   turnMenuKey: string;
   onToggleMenu: () => void;
   onRequestExpertSupport: () => void;
+  /** Trạng thái Request Expert — không tạo bubble chat riêng, chỉ dòng dưới answer. */
+  expertSupportInline?: ExpertSupportInline | null;
 };
 
 export function AiMessageBubble({
@@ -63,9 +82,11 @@ export function AiMessageBubble({
   turnMenuKey,
   onToggleMenu,
   onRequestExpertSupport,
+  expertSupportInline = null,
 }: AiMessageBubbleProps) {
   const showExpertMenu =
     canRequestReview &&
+    expertSupportInline == null &&
     !awaitingAssistant &&
     (turn.actorRole?.trim().toLowerCase() === 'assistant' ||
       turn.isReviewTarget === true ||
@@ -119,14 +140,23 @@ export function AiMessageBubble({
             </div>
           )
         ) : responseKind === 'analysis' ? (
-          <VisualQaStructuredAnswer
-            markdown={turn.answerText}
-            diagnosis={turn.diagnosis}
-            findings={turn.findings}
-            differentialDiagnoses={turn.differentialDiagnoses}
-            reflectiveQuestions={turn.reflectiveQuestions}
-            citations={turn.citations ?? []}
-          />
+          !hasDisplayableAnalysisContent(turn) ? (
+            <div className="inline-flex items-center gap-1.5 py-0.5" aria-busy aria-label="Assistant is typing">
+              <span className="messenger-typing-dot" />
+              <span className="messenger-typing-dot" />
+              <span className="messenger-typing-dot" />
+            </div>
+          ) : (
+            <VisualQaStructuredAnswer
+              markdown={turn.answerText}
+              diagnosis={turn.diagnosis}
+              structuredDiagnosis={turn.structuredDiagnosis}
+              findings={turn.findings}
+              differentialDiagnoses={turn.differentialDiagnoses}
+              reflectiveQuestions={turn.reflectiveQuestions}
+              citations={turn.citations ?? []}
+            />
+          )
         ) : responseKind === 'clarification' || responseKind === 'refusal' ? (
           <div className="space-y-2">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdClarificationRefusal}>
@@ -162,6 +192,20 @@ export function AiMessageBubble({
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdInlineFeedback}>
               {inlineReviewFeedbackMarkdown}
             </ReactMarkdown>
+          </div>
+        ) : null}
+
+        {expertSupportInline?.kind === 'awaiting' ? (
+          <p className="mt-3 text-xs font-medium text-amber-800">Awaiting expert to reply</p>
+        ) : expertSupportInline?.kind === 'resolved' && !inlineReviewFeedbackMarkdown?.trim() ? (
+          <div
+            className={
+              expertSupportInline.tone === 'danger'
+                ? 'mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-950'
+                : 'mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-950'
+            }
+          >
+            {expertSupportInline.text}
           </div>
         ) : null}
 

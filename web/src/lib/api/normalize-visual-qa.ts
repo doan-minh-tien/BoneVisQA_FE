@@ -80,13 +80,26 @@ function normalizeVisualQaMessage(raw: unknown): VisualQaMessage | null {
 
 export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   const o = normalizeRootPayload(raw);
-  const questionText = asString(pick(o, ['questionText'])).trim();
-  const answer = asString(pick(o, ['answerText'])).trim();
-  const diagnosis = asString(pick(o, ['diagnosis'])).trim();
-  const suggestedDiagnosis = asString(pick(o, ['suggestedDiagnosis', 'suggested_diagnosis'])).trim();
+  const questionText = asString(pick(o, ['questionText', 'QuestionText'])).trim();
+  const answer = asString(
+    pick(o, [
+      'answerText',
+      'messageText',
+      'AnswerText',
+      'MessageText',
+      'answer_text',
+      'message_text',
+    ]),
+  ).trim();
+  const diagnosisRaw = asString(pick(o, ['diagnosis', 'Diagnosis'])).trim();
+  const suggestedDiagnosis = asString(
+    pick(o, ['suggestedDiagnosis', 'SuggestedDiagnosis', 'suggested_diagnosis']),
+  ).trim();
+  /** Một số payload gửi `suggestedDiagnosis` mà không có `diagnosis` — turn phải gộp để card Diagnosis + flag structured khớp BE. */
+  const diagnosis = diagnosisRaw || suggestedDiagnosis;
   const keyFindings = asStringArray(pick(o, ['keyFindings', 'key_findings']));
   const keyImagingFindings = asString(pick(o, ['keyImagingFindings', 'key_imaging_findings'])).trim();
-  const findings = asStringArray(pick(o, ['findings']));
+  const findings = asStringArray(pick(o, ['findings', 'Findings']));
   const differentialDiagnoses = asStringArray(pick(o, ['differentialDiagnoses']));
   const reflectiveQuestions = asStringArray(pick(o, ['reflectiveQuestions']));
 
@@ -96,6 +109,11 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
     citations = cit.map((c) => {
       if (!c || typeof c !== 'object') return {};
       const cc = c as Record<string, unknown>;
+      const snippetFromApi =
+        asNullableString(cc.snippet) ??
+        asNullableString(cc.sourceText ?? cc.source_text ?? cc.preview ?? cc.text ?? cc.chunkText ?? cc.chunk_text);
+      const titleFromApi =
+        asNullableString(cc.title) ?? asNullableString(cc.documentTitle ?? cc.document_title);
       return {
         kind:
           (() => {
@@ -104,19 +122,21 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
             if (rawKind === 'document') return 'doc';
             return rawKind;
           })(),
-        documentUrl: asNullableString(cc.documentUrl) ?? undefined,
+        documentUrl:
+          asNullableString(cc.documentUrl ?? cc.document_url ?? cc.url ?? cc.fileUrl ?? cc.file_url) ?? undefined,
         chunkOrder: asNullableNumber(cc.chunkOrder ?? cc.chunk_order),
         pageNumber: asNullableNumber(cc.pageNumber ?? cc.page_number),
         startPage: asNullableNumber(cc.startPage ?? cc.start_page),
         endPage: asNullableNumber(cc.endPage ?? cc.end_page),
-        title: asNullableString(cc.title) ?? undefined,
+        title: titleFromApi ?? undefined,
         label: asNullableString(cc.label) ?? undefined,
         displayLabel: asNullableString(cc.displayLabel ?? cc.display_label) ?? undefined,
-        snippet: asNullableString(cc.snippet) ?? undefined,
+        snippet: snippetFromApi ?? undefined,
         pageLabel: asNullableString(cc.pageLabel ?? cc.page_label) ?? undefined,
         href: asNullableString(cc.href) ?? undefined,
         documentId: asNullableString(cc.documentId ?? cc.document_id) ?? undefined,
         caseId: asNullableString(cc.caseId ?? cc.case_id) ?? undefined,
+        chunkId: asNullableString(cc.chunkId ?? cc.chunk_id) ?? undefined,
         version: asNullableString(cc.version) ?? undefined,
       };
     });
@@ -134,7 +154,7 @@ export function normalizeVisualQaReport(raw: unknown): VisualQaReport {
   return {
     ...(questionText ? { questionText } : {}),
     ...(answer ? { answerText: answer } : {}),
-    ...(suggestedDiagnosis ? { suggestedDiagnosis } : {}),
+    ...(suggestedDiagnosis && suggestedDiagnosis !== diagnosis ? { suggestedDiagnosis } : {}),
     keyFindings,
     ...(keyImagingFindings ? { keyImagingFindings } : {}),
     ...(diagnosis ? { diagnosis } : {}),
@@ -206,7 +226,8 @@ function normalizeVisualQaTurn(raw: unknown, fallbackIndex: number): VisualQaTur
     ...(expertCorrectedRoiBoundingBox
       ? { expertCorrectedRoiBoundingBox }
       : {}),
-    diagnosis: report.diagnosis ?? '',
+    diagnosis: (report.diagnosis ?? report.suggestedDiagnosis ?? '').trim(),
+    structuredDiagnosis: asNullableString(pick(o, ['structuredDiagnosis', 'StructuredDiagnosis'])),
     ...(report.findings ? { findings: report.findings } : {}),
     ...(reflectiveTurn && reflectiveTurn.length > 0 ? { reflectiveQuestions: reflectiveTurn } : {}),
     differentialDiagnoses: report.differentialDiagnoses,
@@ -365,6 +386,7 @@ export function normalizeVisualQaSessionReport(raw: unknown): VisualQaSessionRep
     lastResponderRole: asNullableString(pick(o, ['lastResponderRole', 'last_responder_role'])),
     blockingNotice: asNullableString(pick(o, ['blockingNotice', 'blocking_notice'])),
     systemNotice,
+    rejectionReason: asNullableString(pick(o, ['rejectionReason', 'rejection_reason'])),
     policyReason: asNullableString(pick(o, ['policyReason', 'policy_reason'])) ?? systemNoticePolicyReason,
     systemNoticeCode:
       asNullableString(pick(o, ['systemNoticeCode', 'system_notice_code'])) ?? systemNoticeCode,

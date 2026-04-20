@@ -72,6 +72,8 @@ function Card({
   className?: string;
 }) {
   const [open, setOpen] = useState(true);
+  const badgeCount = typeof badge === 'number' ? badge : Number(badge);
+  const showBadge = badge !== undefined && Number.isFinite(badgeCount) && badgeCount > 0;
   return (
     <div className={`rounded-2xl border bg-card overflow-hidden ${className}`}>
       <button
@@ -81,7 +83,7 @@ function Card({
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-primary" />
           <span className="font-medium text-sm">{title}</span>
-          {badge !== undefined && badge > 0 && (
+          {showBadge && (
             <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded-full">{badge}</span>
           )}
         </div>
@@ -116,7 +118,7 @@ export default function LecturerDashboardPage() {
   );
   const { data: classesData, error: classesError, isLoading: classesLoading } = useSWR<ClassItem[]>(
     lecturerId ? ['lecturer-classes', lecturerId] : null,
-    (_, id) => fetchLecturerClasses(id),
+    (_: string, id: string) => fetchLecturerClasses(id),
     { revalidateOnFocus: false },
   );
   const { data: analytics, error: analyticsError, isLoading: analyticsLoading } = useSWR<LecturerAnalyticsData>(
@@ -130,14 +132,14 @@ export default function LecturerDashboardPage() {
 
   const { data: leaderboard, error: leaderboardError, isLoading: leaderboardLoading } = useSWR<LecturerLeaderboardEntry[]>(
     selectedClass ? ['lecturer-dashboard-leaderboard', selectedClass] : null,
-    (_, classId) => fetchLecturerClassLeaderboard(classId),
+    (_: string, classId: string) => fetchLecturerClassLeaderboard(classId),
     { revalidateOnFocus: false },
   );
 
   const triageClassId = classes.length > 0 ? (selectedClassId || classes[0]?.id) : '';
   const { data: triageData, error: triageError, isLoading: triageLoading } = useSWR<LecturerTriageRow[]>(
     triageClassId ? ['lecturer-dashboard-triage', triageClassId] : null,
-    (_, classId) => fetchLecturerTriageList(classId),
+    (_: string, classId: string) => fetchLecturerTriageList(classId),
     { revalidateOnFocus: false },
   );
 
@@ -212,7 +214,7 @@ export default function LecturerDashboardPage() {
                         <span className="text-muted-foreground">{cls.totalCasesViewed} cases</span>
                         <span className="text-muted-foreground">{cls.totalQuestions} Q</span>
                         <span className={`font-semibold ${cls.completionRate >= 60 ? 'text-success' : 'text-warning'}`}>{cls.completionRate}%</span>
-                        <span className={`font-bold ${cls.avgQuizScore >= 60 ? 'text-success' : 'text-warning'}`}>{toPercent(cls.avgQuizScore)}</span>
+                        <span className={`font-bold ${(cls.avgQuizScore ?? 0) >= 60 ? 'text-success' : 'text-warning'}`}>{toPercent(cls.avgQuizScore)}</span>
                       </div>
                     </div>
                   ))}

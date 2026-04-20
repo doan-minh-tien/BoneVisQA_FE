@@ -5,6 +5,7 @@ import { fetchExpertPendingReviews } from './expert-dashboard';
 import { normalizeVisualQaReport, normalizeVisualQaSessionReport } from './normalize-visual-qa';
 import type { Citation, ExpertReviewItem, VisualQaReport, VisualQaTurn } from './types';
 import {
+  isValidNormalizedBoundingBox,
   parseCustomPolygon,
   parseNormalizedBoundingBox,
   parsePercentageBoundingBox,
@@ -52,30 +53,99 @@ function parseDifferentialDiagnosesList(raw: unknown): string[] {
   return [];
 }
 
+/** Gộp citation từ mọi turn + root (một số BE chỉ gắn RAG evidence trên turn đầu). Dedupe giống BE: (chunkId, medicalCaseId). */
+function mergeRawCitationLists(...lists: unknown[][]): unknown[] {
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as Record<string, unknown>;
+      const id = String(
+        row.chunkId ?? row.documentChunkId ?? row.ChunkId ?? row.id ?? row.chunkID ?? '',
+      ).trim();
+      const medicalCaseId = String(
+        row.medicalCaseId ?? row.MedicalCaseId ?? row.caseId ?? row.CaseId ?? '',
+      ).trim();
+      const excerpt = String(row.sourceText ?? row.snippet ?? row.text ?? '').slice(0, 48);
+      const key =
+        id && medicalCaseId
+          ? `${id.toLowerCase()}::${medicalCaseId.toLowerCase()}`
+          : id
+            ? id.toLowerCase()
+            : `fall:${out.length}:${excerpt}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(raw);
+    }
+  }
+  return out;
+}
+
 function mapExpertCitation(row: unknown): Citation | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const chunkId = String(r.chunkId ?? r.id ?? r.chunkID ?? '');
-  const sourceText = String(r.sourceText ?? r.text ?? r.chunkText ?? r.content ?? '');
-  if (!chunkId || !sourceText) return null;
+  const chunkId = String(
+    r.chunkId ?? r.documentChunkId ?? r.DocumentChunkId ?? r.id ?? r.chunkID ?? '',
+  ).trim();
+  if (!chunkId) return null;
 
-  const rawFlagged = r.flagged ?? r.isFlagged ?? r.hasBeenFlagged;
+  let sourceText = String(
+    r.sourceText ??
+      r.SourceText ??
+      r.snippet ??
+      r.preview ??
+      r.text ??
+      r.chunkText ??
+      r.content ??
+      r.excerpt ??
+      '',
+  ).trim();
 
+  if (!sourceText) {
+    const title = String(r.documentTitle ?? r.title ?? r.documentName ?? '').trim();
+    const pageRaw = r.pageNumber ?? r.PageNumber ?? r.page ?? r.startPage;
+    const page =
+      pageRaw !== undefined && pageRaw !== null && String(pageRaw).trim() !== ''
+        ? Number(pageRaw)
+        : undefined;
+    const bits = [
+      title,
+      page !== undefined && Number.isFinite(page) ? `Page ${Math.floor(page)}` : '',
+    ].filter(Boolean);
+    sourceText = bits.length > 0 ? bits.join(' · ') : '(No excerpt — chunk metadata only)';
+  }
+
+  const rawFlagged = r.flagged ?? r.isFlagged ?? r.hasBeenFlagged ?? r.IsFlagged;
+
+  const referenceUrlRaw =
+    r.referenceUrl ??
+    r.ReferenceUrl ??
+    r.href ??
+    r.documentUrl ??
+    r.DocumentUrl ??
+    r.fileUrl ??
+    r.FileUrl;
+
+  const documentIdRaw = r.documentId ?? r.DocumentId ?? r.document_id;
   return {
     chunkId,
     sourceText,
+    ...(documentIdRaw != null && String(documentIdRaw).trim()
+      ? { documentId: String(documentIdRaw).trim() }
+      : {}),
     referenceUrl:
-      r.referenceUrl !== undefined
-        ? String(r.referenceUrl)
-        : r.documentUrl !== undefined
-          ? String(r.documentUrl)
-          : undefined,
-    pageNumber:
-      r.pageNumber !== undefined && r.pageNumber !== null
-        ? Number(r.pageNumber)
-        : r.chunkOrder !== undefined && r.chunkOrder !== null
-          ? Number(r.chunkOrder)
-          : undefined,
+      referenceUrlRaw !== undefined && referenceUrlRaw !== null && String(referenceUrlRaw).trim()
+        ? String(referenceUrlRaw).trim()
+        : undefined,
+    pageNumber: (() => {
+      const p =
+        r.pageNumber ?? r.PageNumber ?? r.page ?? r.startPage ?? r.chunkOrder ?? r.ChunkOrder;
+      if (p === undefined || p === null) return undefined;
+      const n = Number(p);
+      return Number.isFinite(n) ? n : undefined;
+    })(),
     flagged: typeof rawFlagged === 'boolean' ? rawFlagged : undefined,
   };
 }
@@ -229,20 +299,27 @@ function mapExpertItem(row: unknown): ExpertReviewItem | null {
   const polyRaw = r.customPolygon ?? r.CustomPolygon;
   const dedicatedBoxRaw =
     r.customBoundingBox ?? r.CustomBoundingBox ?? r.normalizedBoundingBox ?? r.NormalizedBoundingBox;
-  const customBoundingBox =
+  let customBoundingBox =
     parseNormalizedBoundingBox(dedicatedBoxRaw) ?? parseNormalizedBoundingBox(polyRaw);
   const customPolygon = customBoundingBox ? null : parseCustomPolygon(polyRaw);
-  const citationSource = Array.isArray(latestTurn?.citations)
-    ? latestTurn.citations
-    : Array.isArray(latestAssistantRecord?.citations)
-      ? latestAssistantRecord?.citations
-      : Array.isArray(r.citations)
-    ? r.citations
-    : Array.isArray(r.evidence)
-      ? r.evidence
-      : Array.isArray(r.ragCitations)
-        ? r.ragCitations
-        : [];
+  if (!customBoundingBox && latestTurn) {
+    const fromTurn = latestTurn.roiBoundingBox ?? latestTurn.questionCoordinates ?? null;
+    if (fromTurn && isValidNormalizedBoundingBox(fromTurn)) {
+      customBoundingBox = fromTurn;
+    }
+  }
+  const citationSource = mergeRawCitationLists(
+    ...allTurns.map((t) => (Array.isArray(t.citations) ? t.citations : [])),
+    Array.isArray(latestTurn?.citations) ? latestTurn.citations : [],
+    Array.isArray(latestAssistantRecord?.citations) ? latestAssistantRecord.citations : [],
+    Array.isArray(r.citations) ? r.citations : [],
+    Array.isArray(r.Citations) ? r.Citations : [],
+    Array.isArray(r.evidence) ? r.evidence : [],
+    Array.isArray(r.ragCitations) ? r.ragCitations : [],
+    Array.isArray(r.ragChunks) ? r.ragChunks : [],
+    Array.isArray(r.RagChunks) ? r.RagChunks : [],
+    Array.isArray(r.retrievedChunks) ? r.retrievedChunks : [],
+  );
   const citations = citationSource
     .map(mapExpertCitation)
     .filter((item): item is Citation => item !== null);
@@ -432,6 +509,39 @@ function unwrapReviewList(data: unknown): unknown[] {
   return [];
 }
 
+/**
+ * Chi tiết đầy đủ một phiên review (citations / turns) — gọi khi mở case nếu queue list thiếu RAG evidence.
+ * BE có thể chưa triển khai: khi đó trả null, FE vẫn dùng bản từ queue + merge citation theo turn.
+ */
+export async function fetchExpertReviewDetail(sessionId: string): Promise<ExpertReviewItem | null> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) return null;
+  const unwrap = (data: unknown): unknown => {
+    if (!data || typeof data !== 'object') return data;
+    const o = data as Record<string, unknown>;
+    if (o.data != null) return o.data;
+    if (o.item != null) return o.item;
+    return data;
+  };
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}`);
+    const raw = unwrap(data);
+    const row = Array.isArray(raw) ? raw[0] : raw;
+    return mapExpertItem(row);
+  } catch {
+    try {
+      const { data } = await http.get<unknown>(
+        `/api/expert/reviews/${encodeURIComponent(id)}/session`,
+      );
+      const raw = unwrap(data);
+      const row = Array.isArray(raw) ? raw[0] : raw;
+      return mapExpertItem(row);
+    } catch {
+      return null;
+    }
+  }
+}
+
 /** Primary queue: case-answer reviews; fallback to escalated; then dashboard pending list if both are empty. */
 export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   try {
@@ -583,10 +693,22 @@ export async function approveExpertReview(sessionId: string): Promise<void> {
 }
 
 export interface PromoteExpertReviewPayload {
+  /** Tiêu đề case thư viện — bắt buộc trước khi promote (BE có thể map sang `title` / `caseTitle`). */
+  title: string;
+  categoryId?: string;
+  categoryName?: string;
+  difficulty: string;
+  /** Tên tag, phân tách bởi expert UI. */
+  tagNames: string[];
+  /** Mô tả case = chẩn đoán có cấu trúc từ AI (theo nghiệp vụ promote). */
   description: string;
+  /** Gợi ý chẩn đoán trên case = phần differential từ AI. */
   suggestedDiagnosis: string;
+  /** Key findings trên case = findings / key imaging từ AI. */
   keyFindings: string;
   reflectiveQuestions: string;
+  /** ROI / annotation theo từng turn (JSON tuỳ BE). */
+  turnAnnotations?: Array<Record<string, unknown>>;
 }
 
 export async function promoteExpertReview(
@@ -595,14 +717,31 @@ export async function promoteExpertReview(
 ): Promise<string | null> {
   const id = String(sessionId ?? '').trim();
   if (!id) throw new Error('Session id is required.');
-  const body = {
+  const title = String(payload.title ?? '').trim();
+  const difficulty = String(payload.difficulty ?? '').trim();
+  const tagNames = Array.isArray(payload.tagNames) ? payload.tagNames.map((t) => String(t).trim()).filter(Boolean) : [];
+  const body: Record<string, unknown> = {
+    title,
+    categoryId: payload.categoryId?.trim() || undefined,
+    categoryName: payload.categoryName?.trim() || undefined,
+    difficulty,
+    tagNames,
     description: String(payload.description ?? '').trim(),
     suggestedDiagnosis: String(payload.suggestedDiagnosis ?? '').trim(),
     keyFindings: String(payload.keyFindings ?? '').trim(),
     reflectiveQuestions: String(payload.reflectiveQuestions ?? '').trim(),
+    CategoryId: payload.categoryId?.trim() || undefined,
+    CategoryName: payload.categoryName?.trim() || undefined,
+    TagNames: tagNames,
   };
+  if (Array.isArray(payload.turnAnnotations) && payload.turnAnnotations.length > 0) {
+    body.turnAnnotations = payload.turnAnnotations;
+  }
+  if (!title || !difficulty) {
+    throw new Error('Title and difficulty are required to publish to the library.');
+  }
   if (!body.description || !body.suggestedDiagnosis || !body.keyFindings || !body.reflectiveQuestions) {
-    throw new Error('All promote fields are required.');
+    throw new Error('AI-mapped case fields (description, differential, findings, reflective questions) are required.');
   }
   try {
     const { data } = await http.post<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}/promote`, body);

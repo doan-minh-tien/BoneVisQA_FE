@@ -25,8 +25,8 @@ export function CatalogPageClient() {
   });
 
   const catalogQuery = useQuery({
-    queryKey: ['student', 'catalog', location, lesionType, difficulty],
-    queryFn: () => fetchCaseCatalog({ location, lesionType, difficulty }),
+    queryKey: ['student', 'catalog', location, lesionType, difficulty, query],
+    queryFn: () => fetchCaseCatalog({ location, lesionType, difficulty, q: query || undefined }),
     placeholderData: keepPreviousData,
   });
 
@@ -56,13 +56,20 @@ export function CatalogPageClient() {
   const difficultyOptions = useMemo(() => {
     const fromApi = filtersQuery.data?.difficulties;
     if (fromApi?.length) return fromApi.map((d) => d.toLowerCase());
-    return Array.from(new Set(items.map((item) => item.difficulty).filter(Boolean))).sort();
+    return Array.from(
+      new Set(
+        items
+          .map((item) => item.difficultyTier ?? item.difficulty ?? item.difficultyLabel)
+          .filter((v): v is string => Boolean(v && String(v).trim() && String(v) !== '—')),
+      ),
+    ).sort();
   }, [filtersQuery.data?.difficulties, items]);
 
   const visibleItems = useMemo(() => {
     if (!query) return items;
     return items.filter((item) => {
-      const haystack = `${item.title} ${item.location} ${item.lesionType} ${item.difficulty}`.toLowerCase();
+      const tagStr = (item.tags ?? []).join(' ');
+      const haystack = `${item.title} ${item.location} ${item.lesionType} ${item.categoryDisplay ?? ''} ${item.difficultyLabel} ${tagStr}`.toLowerCase();
       return haystack.includes(query);
     });
   }, [items, query]);

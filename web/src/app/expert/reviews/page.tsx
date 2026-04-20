@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/toast';
 import {
   approveExpertReview,
   deleteExpertReviewDraft,
+  fetchExpertReviewDetail,
   fetchExpertReviewQueue,
   flagRagChunk,
   hasExpertReviewSelectedPairMismatch,
@@ -23,6 +24,7 @@ import {
   promoteExpertReview,
   resolveExpertReview,
 } from '@/lib/api/expert-reviews';
+import { fetchExpertCategories, type ExpertCategory } from '@/lib/api/expert-cases';
 import type { ExpertReviewItem } from '@/lib/api/types';
 import { getWorkflowStatusMeta } from '@/lib/visual-qa-workflow';
 import { toast as sonnerToast } from 'sonner';
@@ -101,27 +103,83 @@ function buildResolvePayload(
   };
 }
 
+function joinDifferentialFromReport(item: ExpertReviewItem): string {
+  const d = item.report.differentialDiagnoses ?? [];
+  if (d.length) return d.map((s) => String(s).trim()).filter(Boolean).join('\n');
+  return (item.report.keyFindings ?? []).join('\n');
+}
+
+function joinKeyImagingFindings(item: ExpertReviewItem, keyImagingEdit: string, useEdited: boolean): string {
+  if (useEdited && keyImagingEdit.trim()) return keyImagingEdit.trim();
+  const k = item.report.keyImagingFindings?.trim();
+  if (k) return k;
+  return (item.report.keyFindings ?? []).map((s) => String(s).trim()).filter(Boolean).join('\n');
+}
+
+function structuredDiagnosisForPromote(item: ExpertReviewItem, diag: string, useEdited: boolean): string {
+  if (useEdited && diag.trim()) return diag.trim();
+  return (
+    item.report.suggestedDiagnosis?.trim() ||
+    item.report.diagnosis?.trim() ||
+    item.report.answerText?.trim() ||
+    ''
+  );
+}
+
+function collectTurnAnnotationsForPromote(item: ExpertReviewItem): Array<Record<string, unknown>> {
+  const turns = item.turns ?? [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const t of turns) {
+    const roi = t.roiBoundingBox ?? t.questionCoordinates ?? null;
+    if (!roi) continue;
+    out.push({
+      turnIndex: t.turnIndex,
+      turnId: t.turnId,
+      userMessageId: t.userMessageId,
+      assistantMessageId: t.assistantMessageId,
+      roiBoundingBox: roi,
+    });
+  }
+  return out;
+}
+
 function buildPromotePayload(
   item: ExpertReviewItem,
   ctx: {
     active: ExpertReviewItem | null;
     diag: string;
     keyText: string;
+    keyImagingEdit: string;
     reflectiveEdit: string;
+    libraryTitle: string;
+    libraryCategoryId: string;
+    libraryDifficulty: string;
+    libraryTagsCsv: string;
+    categories: ExpertCategory[];
   },
 ): PromoteExpertReviewPayload {
   const useEdited = ctx.active?.id === item.id;
+  const catId = ctx.libraryCategoryId.trim();
+  const cat = ctx.categories.find((c) => c.id === catId);
+  const tagNames = ctx.libraryTagsCsv
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
-    description: firstStudentQuestion(item),
+    title: ctx.libraryTitle.trim(),
+    categoryId: catId || undefined,
+    categoryName: cat?.name ?? (catId || undefined),
+    difficulty: ctx.libraryDifficulty.trim() || 'intermediate',
+    tagNames,
+    description: structuredDiagnosisForPromote(item, ctx.diag, useEdited),
     suggestedDiagnosis: useEdited
-      ? ctx.diag.trim() || item.report.suggestedDiagnosis || ''
-      : item.report.suggestedDiagnosis || '',
-    keyFindings: useEdited
       ? ctx.keyText.split('\n').map((s) => s.trim()).filter(Boolean).join('\n')
-      : (item.report.keyFindings ?? []).join('\n'),
+      : joinDifferentialFromReport(item),
+    keyFindings: joinKeyImagingFindings(item, ctx.keyImagingEdit, useEdited),
     reflectiveQuestions: useEdited
       ? ctx.reflectiveEdit.trim()
       : reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions) || '',
+    turnAnnotations: collectTurnAnnotationsForPromote(item),
   };
 }
 
@@ -146,6 +204,11 @@ export default function ExpertReviewsPage() {
   const [rejectModalItem, setRejectModalItem] = useState<ExpertReviewItem | null>(null);
   const [rejectModalNote, setRejectModalNote] = useState('');
   const openedFocusRef = useRef<string | null>(null);
+  const [expertCategories, setExpertCategories] = useState<ExpertCategory[]>([]);
+  const [libraryTitle, setLibraryTitle] = useState('');
+  const [libraryCategoryId, setLibraryCategoryId] = useState('');
+  const [libraryDifficulty, setLibraryDifficulty] = useState('intermediate');
+  const [libraryTagsCsv, setLibraryTagsCsv] = useState('');
   const { trigger: triggerFlagChunk } = useSWRMutation(
     'expert-flag-chunk',
     async (_key, { arg }: { arg: { chunkId: string; reason: string } }) =>
@@ -168,6 +231,51 @@ export default function ExpertReviewsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void fetchExpertCategories()
+      .then(setExpertCategories)
+      .catch(() => setExpertCategories([]));
+  }, []);
+
+  /** Bổ sung citations/turns đầy đủ khi BE chỉ trả tóm tắt trên queue list. */
+  useEffect(() => {
+    if (!active?.sessionId) return;
+    let cancelled = false;
+    void (async () => {
+      const detail = await fetchExpertReviewDetail(active.sessionId);
+      if (cancelled || !detail) return;
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.sessionId !== active.sessionId) return i;
+          const dc = detail.citations ?? [];
+          const ic = i.citations ?? [];
+          const cite =
+            dc.length > ic.length ? dc : dc.length > 0 && ic.length === 0 ? dc : ic;
+          const dt = detail.turns ?? [];
+          const it = i.turns ?? [];
+          const turns =
+            dt.length > it.length ? dt : dt.length > 0 && it.length === 0 ? dt : it;
+          return { ...i, citations: cite, turns };
+        }),
+      );
+      setActive((prev) => {
+        if (!prev || prev.sessionId !== active.sessionId) return prev;
+        const dc = detail.citations ?? [];
+        const ic = prev.citations ?? [];
+        const cite =
+          dc.length > ic.length ? dc : dc.length > 0 && ic.length === 0 ? dc : ic;
+        const dt = detail.turns ?? [];
+        const it = prev.turns ?? [];
+        const turns =
+          dt.length > it.length ? dt : dt.length > 0 && it.length === 0 ? dt : it;
+        return { ...prev, citations: cite, turns };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.sessionId]);
+
   const openEdit = useCallback((item: ExpertReviewItem) => {
     setActive(item);
     setDiag(item.report.suggestedDiagnosis || '');
@@ -175,6 +283,11 @@ export default function ExpertReviewsPage() {
     setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
     setReflectiveEdit(reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions));
     setExpanded(item.id);
+    const seedTitle = (item.caseTitle?.trim() || firstStudentQuestion(item)).slice(0, 200);
+    setLibraryTitle(seedTitle);
+    setLibraryCategoryId('');
+    setLibraryDifficulty('intermediate');
+    setLibraryTagsCsv('');
   }, []);
 
   useEffect(() => {
@@ -283,15 +396,33 @@ export default function ExpertReviewsPage() {
       active,
       diag,
       keyText,
+      keyImagingEdit,
       reflectiveEdit,
+      libraryTitle,
+      libraryCategoryId,
+      libraryDifficulty,
+      libraryTagsCsv,
+      categories: expertCategories,
     });
+    if (!promotePayload.title.trim()) {
+      toast.error('Enter a library case title before promoting.');
+      return;
+    }
+    if (!promotePayload.categoryId) {
+      toast.error('Select a category for the library case.');
+      return;
+    }
+    if (!promotePayload.tagNames.length) {
+      toast.error('Enter at least one tag (comma-separated).');
+      return;
+    }
     if (
       !promotePayload.description.trim() ||
       !promotePayload.suggestedDiagnosis.trim() ||
       !promotePayload.keyFindings.trim() ||
       !promotePayload.reflectiveQuestions.trim()
     ) {
-      toast.error('Complete diagnosis, key findings, and reflective questions before promoting to the library.');
+      toast.error('Complete AI-mapped fields (diagnosis, differential, imaging findings, reflective questions).');
       return;
     }
     setSaving(true);
@@ -432,6 +563,15 @@ export default function ExpertReviewsPage() {
       canPromote={locallyApprovedSessionIds.has(item.sessionId)}
       saving={saving}
       onFlagCitation={openFlagModal}
+      libraryTitle={libraryTitle}
+      libraryCategoryId={libraryCategoryId}
+      libraryDifficulty={libraryDifficulty}
+      libraryTagsCsv={libraryTagsCsv}
+      categories={expertCategories}
+      onLibraryTitleChange={setLibraryTitle}
+      onLibraryCategoryIdChange={setLibraryCategoryId}
+      onLibraryDifficultyChange={setLibraryDifficulty}
+      onLibraryTagsCsvChange={setLibraryTagsCsv}
     />
   );
 

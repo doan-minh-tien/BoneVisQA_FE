@@ -8,6 +8,7 @@ import { useAuth, type BackendRole } from '@/lib/useAuth';
 import {
   BookOpen,
   CheckSquare,
+  Flag,
   Database,
   LayoutDashboard,
   HelpCircle,
@@ -45,6 +46,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
+    { label: 'Flagged chunks', href: '/admin/flagged-chunks', icon: Flag },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
   ],
   lecturer: [
@@ -66,7 +68,6 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
     { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
-    { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
     { label: 'Class', href: '/student/classes', icon: Users },

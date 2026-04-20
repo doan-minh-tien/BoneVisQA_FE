@@ -74,6 +74,7 @@ export async function respondToQuestion(
     const { data } = await http.put(
       `/api/lecturer/classes/${classId}/questions/${questionId}/respond`,
       body,
+      { clearSessionOn401: false },
     );
     return data;
   } catch (e) {
@@ -102,6 +103,7 @@ export async function approveAnswer(
         answerText: existingAnswerText,
         approve: true,
       },
+      { clearSessionOn401: false },
     );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -111,7 +113,7 @@ export async function approveAnswer(
 export async function escalateToExpert(answerId: string): Promise<void> {
   const id = encodeURIComponent(answerId);
   try {
-    await http.post(`/api/lecturer/triage/${id}/escalate`);
+    await http.post(`/api/lecturer/triage/${id}/escalate`, undefined, { clearSessionOn401: false });
     return;
   } catch (e) {
     if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
@@ -122,7 +124,9 @@ export async function escalateToExpert(answerId: string): Promise<void> {
     }
     if (axios.isAxiosError(e) && e.response?.status === 404) {
       try {
-        await http.put(`/api/lecturer/reviews/${id}/escalate`);
+        await http.put(`/api/lecturer/reviews/${id}/escalate`, undefined, {
+          clearSessionOn401: false,
+        });
         return;
       } catch (e2) {
         throw new Error(getApiErrorMessage(e2));
