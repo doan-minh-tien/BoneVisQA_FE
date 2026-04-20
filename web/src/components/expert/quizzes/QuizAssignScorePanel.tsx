@@ -84,7 +84,7 @@ export default function QuizAssignScorePanel() {
       setClassesList(cRes);
       setExpertsList(eRes);
     } catch (e) {
-      console.error('loadShared failed', e);
+      toast.error(e instanceof Error ? e.message : 'Could not load assignment lists.');
     } finally {
       setSharedLoading(false);
     }

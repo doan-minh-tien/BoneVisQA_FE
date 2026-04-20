@@ -14,12 +14,14 @@ import {
   updateExpertCase,
   createExpertCaseImage,
   deleteExpertCaseImage,
+  DB_IMAGE_MODALITIES,
   type ExpertCategory,
   type SaveExpertCaseInput,
   type ExpertCase,
   type ExpertCaseMedicalImageJson,
 } from '@/lib/api/expert-cases';
 import { getApiProblemDetails } from '@/lib/api/client';
+import { EXPERT_DASHBOARD_QUERY_KEY } from '@/lib/api/expert-dashboard';
 import { fetchExpertProfile } from '@/lib/api/lecturer-dashboard';
 import { uploadExpertWorkbenchImage } from '@/lib/supabase/upload-medical-case-image';
 import { Loader2, X, ImagePlus, Upload } from 'lucide-react';
@@ -109,7 +111,7 @@ export default function ExpertCaseEditPage() {
       void queryClient.invalidateQueries({ queryKey: ['expert', 'case', id] });
       void queryClient.invalidateQueries({ queryKey: ['expert', 'cases'] });
       void swrMutate('expert-case-library');
-      void swrMutate('expert-dashboard');
+      void queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY });
       router.push(`/expert/cases/${id}`);
     },
     onError: (err: unknown) => {
@@ -172,7 +174,7 @@ export default function ExpertCaseEditPage() {
       void queryClient.invalidateQueries({ queryKey: ['expert', 'case', id] });
       void queryClient.invalidateQueries({ queryKey: ['expert', 'cases'] });
       void swrMutate('expert-case-library');
-      void swrMutate('expert-dashboard');
+      void queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY });
 
       // Reset form
       setModality('');
@@ -197,7 +199,7 @@ export default function ExpertCaseEditPage() {
       void queryClient.invalidateQueries({ queryKey: ['expert', 'case', id] });
       void queryClient.invalidateQueries({ queryKey: ['expert', 'cases'] });
       void swrMutate('expert-case-library');
-      void swrMutate('expert-dashboard');
+      void queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete image');
     } finally {
@@ -303,14 +305,11 @@ export default function ExpertCaseEditPage() {
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50"
                       >
                         <option value="">Select modality...</option>
-                        <option value="X-Ray">X-Ray</option>
-                        <option value="CT">CT</option>
-                        <option value="MRI">MRI</option>
-                        <option value="Ultrasound">Ultrasound</option>
-                        <option value="PET">PET</option>
-                        <option value="Mammography">Mammography</option>
-                        <option value="Fluoroscopy">Fluoroscopy</option>
-                        <option value="Other">Other</option>
+                        {DB_IMAGE_MODALITIES.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

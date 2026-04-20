@@ -1,0 +1,731 @@
+'use client';
+
+import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
+import { PolygonAnnotationOverlay } from '@/components/shared/PolygonAnnotationOverlay';
+import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MedicalImageViewer } from '@/components/student/MedicalImageViewer';
+import type {
+  ExpertReviewCitation,
+  ExpertReviewItem,
+  NormalizedImageBoundingBox,
+  VisualQaReport,
+} from '@/lib/api/types';
+import { resolveApiAssetUrl } from '@/lib/api/client';
+import { putExpertReviewDraft } from '@/lib/api/expert-reviews';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
+import { withPageAnchor } from '@/components/student/VisualQaRichAnswer';
+import { splitLearningBullets } from '@/lib/utils/learning-text';
+import { getWorkflowStatusMeta, type WorkflowStatusTone } from '@/lib/visual-qa-workflow';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle,
+  Edit3,
+  Flag,
+  Library,
+  Link2,
+  RefreshCw,
+  Save,
+  XCircle,
+} from 'lucide-react';
+
+function formatExpertAskedAt(raw: string): string {
+  const d = new Date(raw);
+  if (!raw?.trim() || Number.isNaN(d.getTime())) return raw?.trim() || '—';
+  return d.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function workflowToneBadgeClass(tone: WorkflowStatusTone): string {
+  switch (tone) {
+    case 'success':
+      return 'border border-slate-300 bg-emerald-100 font-semibold text-emerald-950 shadow-sm';
+    case 'danger':
+      return 'border border-slate-300 bg-red-100 font-semibold text-red-950 shadow-sm';
+    case 'pending':
+      return 'border border-slate-300 bg-amber-100 font-semibold text-amber-950 shadow-sm';
+    default:
+      return 'border border-slate-300 bg-slate-100 font-semibold text-slate-900 shadow-sm';
+  }
+}
+
+function ExpertImagingOverlays({ item }: { item: ExpertReviewItem }) {
+  try {
+    if (item.customBoundingBox && isValidNormalizedBoundingBox(item.customBoundingBox)) {
+      return (
+        <RectangleAnnotationOverlay
+          closed={item.customBoundingBox}
+          draft={null}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    if (item.customPolygon && item.customPolygon.length >= 3) {
+      return (
+        <PolygonAnnotationOverlay
+          closed={item.customPolygon}
+          draft={[]}
+          label="STUDENT ROI"
+          className="drop-shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+        />
+      );
+    }
+    return (
+      <AnnotationOverlay
+        box={item.customCoordinates}
+        label="STUDENT ROI"
+        className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
+      />
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function reflectiveQuestionsToEditText(
+  report: VisualQaReport,
+  itemFallback: string | null | undefined,
+): string {
+  const r = report.reflectiveQuestions;
+  if (r != null) {
+    if (Array.isArray(r)) {
+      return r.map((x) => String(x).trim()).filter(Boolean).join('\n');
+    }
+    return String(r).trim();
+  }
+  return itemFallback?.trim() ?? '';
+}
+
+function isTerminal(status: string) {
+  return getWorkflowStatusMeta(status).terminal;
+}
+
+function EvidencePanel({
+  citations,
+  onFlag,
+  flagsDisabled,
+  queueSummary,
+}: {
+  citations: ExpertReviewCitation[];
+  onFlag: (chunkId: string) => void;
+  flagsDisabled?: boolean;
+  /** Hàng từ dashboard pending: thường không có chunk đầy đủ tới khi queue chính tải. */
+  queueSummary?: boolean;
+}) {
+  return (
+    <section className="scrollbar-hide [&::-webkit-scrollbar]:hidden rounded-xl border border-slate-300 bg-slate-50 p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-900">RAG evidence & citations</h4>
+          <p className="mt-1 text-sm font-medium text-slate-800">
+            Review the exact evidence chunks the model used before approving this answer.
+          </p>
+        </div>
+      </div>
+
+      {citations.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm font-medium text-slate-800 shadow-sm">
+          {queueSummary
+            ? 'No citations in this summary row. Refresh after the escalated queue loads, or open the session from the full review API.'
+            : 'No evidence chunks were returned for this case.'}
+        </div>
+      ) : (
+        <div className="scrollbar-hide max-h-[640px] space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
+          {citations.map((citation, index) => (
+            <article
+              key={citation.chunkId}
+              className={`rounded-xl border p-4 shadow-sm ${
+                citation.flagged
+                  ? 'border-red-400 bg-red-50'
+                  : 'border-slate-300 bg-white'
+              }`}
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  <span className="rounded-md bg-slate-800 px-2 py-1 font-medium text-white">
+                    Chunk {index + 1}
+                  </span>
+                  {citation.pageNumber != null ? (
+                    <span className="rounded-md bg-slate-800 px-2 py-1 font-medium text-white">
+                      Page {citation.pageNumber}
+                    </span>
+                  ) : null}
+                  {citation.flagged ? (
+                    <span className="rounded-md bg-red-700 px-2 py-1 font-medium text-white">Flagged</span>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={citation.flagged ? 'outline' : 'destructive'}
+                  disabled={citation.flagged || flagsDisabled}
+                  onClick={() => onFlag(citation.chunkId)}
+                  title={
+                    citation.flagged
+                      ? 'Issue already flagged'
+                      : flagsDisabled
+                        ? 'Refresh the queue to continue'
+                        : 'Flag this chunk'
+                  }
+                  aria-label={
+                    citation.flagged
+                      ? 'Issue already flagged'
+                      : flagsDisabled
+                        ? 'Refresh the queue to continue'
+                        : 'Flag this chunk'
+                  }
+                  className="!px-2.5"
+                >
+                  <Flag className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <blockquote className="rounded-lg border-y border-r border-slate-200 border-l-4 border-l-blue-600 bg-slate-100 px-4 py-3 text-sm font-medium leading-relaxed text-slate-900 shadow-inner">
+                {citation.sourceText}
+              </blockquote>
+
+              {citation.referenceUrl ? (
+                <a
+                  href={withPageAnchor(
+                    citation.referenceUrl.replace(/#.*$/, ''),
+                    citation.pageNumber != null && Number.isFinite(Number(citation.pageNumber))
+                      ? Math.floor(Number(citation.pageNumber))
+                      : undefined,
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-blue-950 shadow-sm underline decoration-blue-800 underline-offset-4 hover:bg-slate-50"
+                >
+                  <Link2 className="h-4 w-4 shrink-0" />
+                  Open PDF
+                  {citation.pageNumber != null ? ` (page ${citation.pageNumber})` : ''}
+                </a>
+              ) : (
+                <p className="mt-3 text-xs font-medium text-slate-800">No reference URL was supplied for this chunk.</p>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReportSections({ report }: { report: VisualQaReport }) {
+  const imagingLines = splitLearningBullets(report.keyImagingFindings ?? undefined);
+  return (
+    <div className="space-y-4">
+      {report.suggestedDiagnosis ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">
+            Structured diagnosis (AI)
+          </h4>
+          <div className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-4 shadow-sm">
+            <p className="text-base font-semibold leading-relaxed text-slate-900">{report.suggestedDiagnosis}</p>
+          </div>
+        </section>
+      ) : null}
+      {report.keyFindings.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">
+            Differential / key points (AI)
+          </h4>
+          <ul className="space-y-3 rounded-xl border border-slate-300 bg-white px-4 py-4 text-sm font-medium text-slate-900 shadow-sm">
+            {report.keyFindings.map((k, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
+                <span>{k}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {imagingLines.length > 0 ? (
+        <section>
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">Key imaging findings</h4>
+          <ul className="space-y-2 rounded-xl border border-slate-300 bg-blue-50/80 px-4 py-4 text-sm font-medium text-slate-900 shadow-sm">
+            {imagingLines.map((k, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-900" />
+                <span>{k}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {(() => {
+        const rq = reflectiveQuestionsToEditText(report, null);
+        return rq ? (
+          <section className="rounded-xl border border-slate-300 bg-amber-50 px-4 py-4 shadow-sm">
+            <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">
+              Reflective questions
+            </h4>
+            <div className="text-sm font-medium leading-relaxed text-slate-900">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ ...markdownExternalLinkComponents }}>
+                {rq}
+              </ReactMarkdown>
+            </div>
+          </section>
+        ) : null;
+      })()}
+    </div>
+  );
+}
+
+function ReportWorkbench({
+  report,
+  isEditing,
+  lockFields,
+  diag,
+  keyText,
+  keyImagingText,
+  reflectiveText,
+  onDiagChange,
+  onKeyTextChange,
+  onKeyImagingChange,
+  onReflectiveChange,
+  onBeginEdit,
+}: {
+  report: VisualQaReport;
+  isEditing: boolean;
+  lockFields?: boolean;
+  diag: string;
+  keyText: string;
+  keyImagingText: string;
+  reflectiveText: string;
+  onDiagChange: (value: string) => void;
+  onKeyTextChange: (value: string) => void;
+  onKeyImagingChange: (value: string) => void;
+  onReflectiveChange: (value: string) => void;
+  onBeginEdit: () => void;
+}) {
+  if (!isEditing) {
+    return <ReportSections report={report} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-slate-300 bg-slate-50 p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-900">Structured diagnosis (AI)</h4>
+          <button
+            type="button"
+            onClick={onBeginEdit}
+            disabled={lockFields}
+            className="text-xs font-semibold text-slate-800 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Editing
+          </button>
+        </div>
+        <textarea
+          value={diag}
+          onChange={(e) => onDiagChange(e.target.value)}
+          rows={4}
+          disabled={lockFields}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+      </section>
+
+      <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">
+          Differential / key points (AI)
+        </h4>
+        <textarea
+          value={keyText}
+          onChange={(e) => onKeyTextChange(e.target.value)}
+          rows={8}
+          disabled={lockFields}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder="One key finding per line"
+        />
+      </section>
+
+      <section className="rounded-xl border border-slate-300 bg-blue-50/90 p-4 shadow-sm">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">Key imaging findings (SEPS)</h4>
+        <p className="mb-2 text-xs font-medium text-slate-800">
+          Radiology-focused teaching points. Use line breaks or semicolons for separate bullets.
+        </p>
+        <textarea
+          value={keyImagingText}
+          onChange={(e) => onKeyImagingChange(e.target.value)}
+          rows={6}
+          disabled={lockFields}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder="e.g. Cortical thickening along the diaphysis..."
+        />
+      </section>
+
+      <section className="rounded-xl border border-slate-300 bg-amber-50 p-4 shadow-sm">
+        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-900">
+          Reflective questions (SEPS)
+        </h4>
+        <p className="mb-2 text-xs font-medium text-slate-800">
+          Prompts for learner self-assessment before you resolve this case.
+        </p>
+        <textarea
+          value={reflectiveText}
+          onChange={(e) => onReflectiveChange(e.target.value)}
+          rows={5}
+          disabled={lockFields}
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder="What features would you look for on the next view?"
+        />
+      </section>
+    </div>
+  );
+}
+
+export type ExpertReviewWorkspaceProps = {
+  item: ExpertReviewItem;
+  pairMismatch: boolean;
+  loading: boolean;
+  onReloadQueue: () => void;
+  isEditing: boolean;
+  diag: string;
+  keyText: string;
+  keyImagingEdit: string;
+  reflectiveEdit: string;
+  onDiagChange: (v: string) => void;
+  onKeyTextChange: (v: string) => void;
+  onKeyImagingChange: (v: string) => void;
+  onReflectiveChange: (v: string) => void;
+  replyDraft: string;
+  onReplyDraftChange: (v: string) => void;
+  roiClearEpoch?: number;
+  onOpenEdit: () => void;
+  onSaveDraft: (correctedRoiBoundingBox?: number[] | null) => void;
+  onApprove: (correctedRoiBoundingBox?: number[] | null) => void;
+  onPromote: () => void;
+  onRejectRequest: () => void;
+  canPromote: boolean;
+  saving: boolean;
+  onFlagCitation: (chunkId: string) => void;
+};
+
+export function ExpertReviewWorkspace({
+  item,
+  pairMismatch,
+  loading,
+  onReloadQueue,
+  isEditing,
+  diag,
+  keyText,
+  keyImagingEdit,
+  reflectiveEdit,
+  onDiagChange,
+  onKeyTextChange,
+  onKeyImagingChange,
+  onReflectiveChange,
+  replyDraft,
+  onReplyDraftChange,
+  roiClearEpoch,
+  onOpenEdit,
+  onSaveDraft,
+  onApprove,
+  onPromote,
+  onRejectRequest,
+  canPromote,
+  saving,
+  onFlagCitation,
+}: ExpertReviewWorkspaceProps) {
+  const [correctedRoi, setCorrectedRoi] = useState<NormalizedImageBoundingBox | null>(null);
+  useEffect(() => {
+    setCorrectedRoi(null);
+  }, [item.sessionId, roiClearEpoch]);
+
+  useEffect(() => {
+    if (pairMismatch) return;
+    const sid = item.sessionId;
+    const hasRoi = correctedRoi !== null && isValidNormalizedBoundingBox(correctedRoi);
+    const hasNote = replyDraft.trim().length > 0;
+    if (!hasNote && !hasRoi) return;
+    const timer = window.setTimeout(() => {
+      const roiPayload =
+        correctedRoi !== null && isValidNormalizedBoundingBox(correctedRoi)
+          ? [correctedRoi.x, correctedRoi.y, correctedRoi.width, correctedRoi.height]
+          : undefined;
+      void putExpertReviewDraft(sid, {
+        ...(hasNote ? { reviewNote: replyDraft } : {}),
+        ...(roiPayload ? { correctedRoiBoundingBox: roiPayload } : {}),
+      }).catch(() => {});
+    }, 1600);
+    return () => window.clearTimeout(timer);
+  }, [replyDraft, correctedRoi, item.sessionId, pairMismatch]);
+
+  const statusMeta = getWorkflowStatusMeta(item.status);
+  const catalogCase = item.caseId != null && String(item.caseId).trim() !== '';
+  const resolvedImageSrc = item.imageUrl ? resolveApiAssetUrl(item.imageUrl) : null;
+  const rectRoi =
+    item.customBoundingBox && isValidNormalizedBoundingBox(item.customBoundingBox)
+      ? item.customBoundingBox
+      : null;
+  const useLegacyExpertOverlays = !rectRoi;
+
+  return (
+    <div className="border-t border-border px-4 py-6 sm:px-6">
+      {pairMismatch ? (
+        <div className="mb-4 rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-sm shadow-sm">
+          <p className="font-semibold text-slate-950">Selected pair mismatch</p>
+          <p className="mt-1 font-medium leading-relaxed text-slate-900">
+            Review message IDs do not match the loaded session turns. Refresh the queue before saving, approving, or
+            promoting.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 border-amber-600/50 bg-white font-semibold text-slate-900 hover:bg-amber-100"
+            disabled={loading}
+            onClick={() => void onReloadQueue()}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Reload queue
+          </Button>
+        </div>
+      ) : null}
+
+      <Card className="mb-5 border-border/50 bg-white/90 shadow-sm backdrop-blur-md">
+        <CardHeader className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <CardDescription className="text-[11px] font-semibold uppercase tracking-[0.22em]">
+              Expert review request
+            </CardDescription>
+            <CardTitle className="text-xl">{item.studentName}</CardTitle>
+            {item.className?.trim() ? (
+              <p className="text-sm text-muted-foreground">{item.className.trim()}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className="border border-slate-300 bg-slate-100 font-semibold text-slate-900 shadow-sm"
+            >
+              {formatExpertAskedAt(item.askedAt)}
+            </Badge>
+            <Badge variant="outline" className={workflowToneBadgeClass(statusMeta.tone)}>
+              {statusMeta.label}
+            </Badge>
+            {item.queueSource === 'dashboard-summary' ? (
+              <Badge
+                variant="outline"
+                title="Loaded from dashboard pending list; imaging and citations may be incomplete until the escalated queue returns this session."
+                className="border border-slate-300 bg-amber-100 font-semibold text-amber-950 shadow-sm"
+              >
+                Summary row
+              </Badge>
+            ) : null}
+            {catalogCase ? (
+              <Badge variant="secondary">Case chat</Badge>
+            ) : (
+              <Badge variant="accent" className="border-0 bg-indigo-600 font-medium text-white">
+                Personal Upload
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_minmax(260px,0.88fr)] xl:gap-5">
+        <section className="space-y-4">
+          <Card className="overflow-hidden border-border/50 shadow-sm shadow-black/[0.04]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-muted-foreground">Medical imaging</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+            <div className="overflow-hidden rounded-xl border border-border/50 bg-slate-50 shadow-sm">
+              {resolvedImageSrc ? (
+                <MedicalImageViewer
+                  src={resolvedImageSrc}
+                  alt="Study radiograph"
+                  readOnly={pairMismatch}
+                  compact
+                  initialAnnotation={rectRoi}
+                  onAnnotationComplete={setCorrectedRoi}
+                  extraOverlay={
+                    useLegacyExpertOverlays ? <ExpertImagingOverlays item={item} /> : null
+                  }
+                />
+              ) : (
+                <div className="flex min-h-[280px] items-center justify-center bg-slate-50 px-4 text-sm text-muted-foreground">
+                  No image available for this request.
+                </div>
+              )}
+            </div>
+            </CardContent>
+          </Card>
+          {catalogCase &&
+          (Boolean(item.caseId?.trim()) ||
+            item.caseTitle?.trim() ||
+            item.caseDescription?.trim() ||
+            item.caseSuggestedDiagnosis?.trim() ||
+            item.caseKeyFindings?.trim()) ? (
+            <Card className="border-border/50 bg-muted/25 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Case snapshot (catalog)</CardTitle>
+                <CardDescription className="text-xs">Library metadata linked to this session</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+              {item.caseTitle?.trim() ? (
+                <p className="font-semibold leading-snug text-foreground">{item.caseTitle.trim()}</p>
+              ) : null}
+              {item.caseDescription?.trim() ? (
+                <p className="leading-relaxed text-foreground">{item.caseDescription.trim()}</p>
+              ) : null}
+              {item.caseSuggestedDiagnosis?.trim() ? (
+                <div className="mt-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Suggested diagnosis</p>
+                  <p className="mt-1 text-foreground">{item.caseSuggestedDiagnosis.trim()}</p>
+                </div>
+              ) : null}
+              {item.caseKeyFindings?.trim() ? (
+                <div className="mt-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Key findings</p>
+                  <p className="mt-1 text-foreground">{item.caseKeyFindings.trim()}</p>
+                </div>
+              ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+          {!catalogCase ? (
+            <Card className="border-dashed border-amber-500/35 bg-amber-500/[0.06] shadow-sm">
+              <CardContent className="flex flex-wrap items-center gap-3 py-5">
+                <Badge variant="accent" className="border-0 bg-indigo-600 font-medium text-white">
+                  Personal Upload
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  Catalog case metadata is hidden for student-uploaded studies.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </section>
+
+        <section className="flex min-h-0 flex-col gap-4">
+          <Card className="border-border/50 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Session</CardTitle>
+              <CardDescription className="text-xs">
+                {item.turns?.length
+                  ? `${item.turns.length} turn(s) in this escalation. Details below: clinical question, AI report, and evidence.`
+                  : 'Turn metadata was not loaded for this row.'}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </section>
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <div className="xl:sticky xl:top-6 xl:self-start">
+          <EvidencePanel
+            citations={item.citations ?? []}
+            onFlag={onFlagCitation}
+            flagsDisabled={pairMismatch}
+            queueSummary={item.queueSource === 'dashboard-summary'}
+          />
+        </div>
+        <div className="space-y-4">
+          <Card className="border-slate-300 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-900">Clinical question</CardTitle>
+            </CardHeader>
+            <CardContent className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium leading-relaxed text-slate-900 shadow-inner">
+              {item.question}
+            </CardContent>
+          </Card>
+          <ReportWorkbench
+            report={item.report}
+            isEditing={isEditing}
+            lockFields={pairMismatch}
+            diag={diag}
+            keyText={keyText}
+            keyImagingText={keyImagingEdit}
+            reflectiveText={reflectiveEdit}
+            onDiagChange={onDiagChange}
+            onKeyTextChange={onKeyTextChange}
+            onKeyImagingChange={onKeyImagingChange}
+            onReflectiveChange={onReflectiveChange}
+            onBeginEdit={onOpenEdit}
+          />
+        </div>
+      </div>
+
+      {!isTerminal(item.status) && (
+        <div className="sticky bottom-0 z-10 mt-8 space-y-3 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <textarea
+            value={replyDraft}
+            onChange={(e) => onReplyDraftChange(e.target.value)}
+            rows={3}
+            disabled={pairMismatch}
+            placeholder="Review note (saved with draft; optional for approve unless your workflow requires it)"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex max-w-[min(520px,92vw)] items-start gap-2 text-sm font-semibold text-slate-900">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
+              <span className="leading-snug">
+                Approved responses are pushed to the public student reference library.
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              {!isEditing ? (
+                <Button type="button" variant="outline" disabled={saving || pairMismatch} onClick={onOpenEdit}>
+                  <Edit3 className="h-4 w-4" />
+                  Edit diagnosis / findings
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="default"
+                disabled={saving || pairMismatch}
+                onClick={() =>
+                  onSaveDraft(
+                    correctedRoi && isValidNormalizedBoundingBox(correctedRoi)
+                      ? [correctedRoi.x, correctedRoi.y, correctedRoi.width, correctedRoi.height]
+                      : undefined,
+                  )
+                }
+              >
+                <Save className="h-4 w-4" />
+                Save draft
+              </Button>
+              <Button
+                type="button"
+                disabled={saving || pairMismatch}
+                className="border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() =>
+                  onApprove(
+                    correctedRoi && isValidNormalizedBoundingBox(correctedRoi)
+                      ? [correctedRoi.x, correctedRoi.y, correctedRoi.width, correctedRoi.height]
+                      : undefined,
+                  )
+                }
+              >
+                <CheckCircle className="h-4 w-4" />
+                Approve
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving || pairMismatch || !canPromote}
+                onClick={() => onPromote()}
+              >
+                <Library className="h-4 w-4" />
+                Add to library
+              </Button>
+              <Button type="button" variant="destructive" disabled={saving || pairMismatch} onClick={onRejectRequest}>
+                <XCircle className="h-4 w-4" />
+                Reject
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import useSWR from 'swr';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/Header';
-import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
+import { PageLoadingSkeleton } from '@/components/shared/DashboardSkeletons';
 import QuickStatsCard from '@/components/expert/QuickStatsCard';
 import ReviewCard from '@/components/expert/ReviewCard';
 import CaseManagementCard from '@/components/expert/CaseManagementCard';
@@ -20,29 +20,23 @@ import {
   Filter,
 } from 'lucide-react';
 import {
+  EXPERT_DASHBOARD_QUERY_KEY,
   fetchExpertDashboardBundle,
-  type ExpertDashboardBundle,
 } from '@/lib/api/expert-dashboard';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import { EmptyState } from '@/components/shared/EmptyState';
-
-const EXPERT_DASHBOARD_KEY = 'expert-dashboard';
 
 export default function ExpertDashboardPage() {
   const router = useRouter();
   const toast = useToast();
   const toastedErrorRef = useRef<string | null>(null);
 
-  const { data, error, isLoading } = useSWR<ExpertDashboardBundle>(
-    EXPERT_DASHBOARD_KEY,
-    fetchExpertDashboardBundle,
-    {
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      dedupingInterval: 2000,
-    },
-  );
+  const { data, error, isPending } = useQuery({
+    queryKey: EXPERT_DASHBOARD_QUERY_KEY,
+    queryFn: fetchExpertDashboardBundle,
+  });
 
   const errorMessage = error
     ? error instanceof Error
@@ -57,7 +51,6 @@ export default function ExpertDashboardPage() {
     }
     if (toastedErrorRef.current === errorMessage) return;
     toastedErrorRef.current = errorMessage;
-    console.error('Expert dashboard fetch failed:', errorMessage);
     toast.error(errorMessage);
   }, [errorMessage, toast]);
 
@@ -116,25 +109,169 @@ export default function ExpertDashboardPage() {
       <Header title="Expert workbench" subtitle="Reviews, case library, and clinical quality" />
 
       <div className="mx-auto max-w-[1200px] p-6">
-        {isLoading && !data ? (
+        {isPending && !data ? (
           <PageLoadingSkeleton>
             <div className="space-y-6" aria-hidden>
-              {/* Mirrors `QuickStatsCard`: icon row + value + title */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                  <div
+                    key={i}
+                    className="min-h-[132px] rounded-2xl border border-border bg-card p-5 shadow-sm"
+                  >
                     <div className="mb-3 flex items-start justify-between">
-                      <SkeletonBlock className="h-12 w-12 rounded-lg" />
-                      <SkeletonBlock className="h-4 w-14" />
+                      <Skeleton className="h-12 w-12 shrink-0 rounded-lg" />
+                      <Skeleton className="h-4 w-14 shrink-0" />
                     </div>
-                    <SkeletonBlock className="mb-1 h-9 w-20" />
-                    <SkeletonBlock className="h-4 w-28" />
+                    <Skeleton className="mb-1 h-9 w-24 max-w-[55%]" />
+                    <Skeleton className="h-4 w-32 max-w-[70%]" />
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <SkeletonBlock className="min-h-[280px] rounded-2xl" />
-                <SkeletonBlock className="min-h-[280px] rounded-2xl" />
+
+              <div className="mb-6 flex flex-wrap gap-3">
+                <Skeleton className="h-10 w-[11.5rem] rounded-lg" />
+                <Skeleton className="h-10 w-36 rounded-lg" />
+              </div>
+
+              <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="space-y-6 lg:col-span-2">
+                  <div>
+                    <div className="mb-4 flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-7 w-56 max-w-full" />
+                        <Skeleton className="h-4 w-72 max-w-full" />
+                      </div>
+                      <Skeleton className="h-4 w-16 shrink-0" />
+                    </div>
+                    <div className="space-y-4">
+                      {[0, 1].map((i) => (
+                        <div
+                          key={i}
+                          className="min-h-[304px] overflow-hidden rounded-2xl border border-border bg-card shadow-md"
+                        >
+                          <div className="space-y-3 p-5 pb-3">
+                            <div className="flex flex-wrap gap-2">
+                              <Skeleton className="h-6 w-24 rounded-full" />
+                              <Skeleton className="h-6 w-20 rounded-full" />
+                              <Skeleton className="h-6 w-28 rounded-full" />
+                            </div>
+                            <Skeleton className="h-5 w-full max-w-lg" />
+                          </div>
+                          <div className="space-y-4 p-5 pb-4 pt-0">
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <Skeleton className="h-4 w-48 max-w-full" />
+                                <Skeleton className="h-3 w-28" />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-40" />
+                              <Skeleton className="h-4 w-full" />
+                              <Skeleton className="h-4 w-[92%]" />
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-muted/35 p-3">
+                              <Skeleton className="h-3 w-36" />
+                              <Skeleton className="mt-2 h-4 w-full" />
+                              <Skeleton className="mt-1 h-4 w-[88%]" />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 border-t border-border/60 bg-muted/20 p-5 pt-4">
+                            <Skeleton className="h-10 min-w-[7rem] flex-1 rounded-md sm:flex-none sm:min-w-[8rem]" />
+                            <Skeleton className="h-10 w-10 rounded-md" />
+                            <Skeleton className="h-10 w-10 rounded-md" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-4 flex items-center justify-between gap-4">
+                      <Skeleton className="h-7 w-48 max-w-[70%]" />
+                      <Skeleton className="h-4 w-28 shrink-0" />
+                    </div>
+                    <Skeleton className="mb-4 flex min-h-[3.25rem] flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1">
+                      {[0, 1, 2, 3].map((j) => (
+                        <Skeleton key={j} className="h-[2.625rem] min-w-[calc(50%-4px)] flex-1 rounded-lg sm:min-w-0" />
+                      ))}
+                    </Skeleton>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {[0, 1].map((i) => (
+                        <div
+                          key={i}
+                          className="min-h-[340px] rounded-2xl border border-border bg-card p-5 shadow-sm"
+                        >
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <Skeleton className="h-7 w-24 rounded-full" />
+                            <Skeleton className="h-7 w-28 rounded-full" />
+                          </div>
+                          <Skeleton className="mb-3 h-12 w-full max-w-md" />
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            <Skeleton className="h-7 w-24 rounded-full" />
+                            <Skeleton className="h-7 w-32 rounded-full" />
+                          </div>
+                          <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3">
+                            {[0, 1, 2, 3].map((k) => (
+                              <div key={k} className="space-y-1">
+                                <Skeleton className="h-3 w-14" />
+                                <Skeleton className="h-4 w-full" />
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Skeleton className="h-10 min-w-[6rem] flex-1 rounded-lg" />
+                            <Skeleton className="h-10 min-w-[6rem] rounded-lg" />
+                            <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <Skeleton className="mb-4 h-7 w-44" />
+                    <div className="space-y-3">
+                      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                        <div key={i}>
+                          <div className="mb-1 flex items-center justify-between">
+                            <Skeleton className="h-4 w-8" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                          <Skeleton className="mb-1 h-2 w-full rounded-full" />
+                          <Skeleton className="h-1.5 w-full rounded-full" />
+                        </div>
+                      ))}
+                    </div>
+                    <Skeleton className="mt-3 h-12 w-full rounded-lg" />
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <Skeleton className="mb-4 h-7 w-48" />
+                    <div className="space-y-4">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-8 w-16" />
+                          </div>
+                          <Skeleton className="h-12 w-12 shrink-0 rounded-lg" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-xl border border-border bg-card p-4 text-center">
+                    <Skeleton className="mx-auto mb-2 h-12 w-12 rounded-lg" />
+                    <Skeleton className="mx-auto mb-2 h-8 w-14" />
+                    <Skeleton className="mx-auto h-4 w-28" />
+                  </div>
+                ))}
               </div>
             </div>
           </PageLoadingSkeleton>
@@ -199,6 +336,7 @@ export default function ExpertDashboardPage() {
                           id={review.id}
                           studentName={review.studentName}
                           caseTitle={review.caseTitle}
+                          caseId={review.caseId}
                           question={review.questionSnippet}
                           aiAnswer={review.aiAnswerSnippet}
                           submittedAt={formatSubmittedAt(review.submittedAt)}
