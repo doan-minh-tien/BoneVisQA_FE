@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { StudentCatalogSkeleton } from '@/components/shared/DashboardSkeletons';
@@ -13,64 +14,50 @@ import { useToast } from '@/components/ui/toast';
 export function CatalogPageClient() {
   const toast = useToast();
   const searchParams = useSearchParams();
-  const [items, setItems] = useState<StudentCaseCatalogItem[]>([]);
-  const [allItems, setAllItems] = useState<StudentCaseCatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [location, setLocation] = useState('');
   const [lesionType, setLesionType] = useState('');
   const [difficulty, setDifficulty] = useState('');
-  const [locationOptions, setLocationOptions] = useState<string[]>([]);
-  const [lesionOptions, setLesionOptions] = useState<string[]>([]);
-  const [difficultyOptions, setDifficultyOptions] = useState<string[]>([]);
   const query = searchParams.get('q')?.trim().toLowerCase() ?? '';
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await fetchCaseCatalog({ location, lesionType, difficulty });
-        if (cancelled) return;
-        setItems(data);
+  const filtersQuery = useQuery({
+    queryKey: ['student', 'catalog-filters'],
+    queryFn: fetchCaseCatalogFilters,
+  });
 
-        if (!location && !lesionType && !difficulty) {
-          setAllItems(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load case catalog.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+  const catalogQuery = useQuery({
+    queryKey: ['student', 'catalog', location, lesionType, difficulty],
+    queryFn: () => fetchCaseCatalog({ location, lesionType, difficulty }),
+    placeholderData: keepPreviousData,
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [difficulty, lesionType, location, toast]);
+  const items = useMemo<StudentCaseCatalogItem[]>(
+    () => catalogQuery.data ?? [],
+    [catalogQuery.data],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchCaseCatalogFilters();
-        if (cancelled) return;
-        setLocationOptions(data.locations);
-        setLesionOptions(data.lesionTypes);
-        setDifficultyOptions(data.difficulties.map((d) => d.toLowerCase()));
-      } catch {
-        if (cancelled) return;
-        // Fallback when filter endpoint is unavailable.
-        setLocationOptions(Array.from(new Set(allItems.map((item) => item.location).filter(Boolean))).sort());
-        setLesionOptions(Array.from(new Set(allItems.map((item) => item.lesionType).filter(Boolean))).sort());
-        setDifficultyOptions(Array.from(new Set(allItems.map((item) => item.difficulty).filter(Boolean))).sort());
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [allItems]);
+    const err = catalogQuery.error;
+    if (!err) return;
+    toast.error(err instanceof Error ? err.message : 'Failed to load case catalog.');
+  }, [catalogQuery.error, toast]);
+
+  const locationOptions = useMemo(() => {
+    const fromApi = filtersQuery.data?.locations;
+    if (fromApi?.length) return fromApi;
+    return Array.from(new Set(items.map((item) => item.location).filter(Boolean))).sort();
+  }, [filtersQuery.data?.locations, items]);
+
+  const lesionOptions = useMemo(() => {
+    const fromApi = filtersQuery.data?.lesionTypes;
+    if (fromApi?.length) return fromApi;
+    return Array.from(new Set(items.map((item) => item.lesionType).filter(Boolean))).sort();
+  }, [filtersQuery.data?.lesionTypes, items]);
+
+  const difficultyOptions = useMemo(() => {
+    const fromApi = filtersQuery.data?.difficulties;
+    if (fromApi?.length) return fromApi.map((d) => d.toLowerCase());
+    return Array.from(new Set(items.map((item) => item.difficulty).filter(Boolean))).sort();
+  }, [filtersQuery.data?.difficulties, items]);
 
   const visibleItems = useMemo(() => {
     if (!query) return items;
@@ -79,6 +66,8 @@ export function CatalogPageClient() {
       return haystack.includes(query);
     });
   }, [items, query]);
+
+  const catalogLoading = catalogQuery.isPending && !catalogQuery.data;
 
   return (
     <div className="min-h-screen">
@@ -100,7 +89,7 @@ export function CatalogPageClient() {
           onDifficultyChange={setDifficulty}
         />
 
-        {loading ? (
+        {catalogLoading ? (
           <StudentCatalogSkeleton />
         ) : visibleItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
