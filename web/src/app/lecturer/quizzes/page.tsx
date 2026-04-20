@@ -626,6 +626,15 @@ export default function QuizListPage() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="line-clamp-2 break-words text-sm font-bold leading-snug text-card-foreground">{quiz.quizName || 'Untitled quiz'}</p>
+                                {(quiz as EnrichedQuiz).creatorName && (
+                                  <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-2.5 sm:py-1 sm:text-[10px] ${
+                                    (quiz as EnrichedQuiz).creatorType === 'Expert' 
+                                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' 
+                                      : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                  }`}>
+                                    {(quiz as EnrichedQuiz).creatorType === 'Expert' ? 'Expert: ' : ''}{(quiz as EnrichedQuiz).creatorName}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </td>

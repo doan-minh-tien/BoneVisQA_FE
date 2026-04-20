@@ -110,6 +110,8 @@ export interface MyQuizWithClasses {
   isAiGenerated: boolean;
   isFromExpertLibrary: boolean;
   difficulty: string | null;
+  creatorName?: string | null;
+  creatorType?: string | null;
   classes: MyQuizClassInfo[];
 }
 
