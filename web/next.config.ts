@@ -12,14 +12,26 @@ function getSupabaseHostnameFromEnv(): string | null {
 
 const supabaseHostname = getSupabaseHostnameFromEnv();
 
+/**
+ * Google Identity Services uses postMessage across origins. A strict COOP breaks the flow;
+ * relax COOP only on auth routes (not site-wide).
+ * @see https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid
+ */
+const authPagesCoopHeaders = [
+  {
+    key: "Cross-Origin-Opener-Policy",
+    value: "unsafe-none",
+  },
+] as const;
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: supabaseHostname
       ? [
           {
-            protocol: 'https',
+            protocol: "https",
             hostname: supabaseHostname,
-            pathname: '/**',
+            pathname: "/**",
           },
         ]
       : [],
@@ -36,22 +48,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/auth/sign-in",
-        headers: [
-          {
-            key: "Cross-Origin-Opener-Policy",
-            value: "same-origin-allow-popups",
-            // value: "unsafe-none",
-      //     },
-      //   ],
-      // },
-      // {
-      //   source: "/auth/sign-up",
-      //   headers: [
-      //     {
-      //       key: "Cross-Origin-Opener-Policy",
-      //       value: "unsafe-none",
-          },
-        ],
+        headers: [...authPagesCoopHeaders],
+      },
+      {
+        source: "/auth/sign-up",
+        headers: [...authPagesCoopHeaders],
       },
     ];
   },

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AppSidebar } from '@/components/AppSidebar';
+import { SignalRProvider } from '@/hooks/useSignalR';
 import { cn } from '@/lib/utils';
 import { SessionGateSkeleton } from '@/components/shared/DashboardSkeletons';
 
@@ -100,27 +101,29 @@ export function AppShell({
   const shellMainScrollLocked = mounted && (pathname?.startsWith('/student/qa/image') ?? false);
 
   return (
-    <div className="flex min-h-0 h-screen w-full overflow-hidden bg-background text-text-main">
-      <AppSidebar
-        role={role}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
-      />
-      <div
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
-        style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
-      >
-        <main
-          className={cn(
-            'min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500',
-            shellMainScrollLocked
-              ? 'overflow-hidden'
-              : 'overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50',
-          )}
+    <SignalRProvider>
+      <div className="flex min-h-0 h-screen w-full overflow-hidden bg-background text-text-main">
+        <AppSidebar
+          role={role}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+        />
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background py-6 pr-6 transition-[padding] duration-200 ease-out"
+          style={{ paddingLeft: `${sidebarPx + gutterPx}px` }}
         >
-          {children}
-        </main>
+          <main
+            className={cn(
+              'min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500',
+              shellMainScrollLocked
+                ? 'overflow-hidden'
+                : 'overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50',
+            )}
+          >
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </SignalRProvider>
   );
 }

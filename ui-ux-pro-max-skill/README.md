@@ -477,7 +477,7 @@ git push -u origin feat/your-feature
 gh pr create
 ```
 
-See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+Chi tiết kỹ thuật CLI và dữ liệu CSV nằm trong các mục trên (scripts `search.py`, thư mục `src/ui-ux-pro-max/`).
 
 ## Star History
 
