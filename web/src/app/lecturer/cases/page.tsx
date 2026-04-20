@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
+import { LecturerCasesPageSkeleton } from '@/components/shared/DashboardSkeletons';
 import AssignCasesDialog from '@/components/lecturer/cases/AssignCasesDialog';
 import CasesTable from '@/components/lecturer/cases/CasesTable';
 import {
@@ -9,36 +11,30 @@ import {
   Search,
   CheckCircle,
   XCircle,
-  Loader2,
   Eye,
-  ShieldCheck,
-  ShieldOff,
   Plus,
 } from 'lucide-react';
 import {
   getLecturerCases,
   getLecturerClasses,
-  approveCase,
-  assignCasesToClass,
 } from '@/lib/api/lecturer';
-import type { CaseDto, ClassItem } from '@/lib/api/types';
+import { useToast } from '@/components/ui/toast';
+import type { CaseDto, ClassItem, ClassCaseAssignmentDto } from '@/lib/api/types';
 
 type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
 
 export default function LecturerCasesPage() {
+  const router = useRouter();
+  const toast = useToast();
   const [cases, setCases] = useState<CaseDto[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   // Assign dialog
   const [showAssign, setShowAssign] = useState(false);
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
-  const [assignClassId, setAssignClassId] = useState('');
-  const [assigning, setAssigning] = useState(false);
-  const [assignError, setAssignError] = useState('');
 
   useEffect(() => {
     async function fetchData() {
@@ -59,51 +55,20 @@ export default function LecturerCasesPage() {
     fetchData();
   }, []);
 
-  const handleToggleApprove = async (c: CaseDto) => {
-    setTogglingIds((prev) => new Set(prev).add(c.id));
-    try {
-      await approveCase(c.id, !c.isApproved);
-      setCases((prev) =>
-        prev.map((item) => (item.id === c.id ? { ...item, isApproved: !item.isApproved } : item)),
-      );
-    } catch {
-      // silently fail
-    } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(c.id);
-        return next;
-      });
-    }
-  };
-
-  const handleAssign = async () => {
-    if (!assignClassId || selectedCases.size === 0) {
-      setAssignError('Please select a class and at least one case.');
-      return;
-    }
-    setAssigning(true);
-    setAssignError('');
-    try {
-      await assignCasesToClass(assignClassId, {
-        caseIds: Array.from(selectedCases),
-        isMandatory: true,
-      });
-      setShowAssign(false);
-      setSelectedCases(new Set());
-      setAssignClassId('');
-    } catch {
-      setAssignError('Failed to assign cases. Please try again.');
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  const handleAssignSuccess = () => {
+  const handleAssignSuccess = (assignments: ClassCaseAssignmentDto[]) => {
     setShowAssign(false);
     setSelectedCases(new Set());
-    setAssignClassId('');
-    setAssignError('');
+
+    // Save composite keys (classId_caseId) for highlight on Assignments page
+    const newKeys = assignments.map(a => `${a.classId}_${a.caseId}`);
+    sessionStorage.setItem('newAssignmentIds', JSON.stringify(newKeys));
+
+    toast.success('Cases assigned successfully!', {
+      action: {
+        label: 'View',
+        onClick: () => router.push(`/lecturer/assignments?new=${newKeys.join(',')}`)
+      }
+    });
   };
 
   const toggleCaseSelection = (id: string) => {
@@ -137,10 +102,10 @@ export default function LecturerCasesPage() {
     <div className="min-h-screen">
       <Header title="Cases" subtitle={`${cases.length} cases total`} />
 
-      <div className="p-6 max-w-[1600px] mx-auto">
+      <div className="mx-auto max-w-[1200px] p-6">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
             <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
               <FolderOpen className="w-6 h-6 text-primary" />
             </div>
@@ -149,7 +114,7 @@ export default function LecturerCasesPage() {
               <p className="text-sm text-muted-foreground">Total Cases</p>
             </div>
           </div>
-          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
             <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
               <CheckCircle className="w-6 h-6 text-success" />
             </div>
@@ -158,7 +123,7 @@ export default function LecturerCasesPage() {
               <p className="text-sm text-muted-foreground">Approved</p>
             </div>
           </div>
-          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
             <div className="w-12 h-12 rounded-xl bg-warning/10 flex items-center justify-center">
               <XCircle className="w-6 h-6 text-warning" />
             </div>
@@ -167,7 +132,7 @@ export default function LecturerCasesPage() {
               <p className="text-sm text-muted-foreground">Unapproved</p>
             </div>
           </div>
-          <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-4">
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md">
             <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center">
               <Eye className="w-6 h-6 text-accent" />
             </div>
@@ -179,16 +144,16 @@ export default function LecturerCasesPage() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-muted/40 p-1">
             {(['all', 'approved', 'unapproved', 'active', 'inactive'] as StatusFilter[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setStatusFilter(f)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors cursor-pointer ${
+                className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition-colors cursor-pointer ${
                   statusFilter === f
-                    ? 'bg-primary text-white'
-                    : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {f}
@@ -204,13 +169,13 @@ export default function LecturerCasesPage() {
                 placeholder="Search cases..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-64"
+                className="w-64 rounded-xl border border-border bg-card py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
             {selectedCases.size > 0 && (
               <button
                 onClick={() => setShowAssign(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium"
+                className="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-all duration-150 hover:bg-primary/90 active:scale-[0.98]"
               >
                 <Plus className="w-4 h-4" />
                 Assign to Class ({selectedCases.size})
@@ -221,12 +186,9 @@ export default function LecturerCasesPage() {
 
         {/* Content */}
         {loading ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border">
-            <Loader2 className="w-8 h-8 text-primary mx-auto mb-3 animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading cases...</p>
-          </div>
+          <LecturerCasesPageSkeleton />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border">
+          <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-card-foreground mb-1">No cases found</h3>
             <p className="text-sm text-muted-foreground">
@@ -239,8 +201,6 @@ export default function LecturerCasesPage() {
               selectedCases={selectedCases}
               onSelectAll={setSelectedCases}
               onSelect={toggleCaseSelection}
-              onToggleApprove={handleToggleApprove}
-              togglingIds={togglingIds}
             />
         )}
       </div>

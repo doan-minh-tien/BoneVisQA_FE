@@ -28,20 +28,38 @@ import {
   Stethoscope,
   Loader2,
   RotateCcw,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import {
   assignCasesToClass,
   assignQuizToClass,
   getLecturerCases,
+  getQuizDetailsForAssignment,
   isValidGuidString,
 } from '@/lib/api/lecturer';
 import { getLecturerQuizzes } from '@/lib/api/lecturer-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-triage';
-import type { ClassItem } from '@/lib/api/types';
+import type { ClassItem, QuizWithQuestionsDto, QuizQuestionDto } from '@/lib/api/types';
+
+// ========== HELPERS ==========
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
 
 type CasePickItem = { id: string; title: string };
-type QuizPickItem = { quizId: string; label: string };
+type QuizPickItem = {
+  quizId: string;
+  label: string;
+  timeLimit?: number;
+  passingScore?: number;
+};
 
 function normalizeCaseRow(row: unknown): CasePickItem | null {
   const r = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
@@ -67,22 +85,6 @@ const assignmentTypes = [
     color: 'text-yellow-500',
     bg: 'bg-yellow-500/10',
     border: 'border-yellow-500',
-  },
-  {
-    value: 'Lab Report',
-    description: 'Students submit lab reports as files',
-    icon: ClipboardList,
-    color: 'text-purple-500',
-    bg: 'bg-purple-500/10',
-    border: 'border-purple-500',
-  },
-  {
-    value: 'Practical Exam',
-    description: 'Hands-on examination with file submission',
-    icon: Stethoscope,
-    color: 'text-green-500',
-    bg: 'bg-green-500/10',
-    border: 'border-green-500',
   },
 ];
 
@@ -190,15 +192,20 @@ function CreateAssignmentPageContent({
           .filter((c): c is CasePickItem => Boolean(c))
           .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 
-        const quizMap = new Map<string, string>();
+        const quizMap = new Map<string, { id: string; label: string; timeLimit?: number; passingScore?: number }>();
         for (const row of Array.isArray(quizzesRaw) ? quizzesRaw : []) {
           const qid = String(row.quizId ?? '').trim();
           if (!qid || quizMap.has(qid)) continue;
           const name = [row.quizName, row.topic].filter(Boolean).join(' · ');
-          quizMap.set(qid, name || `${qid.slice(0, 8)}…`);
+          quizMap.set(qid, {
+            id: qid,
+            label: name || `${qid.slice(0, 8)}…`,
+            timeLimit: row.timeLimit != null ? Number(row.timeLimit) : undefined,
+            passingScore: row.passingScore != null ? Number(row.passingScore) : undefined,
+          });
         }
         const quizList = Array.from(quizMap.entries())
-          .map(([quizId, label]) => ({ quizId, label }))
+          .map(([quizId, data]) => ({ quizId, label: data.label, timeLimit: data.timeLimit, passingScore: data.passingScore }))
           .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
         setAssignmentCases(casesList);
@@ -316,7 +323,7 @@ function CreateAssignmentPageContent({
           isQuiz
             ? assignQuizToClass(classId, {
                 quizId: formData.quizId.trim(),
-                closeTime: formData.dueDate || undefined,
+                closeTime: formData.dueDate ? localDatetimeLocalToIso(formData.dueDate) : undefined,
                 timeLimitMinutes: formData.timeLimitMinutes || undefined,
                 passingScore: formData.passingScore || undefined,
                 shuffleQuestions: formData.shuffleQuestions,
@@ -324,7 +331,7 @@ function CreateAssignmentPageContent({
               })
             : assignCasesToClass(classId, {
                 caseIds: validCaseGuids,
-                dueDate: formData.dueDate || undefined,
+                dueDate: formData.dueDate ? localDatetimeLocalToIso(formData.dueDate) : undefined,
                 isMandatory: formData.isMandatory,
               }),
         ),
@@ -491,7 +498,7 @@ function CreateAssignmentPageContent({
                             {cls.className}
                             <button
                               onClick={() => toggleClass(classId)}
-                              className="hover:bg-white/20 rounded-full p-0.5 cursor-pointer"
+                            className="hover:bg-primary-foreground/20 rounded-full p-0.5 cursor-pointer"
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -599,7 +606,18 @@ function CreateAssignmentPageContent({
                       ) : (
                         <select
                           value={formData.quizId}
-                          onChange={(e) => setFormData({ ...formData, quizId: e.target.value })}
+                          onChange={(e) => {
+                            setFormData((prev) => {
+                              const selectedQuiz = assignmentQuizzes.find(q => q.quizId === e.target.value);
+                              return {
+                                ...prev,
+                                quizId: e.target.value,
+                                // Auto-fill timeLimit and passingScore from quiz
+                                timeLimitMinutes: selectedQuiz?.timeLimit ?? prev.timeLimitMinutes,
+                                passingScore: selectedQuiz?.passingScore ?? prev.passingScore,
+                              };
+                            });
+                          }}
                           className="w-full px-4 py-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
                         >
                           <option value="">Select a quiz…</option>
@@ -732,6 +750,11 @@ function CreateAssignmentPageContent({
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">min</span>
                         </div>
+                        {formData.quizId && assignmentQuizzes.find(q => q.quizId === formData.quizId)?.timeLimit && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Suggested: {assignmentQuizzes.find(q => q.quizId === formData.quizId)?.timeLimit} min from quiz
+                          </p>
+                        )}
                       </div>
                     )}
                     {isQuiz && (
@@ -748,6 +771,11 @@ function CreateAssignmentPageContent({
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">%</span>
                         </div>
+                        {formData.quizId && assignmentQuizzes.find(q => q.quizId === formData.quizId)?.passingScore && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Suggested: {assignmentQuizzes.find(q => q.quizId === formData.quizId)?.passingScore}% from quiz
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -896,7 +924,7 @@ function CreateAssignmentPageContent({
                     )}
 
                     {/* Config grid */}
-                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
+                    <div className={`grid grid-cols-2 ${isQuiz ? 'md:grid-cols-3' : 'md:grid-cols-3'} gap-3`}>
                       <ReviewItem
                         label="Due Date"
                         value={formData.dueDate ? new Date(formData.dueDate).toLocaleString() : '—'}
@@ -928,6 +956,27 @@ function CreateAssignmentPageContent({
                           label="Passing Score"
                           value={`${formData.passingScore}%`}
                           icon={<Star className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Shuffle Questions"
+                          value={formData.shuffleQuestions ? 'Yes' : 'No'}
+                          icon={<Shuffle className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Show Results"
+                          value={formData.showResults ? 'Yes' : 'No'}
+                          icon={<BarChart2 className="w-3.5 h-3.5" />}
+                        />
+                      )}
+                      {isQuiz && (
+                        <ReviewItem
+                          label="Allow Retake"
+                          value={formData.allowRetake ? 'Yes' : 'No'}
+                          icon={<RotateCcw className="w-3.5 h-3.5" />}
                         />
                       )}
                     </div>
@@ -1020,8 +1069,9 @@ function CreateAssignmentPageContent({
                       isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-success/90 cursor-pointer'
                     }`}
                   >
-                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    {isSubmitting ? 'Publishing...' : 'Publish Assignment'}
+                    <span className={isSubmitting ? 'hidden' : ''}><Send className="w-4 h-4" /></span>
+                    <span className={isSubmitting ? '' : 'hidden'}><Loader2 className="w-4 h-4 animate-spin" /></span>
+                    <span>{isSubmitting ? 'Publishing…' : 'Publish Assignment'}</span>
                   </button>
                 )}
               </div>
@@ -1079,10 +1129,24 @@ function CreateAssignmentPageContent({
                       </div>
                     )}
                     {isQuiz ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Star className="w-3.5 h-3.5" />
-                        Quiz questions from selected quiz
-                      </div>
+                      <>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Star className="w-3.5 h-3.5" />
+                          Quiz questions from selected quiz
+                        </div>
+                        {formData.allowRetake && (
+                          <div className="flex items-center gap-2 text-xs text-accent">
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Retakes allowed
+                          </div>
+                        )}
+                        {formData.shuffleQuestions && (
+                          <div className="flex items-center gap-2 text-xs text-accent">
+                            <Shuffle className="w-3.5 h-3.5" />
+                            Questions shuffled
+                          </div>
+                        )}
+                      </>
                     ) : (
                       formData.maxScore > 0 && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1156,7 +1220,7 @@ function ToggleRow({
         }`}
       >
         <div
-          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+          className={`absolute top-0.5 w-5 h-5 bg-card rounded-full shadow transition-transform duration-200 ${
             value ? 'translate-x-5' : 'translate-x-0.5'
           }`}
         />

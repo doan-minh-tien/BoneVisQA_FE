@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import type { CaseDto } from '@/lib/api/types';
 
 const difficultyColors: Record<string, string> = {
@@ -16,8 +16,6 @@ interface CasesTableProps {
   selectedCases: Set<string>;
   onSelectAll: (allIds: Set<string>) => void;
   onSelect: (id: string) => void;
-  onToggleApprove: (c: CaseDto) => void;
-  togglingIds: Set<string>;
 }
 
 export default function CasesTable({
@@ -25,8 +23,6 @@ export default function CasesTable({
   selectedCases,
   onSelectAll,
   onSelect,
-  onToggleApprove,
-  togglingIds,
 }: CasesTableProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -38,7 +34,7 @@ export default function CasesTable({
   };
 
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <table className="w-full">
         <thead>
           <tr className="border-b border-border bg-muted/30">
@@ -56,37 +52,32 @@ export default function CasesTable({
                 className="w-4 h-4 accent-primary cursor-pointer"
               />
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               ID
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Title
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Category
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Difficulty
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Status
             </th>
-            <th className="text-center text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
               Approved
             </th>
-            <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">
+            <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
               Created
-            </th>
-            <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">
-              Actions
             </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {cases.map((c) => {
-            const isToggling = togglingIds.has(c.id);
-            return (
-              <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+          {cases.map((c) => (
+              <tr key={c.id} className="transition-colors hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <input
                     type="checkbox"
@@ -125,7 +116,7 @@ export default function CasesTable({
                 </td>
                 <td className="px-5 py-3">
                   {c.categoryName ? (
-                    <span className="px-2.5 py-1 bg-primary/10 text-primary text-xs rounded font-medium">
+                    <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                       {c.categoryName}
                     </span>
                   ) : (
@@ -135,7 +126,7 @@ export default function CasesTable({
                 <td className="px-5 py-3 text-center">
                   {c.difficulty ? (
                     <span
-                      className={`px-2.5 py-1 text-xs rounded font-medium ${
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                         difficultyColors[c.difficulty.toLowerCase()] ?? 'bg-muted text-muted-foreground'
                       }`}
                     >
@@ -160,50 +151,30 @@ export default function CasesTable({
                   </span>
                 </td>
                 <td className="px-5 py-3 text-center">
-                  {c.isApproved ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Yes
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-warning">
-                      <ShieldOff className="w-3.5 h-3.5" />
-                      No
-                    </span>
-                  )}
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium ${
+                      c.isApproved ? 'text-success' : 'text-warning'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        c.isApproved ? 'bg-success' : 'bg-warning'
+                      }`}
+                    />
+                    {c.isApproved ? 'Yes' : 'No'}
+                  </span>
                 </td>
                 <td className="px-5 py-3 text-sm text-muted-foreground">
                   {c.createdAt
-                    ? new Date(c.createdAt).toLocaleDateString('vi-VN', {
+                    ? new Date(c.createdAt).toLocaleDateString('en-GB', {
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',
                       })
                     : '—'}
                 </td>
-                <td className="px-5 py-3 text-right">
-                  <button
-                    onClick={() => onToggleApprove(c)}
-                    disabled={isToggling}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                      c.isApproved
-                        ? 'text-warning hover:bg-warning/10'
-                        : 'text-success hover:bg-success/10'
-                    }`}
-                  >
-                    {isToggling ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : c.isApproved ? (
-                      <ShieldOff className="w-3.5 h-3.5" />
-                    ) : (
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                    )}
-                    {isToggling ? '...' : c.isApproved ? 'Unapprove' : 'Approve'}
-                  </button>
-                </td>
               </tr>
-            );
-          })}
+          ))}
         </tbody>
       </table>
     </div>

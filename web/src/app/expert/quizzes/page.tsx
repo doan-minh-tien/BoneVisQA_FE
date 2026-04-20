@@ -1,164 +1,610 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import Header from '@/components/Header';
-import {
-  FileText, Search, Plus, CheckCircle, Clock, Trash2, Eye,
-  ChevronDown, ChevronRight, Users, Calendar, BarChart3, Target,
-} from 'lucide-react';
+import QuizAssignScorePanel from '@/components/expert/quizzes/QuizAssignScorePanel';
+import QuizQuestionsPanel from '@/components/expert/quizzes/QuizQuestionsPanel';
+import { Loader2, Plus, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { fetchExpertQuizzesPaged, createExpertQuiz, updateExpertQuiz, deleteExpertQuiz, fetchQuizAssignmentStatus, type ExpertQuiz, type CreateExpertQuizRequest, type UpdateExpertQuizRequest } from '@/lib/api/expert-quizzes';
+import { useToast } from '@/components/ui/toast';
 
-type QuizStatus = 'active' | 'draft' | 'closed';
+// ========== HELPERS ==========
 
-interface Quiz {
-  id: string;
-  title: string;
-  topic: string;
-  questionCount: number;
-  difficulty: string;
-  status: QuizStatus;
-  createdBy: string;
-  createdAt: string;
-  assignedClasses: string[];
-  completions: number;
-  avgScore: number;
-  passingScore: number;
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // Convert UTC to local timezone (UTC+7 for Vietnam)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const initialQuizzes: Quiz[] = [
-  { id: '1', title: 'Fracture Classification Basics', topic: 'Fracture Classification', questionCount: 15, difficulty: 'Basic', status: 'active', createdBy: 'Dr. Pham Expert', createdAt: '2026-01-15', assignedClasses: ['SE1801', 'SE1802'], completions: 45, avgScore: 78, passingScore: 60 },
-  { id: '2', title: 'Knee Pathology Assessment', topic: 'Degenerative Disease', questionCount: 20, difficulty: 'Intermediate', status: 'active', createdBy: 'Dr. Hoang Expert', createdAt: '2026-02-01', assignedClasses: ['SE1803'], completions: 22, avgScore: 72, passingScore: 65 },
-  { id: '3', title: 'Bone Tumor Identification', topic: 'Bone Tumor', questionCount: 12, difficulty: 'Advanced', status: 'draft', createdBy: 'Dr. Pham Expert', createdAt: '2026-03-10', assignedClasses: [], completions: 0, avgScore: 0, passingScore: 70 },
-  { id: '4', title: 'Spine Imaging Fundamentals', topic: 'Spine', questionCount: 18, difficulty: 'Intermediate', status: 'active', createdBy: 'Dr. Hoang Expert', createdAt: '2025-12-20', assignedClasses: ['SE1801', 'SE1804'], completions: 38, avgScore: 81, passingScore: 60 },
-  { id: '5', title: 'Pediatric Fracture Patterns', topic: 'Pediatric', questionCount: 10, difficulty: 'Intermediate', status: 'closed', createdBy: 'Dr. Pham Expert', createdAt: '2025-10-05', assignedClasses: ['SE1802'], completions: 28, avgScore: 75, passingScore: 60 },
-  { id: '6', title: 'Trauma Radiology Quiz', topic: 'Trauma', questionCount: 25, difficulty: 'Advanced', status: 'draft', createdBy: 'Dr. Hoang Expert', createdAt: '2026-03-18', assignedClasses: [], completions: 0, avgScore: 0, passingScore: 65 },
-];
-
-const statusConfig: Record<QuizStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
-  active: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Active' },
-  draft: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10', label: 'Draft' },
-  closed: { icon: Eye, color: 'text-muted-foreground', bg: 'bg-muted', label: 'Closed' },
-};
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
 
 export default function ExpertQuizzesPage() {
-  const [quizzes, setQuizzes] = useState<Quiz[]>(initialQuizzes);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<QuizStatus | 'All'>('All');
-  const [expandedQuiz, setExpandedQuiz] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newTopic, setNewTopic] = useState('');
-  const [newQuestionCount, setNewQuestionCount] = useState(10);
-  const [newDifficulty, setNewDifficulty] = useState('Intermediate');
-  const [newPassingScore, setNewPassingScore] = useState(60);
+  const { data, isLoading, error, mutate } = useSWR('expert-quizzes-manage', () => fetchExpertQuizzesPaged(1, 500), {
+    revalidateOnFocus: true,
+    dedupingInterval: 5000,
+  });
+  const toast = useToast();
 
-  const filtered = useMemo(() => {
-    return quizzes.filter((q) => {
-      const match = q.title.toLowerCase().includes(search.toLowerCase()) || q.topic.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = filterStatus === 'All' || q.status === filterStatus;
-      return match && matchStatus;
-    });
-  }, [quizzes, search, filterStatus]);
+  const quizzes = data?.items ?? [];
+  const [selectedQuizId, setSelectedQuizId] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editQuiz, setEditQuiz] = useState<ExpertQuiz | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [assignmentStatus, setAssignmentStatus] = useState<{ isAssigned: boolean; assignedClassCount: number } | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
-  const handleCreate = () => {
-    if (!newTitle.trim()) return;
-    const newQuiz: Quiz = {
-      id: `q-${Date.now()}`, title: newTitle.trim(), topic: newTopic || 'General', questionCount: newQuestionCount,
-      difficulty: newDifficulty, status: 'draft', createdBy: 'Dr. Expert', createdAt: new Date().toISOString().split('T')[0],
-      assignedClasses: [], completions: 0, avgScore: 0, passingScore: newPassingScore,
-    };
-    setQuizzes((prev) => [newQuiz, ...prev]);
-    setNewTitle(''); setNewTopic(''); setNewQuestionCount(10); setNewDifficulty('Intermediate'); setNewPassingScore(60);
-    setShowCreate(false);
+  useEffect(() => {
+    if (quizzes.length === 0) {
+      setSelectedQuizId('');
+      return;
+    }
+    if (!selectedQuizId || !quizzes.some((q) => q.id === selectedQuizId)) {
+      setSelectedQuizId(quizzes[0].id);
+    }
+  }, [quizzes, selectedQuizId]);
+
+  const selectedQuiz = useMemo(
+    () => quizzes.find((q) => q.id === selectedQuizId) ?? null,
+    [quizzes, selectedQuizId],
+  );
+
+  const handleQuizCreated = (quiz: ExpertQuiz) => {
+    mutate();
+    setSelectedQuizId(quiz.id);
+    setIsCreateModalOpen(false);
+    setEditQuiz(null);
+    setAssignmentStatus(null);
   };
 
-  const handleDelete = (id: string) => setQuizzes((prev) => prev.filter((q) => q.id !== id));
-  const handleActivate = (id: string) => setQuizzes((prev) => prev.map((q) => q.id === id ? { ...q, status: 'active' as QuizStatus } : q));
+  const handleDeleteQuiz = async () => {
+    if (!deleteConfirmId) return;
+    try {
+      await deleteExpertQuiz(deleteConfirmId);
+      toast.success('Quiz deleted successfully!');
+      mutate();
+      if (selectedQuizId === deleteConfirmId) {
+        setSelectedQuizId('');
+      }
+      setDeleteConfirmId(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete quiz.');
+    }
+  };
+
+  const handleEditQuiz = async (quiz: ExpertQuiz) => {
+    setIsCheckingStatus(true);
+    try {
+      const status = await fetchQuizAssignmentStatus(quiz.id);
+      setAssignmentStatus({ isAssigned: status.isAssigned, assignedClassCount: status.assignedClassCount });
+      setEditQuiz(quiz);
+      setIsCreateModalOpen(true);
+    } catch (e) {
+      toast.error('Failed to check assignment status.');
+      setAssignmentStatus(null);
+      setEditQuiz(quiz);
+      setIsCreateModalOpen(true);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen">
-      <Header title="Quiz Management" subtitle={`${quizzes.length} quizzes`} />
-      <div className="p-6 max-w-[1600px] mx-auto">
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium"><Plus className="w-4 h-4" />Create Quiz</button>
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="text" placeholder="Search quizzes..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-10 pl-10 pr-4 rounded-lg bg-card border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as QuizStatus | 'All')} className="h-10 px-4 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer">
-            <option value="All">All Status</option><option value="active">Active</option><option value="draft">Draft</option><option value="closed">Closed</option>
-          </select>
+    <div className="min-h-screen bg-background text-foreground">
+      <Header
+        title="Quiz management"
+        subtitle="Create questions, assign quizzes to classes, and review scores."
+      />
+      <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 sm:px-6">
+
+        {/* Tab Navigation */}
+        <div className="flex gap-4 border-b border-border">
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+              !showLibrary
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => setShowLibrary(false)}
+          >
+            My Quizzes
+          </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+              showLibrary
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => setShowLibrary(true)}
+          >
+            Quiz Library
+          </button>
         </div>
 
-        {/* Create Form */}
-        {showCreate && (
-          <div className="bg-card rounded-xl border border-border p-6 mb-6">
-            <h3 className="font-semibold text-card-foreground mb-4">Create New Quiz</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Title</label><input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Quiz title..." className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" /></div>
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Topic</label><input type="text" value={newTopic} onChange={(e) => setNewTopic(e.target.value)} placeholder="e.g., Fracture Classification" className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" /></div>
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Number of Questions</label><input type="number" value={newQuestionCount} onChange={(e) => setNewQuestionCount(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" /></div>
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Difficulty</label><select value={newDifficulty} onChange={(e) => setNewDifficulty(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"><option>Basic</option><option>Intermediate</option><option>Advanced</option></select></div>
-              <div><label className="block text-sm font-medium text-card-foreground mb-1.5">Passing Score (%)</label><input type="number" value={newPassingScore} onChange={(e) => setNewPassingScore(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring" /></div>
+        {!showLibrary ? (
+          <>
+            {/* My Quizzes Section */}
+            <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-card-foreground">Active quiz</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose a quiz to edit its question bank. Assignments and scoring use the same catalog.
+              </p>
             </div>
-            <div className="flex gap-2">
-              <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 cursor-pointer transition-colors">Create</button>
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors">Cancel</button>
-            </div>
+            <button
+              onClick={() => {
+                setEditQuiz(null);
+                setAssignmentStatus(null);
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              Create Quiz
+            </button>
           </div>
-        )}
 
-        {/* Quizzes List */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="p-12 text-center"><FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" /><p className="text-lg font-medium text-card-foreground">No quizzes found</p></div>
+          {isLoading ? (
+            <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading quizzes...
+            </div>
+          ) : error ? (
+            <p className="mt-6 text-sm text-destructive">
+              {error instanceof Error ? error.message : 'Failed to load quizzes.'}
+            </p>
+          ) : quizzes.length === 0 ? (
+            <p className="mt-6 text-sm text-muted-foreground">
+              No quizzes yet. Click "Create Quiz" to create your first quiz.
+            </p>
           ) : (
-            <div className="divide-y divide-border">
-              {filtered.map((quiz) => {
-                const st = statusConfig[quiz.status];
-                const StIcon = st.icon;
-                const isExp = expandedQuiz === quiz.id;
-                return (
-                  <div key={quiz.id} className="px-5 py-4 hover:bg-input/20 transition-colors">
-                    <div className="flex items-start justify-between gap-3">
-                      <button onClick={() => setExpandedQuiz(isExp ? null : quiz.id)} className="flex items-start gap-2 text-left cursor-pointer flex-1 min-w-0">
-                        {isExp ? <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-card-foreground">{quiz.title}</p>
-                          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                            <span className="px-2 py-0.5 bg-accent/10 text-accent rounded font-medium">{quiz.topic}</span>
-                            <span>{quiz.questionCount} questions</span>
-                            <span>&middot;</span>
-                            <span>{quiz.difficulty}</span>
-                          </div>
-                        </div>
-                      </button>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${st.bg} ${st.color}`}><StIcon className="w-3.5 h-3.5" />{st.label}</span>
-                    </div>
-
-                    {isExp && (
-                      <div className="mt-3 ml-6 space-y-3">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="p-3 rounded-lg bg-input/30 text-center"><Users className="w-4 h-4 text-primary mx-auto mb-1" /><p className="text-lg font-bold text-card-foreground">{quiz.completions}</p><p className="text-xs text-muted-foreground">Completions</p></div>
-                          <div className="p-3 rounded-lg bg-input/30 text-center"><BarChart3 className="w-4 h-4 text-accent mx-auto mb-1" /><p className="text-lg font-bold text-card-foreground">{quiz.avgScore || '-'}%</p><p className="text-xs text-muted-foreground">Avg Score</p></div>
-                          <div className="p-3 rounded-lg bg-input/30 text-center"><Target className="w-4 h-4 text-warning mx-auto mb-1" /><p className="text-lg font-bold text-card-foreground">{quiz.passingScore}%</p><p className="text-xs text-muted-foreground">Pass Score</p></div>
-                          <div className="p-3 rounded-lg bg-input/30 text-center"><Calendar className="w-4 h-4 text-muted-foreground mx-auto mb-1" /><p className="text-sm font-bold text-card-foreground">{quiz.createdAt}</p><p className="text-xs text-muted-foreground">Created</p></div>
-                        </div>
-                        {quiz.assignedClasses.length > 0 && (
-                          <div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">Assigned to:</span>{quiz.assignedClasses.map((cls) => <span key={cls} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium">{cls}</span>)}</div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          {quiz.status === 'draft' && <button onClick={() => handleActivate(quiz.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 cursor-pointer transition-colors"><CheckCircle className="w-3.5 h-3.5" />Activate</button>}
-                          <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 cursor-pointer transition-colors"><Trash2 className="w-3.5 h-3.5" />Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedQuizId}
+                  onChange={(e) => setSelectedQuizId(e.target.value)}
+                  className="flex-1 max-w-xl rounded-lg border border-border bg-input px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {quizzes.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.title}
+                    </option>
+                  ))}
+                </select>
+                {selectedQuiz && (
+                  <>
+                    <button
+                      onClick={() => handleEditQuiz(selectedQuiz)}
+                      disabled={isCheckingStatus}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isCheckingStatus ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Pencil className="h-4 w-4" />
+                      )}
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(selectedQuizId)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-destructive/50 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+              {selectedQuiz ? <QuizMeta quiz={selectedQuiz} /> : null}
             </div>
           )}
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+          <section className="rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm">
+            {selectedQuizId ? (
+              <QuizQuestionsPanel quizId={selectedQuizId} />
+            ) : (
+              <p className="p-4 text-sm text-muted-foreground">Select a quiz to manage questions.</p>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+            <QuizAssignScorePanel />
+          </section>
+        </div>
+          </>
+        ) : (
+          <>
+            {/* Quiz Library Section - Xem quiz tu Expert khac */}
+            <LibrarySection />
+          </>
+        )}
+      </div>
+
+      {isCreateModalOpen && (
+        <CreateQuizModal
+          onClose={() => { setIsCreateModalOpen(false); setEditQuiz(null); setAssignmentStatus(null); }}
+          onCreated={handleQuizCreated}
+          editQuiz={editQuiz}
+          assignmentStatus={assignmentStatus}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteConfirmId(null)} />
+          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-card-foreground mb-2">Confirm Delete</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Are you sure you want to delete this quiz? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteQuiz}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-destructive hover:bg-destructive/90 cursor-pointer transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuizMeta({ quiz }: { quiz: ExpertQuiz }) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 text-xs sm:grid-cols-2">
+      <div>
+        <p className="text-muted-foreground">Topic</p>
+        <p className="font-medium text-card-foreground">{quiz.topic ?? '-'}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Difficulty</p>
+        <p className="font-medium text-card-foreground">{quiz.difficulty}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Time limit</p>
+        <p className="font-medium text-card-foreground">{quiz.timeLimit} min</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Passing score</p>
+        <p className="font-medium text-card-foreground">{quiz.passingScore}%</p>
+      </div>
+      <div className="sm:col-span-2">
+        <p className="text-muted-foreground">Window</p>
+        <p className="font-medium text-card-foreground">
+          {new Date(quiz.openTime).toLocaleString()} - {new Date(quiz.closeTime).toLocaleString()}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface CreateQuizModalProps {
+  onClose: () => void;
+  onCreated: (quiz: ExpertQuiz) => void;
+  editQuiz?: ExpertQuiz | null;
+  assignmentStatus?: { isAssigned: boolean; assignedClassCount: number } | null;
+}
+
+function CreateQuizModal({ onClose, onCreated, editQuiz, assignmentStatus }: CreateQuizModalProps) {
+  const isEditMode = !!editQuiz;
+  const toast = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const PREDEFINED_TOPICS = [
+    'Lower Limb',
+    'Upper Limb',
+    'Spine',
+    'Chest',
+    'Abdomen',
+    'Head & Neck',
+    'Pelvis',
+    'General',
+  ];
+
+  const getInitialForm = () => {
+    if (editQuiz) {
+      return {
+        title: editQuiz.title,
+        topic: editQuiz.topic || '',
+        topicMode: PREDEFINED_TOPICS.includes(editQuiz.topic || '') ? 'select' as const : 'custom' as const,
+        difficulty: editQuiz.difficulty,
+        timeLimit: editQuiz.timeLimit,
+        passingScore: editQuiz.passingScore,
+        openDateTime: utcToLocalDatetimeLocal(editQuiz.openTime),
+        closeDateTime: utcToLocalDatetimeLocal(editQuiz.closeTime),
+        classification: editQuiz.classification || '',
+      };
+    }
+    return {
+      title: '',
+      topic: '',
+      topicMode: 'select' as 'select' | 'custom',
+      difficulty: 'Medium',
+      timeLimit: 30,
+      passingScore: 70,
+      openDateTime: '',
+      closeDateTime: '',
+      classification: '',
+    };
+  };
+
+  const [form, setForm] = useState(getInitialForm);
+
+  const canSubmit = form.title.trim().length > 0 && form.openDateTime && form.closeDateTime;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    try {
+      const openTime = localDatetimeLocalToIso(form.openDateTime);
+      const closeTime = localDatetimeLocalToIso(form.closeDateTime);
+
+      if (isEditMode && editQuiz) {
+        // Update existing quiz - Expert can update Title, Topic, Open/Close, Difficulty, TimeLimit, PassingScore
+        const request: UpdateExpertQuizRequest = {
+          title: form.title.trim(),
+          topic: form.topic.trim() || null,
+          difficulty: form.difficulty,
+          timeLimit: form.timeLimit ?? null,
+          passingScore: form.passingScore ?? null,
+          openTime,
+          closeTime,
+          classification: form.classification.trim() || null,
+        };
+
+        const updatedQuiz = await updateExpertQuiz(editQuiz.id, request);
+        toast.success('Quiz updated successfully!');
+        onCreated(updatedQuiz);
+      } else {
+        const request: CreateExpertQuizRequest = {
+          title: form.title.trim(),
+          topic: form.topic.trim() || null,
+          difficulty: form.difficulty,
+          timeLimit: form.timeLimit ?? 30, // Default 30 if not set
+          passingScore: form.passingScore ?? 70, // Default 70 if not set
+          openTime,
+          closeTime,
+          classification: form.classification.trim() || null,
+          isAiGenerated: false,
+        };
+
+        const newQuiz = await createExpertQuiz(request);
+        toast.success('Quiz created successfully!');
+        onCreated(newQuiz);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to save quiz.';
+      toast.error(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-card-foreground">
+            {isEditMode ? 'Edit Quiz' : 'Create New Quiz'}
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded cursor-pointer">
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-card-foreground mb-1">
+              Quiz Title <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+              placeholder="e.g., Lower Limb Quiz 1"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-card-foreground">Topic</label>
+              <button
+                type="button"
+                onClick={() => setForm((p) => ({ 
+                  ...p, 
+                  topicMode: p.topicMode === 'select' ? 'custom' : 'select',
+                  topic: '',
+                }))}
+                className="text-xs text-primary hover:underline cursor-pointer"
+              >
+                {form.topicMode === 'select' ? 'Enter custom topic' : 'Select from list'}
+              </button>
+            </div>
+            {form.topicMode === 'select' ? (
+              <select
+                value={form.topic}
+                onChange={(e) => setForm((p) => ({ ...p, topic: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+              >
+                <option value="">-- Select Topic --</option>
+                {PREDEFINED_TOPICS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={form.topic}
+                onChange={(e) => setForm((p) => ({ ...p, topic: e.target.value }))}
+                placeholder="Enter new topic..."
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            )}
+          </div>
+
+          {/* ===== WARNING: Quiz da duoc gan vao lop ===== */}
+          {isEditMode && assignmentStatus?.isAssigned && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    Warning: Quiz has been assigned to classes
+                  </h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    This quiz has been assigned to <strong>{assignmentStatus.assignedClassCount} classes</strong>.
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Assigned classes will <strong>NOT</strong> be affected by this change.
+                    Only newly assigned classes after this will use the new values.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== TIME LIMIT & PASSING SCORE - FOR EXPERT TO SET ===== */}
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Quiz Configuration (for your reference - these will be used as defaults when lecturers assign this quiz)
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1">
+                  Time Limit (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={form.timeLimit}
+                  onChange={(e) => setForm((p) => ({ ...p, timeLimit: Number(e.target.value) }))}
+                  min={5}
+                  max={180}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default time limit for this quiz (5-180 min)
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-card-foreground mb-1">
+                  Passing Score (0-100)
+                </label>
+                <input
+                  type="number"
+                  value={form.passingScore}
+                  onChange={(e) => setForm((p) => ({ ...p, passingScore: Number(e.target.value) }))}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default passing score (lecturers can adjust ±10%)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1">Difficulty</label>
+              <select
+                value={form.difficulty}
+                onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+              >
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1">Classification</label>
+              <input
+                type="text"
+                value={form.classification}
+                onChange={(e) => setForm((p) => ({ ...p, classification: e.target.value }))}
+                placeholder="e.g., Year 1"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1">
+                Open Time <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={form.openDateTime}
+                onChange={(e) => setForm((p) => ({ ...p, openDateTime: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-card-foreground mb-1">
+                Close Time <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={form.closeDateTime}
+                onChange={(e) => setForm((p) => ({ ...p, closeDateTime: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={isSubmitting || !canSubmit}
+            onClick={handleSubmit}
+            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : isEditMode ? 'Update Quiz' : 'Create Quiz'}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function LibrarySection() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground">
+      <p className="text-sm text-muted-foreground">Quiz Library feature coming soon...</p>
+    </section>
   );
 }

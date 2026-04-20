@@ -129,7 +129,7 @@ export function StudentClinicalBento({
           <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-[#00478d]">
             Welcome Back
           </span>
-          <h2 className="font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight text-[#191c1e] dark:text-slate-100 md:text-4xl">
+          <h2 className="font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight text-[#191c1e] md:text-4xl">
             Clinical Performance Insight
           </h2>
         </div>
@@ -137,7 +137,7 @@ export function StudentClinicalBento({
           <button
             type="button"
             onClick={() => downloadProgressJson(progress, topicStats)}
-            className="rounded-full bg-[#e6e8ea] px-6 py-3 text-sm font-bold text-[#00468c] transition-all hover:bg-[#e0e3e5] dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+            className="rounded-full bg-[#e6e8ea] px-6 py-3 text-sm font-bold text-[#00468c] transition-all hover:bg-[#e0e3e5]"
           >
             Download Report
           </button>
@@ -153,11 +153,11 @@ export function StudentClinicalBento({
 
       <div className="grid grid-cols-12 gap-6 md:gap-8">
         {/* Mastery hero */}
-        <div className="col-span-12 flex flex-col items-center gap-10 rounded-3xl border border-[#c2c6d4]/30 bg-white p-8 lg:col-span-7 lg:flex-row dark:border-white/10 dark:bg-slate-900/40">
+        <div className="col-span-12 flex flex-col items-center gap-10 rounded-3xl border border-[#c2c6d4]/30 bg-white p-8 lg:col-span-7 lg:flex-row">
           <div className="relative h-56 w-56 shrink-0">
             <svg className="h-full w-full -rotate-90" viewBox="0 0 224 224" aria-hidden>
               <circle
-                className="text-[#eceef0] dark:text-slate-700"
+                className="text-[#eceef0]"
                 cx="112"
                 cy="112"
                 fill="transparent"
@@ -179,36 +179,36 @@ export function StudentClinicalBento({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-['Manrope',sans-serif] text-5xl font-black text-[#191c1e] dark:text-white">
+              <span className="font-['Manrope',sans-serif] text-5xl font-black text-[#191c1e]">
                 {mastery}%
               </span>
-              <span className="text-xs font-bold uppercase tracking-widest text-[#424752] dark:text-slate-400">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#424752]">
                 Mastery
               </span>
             </div>
           </div>
           <div className="flex-1">
-            <h3 className="mb-3 font-['Manrope',sans-serif] text-2xl font-bold text-[#191c1e] dark:text-slate-100">
+            <h3 className="mb-3 font-['Manrope',sans-serif] text-2xl font-bold text-[#191c1e]">
               Diagnostic Precision
             </h3>
-            <p className="mb-6 text-sm leading-relaxed text-[#424752] dark:text-slate-400">
+            <p className="mb-6 text-sm leading-relaxed text-[#424752]">
               {buildInsight(progress)}
             </p>
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-2xl bg-[#f2f4f6] p-4 dark:bg-white/5">
-                <p className="mb-1 text-xs font-medium text-[#424752] dark:text-slate-400">Weekly Growth</p>
+              <div className="rounded-2xl bg-[#f2f4f6] p-4">
+                <p className="mb-1 text-xs font-medium text-[#424752]">Weekly Growth</p>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-[#006a68]" />
-                  <span className="text-lg font-bold text-[#191c1e] dark:text-white">{weeklyLabel}</span>
+                  <span className="text-lg font-bold text-[#191c1e]">{weeklyLabel}</span>
                 </div>
               </div>
-              <div className="rounded-2xl bg-[#f2f4f6] p-4 dark:bg-white/5">
-                <p className="mb-1 text-xs font-medium text-[#424752] dark:text-slate-400">Peer context</p>
+              <div className="rounded-2xl bg-[#f2f4f6] p-4">
+                <p className="mb-1 text-xs font-medium text-[#424752]">Peer context</p>
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4 text-[#00478d]" />
-                  <span className="text-lg font-bold text-[#191c1e] dark:text-white">Track locally</span>
+                  <span className="text-lg font-bold text-[#191c1e]">Track locally</span>
                 </div>
-                <p className="mt-1 text-[10px] text-[#727783] dark:text-slate-500">
+                <p className="mt-1 text-[10px] text-[#727783]">
                   Global rank is not provided by the API yet.
                 </p>
               </div>
@@ -258,12 +258,12 @@ export function StudentClinicalBento({
         </div>
 
         {/* Topics */}
-        <div className="col-span-12 rounded-3xl border border-[#c2c6d4]/20 bg-[#f2f4f6] p-8 dark:border-white/10 dark:bg-slate-900/30 lg:col-span-8">
+        <div className="col-span-12 rounded-3xl border border-[#c2c6d4]/20 bg-[#f2f4f6] p-8 lg:col-span-8">
           <div className="mb-8 flex items-center justify-between">
-            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e] dark:text-slate-100">
+            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e]">
               Topic Specialization
             </h3>
-            <div className="flex items-center gap-2 text-xs font-bold text-[#424752] dark:text-slate-400">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#424752]">
               <span>LIFETIME PROGRESS</span>
               <span className="text-[#727783]" title="Based on quiz attempts and accuracy from the API">
                 ⓘ
@@ -281,26 +281,26 @@ export function StudentClinicalBento({
               const title = t?.topicName ?? labels[i] ?? 'Topic';
 
               return (
-                <div key={`${title}-${i}`} className="rounded-2xl bg-white p-6 dark:bg-slate-950/50">
+                <div key={`${title}-${i}`} className="rounded-2xl bg-white p-6">
                   <div className="mb-4 flex items-start justify-between">
                     <span className={`rounded-xl p-3 ${iconBg[i] ?? 'bg-slate-100'}`}>
                       <Icon className={`h-5 w-5 ${i === 0 ? 'text-[#00478d]' : i === 1 ? 'text-[#006a68]' : 'text-[#703a00]'}`} />
                     </span>
-                    <span className="text-xs font-bold text-[#424752] dark:text-slate-400">
+                    <span className="text-xs font-bold text-[#424752]">
                       {t ? `${Math.round(pct)}%` : '—'}
                     </span>
                   </div>
-                  <p className="mb-3 font-bold text-[#191c1e] dark:text-slate-100">{title}</p>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#eceef0] dark:bg-slate-800">
+                  <p className="mb-3 font-bold text-[#191c1e]">{title}</p>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#eceef0]">
                     <div
                       className={`h-full rounded-full ${barColors[i] ?? 'bg-primary'}`}
                       style={{ width: `${t ? pct : 8}%` }}
                     />
                   </div>
                   {t ? (
-                    <p className="mt-2 text-xs text-[#727783] dark:text-slate-500">{t.quizAttempts} quiz attempts</p>
+                    <p className="mt-2 text-xs text-[#727783]">{t.quizAttempts} quiz attempts</p>
                   ) : (
-                    <p className="mt-2 text-xs text-[#727783] dark:text-slate-500">No data yet</p>
+                    <p className="mt-2 text-xs text-[#727783]">No data yet</p>
                   )}
                 </div>
               );
@@ -309,25 +309,25 @@ export function StudentClinicalBento({
         </div>
 
         {/* Daily challenge */}
-        <div className="col-span-12 flex flex-col justify-between rounded-3xl border border-[#006a68]/20 bg-[#94efec]/30 p-8 lg:col-span-4 dark:bg-teal-950/20">
+        <div className="col-span-12 flex flex-col justify-between rounded-3xl border border-[#006a68]/20 bg-[#94efec]/30 p-8 lg:col-span-4">
           <div>
-            <h3 className="mb-2 font-['Manrope',sans-serif] text-xl font-bold text-[#006e6d] dark:text-teal-200">
+            <h3 className="mb-2 font-['Manrope',sans-serif] text-xl font-bold text-[#006e6d]">
               Daily Quiz Challenge
             </h3>
-            <p className="text-sm leading-relaxed text-[#006e6d]/80 dark:text-teal-300/80">
-              Boost your mastery in <span className="font-bold text-[#006e6d] dark:text-teal-200">{challengeTopic}</span>{' '}
+            <p className="text-sm leading-relaxed text-[#006e6d]/80">
+              Boost your mastery in <span className="font-bold text-[#006e6d]">{challengeTopic}</span>{' '}
               with a practice or class quiz.
             </p>
           </div>
           <div className="mt-8">
             <div className="mb-4 flex -space-x-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#006a68] text-[10px] font-bold text-white dark:border-slate-900">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#006a68] text-[10px] font-bold text-white">
                 BV
               </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#00478d] text-[10px] font-bold text-white dark:border-slate-900">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#00478d] text-[10px] font-bold text-white">
                 QA
               </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-400 text-[10px] font-bold text-white dark:border-slate-900">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-400 text-[10px] font-bold text-white">
                 +12
               </div>
             </div>
@@ -341,9 +341,9 @@ export function StudentClinicalBento({
         </div>
 
         {/* History table */}
-        <div className="col-span-12 rounded-3xl border border-[#c2c6d4]/20 bg-white p-8 dark:border-white/10 dark:bg-slate-900/40">
+        <div className="col-span-12 rounded-3xl border border-[#c2c6d4]/20 bg-white p-8">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e] dark:text-slate-100">
+            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-[#191c1e]">
               Diagnostic History
             </h3>
             <Link href="/student/history" className="text-sm font-bold text-[#00478d] hover:underline">
@@ -353,7 +353,7 @@ export function StudentClinicalBento({
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left">
               <thead>
-                <tr className="border-b border-[#eceef0] text-xs font-bold uppercase tracking-widest text-[#424752] dark:border-slate-700 dark:text-slate-400">
+                <tr className="border-b border-[#eceef0] text-xs font-bold uppercase tracking-widest text-[#424752]">
                   <th className="pb-4">Case Reference</th>
                   <th className="pb-4">Diagnosis Category</th>
                   <th className="pb-4">Completion Date</th>
@@ -361,10 +361,10 @@ export function StudentClinicalBento({
                   <th className="pb-4 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#eceef0] dark:divide-slate-800">
+              <tbody className="divide-y divide-[#eceef0]">
                 {tableRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-sm text-[#727783] dark:text-slate-500">
+                    <td colSpan={5} className="py-10 text-center text-sm text-[#727783]">
                       No case history yet. Open the case library or complete a quiz to populate this table.
                     </td>
                   </tr>
@@ -373,22 +373,22 @@ export function StudentClinicalBento({
                     const stars = statusToStars(row.status);
                     const badge = diagnosticStatusBadge(row.status);
                     return (
-                      <tr key={row.id} className="transition-colors hover:bg-[#f2f4f6]/80 dark:hover:bg-white/5">
+                      <tr key={row.id} className="transition-colors hover:bg-[#f2f4f6]/80">
                         <td className="py-5">
                           <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#2d3133]">
                               <Scan className="h-4 w-4 text-white" />
                             </div>
                             <div>
-                              <p className="text-sm font-bold text-[#191c1e] dark:text-slate-100">
+                              <p className="text-sm font-bold text-[#191c1e]">
                                 Case {shortCaseRef(row.id)}
                               </p>
-                              <p className="text-xs text-[#424752] dark:text-slate-400">{row.title}</p>
+                              <p className="text-xs text-[#424752]">{row.title}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="py-5 text-sm text-[#424752] dark:text-slate-400">{row.lesionType}</td>
-                        <td className="py-5 text-sm text-[#424752] dark:text-slate-400">
+                        <td className="py-5 text-sm text-[#424752]">{row.lesionType}</td>
+                        <td className="py-5 text-sm text-[#424752]">
                           {formatHistoryDate(row.askedAt)}
                         </td>
                         <td className="py-5">
@@ -397,7 +397,7 @@ export function StudentClinicalBento({
                               <Star
                                 key={si}
                                 className={`h-4 w-4 ${
-                                  si < stars ? 'fill-[#94efec] text-[#94efec]' : 'text-[#eceef0] dark:text-slate-700'
+                                  si < stars ? 'fill-[#94efec] text-[#94efec]' : 'text-[#eceef0]'
                                 }`}
                               />
                             ))}
@@ -426,8 +426,8 @@ export function StudentClinicalBento({
 
 export function StudentClinicalBentoSkeleton() {
   return (
-    <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-[#c2c6d4]/30 bg-white dark:border-white/10 dark:bg-slate-900/40">
-      <div className="flex items-center gap-3 text-sm text-[#424752] dark:text-slate-400">
+    <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-[#c2c6d4]/30 bg-white">
+      <div className="flex items-center gap-3 text-sm text-[#424752]">
         <Loader2 className="h-6 w-6 animate-spin text-[#00478d]" />
         Loading clinical dashboard…
       </div>

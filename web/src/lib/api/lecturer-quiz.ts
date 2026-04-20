@@ -7,6 +7,7 @@ import type {
   QuizQuestionDto,
   CreateQuizQuestionRequest,
   UpdateQuizQuestionRequest,
+  AssignedQuizDto,
 } from './types';
 
 /** BE có thể trả camelCase hoặc PascalCase tùy cấu hình JSON. */
@@ -22,6 +23,9 @@ export interface UpdateQuizRequest {
   closeTime?: string | null;
   timeLimit?: number | null;
   passingScore?: number | null;
+  topic?: string | null;
+  difficulty?: string | null;
+  classification?: string | null;
 }
 
 // ========== Quiz Management ==========
@@ -38,6 +42,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     OpenTime?: string | null;
     CloseTime?: string | null;
     QuestionCount?: number;
+    IsFromExpertLibrary?: boolean;
   };
   return {
     classId: raw.classId ?? r.ClassId ?? '',
@@ -49,6 +54,7 @@ function normalizeClassQuizDto(raw: ClassQuizDto & Record<string, unknown>): Cla
     openTime: raw.openTime ?? r.OpenTime ?? null,
     closeTime: raw.closeTime ?? r.CloseTime ?? null,
     questionCount: raw.questionCount ?? r.QuestionCount,
+    isFromExpertLibrary: raw.isFromExpertLibrary ?? r.IsFromExpertLibrary ?? false,
   };
 }
 
@@ -62,6 +68,73 @@ export async function getLecturerQuizzes(lecturerId: string): Promise<ClassQuizD
     });
     const list = Array.isArray(data) ? data : [];
     return list.map((row) => normalizeClassQuizDto(row as ClassQuizDto & Record<string, unknown>));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get unassigned quizzes created by lecturer (My Quizzes tab)
+ */
+export async function getUnassignedLecturerQuizzes(lecturerId: string): Promise<QuizDto[]> {
+  try {
+    const { data } = await http.get<QuizDto[]>('/api/lecturer/quizzes/my', {
+      params: { lecturerId },
+    });
+    return data.map(normalizeQuizDto);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get all quizzes for lecturer with their assigned classes (for My Quizzes tab)
+ */
+export interface MyQuizClassInfo {
+  classId: string;
+  className: string;
+  assignedAt: string | null;
+  assignmentId: string;
+}
+
+export interface MyQuizWithClasses {
+  quizId: string;
+  quizName: string;
+  topic: string | null;
+  openTime: string | null;
+  closeTime: string | null;
+  timeLimit: number | null;
+  passingScore: number | null;
+  createdAt: string | null;
+  questionCount: number;
+  isAiGenerated: boolean;
+  isFromExpertLibrary: boolean;
+  difficulty: string | null;
+  creatorName?: string | null;
+  creatorType?: string | null;
+  classes: MyQuizClassInfo[];
+}
+
+export async function getMyQuizzesWithClasses(lecturerId: string): Promise<MyQuizWithClasses[]> {
+  try {
+    const { data } = await http.get<MyQuizWithClasses[]>('/api/lecturer/quizzes/my-with-classes', {
+      params: { lecturerId },
+    });
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Get assigned quizzes (Assigned Quizzes tab)
+ */
+export async function getAssignedQuizzes(lecturerId: string): Promise<AssignedQuizDto[]> {
+  try {
+    const { data } = await http.get<AssignedQuizDto[]>('/api/lecturer/quizzes/assigned', {
+      params: { lecturerId },
+    });
+    return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -93,6 +166,7 @@ export function normalizeQuizDto(raw: unknown): QuizDto {
     createdAt: (r.createdAt ?? r.CreatedAt ?? null) as string | null,
     questionCount: (r.questionCount ?? r.QuestionCount ?? undefined) as number | undefined,
     quizName: (r.quizName ?? r.QuizName ?? null) as string | null,
+    isFromExpertLibrary: Boolean(r.isFromExpertLibrary ?? r.IsFromExpertLibrary ?? false),
   };
 }
 
@@ -268,6 +342,17 @@ export async function deleteQuizQuestion(questionId: string): Promise<void> {
 export async function deleteQuiz(quizId: string): Promise<void> {
   try {
     await http.delete(`/api/lecturer/quizzes/${quizId}`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Remove a quiz from a class (only removes ClassQuizSession, keeps the quiz in Expert Library)
+ */
+export async function removeQuizFromClass(classId: string, quizId: string): Promise<void> {
+  try {
+    await http.delete(`/api/lecturer/classes/${classId}/quizzes/${quizId}`);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

@@ -1,0 +1,499 @@
+'use client';
+
+import * as Dialog from '@radix-ui/react-dialog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  BookOpen,
+  Loader2,
+  Trash2,
+  X,
+  Search,
+  PlusCircle,
+  GraduationCap,
+  Sparkles,
+  UserCheck,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import {
+  fetchClassEnrollments,
+  fetchAdminClassById,
+  assignClassUser,
+  unenrollClassUser,
+  type AdminClassModel,
+  type ClassEnrollment,
+} from '@/lib/api/admin-classes';
+import { fetchAdminUsers } from '@/lib/api/admin-users';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+
+export interface ClassEnrollmentsDialogProps {
+  cls: AdminClassModel;
+  onCancel: () => void;
+}
+
+function isLecturerSlotRow(e: ClassEnrollment): boolean {
+  return Boolean(e.lecturerId?.trim()) && !e.studentId?.trim();
+}
+
+function isExpertSlotRow(e: ClassEnrollment): boolean {
+  return Boolean(e.expertId?.trim()) && !e.studentId?.trim();
+}
+
+/** Student enrollment row — does not collide with Lecturer/Expert-only slots. */
+function isStudentEnrollmentRow(e: ClassEnrollment): boolean {
+  if (e.studentId?.trim()) return true;
+  if (/student|learner/i.test(e.role ?? '')) return true;
+  if (isLecturerSlotRow(e) || isExpertSlotRow(e)) return false;
+  return Boolean(e.studentName?.trim());
+}
+
+export function ClassEnrollmentsDialog({ cls, onCancel }: ClassEnrollmentsDialogProps) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [selectedRoleToAssign, setSelectedRoleToAssign] = useState<'Student' | 'Lecturer' | 'Expert'>('Student');
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  const classDetailQuery = useQuery({
+    queryKey: ['admin-classes-detail', cls.id],
+    queryFn: () => fetchAdminClassById(cls.id),
+  });
+
+  const enrollmentsQuery = useQuery({
+    queryKey: ['admin', 'classes', 'enrollments', cls.id],
+    queryFn: () =>
+      fetchClassEnrollments({
+        classId: cls.id,
+        pageIndex: 1,
+        pageSize: 200,
+      }),
+  });
+
+  const usersQuery = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: fetchAdminUsers,
+  });
+
+  const roster = classDetailQuery.data ?? cls;
+
+  const loading =
+    enrollmentsQuery.isPending || usersQuery.isPending || classDetailQuery.isPending;
+
+  const classEnrollments: ClassEnrollment[] = enrollmentsQuery.data ?? [];
+
+  const lecturerEnrollment = useMemo(
+    () =>
+      classEnrollments.find(
+        (e) => Boolean(e.lecturerId?.trim()) && !isStudentEnrollmentRow(e),
+      ),
+    [classEnrollments],
+  );
+
+  const expertEnrollment = useMemo(
+    () =>
+      classEnrollments.find(
+        (e) => Boolean(e.expertId?.trim()) && !isStudentEnrollmentRow(e),
+      ),
+    [classEnrollments],
+  );
+
+  const studentEnrollments = useMemo(
+    () => classEnrollments.filter((e) => isStudentEnrollmentRow(e)),
+    [classEnrollments],
+  );
+
+  const lecturerDisplayName =
+    lecturerEnrollment?.lecturerName?.trim() ||
+    roster.lecturerName?.trim() ||
+    (roster.lecturerEmail ? `${roster.lecturerEmail}` : null);
+  const expertDisplayName =
+    expertEnrollment?.expertName?.trim() || roster.expertName?.trim() || roster.expertEmail || null;
+
+  const availableUsers = useMemo(() => {
+    let users = usersQuery.data ?? [];
+
+    users = users.filter((u) => u.roles.includes(selectedRoleToAssign));
+
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      users = users.filter(
+        (u) =>
+          u.fullName.toLowerCase().includes(term) || u.email.toLowerCase().includes(term),
+      );
+    }
+
+    if (selectedRoleToAssign === 'Lecturer' && lecturerEnrollment?.lecturerId) {
+      users = users.filter((u) => u.id !== lecturerEnrollment.lecturerId);
+    }
+    if (selectedRoleToAssign === 'Expert' && expertEnrollment?.expertId) {
+      users = users.filter((u) => u.id !== expertEnrollment.expertId);
+    }
+    if (selectedRoleToAssign === 'Student') {
+      const enrolledStudentIds = new Set(
+        studentEnrollments.map((e) => e.studentId).filter(Boolean) as string[],
+      );
+      const nameHints = studentEnrollments
+        .filter((e) => !e.studentId?.trim() && e.studentName?.trim())
+        .map((e) => e.studentName!.trim().toLowerCase());
+      users = users.filter((u) => {
+        if (enrolledStudentIds.has(u.id)) return false;
+        const fn = u.fullName.trim().toLowerCase();
+        const em = u.email.toLowerCase();
+        if (nameHints.some((h) => h === fn || h === em)) return false;
+        return true;
+      });
+    }
+
+    return users.slice(0, 50);
+  }, [
+    usersQuery.data,
+    selectedRoleToAssign,
+    search,
+    lecturerEnrollment,
+    expertEnrollment,
+    studentEnrollments,
+  ]);
+
+  const assignMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return assignClassUser({
+        classId: cls.id,
+        studentId: selectedRoleToAssign === 'Student' ? userId : null,
+        lecturerId: selectedRoleToAssign === 'Lecturer' ? userId : null,
+        expertId: selectedRoleToAssign === 'Expert' ? userId : null,
+        removeExpert: false,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Assigned successfully.');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'classes', 'enrollments', cls.id] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'classes'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-classes-detail', cls.id] });
+    },
+    onError: (e: Error) => {
+      toast.error(`Assign failed: ${e.message}`);
+    },
+    onSettled: () => setAssigningId(null),
+  });
+
+  const unenrollMutation = useMutation({
+    mutationFn: async ({ enrollmentId, role }: { enrollmentId: string; role: string }) => {
+      if (role === 'Expert') {
+        return assignClassUser({
+          classId: cls.id,
+          studentId: null,
+          lecturerId: null,
+          expertId: null,
+          removeExpert: true,
+        });
+      }
+      return unenrollClassUser(enrollmentId);
+    },
+    onSuccess: () => {
+      toast.success('Removed successfully.');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'classes', 'enrollments', cls.id] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'classes'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-classes-detail', cls.id] });
+    },
+    onError: (e: Error) => {
+      toast.error(`Remove failed: ${e.message}`);
+    },
+    onSettled: () => setAssigningId(null),
+  });
+
+  const handleAssign = (userId: string) => {
+    setAssigningId(userId);
+    assignMutation.mutate(userId);
+  };
+
+  const handleUnenroll = (enrollmentId: string, role: string) => {
+    setAssigningId(enrollmentId);
+    unenrollMutation.mutate({ enrollmentId, role });
+  };
+
+  return (
+    <Dialog.Root
+      open
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay
+          className={cn(
+            'fixed inset-0 z-[150] bg-background/80 backdrop-blur-sm',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
+          )}
+        />
+        <Dialog.Content
+          className={cn(
+            'fixed left-1/2 top-1/2 z-[151] flex max-h-[min(90vh,800px)] w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-card p-0 text-card-foreground shadow-xl outline-none',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+          )}
+        >
+          <Dialog.Description className="sr-only">
+            Manage enrollments for {cls.className}
+          </Dialog.Description>
+
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-6 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
+                <GraduationCap className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <Dialog.Title className="flex items-center gap-2 text-xl font-bold text-card-foreground">
+                  {cls.className}
+                  <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                    {cls.semester}
+                  </span>
+                </Dialog.Title>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Lecturer, expert, and students load from enrollments for this class; names also align with GET class when available.
+                </p>
+              </div>
+            </div>
+            <Dialog.Close asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 w-9 shrink-0 rounded-full p-0 hover:bg-muted"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </Dialog.Close>
+          </div>
+
+          <div className="flex min-h-0 flex-1 divide-x divide-border">
+            <div className="flex min-h-0 flex-1 flex-col bg-muted/10 p-6">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Current Roster
+              </h3>
+
+              <div className="scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground/30 flex-1 space-y-6 overflow-y-auto pr-2">
+                {loading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <UserCheck className="h-4 w-4 text-emerald-500" />
+                        Lecturer (max 1)
+                      </div>
+                      {lecturerDisplayName ? (
+                        <div className="flex items-center justify-between rounded-xl border border-border bg-card p-3 shadow-sm">
+                          <div className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {lecturerDisplayName}
+                            {roster.lecturerEmail ? (
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {roster.lecturerEmail}
+                              </span>
+                            ) : null}
+                          </div>
+                          {lecturerEnrollment ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUnenroll(lecturerEnrollment.id, 'Lecturer')}
+                              disabled={assigningId === lecturerEnrollment.id}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                              title="Remove Lecturer"
+                            >
+                              {assigningId === lecturerEnrollment.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-amber-600" title="No enrollment row yet — assign from the right panel">
+                              Not enrolled
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+                          No lecturer assigned
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Sparkles className="h-4 w-4 text-violet-500" />
+                        Expert (max 1)
+                      </div>
+                      {expertDisplayName ? (
+                        <div className="flex items-center justify-between rounded-xl border border-border bg-card p-3 shadow-sm">
+                          <div className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {expertDisplayName}
+                            {roster.expertEmail ? (
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {roster.expertEmail}
+                              </span>
+                            ) : null}
+                          </div>
+                          {expertEnrollment ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUnenroll(expertEnrollment.id, 'Expert')}
+                              disabled={assigningId === expertEnrollment.id}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                              title="Remove Expert"
+                            >
+                              {assigningId === expertEnrollment.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-amber-600">Catalog only</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+                          No expert assigned
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <BookOpen className="h-4 w-4 text-blue-500" />
+                          Students ({studentEnrollments.length}
+                          {typeof roster.studentCount === 'number' &&
+                          roster.studentCount !== studentEnrollments.length ? (
+                            <span
+                              className="ml-1 text-xs font-normal text-amber-600"
+                              title="Catalog count differs from enrollment rows — try refresh or check API."
+                            >
+                              (catalog {roster.studentCount})
+                            </span>
+                          ) : null}
+                          )
+                        </div>
+                      </div>
+                      {studentEnrollments.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+                          No students in enrollment list
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {studentEnrollments.map((stu) => (
+                            <div
+                              key={stu.id}
+                              className="flex items-center justify-between rounded-xl border border-border bg-card p-2.5 shadow-sm"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium">
+                                  {stu.studentName || 'Unknown Student'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUnenroll(stu.id, 'Student')}
+                                disabled={assigningId === stu.id}
+                                className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                                title="Remove Student"
+                              >
+                                {assigningId === stu.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col bg-background p-6">
+              <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Assign user
+              </h3>
+
+              <div className="mb-4 flex overflow-hidden rounded-xl border border-border bg-muted/30 p-1 shadow-sm">
+                {(['Student', 'Lecturer', 'Expert'] as const).map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setSelectedRoleToAssign(role)}
+                    className={cn(
+                      'flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all',
+                      selectedRoleToAssign === role
+                        ? 'border border-border bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
+                    )}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative mb-4">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={`Search ${selectedRoleToAssign}s...`}
+                  className="h-10 w-full rounded-xl border border-border bg-input pl-10 pr-4 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
+              <div className="scrollbar-thin scrollbar-thumb-border hover:scrollbar-thumb-muted-foreground/30 flex-1 space-y-2 overflow-y-auto pr-2">
+                {usersQuery.isPending ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : availableUsers.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    No available {selectedRoleToAssign}s found.
+                  </div>
+                ) : (
+                  availableUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:border-primary/30"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="truncate text-sm font-semibold text-card-foreground">
+                          {user.fullName}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">{user.email}</div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleAssign(user.id)}
+                        disabled={assigningId === user.id}
+                        className="group h-8 w-8 shrink-0 rounded-lg bg-primary/10 p-0 text-primary hover:bg-primary hover:text-primary-foreground"
+                      >
+                        {assigningId === user.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PlusCircle className="h-4 w-4 text-primary transition-colors group-hover:text-primary-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}

@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from './button';
 
 export interface ModalProps {
@@ -10,49 +12,64 @@ export interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   footer?: ReactNode;
-  size?: 'md' | 'lg' | 'xl';
+  size?: 'md' | 'lg' | 'xl' | '2xl';
 }
 
 export function Modal({ open, title, children, onClose, footer, size = 'md' }: ModalProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const maxW = size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-md';
+  const maxW =
+    size === 'lg'
+      ? 'max-w-2xl'
+      : size === 'xl'
+        ? 'max-w-4xl'
+        : size === '2xl'
+          ? 'max-w-5xl'
+          : 'max-w-md';
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" aria-hidden onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        className={`relative w-full ${maxW} rounded-2xl border border-border bg-card shadow-xl`}
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
-          <h2 id="modal-title" className="text-lg font-semibold text-card-foreground">
-            {title}
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            className="!p-2 shrink-0"
-            onClick={onClose}
-            aria-label="Close"
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay
+          className={cn(
+            'fixed inset-0 z-[150] bg-background/80 backdrop-blur-sm',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
+          )}
+        />
+        <Dialog.Content
+          className={cn(
+            'fixed left-1/2 top-1/2 z-[151] flex max-h-[min(92vh,880px)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-card p-0 text-card-foreground shadow-xl outline-none',
+            'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+            maxW,
+          )}
+        >
+          <Dialog.Description className="sr-only">Dialog: {title}</Dialog.Description>
+          <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+            <Dialog.Title className="text-lg font-semibold text-card-foreground">
+              {title}
+            </Dialog.Title>
+            <Dialog.Close asChild>
+              <Button type="button" variant="ghost" className="!h-9 !w-9 shrink-0 !p-0" aria-label="Close">
+                <X className="h-5 w-5 text-muted-foreground" />
+              </Button>
+            </Dialog.Close>
+          </div>
+          <div
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto px-6 py-4',
+              'scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border/50 hover:scrollbar-thumb-border',
+            )}
           >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </Button>
-        </div>
-        <div className="max-h-[min(70vh,720px)] overflow-y-auto px-6 py-4">{children}</div>
-        {footer ? <div className="border-t border-border px-6 py-4">{footer}</div> : null}
-      </div>
-    </div>
+            {children}
+          </div>
+          {footer ? <div className="border-t border-border px-6 py-4">{footer}</div> : null}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

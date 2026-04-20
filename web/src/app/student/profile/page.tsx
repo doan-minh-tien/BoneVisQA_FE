@@ -1,6 +1,9 @@
 'use client';
 
+import { redirect } from 'next/navigation';
+
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { StudentAppChrome } from '@/components/student/StudentAppChrome';
 import { Button } from '@/components/ui/button';
@@ -11,6 +14,7 @@ import {
   fetchStudentRecentActivity,
   updateStudentProfile,
 } from '@/lib/api/student';
+import { getApiErrorMessage } from '@/lib/api/client';
 import type {
   StudentProfile,
   StudentProfileUpdatePayload,
@@ -159,7 +163,6 @@ export default function StudentProfilePage() {
     classCode: '',
   });
   const [personal, setPersonal] = useState<PersonalInfoValues>(EMPTY_PERSONAL_INFO);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [credentialsReadOnly, setCredentialsReadOnly] = useState(true);
   const [progress, setProgress] = useState<StudentProgress | null>(null);
@@ -177,38 +180,48 @@ export default function StudentProfilePage() {
     setNotif(loadNotifPrefs());
   }, []);
 
+  const bundleQuery = useQuery({
+    queryKey: ['student-profile-bundle'],
+    queryFn: async () => {
+      const [data, prog, act] = await Promise.allSettled([
+        fetchStudentProfile(),
+        fetchStudentProgress(),
+        fetchStudentRecentActivity(),
+      ]);
+      if (data.status === 'rejected') throw data.reason;
+      const p = data.value;
+      return {
+        profile: p,
+        progress: prog.status === 'fulfilled' ? prog.value : null,
+        activity:
+          act.status === 'fulfilled' && Array.isArray(act.value) ? act.value : ([] as StudentRecentActivityItem[]),
+      };
+    },
+    retry: 1,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [data, prog, act] = await Promise.all([
-          fetchStudentProfile(),
-          fetchStudentProgress().catch(() => null),
-          fetchStudentRecentActivity().catch(() => []),
-        ]);
-        if (cancelled) return;
-        setProfile(data);
-        setForm({
-          fullName: data.fullName ?? '',
-          schoolCohort: data.schoolCohort ?? '',
-          avatarUrl: data.avatarUrl ?? '',
-          classCode: data.classCode ?? '',
-        });
-        setPersonal(profileToPersonalValues(data));
-        if (prog) setProgress(prog);
-        setActivity(act);
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : 'Failed to load student profile.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+    const d = bundleQuery.data;
+    if (!d) return;
+    setProfile(d.profile);
+    setForm({
+      fullName: d.profile.fullName ?? '',
+      schoolCohort: d.profile.schoolCohort ?? '',
+      avatarUrl: d.profile.avatarUrl ?? '',
+      classCode: d.profile.classCode ?? '',
+    });
+    setPersonal(profileToPersonalValues(d.profile));
+    if (d.progress) setProgress(d.progress);
+    setActivity(d.activity);
+  }, [bundleQuery.data]);
+
+  useEffect(() => {
+    if (!bundleQuery.isError || !bundleQuery.error) return;
+    toast.error(getApiErrorMessage(bundleQuery.error));
+  }, [bundleQuery.isError, bundleQuery.error, toast]);
+
+  const loading = bundleQuery.isPending;
 
   const initials = useMemo(() => {
     const source = form.fullName || profile?.fullName || 'BV';
@@ -459,9 +472,11 @@ export default function StudentProfilePage() {
                   </label>
                   <input
                     id="stu-school-id"
-                    readOnly
-                    value={personal.studentSchoolId || '—'}
-                    className={inputReadonlyCls}
+                    readOnly={credentialsReadOnly}
+                    value={personal.studentSchoolId || ''}
+                    onChange={(e) => setPersonal((p) => ({ ...p, studentSchoolId: e.target.value }))}
+                    placeholder="Enter your student ID"
+                    className={credentialsReadOnly ? inputReadonlyCls : inputCls}
                   />
                 </div>
               </div>
@@ -478,6 +493,19 @@ export default function StudentProfilePage() {
                       : 'Your account is inactive. Contact your lecturer or administrator.'}
                   </p>
                 </div>
+              </div>
+
+              {/* Save action directly under password block for visibility */}
+              <div className="mt-6 flex justify-end">
+                <Button
+                  type="submit"
+                  isLoading={saving}
+                  disabled={saving}
+                  className="rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-8 py-3 font-bold shadow-md hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  {!saving && <Save className="mr-2 h-4 w-4" />}
+                  Save changes
+                </Button>
               </div>
             </div>
           </div>
@@ -590,8 +618,7 @@ export default function StudentProfilePage() {
             <div className="mt-6">
               <PersonalInfoFields idPrefix="stu-pi" values={personal} onChange={setPersonal} />
               <p className="mt-4 text-xs text-[#727783] dark:text-slate-500">
-                Student ID (above) is managed by your institution. Email is tied to login and cannot be changed
-                here.
+                Email is tied to login and cannot be changed here.
               </p>
             </div>
           </details>
@@ -603,18 +630,10 @@ export default function StudentProfilePage() {
                 <RoleBadgeList roles={profile.roles} emptyLabel="Student" />
               </div>
             </div>
-            <Button
-              type="submit"
-              isLoading={saving}
-              disabled={saving}
-              className="rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-8 font-bold shadow-md"
-            >
-              {!saving && <Save className="mr-2 h-4 w-4" />}
-              Save changes
-            </Button>
           </div>
         </form>
       </div>
     </div>
   );
+
 }

@@ -1,19 +1,40 @@
 import type { NextConfig } from "next";
 
+function getSupabaseHostnameFromEnv(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname;
+  } catch {
+    return null;
+  }
+}
+
+const supabaseHostname = getSupabaseHostnameFromEnv();
+
+/**
+ * Google Identity Services uses postMessage across origins. A strict COOP breaks the flow;
+ * relax COOP only on auth routes (not site-wide).
+ * @see https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid
+ */
+const authPagesCoopHeaders = [
+  {
+    key: "Cross-Origin-Opener-Policy",
+    value: "unsafe-none",
+  },
+] as const;
+
 const nextConfig: NextConfig = {
-  // Cho phép Google Identity Services / popup OAuth giao tiếp qua postMessage (tránh cảnh báo COOP trên dev)
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
+  images: {
+    remotePatterns: supabaseHostname
+      ? [
           {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin-allow-popups',
+            protocol: "https",
+            hostname: supabaseHostname,
+            pathname: "/**",
           },
-        ],
-      },
-    ];
+        ]
+      : [],
   },
   async redirects() {
     return [
@@ -21,6 +42,18 @@ const nextConfig: NextConfig = {
       { source: "/register", destination: "/auth/sign-up", permanent: false },
       { source: "/forgot-password", destination: "/auth/forgot-password", permanent: false },
       { source: "/reset-password", destination: "/auth/reset-password", permanent: false },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/auth/sign-in",
+        headers: [...authPagesCoopHeaders],
+      },
+      {
+        source: "/auth/sign-up",
+        headers: [...authPagesCoopHeaders],
+      },
     ];
   },
 };

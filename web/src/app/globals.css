@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
 @import "tailwindcss";
+@plugin "tailwind-scrollbar";
 
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -11,71 +12,41 @@
   color-scheme: light;
 
   /* App canvas + typography (Material-style light shell) */
-  --background: #f7f9fb;
+  --background: #f8fafc;
   --surface: #ffffff;
-  /* Sidebar: deep navy-earth — keep in sync with AppSidebar bg-[#0F1F35]; do not swap for MD3 surface tokens */
-  --sidebar: #0f1f35;
-  --primary: #00478d;
-  --primary-hover: #003a73;
+  /* Sidebar surface + chrome (Medical Blue light shell) */
+  --sidebar: #f0f7ff;
+  /* Medical blue core (aligned with primary-600 scale) */
+  --primary: #0055ff;
+  --primary-hover: #0047d4;
   --cyan-accent: #00e5ff;
-  --text-main: #191c1e;
-  --text-muted: #424752;
-  --border-color: #d9e5f2;
-  --danger: #EF4444;
-  --warning: #F59E0B;
-  --success: #10B981;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --border-color: #dbe3ee;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
 
   /* Aliases for existing component classes */
   --foreground: var(--text-main);
-  --muted: #E5EEF7;
+  --muted: #eef2f7;
   --muted-foreground: var(--text-muted);
   --card: var(--surface);
   --card-foreground: var(--text-main);
   --border: var(--border-color);
-  --input: #F8FBFE;
+  --input: #f8fafc;
   --ring: var(--cyan-accent);
   --destructive: var(--danger);
   --accent: var(--cyan-accent);
-  --secondary: #EAF2FF;
+  --secondary: #eaf2ff;
   --primary-light: var(--cyan-accent);
   --sidebar-bg: var(--sidebar);
-  --sidebar-text: #F8FBFF;
-  --sidebar-hover: rgba(255, 255, 255, 0.08);
-  --sidebar-active: rgba(255, 255, 255, 0.14);
-}
+  --sidebar-text: #1e293b;
+  --sidebar-hover: #dbeafe;
+  --sidebar-active: #0055ff;
 
-.dark {
-  color-scheme: dark;
-
-  --background: #0B1320;
-  --surface: #132238;
-  --sidebar: #0D192B;
-  --primary: #007BFF;
-  --primary-hover: #0056b3;
-  --cyan-accent: #00E5FF;
-  --text-main: #FFFFFF;
-  --text-muted: #8BA0B2;
-  --border-color: #1E334D;
-  --danger: #EF4444;
-  --warning: #F59E0B;
-  --success: #10B981;
-
-  --foreground: var(--text-main);
-  --muted: var(--surface);
-  --muted-foreground: var(--text-muted);
-  --card: var(--surface);
-  --card-foreground: var(--text-main);
-  --border: var(--border-color);
-  --input: var(--surface);
-  --ring: var(--cyan-accent);
-  --destructive: var(--danger);
-  --accent: var(--cyan-accent);
-  --secondary: var(--surface);
-  --primary-light: var(--cyan-accent);
-  --sidebar-bg: var(--sidebar);
-  --sidebar-text: var(--text-main);
-  --sidebar-hover: rgba(255, 255, 255, 0.04);
-  --sidebar-active: var(--primary);
+  /* Full-bleed app areas (e.g. Visual QA) — matches h-16 local headers */
+  --app-header-height: 4rem;
 }
 
 @theme inline {
@@ -108,6 +79,18 @@
   --color-sidebar-text: var(--sidebar-text);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
+
+  /* Medical blue scale (Tailwind-style utilities: bg-primary-600, text-primary-900, …) */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #2f6fff;
+  --color-primary-600: #0055ff;
+  --color-primary-700: #0047d4;
+  --color-primary-800: #0039aa;
+  --color-primary-900: #002d87;
 
   /* MD3 tokens for student shell / dashboards (sidebar excluded) */
   --color-on-surface: #191c1e;
@@ -202,15 +185,33 @@ textarea::placeholder {
   border-color: var(--border-color);
 }
 
+/* Semantic scrollbars (WebKit + Firefox via plugin utilities on elements) */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
+  height: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c2c6d4;
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+}
+
+/* Scroll without showing scrollbars (main shell + panels) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -237,4 +238,133 @@ textarea::placeholder {
 
 .animate-in {
   animation: fadeIn 200ms ease-out forwards;
+}
+
+/* Visual QA chat — compound utility chain (Tailwind/shadcn-style) */
+@keyframes visualQaBubbleIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in.fade-in.slide-in-from-bottom-2.duration-300 {
+  animation: visualQaBubbleIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes indeterminate-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+/* Messenger-style typing indicator (Visual QA chat) */
+@keyframes messenger-dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+.messenger-typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(100 116 139);
+  will-change: transform, opacity;
+  animation: messenger-dot-bounce 1.15s ease-in-out infinite;
+}
+.messenger-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.messenger-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes wave-dots {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+.wave-typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(100 116 139);
+  will-change: transform, opacity;
+  animation: wave-dots 1.1s ease-in-out infinite;
+}
+.wave-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.wave-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes chat-send-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chat-send-rise {
+  will-change: transform, opacity;
+  animation: chat-send-rise 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messenger-typing-dot,
+  .wave-typing-dot,
+  .chat-send-rise {
+    animation: none !important;
+  }
+}
+
+/* Improve readability when text sits on strong/colored surfaces. */
+.text-contrast-outline {
+  text-shadow:
+    0 1px 0 rgb(0 0 0 / 0.78),
+    1px 0 0 rgb(0 0 0 / 0.58),
+    -1px 0 0 rgb(0 0 0 / 0.58),
+    0 -1px 0 rgb(0 0 0 / 0.42);
+}
+
+.text-contrast-outline-soft {
+  text-shadow:
+    0 1px 0 rgb(255 255 255 / 0.9),
+    1px 0 0 rgb(255 255 255 / 0.75),
+    -1px 0 0 rgb(255 255 255 / 0.75);
+}
+
+@layer utilities {
+  .app-scroll-y {
+    @apply scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent;
+  }
 }

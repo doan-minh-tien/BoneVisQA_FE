@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo, useEffect } from "react";
-import { useTranslation } from "react-i18next";
-import Header from "@/components/Header";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import Header from '@/components/Header';
 import {
   UiUser,
   UserManagementTable,
@@ -14,9 +15,10 @@ import {
   CreateUserDialog,
   EditUserDialog,
   DeleteConfirmDialog,
+  ImportUsersDialog,
 } from '@/components/admin/users/UserDialogs';
-import { ManageClassesDialog } from '@/components/admin/users/ManageClassesDialog';
 import { UserRoleDialog, UserStatusDialog } from '@/components/admin/UserStatusDialog';
+import { UserManagementTableSkeleton } from '@/components/shared/DashboardSkeletons';
 import { TableEmptyState } from '@/components/shared/TableEmptyState';
 import { ToolbarField } from '@/components/shared/ToolbarField';
 import { useToast } from '@/components/ui/toast';
@@ -30,12 +32,13 @@ import {
   type CreateUserPayload,
 } from '@/lib/api/admin-users';
 import type { AdminUser } from '@/lib/api/types';
-import { ChevronDown, Filter, Loader2, Plus, Search, Users } from 'lucide-react';
+import { BookOpen, ChevronDown, Filter, Loader2, Plus, Search, Upload, Users, X } from 'lucide-react';
 
 const assignableRoles: UserRole[] = ['Student', 'Lecturer', 'Expert', 'Admin'];
-const allRoles = assignableRoles;
+/** Directory tabs: Admin accounts are excluded by BE on GET /api/admin/users. */
+const directoryRoleTabs = ['Student', 'Lecturer', 'Expert'] as const satisfies readonly UserRole[];
 
-type RoleTab = UserRole | 'Pending' | 'Unassigned';
+type RoleTab = UserRole | 'Pending' | 'Unassigned' | 'All';
 
 function normalizeUser(user: AdminUser): UiUser {
   const roles = user.roles.map((r) => r.trim()).filter(Boolean);
@@ -53,24 +56,31 @@ function normalizeUser(user: AdminUser): UiUser {
     displayRole = 'Unassigned';
   }
 
+  const classListFromApi =
+    user.classAssignments?.map((c) => ({
+      id: c.classId,
+      className: c.className,
+      relationType: c.roleInClass,
+    })) ?? undefined;
+
   return {
     id: user.id,
     name: user.fullName,
     email: user.email,
     role: displayRole,
     status: user.isActive ? 'Active' : 'Inactive',
-    joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A',
+    joinedAt: user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB') : 'N/A',
     className: user.schoolCohort,
+    ...(classListFromApi?.length ? { classList: classListFromApi } : {}),
   };
 }
 
 export default function AdminUsersPage() {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const [users, setUsers] = useState<UiUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<RoleTab>('Pending');
+  const [activeTab, setActiveTab] = useState<RoleTab>('All');
   const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
   const [submitting, setSubmitting] = useState(false);
 
@@ -81,29 +91,38 @@ export default function AdminUsersPage() {
   } | null>(null);
   const [editTarget, setEditTarget] = useState<UiUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UiUser | null>(null);
-  const [manageClassesTarget, setManageClassesTarget] = useState<UiUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const {
+    data: adminUsersRaw,
+    isPending: loading,
+    error: usersError,
+  } = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: fetchAdminUsers,
+  });
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchAdminUsers();
-        if (!cancelled) setUsers(data.map(normalizeUser));
-      } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load users.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [toast]);
+    if (usersError) {
+      toast.error(usersError instanceof Error ? usersError.message : 'Failed to load users.');
+    }
+  }, [usersError, toast]);
+
+  const users = useMemo(() => {
+    return (adminUsersRaw ?? []).map((u) => {
+      const base = normalizeUser(u);
+      return base;
+    });
+  }, [adminUsersRaw]);
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
       if (activeTab === 'Pending' && u.role !== 'Pending') return false;
       if (activeTab === 'Unassigned' && u.role !== 'Unassigned') return false;
-      if (
+      if (activeTab === 'All') {
+        // no role filter
+      } else if (
         activeTab !== 'Pending' &&
         activeTab !== 'Unassigned' &&
         u.role !== activeTab
@@ -126,7 +145,6 @@ export default function AdminUsersPage() {
       Student: users.filter((u) => u.role === 'Student').length,
       Lecturer: users.filter((u) => u.role === 'Lecturer').length,
       Expert: users.filter((u) => u.role === 'Expert').length,
-      Admin: users.filter((u) => u.role === 'Admin').length,
     }),
     [users],
   );
@@ -137,15 +155,9 @@ export default function AdminUsersPage() {
     try {
       const nextIsActive = statusTarget.status !== 'Active';
       await toggleAdminUserStatus(statusTarget.id, nextIsActive);
-      setUsers((prev) =>
-        prev.map((user) =>
-          user.id === statusTarget.id
-            ? { ...user, status: nextIsActive ? 'Active' : 'Inactive' }
-            : user,
-        ),
-      );
       toast.success(`User ${nextIsActive ? 'activated' : 'deactivated'} successfully.`);
       setStatusTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update user status.');
     } finally {
@@ -157,15 +169,9 @@ export default function AdminUsersPage() {
     setSubmitting(true);
     try {
       await assignAdminUserRole(user.id, selectedRole);
-      setUsers((prev) =>
-        prev.map((item) =>
-          item.id === user.id
-            ? { ...item, role: selectedRole, status: 'Active' as const }
-            : item,
-        ),
-      );
       toast.success(`Role set to ${selectedRole} for ${user.name}.`);
       setAssignRoleDialog(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to assign role.');
     } finally {
@@ -179,10 +185,10 @@ export default function AdminUsersPage() {
       await createAdminUser(payload);
       toast.success(`User "${payload.fullName}" created successfully.`);
       setCreateOpen(false);
-      const data = await fetchAdminUsers();
-      setUsers(data.map(normalizeUser));
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create user.');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -191,13 +197,9 @@ export default function AdminUsersPage() {
     setSubmitting(true);
     try {
       await updateAdminUser(userId, { fullName, schoolCohort: cohort });
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId ? { ...u, name: fullName, className: cohort } : u,
-        ),
-      );
       toast.success('User details updated successfully.');
       setEditTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update user.');
     } finally {
@@ -208,25 +210,13 @@ export default function AdminUsersPage() {
   const handleDeleteUser = async (userId: string) => {
     try {
       await deleteAdminUser(userId);
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
       toast.success('User deleted successfully.');
       setDeleteTarget(null);
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete user.');
     }
-  };
-
-  const handleManageClassesUpdated = (
-    userId: string,
-    updatedClasses: Array<{ id: string; className: string; relationType: string }>,
-  ) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? { ...u, classList: updatedClasses }
-          : u,
-      ),
-    );
   };
 
   return (
@@ -238,7 +228,13 @@ export default function AdminUsersPage() {
 
       <div className="mx-auto max-w-[1600px] space-y-8 p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-border bg-card p-1.5 shadow-sm">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-muted/40 p-1 shadow-inner">
+            <TabButton
+              label="All"
+              count={users.length}
+              active={activeTab === 'All'}
+              onClick={() => setActiveTab('All')}
+            />
             <TabButton
               label={t('users.pendingRequests', 'Pending')}
               count={countsByTab.Pending}
@@ -252,7 +248,7 @@ export default function AdminUsersPage() {
               active={activeTab === 'Unassigned'}
               onClick={() => setActiveTab('Unassigned')}
             />
-            {allRoles.map((role) => (
+            {directoryRoleTabs.map((role) => (
               <TabButton
                 key={role}
                 label={role}
@@ -263,14 +259,24 @@ export default function AdminUsersPage() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-            Create User
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold text-foreground shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+            >
+              <Upload className="h-4 w-4" />
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md transition-all hover:opacity-95 active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              Create User
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row">
@@ -305,12 +311,9 @@ export default function AdminUsersPage() {
 
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {loading ? (
-            <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-3 h-5 w-5 animate-spin text-primary" />
-              Loading users...
-            </div>
+            <UserManagementTableSkeleton />
           ) : filtered.length === 0 ? (
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <tbody>
                 <TableEmptyState
                   icon={Users}
@@ -327,7 +330,6 @@ export default function AdminUsersPage() {
               onOpenAssignRole={(user, mode) => setAssignRoleDialog({ user, mode })}
               onEdit={(user) => setEditTarget(user)}
               onDelete={(user) => setDeleteTarget(user)}
-              onManageClasses={(user) => setManageClassesTarget(user)}
               hideRoleButton={activeTab === 'Pending'}
             />
           )}
@@ -336,8 +338,20 @@ export default function AdminUsersPage() {
 
       {createOpen ? (
         <CreateUserDialog
-          onCancel={() => { setCreateOpen(false); setSubmitting(false); }}
+          onCancel={() => {
+            setCreateOpen(false);
+            setSubmitting(false);
+          }}
           onConfirm={handleCreateUser}
+        />
+      ) : null}
+
+      {importOpen ? (
+        <ImportUsersDialog
+          onCancel={() => setImportOpen(false)}
+          onSuccess={() => {
+            setImportOpen(false);
+          }}
         />
       ) : null}
 
@@ -346,7 +360,10 @@ export default function AdminUsersPage() {
           userId={editTarget.id}
           initialFullName={editTarget.name}
           initialCohort={editTarget.className}
-          onCancel={() => { setEditTarget(null); setSubmitting(false); }}
+          onCancel={() => {
+            setEditTarget(null);
+            setSubmitting(false);
+          }}
           onConfirm={handleEditUser}
         />
       ) : null}
@@ -378,14 +395,6 @@ export default function AdminUsersPage() {
           isLoading={submitting}
         />
       ) : null}
-
-      {manageClassesTarget ? (
-        <ManageClassesDialog
-          user={manageClassesTarget}
-          onCancel={() => setManageClassesTarget(null)}
-          onUpdated={handleManageClassesUpdated}
-        />
-      ) : null}
     </div>
   );
 }
@@ -407,22 +416,22 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+      className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-all ${
         active
           ? highlight
-            ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
-            : 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20'
+            : 'bg-background text-foreground shadow-sm ring-1 ring-border'
+          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
       }`}
     >
       <span>{label}</span>
       <span
-        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+        className={`min-w-[1.25rem] rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
           active
             ? highlight
-              ? 'bg-white/25 text-white'
-              : 'bg-white/20 text-white'
-            : 'bg-slate-100 text-slate-600'
+              ? 'bg-primary-foreground/15 text-primary-foreground'
+              : 'bg-muted/80 text-muted-foreground'
+            : 'bg-background/80 text-muted-foreground'
         }`}
       >
         {count}

@@ -1,32 +1,151 @@
+import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
-import { normalizeVisualQaReport } from './normalize-visual-qa';
-import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from './types';
-import { parsePercentageBoundingBox } from '@/lib/utils/annotations';
+import type { ExpertPendingReview } from './expert-dashboard';
+import { fetchExpertPendingReviews } from './expert-dashboard';
+import { normalizeVisualQaReport, normalizeVisualQaSessionReport } from './normalize-visual-qa';
+import type { Citation, ExpertReviewItem, VisualQaReport, VisualQaTurn } from './types';
+import {
+  isValidNormalizedBoundingBox,
+  parseCustomPolygon,
+  parseNormalizedBoundingBox,
+  parsePercentageBoundingBox,
+} from '@/lib/utils/annotations';
 
-function mapExpertCitation(row: unknown): ExpertReviewCitation | null {
+export const REVIEW_WORKFLOW_CONFLICT = 'REVIEW_WORKFLOW_CONFLICT';
+
+function normalizeReviewMessageId(raw: string | null | undefined): string {
+  if (raw == null) return '';
+  let s = String(raw).trim();
+  if (!s) return '';
+  if (s.startsWith('{') && s.endsWith('}')) s = s.slice(1, -1).trim();
+  return s.toLowerCase();
+}
+
+function reflectiveQuestionsToNullableString(
+  rq: VisualQaReport['reflectiveQuestions'],
+): string | null {
+  if (rq == null) return null;
+  if (Array.isArray(rq)) {
+    const t = rq.map((x) => String(x).trim()).filter(Boolean).join('\n');
+    return t || null;
+  }
+  const t = String(rq).trim();
+  return t || null;
+}
+
+function parseDifferentialDiagnosesList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      if (Array.isArray(p)) {
+        return p.map((x) => String(x).trim()).filter(Boolean);
+      }
+    } catch {
+      return raw
+        .split(/[\n;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+/** Gộp citation từ mọi turn + root (một số BE chỉ gắn RAG evidence trên turn đầu). Dedupe giống BE: (chunkId, medicalCaseId). */
+function mergeRawCitationLists(...lists: unknown[][]): unknown[] {
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as Record<string, unknown>;
+      const id = String(
+        row.chunkId ?? row.documentChunkId ?? row.ChunkId ?? row.id ?? row.chunkID ?? '',
+      ).trim();
+      const medicalCaseId = String(
+        row.medicalCaseId ?? row.MedicalCaseId ?? row.caseId ?? row.CaseId ?? '',
+      ).trim();
+      const excerpt = String(row.sourceText ?? row.snippet ?? row.text ?? '').slice(0, 48);
+      const key =
+        id && medicalCaseId
+          ? `${id.toLowerCase()}::${medicalCaseId.toLowerCase()}`
+          : id
+            ? id.toLowerCase()
+            : `fall:${out.length}:${excerpt}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(raw);
+    }
+  }
+  return out;
+}
+
+function mapExpertCitation(row: unknown): Citation | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const chunkId = String(r.chunkId ?? r.id ?? r.chunkID ?? '');
-  const sourceText = String(r.sourceText ?? r.text ?? r.chunkText ?? r.content ?? '');
-  if (!chunkId || !sourceText) return null;
+  const chunkId = String(
+    r.chunkId ?? r.documentChunkId ?? r.DocumentChunkId ?? r.id ?? r.chunkID ?? '',
+  ).trim();
+  if (!chunkId) return null;
 
-  const rawFlagged = r.flagged ?? r.isFlagged ?? r.hasBeenFlagged;
+  let sourceText = String(
+    r.sourceText ??
+      r.SourceText ??
+      r.snippet ??
+      r.preview ??
+      r.text ??
+      r.chunkText ??
+      r.content ??
+      r.excerpt ??
+      '',
+  ).trim();
 
+  if (!sourceText) {
+    const title = String(r.documentTitle ?? r.title ?? r.documentName ?? '').trim();
+    const pageRaw = r.pageNumber ?? r.PageNumber ?? r.page ?? r.startPage;
+    const page =
+      pageRaw !== undefined && pageRaw !== null && String(pageRaw).trim() !== ''
+        ? Number(pageRaw)
+        : undefined;
+    const bits = [
+      title,
+      page !== undefined && Number.isFinite(page) ? `Page ${Math.floor(page)}` : '',
+    ].filter(Boolean);
+    sourceText = bits.length > 0 ? bits.join(' · ') : '(No excerpt — chunk metadata only)';
+  }
+
+  const rawFlagged = r.flagged ?? r.isFlagged ?? r.hasBeenFlagged ?? r.IsFlagged;
+
+  const referenceUrlRaw =
+    r.referenceUrl ??
+    r.ReferenceUrl ??
+    r.href ??
+    r.documentUrl ??
+    r.DocumentUrl ??
+    r.fileUrl ??
+    r.FileUrl;
+
+  const documentIdRaw = r.documentId ?? r.DocumentId ?? r.document_id;
   return {
     chunkId,
     sourceText,
+    ...(documentIdRaw != null && String(documentIdRaw).trim()
+      ? { documentId: String(documentIdRaw).trim() }
+      : {}),
     referenceUrl:
-      r.referenceUrl !== undefined
-        ? String(r.referenceUrl)
-        : r.documentUrl !== undefined
-          ? String(r.documentUrl)
-          : undefined,
-    pageNumber:
-      r.pageNumber !== undefined && r.pageNumber !== null
-        ? Number(r.pageNumber)
-        : r.chunkOrder !== undefined && r.chunkOrder !== null
-          ? Number(r.chunkOrder)
-          : undefined,
+      referenceUrlRaw !== undefined && referenceUrlRaw !== null && String(referenceUrlRaw).trim()
+        ? String(referenceUrlRaw).trim()
+        : undefined,
+    pageNumber: (() => {
+      const p =
+        r.pageNumber ?? r.PageNumber ?? r.page ?? r.startPage ?? r.chunkOrder ?? r.ChunkOrder;
+      if (p === undefined || p === null) return undefined;
+      const n = Number(p);
+      return Number.isFinite(n) ? n : undefined;
+    })(),
     flagged: typeof rawFlagged === 'boolean' ? rawFlagged : undefined,
   };
 }
@@ -34,80 +153,640 @@ function mapExpertCitation(row: unknown): ExpertReviewCitation | null {
 function mapExpertItem(row: unknown): ExpertReviewItem | null {
   if (!row || typeof row !== 'object') return null;
   const r = row as Record<string, unknown>;
-  const id = String(r.id ?? r.requestId ?? '');
-  if (!id) return null;
-  const reportRaw = r.report ?? r.structuredReport ?? r.aiReport;
-  const report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+  const answerIdRaw = String(r.answerId ?? r.AnswerId ?? r.caseAnswerId ?? r.CaseAnswerId ?? '').trim();
+  const sessionId = String(
+    r.sessionId ??
+      r.SessionId ??
+      r.visualQaSessionId ??
+      r.VisualQaSessionId ??
+      (answerIdRaw || undefined) ??
+      r.id ??
+      r.requestId ??
+      '',
+  ).trim();
+  if (!sessionId) return null;
+  const turnsRaw = r.turns ?? r.Turns ?? r.history ?? r.History;
+  const hasSessionTurns = Array.isArray(turnsRaw) && turnsRaw.length > 0;
+  const sessionLikeRaw = hasSessionTurns
+    ? {
+        sessionId,
+        caseId: r.caseId ?? r.CaseId ?? null,
+        imageId: r.imageId ?? r.ImageId ?? null,
+        turns: turnsRaw,
+      }
+    : null;
+  const normalizedSession = sessionLikeRaw ? normalizeVisualQaSessionReport(sessionLikeRaw) : null;
+  const requestedReviewMessageId = String(
+    r.requestedReviewMessageId ?? r.RequestedReviewMessageId ?? '',
+  ).trim();
+  const selectedUserMessageId = String(
+    r.selectedUserMessageId ?? r.SelectedUserMessageId ?? '',
+  ).trim();
+  const selectedAssistantMessageId = String(
+    r.selectedAssistantMessageId ?? r.SelectedAssistantMessageId ?? '',
+  ).trim();
+
+  const matchedTurn =
+    normalizedSession?.turns.find((turn) => {
+      const assistantId = normalizeReviewMessageId(turn.assistantMessageId);
+      const userId = normalizeReviewMessageId(turn.userMessageId);
+      const saN = normalizeReviewMessageId(selectedAssistantMessageId);
+      const suN = normalizeReviewMessageId(selectedUserMessageId);
+      const reqN = normalizeReviewMessageId(requestedReviewMessageId);
+      if (saN && assistantId && saN === assistantId) {
+        return true;
+      }
+      if (suN && userId && suN === userId) {
+        return true;
+      }
+      if (reqN) {
+        if (assistantId && assistantId === reqN) return true;
+        if (userId && userId === reqN) return true;
+      }
+      return false;
+    }) ?? null;
+  const latestTurn = matchedTurn ?? normalizedSession?.latest ?? null;
+  const allTurns: VisualQaTurn[] = normalizedSession?.turns ?? [];
+
+  const messages = Array.isArray(r.messages) ? r.messages : [];
+  const latestAssistantMessage =
+    messages.length > 0
+      ? [...messages]
+          .reverse()
+          .find((m) => {
+            if (!m || typeof m !== 'object') return false;
+            const mr = m as Record<string, unknown>;
+            const role = String(mr.role ?? mr.Role ?? '').toLowerCase();
+            return role.includes('assistant') || role === 'ai' || role === 'model';
+          }) ?? null
+      : null;
+  const latestAssistantRecord =
+    latestAssistantMessage && typeof latestAssistantMessage === 'object'
+      ? (latestAssistantMessage as Record<string, unknown>)
+      : null;
+
+  const reportRaw =
+    latestTurn ??
+    latestAssistantRecord ??
+    r.latest ??
+    r.latestTurn ??
+    r.report ??
+    r.structuredReport ??
+    r.aiReport;
+  let report: VisualQaReport = normalizeVisualQaReport(reportRaw ?? r);
+
+  if (latestTurn?.answerText?.trim()) {
+    report = { ...report, answerText: latestTurn.answerText.trim() };
+  } else if (latestAssistantRecord) {
+    const assistantContent = String(
+      latestAssistantRecord.content ??
+        latestAssistantRecord.text ??
+        latestAssistantRecord.answerText ??
+        '',
+    ).trim();
+    if (assistantContent) {
+      report = { ...report, answerText: assistantContent };
+    }
+  } else {
+    const currentAnswerFlat = String(r.currentAnswerText ?? r.CurrentAnswerText ?? '').trim();
+    if (currentAnswerFlat) {
+      report = { ...report, answerText: currentAnswerFlat };
+    }
+  }
+  if (r.keyImagingFindings !== undefined && r.keyImagingFindings !== null) {
+    const v = String(r.keyImagingFindings).trim();
+    report = { ...report, keyImagingFindings: v || null };
+  }
+  if (r.reflectiveQuestions !== undefined && r.reflectiveQuestions !== null) {
+    const v = String(r.reflectiveQuestions).trim();
+    report = { ...report, reflectiveQuestions: v || null };
+  }
+
+  const structuredDiagnosis = String(r.structuredDiagnosis ?? r.StructuredDiagnosis ?? '').trim();
+  if (structuredDiagnosis) {
+    report = { ...report, suggestedDiagnosis: structuredDiagnosis };
+  } else {
+    const caseSugg = String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim();
+    if (caseSugg && report.suggestedDiagnosis?.trim() === caseSugg) {
+      report = { ...report, suggestedDiagnosis: '' };
+    }
+  }
+
+  const diffFromDto = parseDifferentialDiagnosesList(r.differentialDiagnoses ?? r.DifferentialDiagnoses);
+  if (diffFromDto.length > 0) {
+    report = { ...report, differentialDiagnoses: diffFromDto, keyFindings: diffFromDto };
+  } else {
+    const caseKf = String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim();
+    const kfJoined = report.keyFindings.length > 0 ? report.keyFindings.join('\n').trim() : '';
+    if (caseKf && kfJoined && kfJoined === caseKf) {
+      report = { ...report, keyFindings: [], differentialDiagnoses: report.differentialDiagnoses ?? [] };
+    }
+  }
+
+  const confRaw = r.aiConfidenceScore ?? r.AiConfidenceScore;
+  if (typeof confRaw === 'number' && Number.isFinite(confRaw)) {
+    report = { ...report, aiConfidenceScore: confRaw };
+  } else if (typeof confRaw === 'string' && confRaw.trim()) {
+    const n = parseFloat(confRaw);
+    if (Number.isFinite(n)) report = { ...report, aiConfidenceScore: n };
+  }
   const customCoordinates = parsePercentageBoundingBox(
     r.customCoordinates ??
       r.annotationCoordinates ??
       r.questionCoordinates ??
       r.coordinates,
   );
-  const citationSource = Array.isArray(r.citations)
-    ? r.citations
-    : Array.isArray(r.evidence)
-      ? r.evidence
-      : Array.isArray(r.ragCitations)
-        ? r.ragCitations
-        : [];
+  const polyRaw = r.customPolygon ?? r.CustomPolygon;
+  const dedicatedBoxRaw =
+    r.customBoundingBox ?? r.CustomBoundingBox ?? r.normalizedBoundingBox ?? r.NormalizedBoundingBox;
+  let customBoundingBox =
+    parseNormalizedBoundingBox(dedicatedBoxRaw) ?? parseNormalizedBoundingBox(polyRaw);
+  const customPolygon = customBoundingBox ? null : parseCustomPolygon(polyRaw);
+  if (!customBoundingBox && latestTurn) {
+    const fromTurn = latestTurn.roiBoundingBox ?? latestTurn.questionCoordinates ?? null;
+    if (fromTurn && isValidNormalizedBoundingBox(fromTurn)) {
+      customBoundingBox = fromTurn;
+    }
+  }
+  const citationSource = mergeRawCitationLists(
+    ...allTurns.map((t) => (Array.isArray(t.citations) ? t.citations : [])),
+    Array.isArray(latestTurn?.citations) ? latestTurn.citations : [],
+    Array.isArray(latestAssistantRecord?.citations) ? latestAssistantRecord.citations : [],
+    Array.isArray(r.citations) ? r.citations : [],
+    Array.isArray(r.Citations) ? r.Citations : [],
+    Array.isArray(r.evidence) ? r.evidence : [],
+    Array.isArray(r.ragCitations) ? r.ragCitations : [],
+    Array.isArray(r.ragChunks) ? r.ragChunks : [],
+    Array.isArray(r.RagChunks) ? r.RagChunks : [],
+    Array.isArray(r.retrievedChunks) ? r.retrievedChunks : [],
+  );
   const citations = citationSource
     .map(mapExpertCitation)
-    .filter((item): item is ExpertReviewCitation => item !== null);
+    .filter((item): item is Citation => item !== null);
+  const sessionQuestion = latestTurn?.questionText?.trim();
+  const fallbackQuestionFromMessage = (() => {
+    if (messages.length === 0 || !latestAssistantRecord) return '';
+    const assistantIdx = messages.findIndex((m) => m === latestAssistantMessage);
+    if (assistantIdx <= 0) return '';
+    for (let i = assistantIdx - 1; i >= 0; i -= 1) {
+      const prev = messages[i];
+      if (!prev || typeof prev !== 'object') continue;
+      const pr = prev as Record<string, unknown>;
+      const role = String(pr.role ?? pr.Role ?? '').toLowerCase();
+      if (role.includes('user') || role.includes('student')) {
+        return String(pr.content ?? pr.text ?? pr.questionText ?? '').trim();
+      }
+    }
+    return '';
+  })();
+  const questionText = String(
+    sessionQuestion || fallbackQuestionFromMessage || r.questionText || r.question || '',
+  );
+
+  const caseIdRaw = r.caseId ?? r.CaseId;
+  const caseId =
+    caseIdRaw != null && String(caseIdRaw).trim() !== '' ? String(caseIdRaw).trim() : null;
+  const caseDescription = String(r.caseDescription ?? r.CaseDescription ?? '').trim() || null;
+  const caseSuggestedDiagnosis =
+    String(r.caseSuggestedDiagnosis ?? r.CaseSuggestedDiagnosis ?? '').trim() || null;
+  const caseKeyFindings = String(r.caseKeyFindings ?? r.CaseKeyFindings ?? '').trim() || null;
+  const caseTitle =
+    String(r.caseTitle ?? r.CaseTitle ?? r.caseName ?? r.CaseName ?? '').trim() || null;
+
+  const askedAtRaw =
+    r.escalatedAt ??
+    r.EscalatedAt ??
+    r.askedAt ??
+    r.AskedAt ??
+    r.submittedAt ??
+    r.SubmittedAt ??
+    '';
 
   return {
-    id,
+    sessionId,
+    answerId: answerIdRaw || null,
+    id: sessionId,
     studentName: String(r.studentName ?? ''),
     className: r.className !== undefined ? String(r.className) : undefined,
-    question: String(r.question ?? ''),
-    imageUrl: r.imageUrl !== undefined ? String(r.imageUrl) : undefined,
+    questionText,
+    question: questionText,
+    caseId,
+    caseTitle,
+    caseDescription,
+    caseSuggestedDiagnosis,
+    caseKeyFindings,
+    imageUrl:
+      r.imageUrl !== undefined
+        ? String(r.imageUrl)
+        : r.customImageUrl !== undefined
+          ? String(r.customImageUrl)
+          : undefined,
+    imageId: r.imageId != null ? String(r.imageId) : null,
+    customImageUrl: r.customImageUrl != null ? String(r.customImageUrl) : null,
+    promotedCaseId:
+      r.promotedCaseId != null
+        ? String(r.promotedCaseId)
+        : r.PromotedCaseId != null
+          ? String(r.PromotedCaseId)
+          : null,
     customCoordinates,
-    askedAt: String(r.askedAt ?? ''),
+    customBoundingBox,
+    customPolygon,
+    askedAt: String(askedAtRaw ?? ''),
     status: String(r.status ?? 'PendingExpert'),
     report,
+    turns: allTurns,
+    latestTurnIndex: latestTurn?.turnIndex ?? null,
+    requestedReviewMessageId: requestedReviewMessageId || null,
+    selectedUserMessageId: selectedUserMessageId || null,
+    selectedAssistantMessageId: selectedAssistantMessageId || null,
     citations,
+    keyImagingFindings: report.keyImagingFindings ?? null,
+    reflectiveQuestions: reflectiveQuestionsToNullableString(report.reflectiveQuestions),
+    queueSource: 'queue',
   };
 }
 
+/** When `/reviews/case-answer` and `/reviews/escalated` are empty but dashboard still lists pending items. */
+function mapDashboardPendingToExpertItem(row: ExpertPendingReview): ExpertReviewItem | null {
+  const sessionId = String(row.id ?? '').trim();
+  if (!sessionId) return null;
+  const report = normalizeVisualQaReport({
+    answerText: row.aiAnswerSnippet,
+    suggestedDiagnosis: '',
+    keyFindings: [],
+    differentialDiagnoses: [],
+  });
+  return {
+    sessionId,
+    answerId: null,
+    id: sessionId,
+    studentName: row.studentName,
+    questionText: row.questionSnippet,
+    question: row.questionSnippet,
+    caseId: row.caseId ?? null,
+    caseTitle: row.caseTitle?.trim() ? row.caseTitle : null,
+    askedAt: row.submittedAt || '',
+    status: 'PendingExpert',
+    report,
+    turns: [],
+    citations: [],
+    queueSource: 'dashboard-summary',
+  };
+}
+
+/**
+ * True when BE pair-selection metadata cannot be aligned with session turns (strict invariant).
+ * If no pair IDs are present, returns false (nothing to verify client-side).
+ */
+export function hasExpertReviewSelectedPairMismatch(item: ExpertReviewItem): boolean {
+  const req = normalizeReviewMessageId(item.requestedReviewMessageId);
+  const su = normalizeReviewMessageId(item.selectedUserMessageId);
+  const sa = normalizeReviewMessageId(item.selectedAssistantMessageId);
+  if (!req && !su && !sa) return false;
+  const turns = item.turns ?? [];
+  if (turns.length === 0) return true;
+
+  const matched = turns.find((turn) => {
+    const assistantId = normalizeReviewMessageId(turn.assistantMessageId);
+    const userId = normalizeReviewMessageId(turn.userMessageId);
+    if (sa && assistantId && sa === assistantId) return true;
+    if (su && userId && su === userId) return true;
+    if (req) {
+      if (assistantId && assistantId === req) return true;
+      if (userId && userId === req) return true;
+    }
+    return false;
+  });
+  if (!matched) return true;
+  const mUser = normalizeReviewMessageId(matched.userMessageId);
+  const mAsst = normalizeReviewMessageId(matched.assistantMessageId);
+  if (su && mUser && su !== mUser) return true;
+  if (sa && mAsst && sa !== mAsst) return true;
+  if (req && req !== mUser && req !== mAsst) {
+    return true;
+  }
+  return false;
+}
+
+const REVIEW_LIST_ARRAY_KEYS = [
+  'pendingReviews',
+  'sessions',
+  'reviews',
+  'escalated',
+  'caseAnswers',
+  'queue',
+] as const;
+
+function firstArrayFromRecord(rec: Record<string, unknown>): unknown[] | null {
+  for (const key of REVIEW_LIST_ARRAY_KEYS) {
+    const v = rec[key];
+    if (Array.isArray(v)) return v;
+  }
+  return null;
+}
+
+/** Align envelopes with `expert-dashboard` `unwrapList` plus common Visual QA queue property names. */
+function unwrapReviewList(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  const b = data as Record<string, unknown>;
+  if (Array.isArray(b.items)) return b.items;
+  if (Array.isArray(b.data)) return b.data;
+  if (Array.isArray(b.results)) return b.results;
+  const fromRoot = firstArrayFromRecord(b);
+  if (fromRoot) return fromRoot;
+  const res = b.result;
+  if (Array.isArray(res)) return res;
+  if (res && typeof res === 'object') {
+    const r = res as Record<string, unknown>;
+    if (Array.isArray(r.items)) return r.items;
+    if (Array.isArray(r.data)) return r.data;
+    if (Array.isArray(r.results)) return r.results;
+    const nested = firstArrayFromRecord(r);
+    if (nested) return nested;
+  }
+  return [];
+}
+
+/**
+ * Chi tiết đầy đủ một phiên review (citations / turns) — gọi khi mở case nếu queue list thiếu RAG evidence.
+ * BE có thể chưa triển khai: khi đó trả null, FE vẫn dùng bản từ queue + merge citation theo turn.
+ */
+export async function fetchExpertReviewDetail(sessionId: string): Promise<ExpertReviewItem | null> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) return null;
+  const unwrap = (data: unknown): unknown => {
+    if (!data || typeof data !== 'object') return data;
+    const o = data as Record<string, unknown>;
+    if (o.data != null) return o.data;
+    if (o.item != null) return o.item;
+    return data;
+  };
+  try {
+    const { data } = await http.get<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}`);
+    const raw = unwrap(data);
+    const row = Array.isArray(raw) ? raw[0] : raw;
+    return mapExpertItem(row);
+  } catch {
+    try {
+      const { data } = await http.get<unknown>(
+        `/api/expert/reviews/${encodeURIComponent(id)}/session`,
+      );
+      const raw = unwrap(data);
+      const row = Array.isArray(raw) ? raw[0] : raw;
+      return mapExpertItem(row);
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** Primary queue: case-answer reviews; fallback to escalated; then dashboard pending list if both are empty. */
 export async function fetchExpertReviewQueue(): Promise<ExpertReviewItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/Expert/reviews');
-    const list = Array.isArray(data)
-      ? data
-      : data && typeof data === 'object' && 'items' in data
-        ? (data as { items: unknown[] }).items
-        : [];
-    return list.map(mapExpertItem).filter((x): x is ExpertReviewItem => x !== null);
+    const { data } = await http.get<unknown>('/api/expert/reviews/case-answer');
+    const primary = unwrapReviewList(data)
+      .map(mapExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
+    if (primary.length > 0) return primary;
+  } catch {
+    /* fall through to escalated */
+  }
+  try {
+    const { data } = await http.get<unknown>('/api/expert/reviews/escalated');
+    const secondary = unwrapReviewList(data)
+      .map(mapExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
+    if (secondary.length > 0) return secondary;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+  try {
+    const pending = await fetchExpertPendingReviews();
+    return pending
+      .map(mapDashboardPendingToExpertItem)
+      .filter((x): x is ExpertReviewItem => x !== null);
+  } catch {
+    return [];
+  }
+}
+
+export interface ExpertReviewUpdatePayload {
+  answerText: string;
+  structuredDiagnosis: string;
+  differentialDiagnoses: string[];
+  reviewNote: string;
+  keyImagingFindings?: string | null;
+  reflectiveQuestions?: string | null;
+  correctedRoiBoundingBox?: number[] | null;
+  decision?: 'approve' | 'reject';
+}
+
+const reviewSubmitBody = (payload: ExpertReviewUpdatePayload) => {
+  const roi = payload.correctedRoiBoundingBox;
+  const roiBody =
+    Array.isArray(roi) && roi.length >= 4 && roi.slice(0, 4).every((n) => Number.isFinite(n))
+      ? { correctedRoiBoundingBox: roi.slice(0, 4) }
+      : {};
+  const decisionBody =
+    payload.decision !== undefined ? { decision: payload.decision } : {};
+  return {
+    answerText: payload.answerText,
+    structuredDiagnosis: payload.structuredDiagnosis,
+    differentialDiagnoses:
+      payload.differentialDiagnoses.length > 0
+        ? JSON.stringify(payload.differentialDiagnoses)
+        : null,
+    reviewNote: payload.reviewNote,
+    keyImagingFindings: payload.keyImagingFindings ?? null,
+    reflectiveQuestions: payload.reflectiveQuestions ?? null,
+    ...roiBody,
+    ...decisionBody,
+  };
+};
+
+export interface ExpertReviewDraftPayload {
+  reviewNote?: string;
+  correctedRoiBoundingBox?: number[];
+}
+
+export async function putExpertReviewDraft(
+  sessionId: string,
+  payload: ExpertReviewDraftPayload,
+): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  const body: Record<string, unknown> = {};
+  if (payload.reviewNote !== undefined) body.reviewNote = payload.reviewNote;
+  const roi = payload.correctedRoiBoundingBox;
+  if (Array.isArray(roi) && roi.length >= 4 && roi.slice(0, 4).every((n) => Number.isFinite(n))) {
+    body.correctedRoiBoundingBox = roi.slice(0, 4);
+  }
+  try {
+    await http.put(`/api/expert/reviews/${encodeURIComponent(id)}/draft`, body);
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
 }
 
-export interface ExpertReviewUpdatePayload {
-  status: 'Approved' | 'Rejected';
-  suggestedDiagnosis?: string;
-  keyFindings?: string;
+export async function deleteExpertReviewDraft(sessionId: string): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  try {
+    await http.delete(`/api/expert/reviews/${encodeURIComponent(id)}/draft`);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
 }
 
-export async function putExpertReview(
-  requestId: string,
+export async function resolveExpertReview(
+  sessionId: string,
   payload: ExpertReviewUpdatePayload,
 ): Promise<void> {
+  const body = reviewSubmitBody(payload);
   try {
-    await http.put(`/api/Expert/reviews/${requestId}`, JSON.stringify(payload), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    await http.post(`/api/expert/reviews/${sessionId}/resolve`, body);
   } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(REVIEW_WORKFLOW_CONFLICT);
+    }
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function postExpertResponse(
+  sessionId: string,
+  content: string,
+  options?: { correctedRoiBoundingBox?: number[] | null },
+): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  const message = String(content ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  if (!message) throw new Error('Feedback content is required.');
+  const roi = options?.correctedRoiBoundingBox;
+  const body: { content: string; correctedRoiBoundingBox?: number[] } = { content: message };
+  if (Array.isArray(roi) && roi.length >= 4) {
+    body.correctedRoiBoundingBox = roi.slice(0, 4);
+  }
+  try {
+    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/respond`, body);
+  } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(REVIEW_WORKFLOW_CONFLICT);
+    }
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function approveExpertReview(sessionId: string): Promise<void> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  try {
+    await http.post(`/api/expert/reviews/${encodeURIComponent(id)}/approve`);
+  } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(REVIEW_WORKFLOW_CONFLICT);
+    }
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface PromoteExpertReviewPayload {
+  /** Tiêu đề case thư viện — bắt buộc trước khi promote (BE có thể map sang `title` / `caseTitle`). */
+  title: string;
+  categoryId?: string;
+  categoryName?: string;
+  difficulty: string;
+  /** Tên tag, phân tách bởi expert UI. */
+  tagNames: string[];
+  /** Mô tả case = chẩn đoán có cấu trúc từ AI (theo nghiệp vụ promote). */
+  description: string;
+  /** Gợi ý chẩn đoán trên case = phần differential từ AI. */
+  suggestedDiagnosis: string;
+  /** Key findings trên case = findings / key imaging từ AI. */
+  keyFindings: string;
+  reflectiveQuestions: string;
+  /** ROI / annotation theo từng turn (JSON tuỳ BE). */
+  turnAnnotations?: Array<Record<string, unknown>>;
+}
+
+export async function promoteExpertReview(
+  sessionId: string,
+  payload: PromoteExpertReviewPayload,
+): Promise<string | null> {
+  const id = String(sessionId ?? '').trim();
+  if (!id) throw new Error('Session id is required.');
+  const title = String(payload.title ?? '').trim();
+  const difficulty = String(payload.difficulty ?? '').trim();
+  const tagNames = Array.isArray(payload.tagNames) ? payload.tagNames.map((t) => String(t).trim()).filter(Boolean) : [];
+  const body: Record<string, unknown> = {
+    title,
+    categoryId: payload.categoryId?.trim() || undefined,
+    categoryName: payload.categoryName?.trim() || undefined,
+    difficulty,
+    tagNames,
+    description: String(payload.description ?? '').trim(),
+    suggestedDiagnosis: String(payload.suggestedDiagnosis ?? '').trim(),
+    keyFindings: String(payload.keyFindings ?? '').trim(),
+    reflectiveQuestions: String(payload.reflectiveQuestions ?? '').trim(),
+    CategoryId: payload.categoryId?.trim() || undefined,
+    CategoryName: payload.categoryName?.trim() || undefined,
+    TagNames: tagNames,
+  };
+  if (Array.isArray(payload.turnAnnotations) && payload.turnAnnotations.length > 0) {
+    body.turnAnnotations = payload.turnAnnotations;
+  }
+  if (!title || !difficulty) {
+    throw new Error('Title and difficulty are required to publish to the library.');
+  }
+  if (!body.description || !body.suggestedDiagnosis || !body.keyFindings || !body.reflectiveQuestions) {
+    throw new Error('AI-mapped case fields (description, differential, findings, reflective questions) are required.');
+  }
+  try {
+    const { data } = await http.post<unknown>(`/api/expert/reviews/${encodeURIComponent(id)}/promote`, body);
+    if (!data || typeof data !== 'object') return null;
+    const record = data as Record<string, unknown>;
+    const direct =
+      record.promotedCaseId ??
+      record.PromotedCaseId ??
+      record.caseId ??
+      record.CaseId ??
+      null;
+    if (direct != null) return String(direct);
+    const nestedData = record.data;
+    if (nestedData && typeof nestedData === 'object') {
+      const nested = nestedData as Record<string, unknown>;
+      const nestedId =
+        nested.promotedCaseId ?? nested.PromotedCaseId ?? nested.caseId ?? nested.CaseId ?? null;
+      if (nestedId != null) return String(nestedId);
+    }
+    const nestedResult = record.result;
+    if (nestedResult && typeof nestedResult === 'object') {
+      const nested = nestedResult as Record<string, unknown>;
+      const nestedId =
+        nested.promotedCaseId ?? nested.PromotedCaseId ?? nested.caseId ?? nested.CaseId ?? null;
+      if (nestedId != null) return String(nestedId);
+    }
+    return null;
+  } catch (e) {
+    if (axios.isAxiosError(e) && (e.response?.status === 409 || e.response?.status === 412)) {
+      throw new Error(REVIEW_WORKFLOW_CONFLICT);
+    }
     throw new Error(getApiErrorMessage(e));
   }
 }
 
 export async function flagRagChunk(
   chunkId: string,
-  payload: { reason: string },
+  payload: { reason: string; isFlagged?: boolean },
 ): Promise<void> {
   try {
-    await http.post(`/api/expert/reviews/chunks/${chunkId}/flag`, payload);
+    await http.post(`/api/expert/documents/chunks/${chunkId}/flag`, {
+      reason: payload.reason,
+      isFlagged: payload.isFlagged ?? true,
+      IsFlagged: payload.isFlagged ?? true,
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

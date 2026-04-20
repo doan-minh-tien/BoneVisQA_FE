@@ -56,7 +56,7 @@ export default function LecturerSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="app-scroll-y flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {lecturerMenuItems.map((item) => {
             const isActive =

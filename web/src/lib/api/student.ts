@@ -1,10 +1,15 @@
 import { http, getApiErrorMessage } from './client';
 import type {
+  AnnouncementAssignmentInfo,
   AssignedQuizItem,
   QuizSessionDto,
   StudentAnnouncement,
   StudentCaseCatalogItem,
+  StudentCaseCatalogDetail,
+  StudentCaseCatalogOrigin,
   StudentCaseHistoryItem,
+  StudentHistoryKind,
+  StudentCatalogCaseImage,
   StudentPracticeQuiz,
   StudentProfile,
   StudentProfileUpdatePayload,
@@ -17,6 +22,7 @@ import type {
   StudentSubmitQuestionDto,
   StudentTopicStat,
 } from './types';
+import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 
 function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty'] {
   const value = String(raw ?? '').toLowerCase();
@@ -25,28 +31,261 @@ function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty']
   return 'basic';
 }
 
+function pickStringAny(item: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = item[key];
+    if (value == null) continue;
+    const normalized = String(value).trim();
+    if (normalized.length > 0) return normalized;
+  }
+  return null;
+}
+
+/** Hai nhãn catalog: expert tạo vs promote từ request sinh viên (theo field BE hoặc heuristic). */
+function inferCatalogCaseOrigin(item: Record<string, unknown>): StudentCaseCatalogOrigin {
+  const raw =
+    pickStringAny(item, [
+      'caseOrigin',
+      'CaseOrigin',
+      'origin',
+      'Origin',
+      'source',
+      'Source',
+      'caseSource',
+      'CaseSource',
+      'libraryCaseSource',
+    ])?.toLowerCase() ?? '';
+  const promoted =
+    item.isPromotedFromStudentRequest === true ||
+    item.promotedFromStudentRequest === true ||
+    item.wasPromotedFromStudent === true ||
+    item.fromStudentRequest === true ||
+    item.IsPromotedFromStudentRequest === true;
+  if (
+    promoted ||
+    raw.includes('community') ||
+    raw.includes('studentrequest') ||
+    raw.includes('student_request') ||
+    raw.includes('promoted') ||
+    raw.includes('request')
+  ) {
+    return 'communityPromoted';
+  }
+  return 'expertCreated';
+}
+
+function parseTagsFromCatalogRow(item: Record<string, unknown>): string[] {
+  const tags = item.tags ?? item.Tags ?? item.tagNames ?? item.TagNames ?? item.caseTags;
+  if (Array.isArray(tags)) {
+    return tags.map((t) => String(t ?? '').trim()).filter(Boolean);
+  }
+  if (typeof tags === 'string' && tags.trim()) {
+    return tags.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/** Không ép mọi giá trị lạ thành Basic — hiển thị raw hoặc "—". */
+function normalizeCatalogDifficultyLabel(raw: unknown): {
+  tier: 'basic' | 'intermediate' | 'advanced' | null;
+  label: string;
+} {
+  const rawStr = String(raw ?? '').trim();
+  if (!rawStr) return { tier: null, label: '—' };
+  const value = rawStr.toLowerCase();
+  if (value === 'advanced' || value === 'expert') return { tier: 'advanced', label: rawStr };
+  if (value === 'intermediate' || value === 'moderate') return { tier: 'intermediate', label: rawStr };
+  if (value === 'basic' || value === 'beginner' || value === 'intro' || value === 'easy') {
+    return { tier: 'basic', label: rawStr };
+  }
+  return { tier: null, label: rawStr };
+}
+
+/**
+ * Classify history rows for the two student tabs. Prefer explicit API fields; fall back to light heuristics.
+ */
+function inferHistoryKind(item: Record<string, unknown>): StudentHistoryKind {
+  const explicit =
+    item.historyKind ??
+    item.historyType ??
+    item.interactionSource ??
+    item.source ??
+    item.origin ??
+    item.caseSource;
+  if (typeof explicit === 'string') {
+    const e = explicit.toLowerCase();
+    if (
+      e.includes('catalog') ||
+      e.includes('library') ||
+      e.includes('expert') ||
+      e.includes('published') ||
+      e.includes('case_study') ||
+      e === 'casestudy'
+    ) {
+      return 'caseStudy';
+    }
+    if (
+      e.includes('upload') ||
+      e.includes('custom') ||
+      e.includes('personal') ||
+      e.includes('student_image') ||
+      e.includes('visualqa')
+    ) {
+      return 'personalQa';
+    }
+  }
+  if (item.fromCatalog === true || item.isFromCatalog === true) return 'caseStudy';
+  if (item.isCustomUpload === true || item.isUpload === true || item.hasCustomImage === true) {
+    return 'personalQa';
+  }
+  const catalogId = item.catalogCaseId ?? item.publishedCaseId ?? item.caseCatalogId;
+  if (catalogId != null && String(catalogId).trim()) return 'caseStudy';
+
+  const thumb = String(item.thumbnailUrl ?? item.imageUrl ?? '').toLowerCase();
+  if (
+    thumb.includes('customimage') ||
+    thumb.includes('student-visual') ||
+    thumb.includes('/uploads/students/') ||
+    thumb.includes('user-upload')
+  ) {
+    return 'personalQa';
+  }
+
+  return 'caseStudy';
+}
+
 function mapStudentCase(row: unknown): StudentCaseHistoryItem | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
-  const id = String(item.id ?? item.caseId ?? item.answerId ?? '');
+  /** Visual QA history list rows are keyed by `sessionId` (BE: VisualQaSessionHistoryItemDto). */
+  const id = String(
+    item.sessionId ??
+      item.SessionId ??
+      item.id ??
+      item.caseId ??
+      item.case_id ??
+      item.answerId ??
+      item.answer_id ??
+      '',
+  ).trim();
   if (!id) return null;
+
+  const historyKind = inferHistoryKind(item);
+  const catalogRaw =
+    item.catalogCaseId ??
+    item.catalog_case_id ??
+    item.publishedCaseId ??
+    item.caseCatalogId ??
+    item.case_catalog_id ??
+    item.libraryCaseId;
+  const catalogCaseId =
+    catalogRaw != null && String(catalogRaw).trim() ? String(catalogRaw).trim() : null;
+
+  const qaMessages = Array.isArray(item.qa_messages)
+    ? (item.qa_messages as Array<Record<string, unknown>>)
+    : Array.isArray(item.qaMessages)
+      ? (item.qaMessages as Array<Record<string, unknown>>)
+      : Array.isArray(item.messages)
+        ? (item.messages as Array<Record<string, unknown>>)
+        : [];
+  const sessionStatus = pickStringAny(item, ['status', 'session_status', 'sessionStatus']) ?? '';
+  if (sessionStatus) {
+    const normalizedStatus = sessionStatus.toLowerCase();
+    const hiddenStatuses = new Set(['deleted', 'archived', 'cancelled']);
+    if (hiddenStatuses.has(normalizedStatus)) return null;
+  }
+  const snippet =
+    pickStringAny(item, ['questionSnippet', 'question_snippet', 'QuestionSnippet']) ?? null;
+  const lastUserQuestion =
+    [...qaMessages]
+      .reverse()
+      .find((msg) => {
+        const role = String(msg.role ?? msg.sender ?? '').toLowerCase();
+        return role === 'user' || role === 'student';
+      })?.content ??
+    pickStringAny(item, ['lastQuestion', 'last_question', 'lastQuestionAsked', 'questionText', 'question_text', 'question']);
+  const normalizedLastQuestion =
+    lastUserQuestion != null && String(lastUserQuestion).trim()
+      ? String(lastUserQuestion).trim()
+      : null;
+  const firstQuestionFallback = pickStringAny(item, ['questionText', 'question_text', 'question']);
+  const trimmedQuestionFallback = firstQuestionFallback ? firstQuestionFallback.slice(0, 50).trim() : null;
+  const previewQuestion = normalizedLastQuestion ?? snippet ?? trimmedQuestionFallback;
+  const imageFromMessages =
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.imageUrl ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.image_url ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.thumbnailUrl ??
+    [...qaMessages]
+      .reverse()
+      .find((msg) => msg.imageUrl != null || msg.image_url != null || msg.thumbnailUrl != null || msg.thumbnail_url != null)
+      ?.thumbnail_url;
+
+  const sessionIdMapped = pickStringAny(item, ['sessionId', 'SessionId', 'session_id']);
+  const reviewStateRaw = pickStringAny(item, ['reviewState', 'ReviewState', 'review_state']);
+  const lastResponderMapped = pickStringAny(item, ['lastResponderRole', 'LastResponderRole', 'last_responder_role']);
+  const updatedAtMapped =
+    pickStringAny(item, ['updatedAt', 'UpdatedAt', 'updated_at']) ?? undefined;
 
   return {
     id,
-    title: String(item.title ?? item.question ?? item.questionText ?? 'Untitled case'),
+    sessionId: sessionIdMapped,
+    title: String(
+      pickStringAny(item, ['title']) ?? previewQuestion ?? 'Untitled session',
+    ),
+    lastQuestionAsked: normalizedLastQuestion ?? snippet ?? null,
+    questionSnippet: snippet,
     thumbnailUrl:
-      item.thumbnailUrl != null
-        ? String(item.thumbnailUrl)
-        : item.imageUrl != null
-          ? String(item.imageUrl)
+      pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']) != null
+        ? String(pickStringAny(item, ['thumbnailUrl', 'thumbnail_url', 'imageUrl', 'image_url']))
+        : imageFromMessages != null
+            ? String(imageFromMessages)
           : undefined,
-    boneLocation: String(item.boneLocation ?? item.regionName ?? item.region ?? 'Clinical case'),
-    lesionType: String(item.lesionType ?? item.caseType ?? item.categoryName ?? 'Visual QA'),
-    difficulty: normalizeDifficulty(item.difficulty),
-    duration: item.duration != null ? String(item.duration) : undefined,
+    boneLocation: (() => {
+      const v = pickStringAny(item, ['boneLocation', 'bone_location', 'regionName', 'region']);
+      if (v != null && String(v).trim()) return String(v).trim();
+      return historyKind === 'personalQa' ? '' : 'Clinical case';
+    })(),
+    lesionType: (() => {
+      const v = pickStringAny(item, ['lesionType', 'lesion_type', 'caseType', 'categoryName']);
+      if (v != null && String(v).trim()) return String(v).trim();
+      return historyKind === 'personalQa' ? '' : 'Visual QA';
+    })(),
+    difficulty: normalizeDifficulty(item.difficulty ?? item.level),
+    duration: pickStringAny(item, ['duration']) ?? undefined,
     progress: typeof item.progress === 'number' ? item.progress : undefined,
-    status: item.status != null ? String(item.status) : undefined,
-    askedAt: item.askedAt != null ? String(item.askedAt) : item.createdAt != null ? String(item.createdAt) : undefined,
+    status: sessionStatus || undefined,
+    reviewState: reviewStateRaw,
+    lastResponderRole: lastResponderMapped,
+    askedAt:
+      pickStringAny(item, ['askedAt', 'asked_at', 'createdAt', 'created_at']) ??
+      updatedAtMapped ??
+      undefined,
+    updatedAt: updatedAtMapped ?? null,
+    keyImagingFindings:
+      item.keyImagingFindings != null && item.keyImagingFindings !== ''
+        ? String(item.keyImagingFindings)
+        : null,
+    reflectiveQuestions:
+      item.reflectiveQuestions != null && item.reflectiveQuestions !== ''
+        ? String(item.reflectiveQuestions)
+        : null,
+    historyKind,
+    catalogCaseId,
+    rejectionReason: pickStringAny(item, [
+      'rejectionReason',
+      'RejectionReason',
+      'rejection_reason',
+      'lecturerRejectionReason',
+    ]),
   };
 }
 
@@ -56,6 +295,21 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
   const id = String(item.id ?? item.caseId ?? '');
   if (!id) return null;
 
+  const categoryName =
+    pickStringAny(item, ['categoryName', 'CategoryName', 'category', 'Category']) ?? '';
+  const boneLocation =
+    pickStringAny(item, ['location', 'boneLocation', 'regionName', 'bone_location']) ?? '';
+  const lesionType =
+    pickStringAny(item, ['lesionType', 'lesion_type', 'caseType']) ??
+    (categoryName || 'Unknown lesion');
+  const location = boneLocation || categoryName || 'Unknown location';
+  const { tier, label: difficultyLabel } = normalizeCatalogDifficultyLabel(
+    item.difficulty ?? item.level ?? item.Difficulty,
+  );
+  const createdAt =
+    pickStringAny(item, ['createdAt', 'CreatedAt', 'approvedAt', 'ApprovedAt', 'publishedAt']) ??
+    undefined;
+
   return {
     id,
     title: String(item.title ?? 'Untitled case'),
@@ -64,17 +318,126 @@ function mapStudentCaseCatalog(row: unknown): StudentCaseCatalogItem | null {
         ? String(item.imageUrl)
         : item.thumbnailUrl != null
           ? String(item.thumbnailUrl)
+          : item.primaryImageUrl != null
+            ? String(item.primaryImageUrl)
+            : undefined,
+    location,
+    categoryDisplay: categoryName || undefined,
+    lesionType,
+    difficultyTier: tier,
+    difficultyLabel,
+    difficulty: tier ?? undefined,
+    tags: parseTagsFromCatalogRow(item),
+    createdAt,
+    caseOrigin: inferCatalogCaseOrigin(item),
+  };
+}
+
+function parseCatalogDetailImages(item: Record<string, unknown>): StudentCatalogCaseImage[] {
+  const rawList =
+    item.images ??
+    item.Images ??
+    item.caseImages ??
+    item.CaseImages ??
+    item.anonymousImages ??
+    item.AnonymousImages;
+  if (!Array.isArray(rawList)) return [];
+  const out: StudentCatalogCaseImage[] = [];
+  for (const row of rawList) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const url =
+      pickStringAny(r, ['imageUrl', 'ImageUrl', 'url', 'Url', 'thumbnailUrl', 'ThumbnailUrl']) ?? '';
+    if (!url.trim()) continue;
+    const boxRaw =
+      r.roiBoundingBox ??
+      r.RoiBoundingBox ??
+      r.boundingBox ??
+      r.normalizedBoundingBox ??
+      r.NormalizedBoundingBox;
+    let roiBoundingBox: StudentCatalogCaseImage['roiBoundingBox'] = null;
+    if (boxRaw && typeof boxRaw === 'object') {
+      const b = boxRaw as Record<string, unknown>;
+      const cand = {
+        x: Number(b.x ?? b.X),
+        y: Number(b.y ?? b.Y),
+        width: Number(b.width ?? b.Width),
+        height: Number(b.height ?? b.Height),
+      };
+      if (isValidNormalizedBoundingBox(cand)) roiBoundingBox = cand;
+    }
+    out.push({ imageUrl: url.trim(), roiBoundingBox });
+  }
+  return out;
+}
+
+function mapStudentCaseCatalogDetail(row: unknown): StudentCaseCatalogDetail | null {
+  if (!row || typeof row !== 'object') return null;
+  const base = mapStudentCaseCatalog(row);
+  if (!base) return null;
+  const item = row as Record<string, unknown>;
+
+  const categoryName = pickStringAny(item, ['categoryName', 'CategoryName', 'category', 'Category']) ?? '';
+  const images = parseCatalogDetailImages(item);
+  const keyLearningRaw =
+    item.keyLearningPoints ??
+    item.KeyLearningPoints ??
+    item.keyLearnings ??
+    item.KeyLearnings ??
+    item.keyLearning ??
+    item.teachingPoints;
+  let keyLearningPoints: string[] | undefined;
+  if (Array.isArray(keyLearningRaw)) {
+    keyLearningPoints = (keyLearningRaw as unknown[])
+      .map((x) => String(x ?? '').trim())
+      .filter(Boolean);
+  } else if (typeof keyLearningRaw === 'string' && keyLearningRaw.trim()) {
+    keyLearningPoints = keyLearningRaw
+      .split(/[\n•]/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const diagnosis =
+    pickStringAny(item, ['diagnosis', 'Diagnosis', 'structuredDiagnosis', 'StructuredDiagnosis']) ??
+    undefined;
+
+  return {
+    ...base,
+    imageUrl: base.imageUrl ?? (item.primaryImageUrl != null ? String(item.primaryImageUrl) : undefined),
+    location: base.location || categoryName || 'Unknown location',
+    lesionType:
+      pickStringAny(item, ['lesionType', 'lesion_type', 'caseType']) ?? (categoryName || base.lesionType),
+    categoryDisplay: categoryName || base.categoryDisplay,
+    description: item.description != null ? String(item.description) : undefined,
+    expertSummary:
+      item.expertSummary != null
+        ? String(item.expertSummary)
+        : item.summary != null
+          ? String(item.summary)
           : undefined,
-    location: String(item.location ?? item.boneLocation ?? item.regionName ?? 'Unknown location'),
-    lesionType: String(item.lesionType ?? item.categoryName ?? 'Unknown lesion'),
-    difficulty: normalizeDifficulty(item.difficulty),
+    keyFindings: Array.isArray(item.keyFindings)
+      ? (item.keyFindings as unknown[]).map((f) => String(f ?? '').trim()).filter((s) => s.length > 0)
+      : typeof item.keyFindings === 'string' && item.keyFindings
+        ? item.keyFindings.split(/[\n,;]/).map((s) => s.trim()).filter((s) => s.length > 0)
+        : [],
+    approvedAt:
+      item.approvedAt != null
+        ? String(item.approvedAt)
+        : item.updatedAt != null
+          ? String(item.updatedAt)
+          : undefined,
+    diagnosis: diagnosis ?? undefined,
+    keyLearningPoints,
+    images: images.length > 0 ? images : undefined,
+    communityReferenceOnly: base.caseOrigin === 'communityPromoted',
   };
 }
 
 export async function fetchStudentProfile(): Promise<StudentProfile> {
   try {
     // BE: UsersController — GET /api/users/me (không dùng /api/student/profile)
-    const { data } = await http.get<StudentProfile>('/api/users/me');
+    const { data } = await http.get<StudentProfile>('/api/users/me', { skipApiToast: true });
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -86,6 +449,19 @@ function normalizeStudentAnnouncement(raw: unknown): StudentAnnouncement | null 
   const r = raw as Record<string, unknown>;
   const id = String(r.id ?? r.Id ?? '');
   if (!id) return null;
+
+  // Normalize related assignment
+  const relRaw = r.relatedAssignment ?? r.RelatedAssignment;
+  let relatedAssignment: AnnouncementAssignmentInfo | undefined = undefined;
+  if (relRaw && typeof relRaw === 'object') {
+    const rel = relRaw as Record<string, unknown>;
+    relatedAssignment = {
+      assignmentId: rel.assignmentId != null ? String(rel.assignmentId) : undefined,
+      assignmentTitle: rel.assignmentTitle != null ? String(rel.assignmentTitle) : undefined,
+      assignmentType: rel.assignmentType != null ? String(rel.assignmentType) : undefined,
+    };
+  }
+
   return {
     id,
     classId: String(r.classId ?? r.ClassId ?? ''),
@@ -93,6 +469,7 @@ function normalizeStudentAnnouncement(raw: unknown): StudentAnnouncement | null 
     title: String(r.title ?? r.Title ?? ''),
     content: String(r.content ?? r.Content ?? ''),
     createdAt: r.createdAt != null ? String(r.createdAt) : null,
+    relatedAssignment,
   };
 }
 
@@ -119,7 +496,7 @@ export async function updateStudentProfile(
 
 export async function fetchStudentProgress(): Promise<StudentProgress> {
   try {
-    const { data } = await http.get<StudentProgress>('/api/student/progress');
+    const { data } = await http.get<StudentProgress>('/api/student/progress', { skipApiToast: true });
     return data;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -243,6 +620,7 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     quizName: String(item.title ?? item.Title ?? item.quizName ?? 'Untitled quiz'),
     classId: String(item.classId ?? item.ClassId ?? ''),
     className: String(item.className ?? item.ClassName ?? ''),
+    topic: item.topic != null ? String(item.topic) : item.Topic != null ? String(item.Topic) : null,
     totalQuestions: totalQ,
     timeLimit,
     passingScore: passing,
@@ -250,6 +628,8 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     closeTime: item.closeTime != null ? String(item.closeTime) : null,
     isCompleted: Boolean(item.isCompleted ?? item.IsCompleted ?? false),
     score: typeof item.score === 'number' ? item.score : null,
+    attemptId: item.attemptId != null ? String(item.attemptId) : item.AttemptId != null ? String(item.AttemptId) : null,
+    createdAt: item.createdAt != null ? String(item.createdAt) : item.CreatedAt != null ? String(item.CreatedAt) : null,
   };
 }
 
@@ -299,12 +679,16 @@ function normalizeQuizSessionPayload(raw: unknown): QuizSessionDto {
     const n = typeof rawTl === 'number' ? rawTl : Number(rawTl);
     if (Number.isFinite(n) && n > 0) timeLimit = Math.round(n);
   }
+  // Handle closeTime from BE
+  const closeTime = o.closeTime ?? o.CloseTime;
+  const closeTimeStr = typeof closeTime === 'string' ? closeTime : (closeTime instanceof Date ? closeTime.toISOString() : null);
   return {
     attemptId: String(o.attemptId ?? o.AttemptId ?? ''),
     quizId: String(o.quizId ?? o.QuizId ?? ''),
     title: String(o.title ?? o.Title ?? ''),
     topic: pickStr(o, 'topic', 'Topic'),
     timeLimit,
+    closeTime: closeTimeStr,
     questions: list.map(normalizeStudentSessionQuestion),
   };
 }
@@ -348,6 +732,7 @@ function mapSubmitQuizResult(raw: unknown): StudentQuizResultDto {
     passed: Boolean(r.passed ?? r.Passed ?? false),
     totalQuestions: Number(r.totalQuestions ?? r.TotalQuestions ?? 0),
     correctAnswers: Number(r.correctAnswers ?? r.CorrectAnswers ?? 0),
+    ungradedEssayCount: r.ungradedEssayCount != null ? Number(r.ungradedEssayCount) : r.UngradedEssayCount != null ? Number(r.UngradedEssayCount) : null,
   };
 }
 
@@ -361,7 +746,11 @@ export async function submitQuizSession(
   try {
     const { data } = await http.post<unknown>('/api/student/quizzes/submit', {
       attemptId,
-      answers: answers.map((a) => ({ questionId: a.questionId, studentAnswer: a.studentAnswer })),
+      answers: answers.map((a) => ({
+        questionId: a.questionId,
+        studentAnswer: a.studentAnswer,
+        essayAnswer: a.essayAnswer ?? undefined,
+      })),
     });
     return mapSubmitQuizResult(data);
   } catch (e) {
@@ -371,7 +760,7 @@ export async function submitQuizSession(
 
 export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/student/cases/history');
+    const { data } = await http.get<unknown>('/api/student/visual-qa/history/cases');
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -383,15 +772,78 @@ export async function fetchStudentCases(): Promise<StudentCaseHistoryItem[]> {
   }
 }
 
+export interface StudentHistoryPageResult {
+  totalCount: number;
+  items: StudentCaseHistoryItem[];
+}
+
+async function fetchStudentHistoryEndpoint(
+  endpoint: string,
+  forcedKind: StudentHistoryKind,
+): Promise<StudentHistoryPageResult> {
+  try {
+    const { data } = await http.get<unknown>(endpoint, { params: { limit: 50, offset: 0 } });
+    const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.studies)
+          ? payload.studies
+          : Array.isArray(payload?.results)
+            ? payload.results
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : payload?.data && typeof payload.data === 'object' && Array.isArray((payload.data as { items?: unknown[] }).items)
+            ? ((payload.data as { items?: unknown[] }).items ?? [])
+        : [];
+    const items = list
+      .map(mapStudentCase)
+      .filter((item): item is StudentCaseHistoryItem => item !== null)
+      .map((item) => ({ ...item, historyKind: forcedKind }));
+    const rawTotal = payload?.totalCount ?? payload?.TotalCount;
+    const totalCount =
+      typeof rawTotal === 'number' && Number.isFinite(rawTotal)
+        ? rawTotal
+        : items.length;
+    return { totalCount, items };
+  } catch {
+    return { totalCount: 0, items: [] };
+  }
+}
+
+export async function fetchStudentPersonalStudiesHistory(): Promise<StudentHistoryPageResult> {
+  return fetchStudentHistoryEndpoint('/api/student/visual-qa/history/personal', 'personalQa');
+}
+
+export async function fetchStudentCaseLibraryHistory(): Promise<StudentHistoryPageResult> {
+  const primary = await fetchStudentHistoryEndpoint('/api/student/visual-qa/history/cases', 'caseStudy');
+  if (primary.items.length > 0) return primary;
+  const fallbackRows = await fetchStudentCases();
+  return {
+    totalCount: fallbackRows.length,
+    items: fallbackRows.map((item) => ({ ...item, historyKind: 'caseStudy' as const })),
+  };
+}
+
 export async function fetchCaseCatalog(filters: {
   location?: string;
   lesionType?: string;
   difficulty?: string;
+  /** Tìm kiếm text — gửi lên BE (một số bản BE dùng `q`, một số dùng `search`). */
+  q?: string;
 }): Promise<StudentCaseCatalogItem[]> {
   try {
+    const qTrim = filters.q?.trim();
     const params = Object.fromEntries(
-      Object.entries(filters).filter(([, value]) => value && String(value).trim().length > 0),
+      Object.entries(filters).filter(
+        ([key, value]) => key !== 'q' && value && String(value).trim().length > 0,
+      ),
     );
+    if (qTrim) {
+      params.q = qTrim;
+      params.search = qTrim;
+    }
     const { data } = await http.get<unknown>('/api/student/cases/catalog', { params });
     const list = Array.isArray(data)
       ? data
@@ -401,6 +853,43 @@ export async function fetchCaseCatalog(filters: {
     return list
       .map(mapStudentCaseCatalog)
       .filter((item): item is StudentCaseCatalogItem => item !== null);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export interface StudentCaseCatalogFilters {
+  locations: string[];
+  lesionTypes: string[];
+  difficulties: string[];
+}
+
+export async function fetchCaseCatalogFilters(): Promise<StudentCaseCatalogFilters> {
+  try {
+    const { data } = await http.get<unknown>('/api/cases/filters');
+    const payload = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    const asList = (value: unknown) =>
+      Array.isArray(value)
+        ? value.map((v) => String(v ?? '').trim()).filter(Boolean)
+        : [];
+    return {
+      locations: asList(payload.locations ?? payload.Locations),
+      lesionTypes: asList(payload.lesionTypes ?? payload.LesionTypes ?? payload.lesionType),
+      difficulties: asList(payload.difficulties ?? payload.Difficulties),
+    };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchCaseCatalogDetail(caseId: string): Promise<StudentCaseCatalogDetail> {
+  try {
+    const { data } = await http.get<unknown>(`/api/student/cases/${caseId}`);
+    const mapped = mapStudentCaseCatalogDetail(data);
+    if (!mapped) {
+      throw new Error('Case detail is unavailable.');
+    }
+    return mapped;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -425,13 +914,33 @@ function mapStudentRecentActivity(row: unknown, index: number): StudentRecentAct
   const occurredAt = String(item.occurredAt ?? item.createdAt ?? item.timestamp ?? '');
   if (!title || !occurredAt) return null;
 
+  const routeRaw = item.route ?? item.Route;
+  const route = routeRaw != null && String(routeRaw).trim() ? String(routeRaw).trim() : undefined;
+  const targetRaw =
+    item.targetUrl ?? item.TargetUrl ?? item.href ?? item.url ?? item.deepLink;
+  const targetUrl =
+    route ??
+    (targetRaw != null && String(targetRaw).trim() ? String(targetRaw).trim() : undefined);
+  const caseRaw = item.caseId ?? item.catalogCaseId ?? item.libraryCaseId;
+  const caseId = caseRaw != null && String(caseRaw).trim() ? String(caseRaw).trim() : undefined;
+  const quizRaw = item.quizId ?? item.assignedQuizId;
+  const quizId = quizRaw != null && String(quizRaw).trim() ? String(quizRaw).trim() : undefined;
+  const sessionRaw = item.sessionId ?? item.SessionId ?? item.visualQaSessionId ?? item.VisualQaSessionId;
+  const sessionId =
+    sessionRaw != null && String(sessionRaw).trim() ? String(sessionRaw).trim() : undefined;
+
   return {
     id: String(item.id ?? item.activityId ?? index),
     title,
     description: item.description != null ? String(item.description) : item.message != null ? String(item.message) : undefined,
     occurredAt,
-    type: String(item.type ?? item.activityType ?? 'activity'),
+    type: String(item.type ?? item.activityType ?? item.ActivityType ?? 'activity'),
     status: item.status != null ? String(item.status) : undefined,
+    targetUrl,
+    caseId,
+    quizId,
+    ...(sessionId ? { sessionId } : {}),
+    ...(route ? { route } : {}),
   };
 }
 
@@ -451,7 +960,9 @@ export async function fetchStudentTopicStats(): Promise<StudentTopicStat[]> {
 
 export async function fetchStudentRecentActivity(): Promise<StudentRecentActivityItem[]> {
   try {
-    const { data } = await http.get<unknown>('/api/student/progress/recent-activity');
+    const { data } = await http.get<unknown>('/api/student/progress/recent-activity', {
+      skipApiToast: true,
+    });
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -480,6 +991,8 @@ export interface StudentClassItem {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
+  expertId?: string | null;
+  expertName?: string | null;
   totalAnnouncements: number;
   totalQuizzes: number;
   totalCases: number;
@@ -498,6 +1011,7 @@ export interface StudentGeneratedQuizSession {
     questionText: string;
     type?: string | null;
     caseId?: string | null;
+    caseTitle?: string | null;
     optionA?: string | null;
     optionB?: string | null;
     optionC?: string | null;
@@ -528,6 +1042,7 @@ export interface QuizAttemptReview {
     isCorrect: boolean;
     imageUrl?: string | null;
     caseId?: string | null;
+    essayAnswer?: string | null; // Model answer for essay questions
   }>;
 }
 
@@ -555,6 +1070,7 @@ export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAtt
         isCorrect: Boolean(q.isCorrect ?? q.IsCorrect ?? false),
         imageUrl: pickStr(q, 'imageUrl', 'ImageUrl'),
         caseId: pickStr(q, 'caseId', 'CaseId'),
+        essayAnswer: pickStr(q, 'essayAnswer', 'EssayAnswer'),
       })),
     };
   } catch (e) {
@@ -587,7 +1103,18 @@ export interface StudentClassDetail {
   semester: string;
   lecturerId?: string | null;
   lecturerName?: string | null;
+  expertId?: string | null;
+  expertName?: string | null;
+  expertEmail?: string | null;
+  expertAvatarUrl?: string | null;
   enrolledAt?: string | null;
+  /** Case assignments for this class. */
+  assignedCases: Array<{
+    caseId: string;
+    title: string;
+    dueDate?: string | null;
+    isMandatory?: boolean;
+  }>;
   quizzes: Array<{
     quizId: string;
     title: string;
@@ -610,6 +1137,7 @@ export interface StudentClassDetail {
     title: string;
     content: string;
     createdAt?: string | null;
+    relatedAssignment?: AnnouncementAssignmentInfo | null;
   }>;
 }
 
@@ -617,19 +1145,60 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
   try {
     const { data } = await http.get<unknown>(`/api/students/classes/${classId}`);
     const item = data as Record<string, unknown>;
+    const expertRaw = item.expert ?? item.Expert;
+    const expertObj =
+      expertRaw && typeof expertRaw === 'object' ? (expertRaw as Record<string, unknown>) : null;
+    const expertAvatarFromNested = expertObj
+      ? pickStrAny(
+          expertObj,
+          'avatarUrl',
+          'AvatarUrl',
+          'photoUrl',
+          'PhotoUrl',
+          'imageUrl',
+          'ImageUrl',
+          'profileImageUrl',
+          'ProfileImageUrl',
+        )
+      : null;
     const quizRows = item.quizzes ?? item.Quizzes;
     const studentRows = item.students ?? item.Students;
     const announcementRows = item.announcements ?? item.Announcements;
+    const caseRows = item.assignedCases ?? item.AssignedCases ?? item.cases ?? item.Cases;
     const quizzes = Array.isArray(quizRows) ? (quizRows as Record<string, unknown>[]) : [];
     const students = Array.isArray(studentRows) ? (studentRows as Record<string, unknown>[]) : [];
     const announcements = Array.isArray(announcementRows) ? (announcementRows as Record<string, unknown>[]) : [];
+    const cases = Array.isArray(caseRows) ? (caseRows as Record<string, unknown>[]) : [];
     return {
       classId: String(item.classId ?? item.ClassId ?? classId),
       className: String(item.className ?? item.ClassName ?? ''),
       semester: String(item.semester ?? item.Semester ?? ''),
       lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
       lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      expertName:
+        item.expertName != null
+          ? String(item.expertName)
+          : item.ExpertName != null
+            ? String(item.ExpertName)
+            : item.expertFullName != null
+              ? String(item.expertFullName)
+              : null,
+      expertEmail:
+        item.expertEmail != null
+          ? String(item.expertEmail)
+          : item.ExpertEmail != null
+            ? String(item.ExpertEmail)
+            : null,
+      expertAvatarUrl:
+        expertAvatarFromNested ??
+        pickStrAny(item, 'expertAvatarUrl', 'ExpertAvatarUrl', 'expertPhotoUrl', 'ExpertPhotoUrl'),
       enrolledAt: item.enrolledAt != null ? String(item.enrolledAt) : item.EnrolledAt != null ? String(item.EnrolledAt) : null,
+      assignedCases: cases.map((c) => ({
+        caseId: String(c.caseId ?? c.CaseId ?? c.id ?? c.Id ?? ''),
+        title: String(c.title ?? c.Title ?? c.caseTitle ?? c.CaseTitle ?? 'Case'),
+        dueDate: c.dueDate != null ? String(c.dueDate) : c.DueDate != null ? String(c.DueDate) : null,
+        isMandatory: Boolean(c.isMandatory ?? c.IsMandatory ?? false),
+      })),
       quizzes: quizzes.map((q) => ({
         quizId: String(q.quizId ?? q.QuizId ?? ''),
         title: String(q.title ?? q.Title ?? ''),
@@ -652,6 +1221,18 @@ export async function fetchStudentClassDetail(classId: string): Promise<StudentC
         title: String(a.title ?? a.Title ?? ''),
         content: String(a.content ?? a.Content ?? ''),
         createdAt: a.createdAt != null ? String(a.createdAt) : a.CreatedAt != null ? String(a.CreatedAt) : null,
+        relatedAssignment: (() => {
+          const rel = a.relatedAssignment ?? a.RelatedAssignment;
+          if (rel && typeof rel === 'object') {
+            const r = rel as Record<string, unknown>;
+            return {
+              assignmentId: r.assignmentId != null ? String(r.assignmentId) : r.AssignmentId != null ? String(r.AssignmentId) : undefined,
+              assignmentTitle: r.assignmentTitle != null ? String(r.assignmentTitle) : r.AssignmentTitle != null ? String(r.AssignmentTitle) : undefined,
+              assignmentType: r.assignmentType != null ? String(r.assignmentType) : r.AssignmentType != null ? String(r.AssignmentType) : undefined,
+            };
+          }
+          return null;
+        })(),
       })),
     };
   } catch (e) {
@@ -669,6 +1250,8 @@ export async function fetchStudentClasses(): Promise<StudentClassItem[]> {
       semester: String(item.semester ?? item.Semester ?? ''),
       lecturerId: item.lecturerId != null ? String(item.lecturerId) : item.LecturerId != null ? String(item.LecturerId) : null,
       lecturerName: item.lecturerName != null ? String(item.lecturerName) : item.LecturerName != null ? String(item.LecturerName) : null,
+      expertId: item.expertId != null ? String(item.expertId) : item.ExpertId != null ? String(item.ExpertId) : null,
+      expertName: item.expertName != null ? String(item.expertName) : item.ExpertName != null ? String(item.ExpertName) : null,
       totalAnnouncements: Number(item.totalAnnouncements ?? item.TotalAnnouncements ?? 0),
       totalQuizzes: Number(item.totalQuizzes ?? item.TotalQuizzes ?? 0),
       totalCases: Number(item.totalCases ?? item.TotalCases ?? 0),

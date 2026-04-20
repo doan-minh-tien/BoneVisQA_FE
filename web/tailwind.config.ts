@@ -1,8 +1,10 @@
 import type { Config } from "tailwindcss";
 
-/** Sidebar fill #0F1F35 is fixed in AppSidebar (bg-[#0F1F35]) — do not replace with MD3 surface colors. */
+/**
+ * Tailwind v4 theme tokens live primarily in `src/app/globals.css` (`@theme inline`).
+ * Scrollbar utilities: `@plugin "tailwind-scrollbar"` in globals.css (not this file).
+ */
 const config: Config = {
-  darkMode: 'class',
   content: [
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,15 +13,30 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#f7f9fb",
+        background: "#f8fafc",
+        foreground: "#0f172a",
+        card: "#ffffff",
+        muted: "#eef2f7",
+        border: "#dbe3ee",
         surface: "#ffffff",
-        sidebar: "#0F1F35",
-        primary: "#00478d",
-        "primary-hover": "#003a73",
+        primary: {
+          DEFAULT: "#0055ff",
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#2f6fff",
+          600: "#0055ff",
+          700: "#0047d4",
+          800: "#0039aa",
+          900: "#002d87",
+        },
+        "primary-hover": "#0047d4",
         "cyan-accent": "#00E5FF",
-        "text-main": "#191c1e",
-        "text-muted": "#424752",
-        "border-color": "#D9E5F2",
+        "text-main": "#0f172a",
+        "text-muted": "#475569",
+        "border-color": "#dbe3ee",
         danger: "#EF4444",
         warning: "#F59E0B",
         success: "#10B981",
@@ -51,6 +68,18 @@ const config: Config = {
       },
       borderRadius: {
         xl: "0.875rem",
+      },
+      keyframes: {
+        blob: {
+          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+          "33%": { transform: "translate(6%, -8%) scale(1.06)" },
+          "66%": { transform: "translate(-5%, 5%) scale(0.97)" },
+        },
+      },
+      animation: {
+        blob: "blob 22s ease-in-out infinite",
+        "blob-slow": "blob 32s ease-in-out infinite",
+        "blob-delayed": "blob 26s ease-in-out 4s infinite",
       },
     },
   },

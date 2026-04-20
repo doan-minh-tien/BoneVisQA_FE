@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
-import { NotificationBell } from '@/components/NotificationBell';
 import {
   BookOpen,
-  BotMessageSquare,
   CheckSquare,
+  Flag,
   Database,
   LayoutDashboard,
   HelpCircle,
@@ -16,15 +16,17 @@ import {
   Plus,
   ScanSearch,
   Stethoscope,
-  UserCog,
-  UserCircle,
   ClipboardList,
+  BadgeCheck,
   Users,
-  ShieldCheck,
   FileQuestion,
   BarChart3,
   Megaphone,
-  Settings,
+
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  GraduationCap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -41,9 +43,11 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
-    { label: 'Medical Verifications', href: '/admin/verifications', icon: ShieldCheck },
+    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
+    { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
-    { label: 'System Logs', href: '/admin/cases', icon: ClipboardList },
+    { label: 'Flagged chunks', href: '/admin/flagged-chunks', icon: Flag },
+    { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
   ],
   lecturer: [
     { label: 'Dashboard', href: '/lecturer/dashboard', icon: LayoutDashboard },
@@ -54,38 +58,28 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Cases', href: '/lecturer/cases', icon: BookOpen },
     { label: 'Analytics', href: '/lecturer/analytics', icon: BarChart3 },
     { label: 'Announcements', href: '/lecturer/announcements', icon: Megaphone },
-    { label: 'Settings', href: '/lecturer/settings', icon: Settings },
   ],
   expert: [
     { label: 'Dashboard', href: '/expert/dashboard', icon: LayoutDashboard },
-    { label: 'Validation Workbench', href: '/expert/reviews', icon: CheckSquare },
+    { label: 'Expert review', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
-    { label: 'Settings', href: '/expert/settings', icon: Settings },
+    { label: 'Quiz Library', href: '/expert/quizzes', icon: FileQuestion },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
     { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
-    { label: 'History', href: '/student/history', icon: ClipboardList },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
-    { label: 'Quizzes', href: '/student/quiz', icon: HelpCircle },
-    { label: 'AI Q&A', href: '/student/qa', icon: BotMessageSquare },
-    { label: 'Classes', href: '/student/classes', icon: Users },
-    { label: 'Profile', href: '/student/profile', icon: UserCircle },
+    { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
+    { label: 'Class', href: '/student/classes', icon: Users },
   ],
 };
 
-const roleMeta: Record<RoleKey, { label: string; actionHref: string }> = {
-  admin: { label: 'Radiology Education', actionHref: '/admin/documents' },
-  lecturer: { label: 'Radiology Education', actionHref: '/lecturer/qa-triage' },
-  expert: { label: 'Radiology Education', actionHref: '/expert/reviews' },
-  student: { label: 'Radiology Education', actionHref: '/student/qa/image' },
+const roleMeta: Record<RoleKey, { label: string; actionHref: string; actionLabel: string }> = {
+  admin: { label: 'Radiology Education', actionHref: '/admin/documents', actionLabel: 'Upload Document' },
+  lecturer: { label: 'Radiology Education', actionHref: '/lecturer/qa-triage', actionLabel: 'Open Triage' },
+  expert: { label: 'Radiology Education', actionHref: '/expert/reviews', actionLabel: 'Open reviews' },
+  student: { label: 'Radiology Education', actionHref: '/student/qa/image', actionLabel: 'New Analysis' },
 };
-
-/** Trang xem / chỉnh sửa thông tin cá nhân theo role (JWT xác định user — không cần gửi userId). */
-function profileHrefForRole(role: RoleKey): string {
-  if (role === 'student') return '/student/profile';
-  return `/${role}/settings`;
-}
 
 function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey | null {
   if (role === 'Student') return 'student';
@@ -95,71 +89,152 @@ function mapBackendRoleToRoleKey(role: BackendRole | null | undefined): RoleKey 
   return null;
 }
 
-export function AppSidebar({ role }: { role?: RoleKey }) {
+export function AppSidebar({
+  role,
+  collapsed,
+  onToggleCollapsed,
+}: {
+  role?: RoleKey;
+  collapsed?: boolean;
+  onToggleCollapsed: () => void;
+}) {
   const pathname = usePathname();
   const logout = useLogout();
   const { user } = useAuth();
-  const resolvedRole = mapBackendRoleToRoleKey(user?.activeRole) ?? role ?? null;
-  const items = resolvedRole ? navByRole[resolvedRole] ?? [] : [];
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHasMounted(true);
+  }, []);
+  /** Until mount, ignore localStorage/API-backed `user` so SSR and first paint match. */
+  const resolvedRole = hasMounted
+    ? mapBackendRoleToRoleKey(user?.activeRole) ?? role ?? null
+    : role ?? null;
+  const { dashboardItem, otherItems } = useMemo(() => {
+    if (!resolvedRole) return { dashboardItem: null, otherItems: [] as NavItem[] };
+    const base = navByRole[resolvedRole] ?? [];
+    const dashboard = base.find((item) => item.label.toLowerCase() === 'dashboard') ?? null;
+    const rest = base
+      .filter((item) => item.label.toLowerCase() !== 'dashboard')
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    return { dashboardItem: dashboard, otherItems: rest };
+  }, [resolvedRole]);
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;
 
-  const profileName = user?.fullName || 'Radiology User';
-  const profileRole = user?.activeRole || 'Guest';
+  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-blue-100 bg-[#f0f7ff] text-[#1e293b] shadow-sm transition-[width] duration-200 ease-out ${
+    collapsed ? 'w-[72px]' : 'w-[260px]'
+  }`;
+
+  if (!hasMounted) {
+    return (
+      <aside className={shellClass}>
+        <div className="h-14 border-b border-blue-100 px-2" />
+        <div className="flex-1 px-2 py-3">
+          <div className="h-9 rounded-lg bg-blue-100/60" />
+        </div>
+      </aside>
+    );
+  }
 
   if (!resolvedRole || !meta) {
     return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text">
-        <div className="border-b border-white/10 px-5 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
-              <Stethoscope className="h-5 w-5 text-cyan-accent" />
+      <aside className={shellClass}>
+        <div
+          className={`flex shrink-0 items-center border-b border-blue-100 py-2 ${
+            collapsed ? 'flex-col gap-2 px-1' : 'h-14 justify-between px-2'
+          }`}
+        >
+          <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-white">
+              <Stethoscope className="h-5 w-5 text-[#0055ff]" />
             </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-wide text-white">
-                BoneVisQA
-              </h1>
-              <p className="truncate text-xs text-slate-300">Radiology Education</p>
-            </div>
+            {!collapsed ? (
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-semibold text-[#1e293b]">BoneVisQA</h1>
+                <p className="truncate text-[11px] text-[#1e293b]/70">Radiology Education</p>
+              </div>
+            ) : null}
           </div>
-        </div>
-        <div className="flex-1 px-4 py-6 text-sm text-slate-300">
-          No role-based navigation available.
-        </div>
-        <div className="border-t border-white/10 px-4 py-4">
           <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#1e293b]/70 hover:bg-blue-100 hover:text-[#1e293b]"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
+        </div>
+        <div className="flex-1 px-2 py-4 text-center text-xs text-[#1e293b]/70">
+          {!collapsed ? 'No role-based navigation available.' : '—'}
+        </div>
+        <div className="border-t border-blue-100 p-2">
+          <Button
             onClick={logout}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
+            variant="outline"
+            className="w-full justify-center border-blue-200 bg-white text-[#1e293b] hover:bg-blue-100"
           >
             <LogOut className="h-4 w-4" />
-            Logout
-          </button>
+            {!collapsed ? <span className="ml-2">Logout</span> : null}
+          </Button>
         </div>
       </aside>
     );
   }
 
   return (
-      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-white/10 bg-[#0F1F35] text-sidebar-text shadow-[8px_0_40px_rgba(15,23,42,0.18)]">
-      <div className="border-b border-white/10 px-5 py-5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-accent/20 bg-cyan-accent/10 shadow-sm">
-              <Stethoscope className="h-5 w-5 text-cyan-accent" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold tracking-wide text-white">
-                BoneVisQA
-              </h1>
-              <p className="truncate text-xs text-slate-300">{meta.label}</p>
-            </div>
+    <aside className={shellClass}>
+      <div
+        className={`flex shrink-0 items-center border-b border-blue-100 py-2 ${
+          collapsed ? 'flex-col gap-2 px-1' : 'h-[4.5rem] justify-between gap-1 px-2'
+        }`}
+      >
+        <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white">
+            <Stethoscope className="h-5 w-5 text-[#0055ff]" />
           </div>
-          <NotificationBell />
+          {!collapsed ? (
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-semibold tracking-wide text-[#1e293b]">BoneVisQA</h1>
+              <p className="truncate text-[11px] text-[#1e293b]/70">{meta.label}</p>
+            </div>
+          ) : null}
         </div>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#1e293b]/70 hover:bg-blue-100 hover:text-[#1e293b]"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="space-y-1.5">
-          {items.map((item) => {
+      <nav className="app-scroll-y flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+        <ul className="space-y-1">
+          {dashboardItem ? (
+            <li key={dashboardItem.href}>
+              <Link
+                href={dashboardItem.href}
+                title={collapsed ? dashboardItem.label : undefined}
+                className={`flex items-center rounded-lg text-sm font-semibold transition-colors duration-150 ${
+                  collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                } ${
+                  pathname === dashboardItem.href
+                    ? 'bg-[#0055ff] text-white'
+                    : 'text-[#1e293b] hover:bg-blue-100 hover:text-[#1e293b]'
+                }`}
+              >
+                <dashboardItem.icon className="h-5 w-5 shrink-0" />
+                {!collapsed ? <span className="truncate">{dashboardItem.label}</span> : null}
+              </Link>
+            </li>
+          ) : null}
+          {!collapsed ? (
+            <li className="my-2 px-3" aria-hidden>
+              <div className="border-t border-blue-100" />
+            </li>
+          ) : null}
+          {otherItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href !== `/${resolvedRole}/dashboard` && pathname.startsWith(item.href));
@@ -169,14 +244,17 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center rounded-lg text-sm font-medium transition-colors duration-150 ${
+                    collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                  } ${
                     isActive
-                      ? 'bg-white/14 text-white shadow-[0_12px_24px_rgba(0,0,0,0.16)]'
-                      : 'text-slate-300 hover:bg-white/8 hover:text-white'
+                      ? 'bg-[#0055ff] text-white'
+                      : 'text-[#1e293b] hover:bg-blue-100 hover:text-[#1e293b]'
                   }`}
                 >
-                  <Icon className="h-4.5 w-4.5" />
-                  <span>{item.label}</span>
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!collapsed ? <span className="truncate">{item.label}</span> : null}
                 </Link>
               </li>
             );
@@ -184,41 +262,13 @@ export function AppSidebar({ role }: { role?: RoleKey }) {
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 px-4 py-4">
-        <Link href={meta.actionHref} className="block">
-          <Button
-            className="w-full justify-center border-0 bg-gradient-to-br from-[#007BFF] to-[#005eb8] text-white shadow-lg hover:from-[#0068e6] hover:to-[#004a9e]"
-          >
-            <Plus className="h-4 w-4" />
-            New Analysis
+      <div className="border-t border-blue-100 p-2">
+        <Link href={meta.actionHref} className="block" title={collapsed ? meta.actionLabel : undefined}>
+          <Button className={`w-full justify-center ${collapsed ? 'px-2' : ''}`}>
+            <Plus className="h-4 w-4 shrink-0" />
+            {!collapsed ? <span className="ml-2">{meta.actionLabel}</span> : null}
           </Button>
         </Link>
-        <Link
-          href={profileHrefForRole(resolvedRole)}
-          className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/6 px-3 py-3 transition-colors hover:bg-white/10"
-          title="Account & profile"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#007BFF] text-sm font-semibold text-white">
-            {profileName
-              .split(' ')
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((part) => part[0]?.toUpperCase())
-              .join('') || 'BV'}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white">{profileName}</p>
-            <p className="truncate text-xs text-slate-300">{profileRole}</p>
-          </div>
-          <UserCog className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
-        </Link>
-        <button
-          onClick={logout}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </button>
       </div>
     </aside>
   );

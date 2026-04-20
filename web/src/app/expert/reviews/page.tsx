@@ -1,35 +1,190 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import useSWRMutation from 'swr/mutation';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
-import { AnnotationOverlay } from '@/components/shared/AnnotationOverlay';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ExpertReviewQueueSkeleton } from '@/components/shared/DashboardSkeletons';
+import { ExpertReviewWorkspace, reflectiveQuestionsToEditText } from '@/components/expert/reviews/ExpertReviewWorkspace';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import {
+  approveExpertReview,
+  deleteExpertReviewDraft,
+  fetchExpertReviewDetail,
   fetchExpertReviewQueue,
   flagRagChunk,
-  putExpertReview,
+  hasExpertReviewSelectedPairMismatch,
+  putExpertReviewDraft,
+  REVIEW_WORKFLOW_CONFLICT,
+  type ExpertReviewUpdatePayload,
+  type PromoteExpertReviewPayload,
+  promoteExpertReview,
+  resolveExpertReview,
 } from '@/lib/api/expert-reviews';
-import type { ExpertReviewCitation, ExpertReviewItem, VisualQaReport } from '@/lib/api/types';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import {
-  AlertCircle,
-  CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Edit3,
-  Flag,
-  Loader2,
-  Link2,
-  Save,
-  User,
-  XCircle,
-} from 'lucide-react';
+import { fetchExpertCategories, type ExpertCategory } from '@/lib/api/expert-cases';
+import type { ExpertReviewItem } from '@/lib/api/types';
+import { getWorkflowStatusMeta } from '@/lib/visual-qa-workflow';
+import { toast as sonnerToast } from 'sonner';
+import { useMediaQuery } from '@/lib/hooks/useMediaQuery';
+import { cn } from '@/lib/utils';
+import { CheckCircle, ChevronDown, ChevronRight, Clock, Flag, Inbox, RefreshCw, User, XCircle } from 'lucide-react';
+
+function clearServerReviewDraft(sessionId: string) {
+  void deleteExpertReviewDraft(sessionId).catch(() => {});
+}
+
+function toWorkflowFriendlyError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message === REVIEW_WORKFLOW_CONFLICT) {
+    return 'This review state was already updated by another action. Please refresh the queue.';
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function firstStudentQuestion(item: ExpertReviewItem): string {
+  const firstTurn = item.turns?.[0];
+  if (!firstTurn) return item.questionText?.trim() || item.question?.trim() || '';
+  const messageQuestion = (firstTurn.messages ?? []).find((message) => {
+    const role = (message.role ?? '').toLowerCase();
+    return role === 'student' || role === 'user';
+  });
+  return (
+    messageQuestion?.content?.trim() ||
+    firstTurn.questionText?.trim() ||
+    item.questionText?.trim() ||
+    item.question?.trim() ||
+    ''
+  );
+}
+
+function buildResolvePayload(
+  item: ExpertReviewItem,
+  ctx: {
+    active: ExpertReviewItem | null;
+    diag: string;
+    keyText: string;
+    keyImagingEdit: string;
+    reflectiveEdit: string;
+    replyDrafts: Record<string, string>;
+    status: 'Approved' | 'Rejected';
+    roi?: number[] | null;
+  },
+  options?: { explicitRejectNote?: string },
+): ExpertReviewUpdatePayload {
+  const useEdited = ctx.active?.id === item.id;
+  const normalizedFindings = useEdited
+    ? ctx.keyText.split('\n').map((s) => s.trim()).filter(Boolean)
+    : [];
+  const draftNote = ctx.replyDrafts[item.sessionId]?.trim();
+  const reviewNote =
+    ctx.status === 'Rejected'
+      ? options?.explicitRejectNote?.trim() || draftNote || 'Rejected by expert reviewer.'
+      : draftNote || 'Approved by expert reviewer.';
+  const decision = ctx.status === 'Rejected' ? ('reject' as const) : undefined;
+  return {
+    answerText: item.report.answerText || '',
+    structuredDiagnosis: useEdited
+      ? ctx.diag.trim() || item.report.suggestedDiagnosis || ''
+      : item.report.suggestedDiagnosis || '',
+    differentialDiagnoses:
+      normalizedFindings.length > 0 ? normalizedFindings : item.report.differentialDiagnoses,
+    reviewNote,
+    keyImagingFindings: useEdited
+      ? ctx.keyImagingEdit.trim() || null
+      : item.report.keyImagingFindings ?? item.keyImagingFindings ?? null,
+    reflectiveQuestions: useEdited
+      ? ctx.reflectiveEdit.trim() || null
+      : reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions) || null,
+    correctedRoiBoundingBox:
+      Array.isArray(ctx.roi) && ctx.roi.length >= 4 ? ctx.roi.slice(0, 4) : undefined,
+    decision,
+  };
+}
+
+function joinDifferentialFromReport(item: ExpertReviewItem): string {
+  const d = item.report.differentialDiagnoses ?? [];
+  if (d.length) return d.map((s) => String(s).trim()).filter(Boolean).join('\n');
+  return (item.report.keyFindings ?? []).join('\n');
+}
+
+function joinKeyImagingFindings(item: ExpertReviewItem, keyImagingEdit: string, useEdited: boolean): string {
+  if (useEdited && keyImagingEdit.trim()) return keyImagingEdit.trim();
+  const k = item.report.keyImagingFindings?.trim();
+  if (k) return k;
+  return (item.report.keyFindings ?? []).map((s) => String(s).trim()).filter(Boolean).join('\n');
+}
+
+function structuredDiagnosisForPromote(item: ExpertReviewItem, diag: string, useEdited: boolean): string {
+  if (useEdited && diag.trim()) return diag.trim();
+  return (
+    item.report.suggestedDiagnosis?.trim() ||
+    item.report.diagnosis?.trim() ||
+    item.report.answerText?.trim() ||
+    ''
+  );
+}
+
+function collectTurnAnnotationsForPromote(item: ExpertReviewItem): Array<Record<string, unknown>> {
+  const turns = item.turns ?? [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const t of turns) {
+    const roi = t.roiBoundingBox ?? t.questionCoordinates ?? null;
+    if (!roi) continue;
+    out.push({
+      turnIndex: t.turnIndex,
+      turnId: t.turnId,
+      userMessageId: t.userMessageId,
+      assistantMessageId: t.assistantMessageId,
+      roiBoundingBox: roi,
+    });
+  }
+  return out;
+}
+
+function buildPromotePayload(
+  item: ExpertReviewItem,
+  ctx: {
+    active: ExpertReviewItem | null;
+    diag: string;
+    keyText: string;
+    keyImagingEdit: string;
+    reflectiveEdit: string;
+    libraryTitle: string;
+    libraryCategoryId: string;
+    libraryDifficulty: string;
+    libraryTagsCsv: string;
+    categories: ExpertCategory[];
+  },
+): PromoteExpertReviewPayload {
+  const useEdited = ctx.active?.id === item.id;
+  const catId = ctx.libraryCategoryId.trim();
+  const cat = ctx.categories.find((c) => c.id === catId);
+  const tagNames = ctx.libraryTagsCsv
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return {
+    title: ctx.libraryTitle.trim(),
+    categoryId: catId || undefined,
+    categoryName: cat?.name ?? (catId || undefined),
+    difficulty: ctx.libraryDifficulty.trim() || 'intermediate',
+    tagNames,
+    description: structuredDiagnosisForPromote(item, ctx.diag, useEdited),
+    suggestedDiagnosis: useEdited
+      ? ctx.keyText.split('\n').map((s) => s.trim()).filter(Boolean).join('\n')
+      : joinDifferentialFromReport(item),
+    keyFindings: joinKeyImagingFindings(item, ctx.keyImagingEdit, useEdited),
+    reflectiveQuestions: useEdited
+      ? ctx.reflectiveEdit.trim()
+      : reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions) || '',
+    turnAnnotations: collectTurnAnnotationsForPromote(item),
+  };
+}
 
 export default function ExpertReviewsPage() {
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [items, setItems] = useState<ExpertReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,10 +192,28 @@ export default function ExpertReviewsPage() {
   const [active, setActive] = useState<ExpertReviewItem | null>(null);
   const [diag, setDiag] = useState('');
   const [keyText, setKeyText] = useState('');
+  const [keyImagingEdit, setKeyImagingEdit] = useState('');
+  const [reflectiveEdit, setReflectiveEdit] = useState('');
   const [saving, setSaving] = useState(false);
   const [flaggingChunkId, setFlaggingChunkId] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [submittingFlag, setSubmittingFlag] = useState(false);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [roiClearEpochBySession, setRoiClearEpochBySession] = useState<Record<string, number>>({});
+  const [locallyApprovedSessionIds, setLocallyApprovedSessionIds] = useState<Set<string>>(() => new Set());
+  const [rejectModalItem, setRejectModalItem] = useState<ExpertReviewItem | null>(null);
+  const [rejectModalNote, setRejectModalNote] = useState('');
+  const openedFocusRef = useRef<string | null>(null);
+  const [expertCategories, setExpertCategories] = useState<ExpertCategory[]>([]);
+  const [libraryTitle, setLibraryTitle] = useState('');
+  const [libraryCategoryId, setLibraryCategoryId] = useState('');
+  const [libraryDifficulty, setLibraryDifficulty] = useState('intermediate');
+  const [libraryTagsCsv, setLibraryTagsCsv] = useState('');
+  const { trigger: triggerFlagChunk } = useSWRMutation(
+    'expert-flag-chunk',
+    async (_key, { arg }: { arg: { chunkId: string; reason: string } }) =>
+      flagRagChunk(arg.chunkId, { reason: arg.reason }),
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,12 +231,75 @@ export default function ExpertReviewsPage() {
     void load();
   }, [load]);
 
-  const openEdit = (item: ExpertReviewItem) => {
+  useEffect(() => {
+    void fetchExpertCategories()
+      .then(setExpertCategories)
+      .catch(() => setExpertCategories([]));
+  }, []);
+
+  /** Bổ sung citations/turns đầy đủ khi BE chỉ trả tóm tắt trên queue list. */
+  useEffect(() => {
+    if (!active?.sessionId) return;
+    let cancelled = false;
+    void (async () => {
+      const detail = await fetchExpertReviewDetail(active.sessionId);
+      if (cancelled || !detail) return;
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.sessionId !== active.sessionId) return i;
+          const dc = detail.citations ?? [];
+          const ic = i.citations ?? [];
+          const cite =
+            dc.length > ic.length ? dc : dc.length > 0 && ic.length === 0 ? dc : ic;
+          const dt = detail.turns ?? [];
+          const it = i.turns ?? [];
+          const turns =
+            dt.length > it.length ? dt : dt.length > 0 && it.length === 0 ? dt : it;
+          return { ...i, citations: cite, turns };
+        }),
+      );
+      setActive((prev) => {
+        if (!prev || prev.sessionId !== active.sessionId) return prev;
+        const dc = detail.citations ?? [];
+        const ic = prev.citations ?? [];
+        const cite =
+          dc.length > ic.length ? dc : dc.length > 0 && ic.length === 0 ? dc : ic;
+        const dt = detail.turns ?? [];
+        const it = prev.turns ?? [];
+        const turns =
+          dt.length > it.length ? dt : dt.length > 0 && it.length === 0 ? dt : it;
+        return { ...prev, citations: cite, turns };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.sessionId]);
+
+  const openEdit = useCallback((item: ExpertReviewItem) => {
     setActive(item);
     setDiag(item.report.suggestedDiagnosis || '');
-    setKeyText(item.report.keyFindings.join('\n'));
+    setKeyText((item.report.keyFindings ?? []).join('\n'));
+    setKeyImagingEdit(item.report.keyImagingFindings?.trim() ?? item.keyImagingFindings?.trim() ?? '');
+    setReflectiveEdit(reflectiveQuestionsToEditText(item.report, item.reflectiveQuestions));
     setExpanded(item.id);
-  };
+    const seedTitle = (item.caseTitle?.trim() || firstStudentQuestion(item)).slice(0, 200);
+    setLibraryTitle(seedTitle);
+    setLibraryCategoryId('');
+    setLibraryDifficulty('intermediate');
+    setLibraryTagsCsv('');
+  }, []);
+
+  useEffect(() => {
+    const focus = searchParams.get('focus')?.trim();
+    if (!focus || items.length === 0) return;
+    if (openedFocusRef.current === focus) return;
+    const match = items.find((i) => i.id === focus || i.sessionId === focus || i.answerId === focus);
+    if (match) {
+      openedFocusRef.current = focus;
+      openEdit(match);
+    }
+  }, [items, searchParams, openEdit]);
 
   const openFlagModal = (chunkId: string) => {
     setFlaggingChunkId(chunkId);
@@ -85,7 +321,7 @@ export default function ExpertReviewsPage() {
 
     setSubmittingFlag(true);
     try {
-      await flagRagChunk(flaggingChunkId, { reason });
+      await triggerFlagChunk({ chunkId: flaggingChunkId, reason });
       setItems((prev) =>
         prev.map((item) => ({
           ...item,
@@ -99,63 +335,184 @@ export default function ExpertReviewsPage() {
       toast.success('Chunk flagged for data quality review.');
       closeFlagModal();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to flag RAG chunk.');
+      toast.error(toWorkflowFriendlyError(error, 'Failed to flag RAG chunk.'));
     } finally {
       setSubmittingFlag(false);
     }
   };
 
-  const submit = async (status: 'Approved' | 'Rejected') => {
-    if (!active) return;
+  const saveDraftForItem = async (item: ExpertReviewItem, roi?: number[] | null) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue and open this case again.');
+      return;
+    }
     setSaving(true);
     try {
-      const keyFindings = keyText
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .join('\n');
-      await putExpertReview(active.id, {
-        status,
-        suggestedDiagnosis: diag.trim() || undefined,
-        keyFindings: keyFindings || undefined,
+      const note = replyDrafts[item.sessionId]?.trim();
+      await putExpertReviewDraft(item.sessionId, {
+        ...(note ? { reviewNote: note } : {}),
+        ...(Array.isArray(roi) && roi.length >= 4 ? { correctedRoiBoundingBox: roi.slice(0, 4) } : {}),
       });
-      toast.success(
-        status === 'Approved'
-          ? 'Approved. This case can be published to the student reference library.'
-          : 'Marked as rejected.',
+      toast.success('Draft saved.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save draft');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveOnlyForItem = async (item: ExpertReviewItem, roi?: number[] | null) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before approving.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const note = replyDrafts[item.sessionId]?.trim();
+      await putExpertReviewDraft(item.sessionId, {
+        ...(note ? { reviewNote: note } : {}),
+        ...(Array.isArray(roi) && roi.length >= 4 ? { correctedRoiBoundingBox: roi.slice(0, 4) } : {}),
+      });
+      await approveExpertReview(item.sessionId);
+      setLocallyApprovedSessionIds((prev) => new Set(prev).add(item.sessionId));
+      sonnerToast.success('Review approved. You can publish to the library when ready.', { duration: 5000 });
+    } catch (e) {
+      toast.error(toWorkflowFriendlyError(e, 'Approve failed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const promoteToLibraryForItem = async (item: ExpertReviewItem) => {
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before promoting.');
+      return;
+    }
+    if (!locallyApprovedSessionIds.has(item.sessionId)) {
+      toast.error('Approve this review before adding it to the library.');
+      return;
+    }
+    const promotePayload = buildPromotePayload(item, {
+      active,
+      diag,
+      keyText,
+      keyImagingEdit,
+      reflectiveEdit,
+      libraryTitle,
+      libraryCategoryId,
+      libraryDifficulty,
+      libraryTagsCsv,
+      categories: expertCategories,
+    });
+    if (!promotePayload.title.trim()) {
+      toast.error('Enter a library case title before promoting.');
+      return;
+    }
+    if (!promotePayload.categoryId) {
+      toast.error('Select a category for the library case.');
+      return;
+    }
+    if (!promotePayload.tagNames.length) {
+      toast.error('Enter at least one tag (comma-separated).');
+      return;
+    }
+    if (
+      !promotePayload.description.trim() ||
+      !promotePayload.suggestedDiagnosis.trim() ||
+      !promotePayload.keyFindings.trim() ||
+      !promotePayload.reflectiveQuestions.trim()
+    ) {
+      toast.error('Complete AI-mapped fields (diagnosis, differential, imaging findings, reflective questions).');
+      return;
+    }
+    setSaving(true);
+    try {
+      await promoteExpertReview(item.sessionId, promotePayload);
+      clearServerReviewDraft(item.sessionId);
+      setRoiClearEpochBySession((prev) => ({
+        ...prev,
+        [item.sessionId]: (prev[item.sessionId] ?? 0) + 1,
+      }));
+      setLocallyApprovedSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.sessionId);
+        return next;
+      });
+      setReplyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.sessionId];
+        return next;
+      });
+      const rid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== rid));
+      setExpanded((e) => (e === rid ? null : e));
+      if (active?.id === rid) setActive(null);
+      sonnerToast.success('Session published to the case library.', { duration: 6000 });
+    } catch (error) {
+      toast.error(toWorkflowFriendlyError(error, 'Failed to promote this case.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openRejectModal = (item: ExpertReviewItem) => {
+    setRejectModalItem(item);
+    setRejectModalNote(replyDrafts[item.sessionId]?.trim() ?? '');
+  };
+
+  const closeRejectModal = () => {
+    setRejectModalItem(null);
+    setRejectModalNote('');
+  };
+
+  const submitRejectModal = async () => {
+    const item = rejectModalItem;
+    if (!item) return;
+    const reason = rejectModalNote.trim();
+    if (!reason) {
+      toast.error('Enter a rejection reason before submitting.');
+      return;
+    }
+    if (hasExpertReviewSelectedPairMismatch(item)) {
+      toast.error('Selected pair mismatch. Refresh the queue before rejecting.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = buildResolvePayload(
+        item,
+        {
+          active,
+          diag,
+          keyText,
+          keyImagingEdit,
+          reflectiveEdit,
+          replyDrafts,
+          status: 'Rejected',
+          roi: undefined,
+        },
+        { explicitRejectNote: reason },
       );
-      setActive(null);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Update failed');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const quickApprove = async (item: ExpertReviewItem) => {
-    setSaving(true);
-    try {
-      await putExpertReview(item.id, {
-        status: 'Approved',
-        suggestedDiagnosis: item.report.suggestedDiagnosis,
-        keyFindings: item.report.keyFindings.join('\n'),
+      await resolveExpertReview(item.sessionId, payload);
+      clearServerReviewDraft(item.sessionId);
+      setRoiClearEpochBySession((prev) => ({
+        ...prev,
+        [item.sessionId]: (prev[item.sessionId] ?? 0) + 1,
+      }));
+      setLocallyApprovedSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.sessionId);
+        return next;
       });
-      toast.success('Approved for the public reference library.');
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Update failed');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const quickReject = async (item: ExpertReviewItem) => {
-    setSaving(true);
-    try {
-      await putExpertReview(item.id, { status: 'Rejected' });
-      toast.info('Answer flagged as invalid.');
-      await load();
+      const jid = item.id;
+      setItems((prev) => prev.filter((i) => i.id !== jid));
+      setExpanded((e) => (e === jid ? null : e));
+      if (active?.id === jid) setActive(null);
+      closeRejectModal();
+      sonnerToast.message('Review recorded', {
+        description: 'The student will be notified. This item is removed from your pending queue.',
+        duration: 5000,
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Update failed');
     } finally {
@@ -164,196 +521,218 @@ export default function ExpertReviewsPage() {
   };
 
   const pending = items.filter((i) => !isTerminal(i.status)).length;
+  const isLg = useMediaQuery('(min-width: 1024px)');
+  const selectedItem = expanded ? (items.find((i) => i.id === expanded) ?? null) : null;
+
+  const selectDesktopQueueItem = useCallback(
+    (item: ExpertReviewItem) => {
+      if (expanded === item.id) {
+        setExpanded(null);
+        setActive(null);
+      } else {
+        openEdit(item);
+      }
+    },
+    [expanded, openEdit],
+  );
+
+  const workspaceForItem = (item: ExpertReviewItem) => (
+    <ExpertReviewWorkspace
+      key={item.id}
+      item={item}
+      pairMismatch={hasExpertReviewSelectedPairMismatch(item)}
+      loading={loading}
+      onReloadQueue={() => void load()}
+      isEditing={active?.id === item.id}
+      diag={diag}
+      keyText={keyText}
+      keyImagingEdit={keyImagingEdit}
+      reflectiveEdit={reflectiveEdit}
+      onDiagChange={setDiag}
+      onKeyTextChange={setKeyText}
+      onKeyImagingChange={setKeyImagingEdit}
+      onReflectiveChange={setReflectiveEdit}
+      replyDraft={replyDrafts[item.sessionId] ?? ''}
+      onReplyDraftChange={(v) => setReplyDrafts((prev) => ({ ...prev, [item.sessionId]: v }))}
+      roiClearEpoch={roiClearEpochBySession[item.sessionId] ?? 0}
+      onOpenEdit={() => openEdit(item)}
+      onSaveDraft={(roi) => void saveDraftForItem(item, roi)}
+      onApprove={(roi) => void approveOnlyForItem(item, roi)}
+      onPromote={() => void promoteToLibraryForItem(item)}
+      onRejectRequest={() => openRejectModal(item)}
+      canPromote={locallyApprovedSessionIds.has(item.sessionId)}
+      saving={saving}
+      onFlagCitation={openFlagModal}
+      libraryTitle={libraryTitle}
+      libraryCategoryId={libraryCategoryId}
+      libraryDifficulty={libraryDifficulty}
+      libraryTagsCsv={libraryTagsCsv}
+      categories={expertCategories}
+      onLibraryTitleChange={setLibraryTitle}
+      onLibraryCategoryIdChange={setLibraryCategoryId}
+      onLibraryDifficultyChange={setLibraryDifficulty}
+      onLibraryTagsCsvChange={setLibraryTagsCsv}
+    />
+  );
 
   return (
-    <div className="dark min-h-screen bg-background text-text-main">
-      <Header title="Expert review workbench" subtitle={`${pending} item(s) awaiting decision`} />
-      <div className="mx-auto max-w-[1600px] p-6">
+    <div className="min-h-screen bg-background text-foreground">
+      <Header title="Expert review" subtitle={`${pending} escalated session(s) awaiting triage`} />
+      <div className="mx-auto max-w-[1680px] px-4 py-6 sm:px-6">
+        <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-br from-card via-card to-muted/25 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 max-w-3xl text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Escalated Visual QA</p>
+            <p className="mt-1">
+              Verify imaging, chat context, and RAG citations before approving for the student library or rejecting with
+              clear feedback.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Link
+              href="/expert/cases"
+              className={cn(
+                'inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium tracking-[0.01em] text-foreground',
+                'cursor-pointer transition-all duration-150 hover:bg-slate-50 active:scale-[0.98]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+              )}
+            >
+              Case library
+            </Link>
+            <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
         {loading ? (
-          <div className="flex justify-center py-20 text-text-muted">
-            <Loader2 className="h-10 w-10 animate-spin text-cyan-accent" />
+          <ExpertReviewQueueSkeleton />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={<Inbox className="h-7 w-7 text-primary" />}
+            title="All caught up"
+            description="There are no escalated cases requiring your expert review right now."
+          />
+        ) : isLg ? (
+          <div className="flex items-start gap-6">
+            <aside className="sticky top-24 w-[min(400px,34vw)] shrink-0 space-y-2 overflow-y-auto pr-1 max-h-[calc(100vh-7rem)]">
+              {items.map((item) => {
+                const selected = expanded === item.id;
+                const confidence = getConfidenceScore(item);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => selectDesktopQueueItem(item)}
+                    className={cn(
+                      'w-full rounded-xl border p-4 text-left transition-shadow',
+                      selected
+                        ? 'border-primary bg-primary/5 shadow-md ring-2 ring-primary/20'
+                        : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30',
+                    )}
+                  >
+                    <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">{item.question}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {item.studentName}
+                      </span>
+                      {item.className ? (
+                        <span className="rounded-md bg-muted px-2 py-0.5 font-medium text-foreground">{item.className}</span>
+                      ) : null}
+                      <StatusBadge status={item.status} />
+                    </div>
+                    {confidence != null ? (
+                      <div className="mt-3">
+                        <div className="mb-1 flex justify-between text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <span>AI confidence</span>
+                          <span className="text-primary">{confidence.toFixed(0)}%</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${confidence}%` }} />
+                        </div>
+                      </div>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </aside>
+            <main className="min-w-0 flex-1">
+              {selectedItem ? (
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  {workspaceForItem(selectedItem)}
+                </div>
+              ) : (
+                <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
+                  <Inbox className="mb-3 h-10 w-10 text-muted-foreground" />
+                  <p className="text-base font-semibold text-foreground">Choose a session</p>
+                  <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                    Select a row on the left to load imaging, chat, and evidence in this pane.
+                  </p>
+                </div>
+              )}
+            </main>
           </div>
         ) : (
           <div className="space-y-4">
-            {items.length === 0 ? (
-              <div className="rounded-xl border border-border-color bg-surface p-12 text-center text-text-muted">
-                No escalated diagnostic requests at this time.
-              </div>
-            ) : (
-              items.map((item) => {
-                const isExp = expanded === item.id;
-                const confidence = getConfidenceScore(item);
-                const isEditing = active?.id === item.id;
-                return (
-                  <div
-                    key={item.id}
-                    className="overflow-hidden rounded-xl border border-border-color bg-surface shadow-panel"
+            {items.map((item) => {
+              const isExp = expanded === item.id;
+              const confidence = getConfidenceScore(item);
+              return (
+                <div key={item.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(isExp ? null : item.id)}
+                    className="flex w-full items-start gap-3 px-5 py-5 text-left hover:bg-muted/30"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setExpanded(isExp ? null : item.id)}
-                      className="flex w-full items-start gap-3 px-5 py-5 text-left hover:bg-background/20"
-                    >
-                      {isExp ? (
-                        <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
-                      ) : (
-                        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium leading-relaxed text-text-main">
-                              {item.question}
-                            </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                          <span className="inline-flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            {item.studentName}
-                          </span>
-                          {item.className ? (
-                            <span className="rounded bg-accent/10 px-2 py-0.5 font-medium text-accent">
-                              {item.className}
-                            </span>
-                          ) : null}
-                          <span>{item.askedAt}</span>
-                          <StatusBadge status={item.status} />
-                            </div>
-                          </div>
-                          {confidence !== null ? (
-                            <div className="w-full max-w-[180px]">
-                              <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-text-muted">
-                                <span>AI confidence</span>
-                                <span className="text-cyan-accent">{confidence.toFixed(1)}%</span>
-                              </div>
-                              <div className="h-2 overflow-hidden rounded-full bg-background">
-                                <div
-                                  className="h-full rounded-full bg-cyan-accent"
-                                  style={{ width: `${confidence}%` }}
-                                />
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </button>
-
-                    {isExp && (
-                      <div className="border-t border-border-color px-5 py-5">
-                        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-                          <section className="space-y-4">
-                            <div className="rounded-xl border border-border-color bg-black p-3">
-                              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                                Imaging
-                              </p>
-                              <div className="overflow-hidden rounded-lg border border-border-color bg-black p-2">
-                                {item.imageUrl ? (
-                                  <div className="relative mx-auto w-fit">
-                                    <Image
-                                      src={item.imageUrl}
-                                      alt="Study"
-                                      width={1200}
-                                      height={900}
-                                      unoptimized
-                                      className="mx-auto max-h-[420px] max-w-full object-contain"
-                                    />
-                                    <AnnotationOverlay
-                                      box={item.customCoordinates}
-                                      label="STUDENT ROI"
-                                      className="border-dashed border-cyan-accent text-cyan-accent shadow-[0_0_28px_rgba(0,229,255,0.3)]"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="flex min-h-[280px] items-center justify-center text-sm text-text-muted">
-                                    No image available for this request.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="rounded-xl border border-border-color bg-surface p-4">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-accent">
-                                Student question
-                              </p>
-                              <p className="text-sm leading-relaxed text-text-main">{item.question}</p>
-                            </div>
-                          </section>
-
-                          <section className="space-y-4">
-                            <ReportWorkbench
-                              report={item.report}
-                              isEditing={isEditing}
-                              diag={diag}
-                              keyText={keyText}
-                              onDiagChange={setDiag}
-                              onKeyTextChange={setKeyText}
-                              onBeginEdit={() => openEdit(item)}
-                            />
-                            <EvidencePanel
-                              citations={item.citations ?? []}
-                              onFlag={openFlagModal}
-                            />
-                          </section>
-                        </div>
-
-                        {!isTerminal(item.status) && (
-                          <div className="sticky bottom-0 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-color bg-background/95 p-4 backdrop-blur">
-                            <div className="flex items-center gap-2 text-sm text-text-muted">
-                              <AlertCircle className="h-4 w-4 text-cyan-accent" />
-                              Approved responses are pushed to the public student reference library.
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {!isEditing ? (
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  disabled={saving}
-                                  onClick={() => openEdit(item)}
-                                >
-                                  <Edit3 className="h-4 w-4" />
-                                  Edit diagnosis / findings
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  disabled={saving}
-                                  onClick={() => void submit('Approved')}
-                                >
-                                  <Save className="h-4 w-4" />
-                                  Save edits
-                                </Button>
-                              )}
-                              <Button
-                                type="button"
-                                className="min-w-[220px]"
-                                disabled={saving}
-                                isLoading={saving}
-                                onClick={() => (isEditing ? void submit('Approved') : void quickApprove(item))}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                                Approve for library
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="border-danger text-danger hover:bg-danger/10"
-                                disabled={saving}
-                                onClick={() => (isEditing ? void submit('Rejected') : void quickReject(item))}
-                              >
-                                <XCircle className="h-4 w-4" />
-                                Reject
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                    {isExp ? (
+                      <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
-                  </div>
-                );
-              })
-            )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-relaxed text-foreground">{item.question}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {item.studentName}
+                            </span>
+                            {item.className ? (
+                              <span className="rounded-md bg-muted px-2 py-0.5 font-medium text-foreground">{item.className}</span>
+                            ) : null}
+                            <span>{item.askedAt}</span>
+                            <StatusBadge status={item.status} />
+                          </div>
+                        </div>
+                        {confidence != null ? (
+                          <div className="w-full max-w-[180px]">
+                            <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                              <span>AI confidence</span>
+                              <span className="text-primary">{confidence.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-muted">
+                              <div className="h-full rounded-full bg-primary" style={{ width: `${confidence}%` }} />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </button>
+                  {isExp ? workspaceForItem(item) : null}
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        )}      </div>
+      <RejectReviewModal
+        open={Boolean(rejectModalItem)}
+        note={rejectModalNote}
+        submitting={saving}
+        onNoteChange={setRejectModalNote}
+        onClose={closeRejectModal}
+        onSubmit={() => void submitRejectModal()}
+      />
       <FlagChunkModal
         open={Boolean(flaggingChunkId)}
         reason={flagReason}
@@ -362,93 +741,52 @@ export default function ExpertReviewsPage() {
         onClose={closeFlagModal}
         onSubmit={() => void submitFlag()}
       />
-
     </div>
   );
 }
 
-function EvidencePanel({
-  citations,
-  onFlag,
+function RejectReviewModal({
+  open,
+  note,
+  submitting,
+  onNoteChange,
+  onClose,
+  onSubmit,
 }: {
-  citations: ExpertReviewCitation[];
-  onFlag: (chunkId: string) => void;
+  open: boolean;
+  note: string;
+  submitting: boolean;
+  onNoteChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
 }) {
+  if (!open) return null;
+
   return (
-    <section className="rounded-xl border border-border-color bg-surface p-4">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            RAG Evidence & Citations
-          </h4>
-          <p className="mt-1 text-sm text-text-muted">
-            Review the exact evidence chunks the AI used before approving this answer.
-          </p>
+    <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/70 px-4">
+      <div className="w-full max-w-lg rounded-2xl border border-border-color bg-surface p-5 shadow-panel">
+        <h3 className="text-lg font-semibold text-text-main">Reject review</h3>
+        <p className="mt-2 text-sm text-text-muted">
+          A rejection reason is required. The student will see this feedback where applicable.
+        </p>
+        <textarea
+          value={note}
+          onChange={(e) => onNoteChange(e.target.value)}
+          rows={5}
+          placeholder="Explain why this escalation is rejected or how the student should proceed…"
+          className="mt-4 w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" disabled={submitting} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="destructive" isLoading={submitting} onClick={onSubmit}>
+            <XCircle className="h-4 w-4" />
+            Submit rejection
+          </Button>
         </div>
       </div>
-
-      {citations.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-color bg-background/40 px-4 py-6 text-sm text-text-muted">
-          No evidence chunks were returned for this case.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {citations.map((citation, index) => (
-            <article
-              key={citation.chunkId}
-              className={`rounded-xl border p-4 ${
-                citation.flagged
-                  ? 'border-danger/60 bg-danger/5'
-                  : 'border-border-color bg-background/40'
-              }`}
-            >
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                  <span className="rounded-full bg-cyan-accent/10 px-2 py-1 font-medium text-cyan-accent">
-                    Chunk {index + 1}
-                  </span>
-                  {citation.pageNumber != null ? (
-                    <span>Page {citation.pageNumber}</span>
-                  ) : null}
-                  {citation.flagged ? (
-                    <span className="rounded-full bg-danger/10 px-2 py-1 font-medium text-danger">
-                      Flagged
-                    </span>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  variant={citation.flagged ? 'outline' : 'destructive'}
-                  disabled={citation.flagged}
-                  onClick={() => onFlag(citation.chunkId)}
-                >
-                  <Flag className="h-4 w-4" />
-                  {citation.flagged ? 'Issue Flagged' : 'Flag Issue'}
-                </Button>
-              </div>
-
-              <blockquote className="rounded-lg border-l-4 border-cyan-accent bg-surface px-4 py-3 text-sm leading-relaxed text-text-main">
-                {citation.sourceText}
-              </blockquote>
-
-              {citation.referenceUrl ? (
-                <a
-                  href={citation.referenceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 text-sm text-cyan-accent underline decoration-cyan-accent/50 underline-offset-4 hover:text-cyan-accent/80"
-                >
-                  <Link2 className="h-4 w-4" />
-                  Open source reference
-                </a>
-              ) : (
-                <p className="mt-3 text-xs text-text-muted">No reference URL was supplied for this chunk.</p>
-              )}
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 
@@ -498,153 +836,39 @@ function FlagChunkModal({
 }
 
 function getConfidenceScore(item: ExpertReviewItem): number | null {
-  const raw = (item as ExpertReviewItem & { aiConfidenceScore?: number; confidenceScore?: number })
-    .aiConfidenceScore ??
-    (item as ExpertReviewItem & { confidenceScore?: number }).confidenceScore;
+  const raw =
+    (item as ExpertReviewItem & { aiConfidenceScore?: number }).aiConfidenceScore ??
+    item.report.aiConfidenceScore;
 
   if (typeof raw === 'number' && !Number.isNaN(raw)) {
     return raw <= 1 ? raw * 100 : raw;
   }
-
-  const derived = 84 + item.report.keyFindings.length * 1.8 + item.report.citations.length * 0.7;
-  return Math.min(98.7, Math.max(72.4, derived));
+  return null;
 }
 
 function isTerminal(status: string) {
-  const s = status.toLowerCase();
-  return s === 'approved' || s === 'rejected';
+  return getWorkflowStatusMeta(status).terminal;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
-  if (s === 'approved') {
+  const meta = getWorkflowStatusMeta(status);
+  if (meta.tone === 'success') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
-        <CheckCircle className="h-3 w-3" /> Approved
+        <CheckCircle className="h-3 w-3" /> {meta.label}
       </span>
     );
   }
-  if (s === 'rejected') {
+  if (meta.tone === 'danger') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-        <XCircle className="h-3 w-3" /> Rejected
+        <XCircle className="h-3 w-3" /> {meta.label}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-      <Clock className="h-3 w-3" /> Pending expert
+      <Clock className="h-3 w-3" /> {meta.label}
     </span>
-  );
-}
-
-function ReportSections({ report }: { report: VisualQaReport }) {
-  return (
-    <div className="space-y-4">
-      <section>
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-          Answer / explanation
-        </h4>
-        <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
-        </div>
-      </section>
-      {report.suggestedDiagnosis ? (
-        <section>
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            Suggested diagnosis
-          </h4>
-          <div className="rounded-xl border border-border-color bg-surface px-4 py-4">
-            <p className="text-base font-semibold leading-relaxed text-text-main">
-              {report.suggestedDiagnosis}
-            </p>
-          </div>
-        </section>
-      ) : null}
-      {report.keyFindings.length > 0 ? (
-        <section>
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            Key findings
-          </h4>
-          <ul className="space-y-3 rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-            {report.keyFindings.map((k, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-accent" />
-                <span>{k}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function ReportWorkbench({
-  report,
-  isEditing,
-  diag,
-  keyText,
-  onDiagChange,
-  onKeyTextChange,
-  onBeginEdit,
-}: {
-  report: VisualQaReport;
-  isEditing: boolean;
-  diag: string;
-  keyText: string;
-  onDiagChange: (value: string) => void;
-  onKeyTextChange: (value: string) => void;
-  onBeginEdit: () => void;
-}) {
-  if (!isEditing) {
-    return <ReportSections report={report} />;
-  }
-
-  return (
-    <div className="space-y-4">
-      <section>
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-          Answer / explanation
-        </h4>
-        <div className="rounded-xl border border-border-color bg-surface px-4 py-4 text-sm text-text-main">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.answerText || '—'}</ReactMarkdown>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-border-color bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-            Suggested diagnosis
-          </h4>
-          <button
-            type="button"
-            onClick={onBeginEdit}
-            className="text-xs font-medium text-text-muted hover:text-text-main"
-          >
-            Editing
-          </button>
-        </div>
-        <textarea
-          value={diag}
-          onChange={(e) => onDiagChange(e.target.value)}
-          rows={4}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-base font-semibold text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
-        />
-      </section>
-
-      <section className="rounded-xl border border-border-color bg-surface p-4">
-        <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-cyan-accent">
-          Key findings
-        </h4>
-        <textarea
-          value={keyText}
-          onChange={(e) => onKeyTextChange(e.target.value)}
-          rows={8}
-          className="w-full rounded-xl border border-border-color bg-background px-4 py-3 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-cyan-accent/70"
-          placeholder="One key finding per line"
-        />
-      </section>
-    </div>
   );
 }

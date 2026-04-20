@@ -1,0 +1,14 @@
+# Repository root — complements web/.gitignore (monorepo: web/, scripts/, etc.)
+
+# Every nested install (packages, future scripts)
+**/node_modules/
+
+# Temporary working notes / audits (delete these lines to track official docs in git)
+Board_Review_FE_Audit.md
+FE_Blueprint.md
+
+# Cursor IDE — local plans / machine-specific (not app source)
+.cursor/
+
+# FE working docs kept locally (remove this line if the team should track web/docs in git)
+web/docs/

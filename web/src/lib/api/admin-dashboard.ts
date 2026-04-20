@@ -76,7 +76,10 @@ function mapRecentUser(row: unknown): AdminRecentUser | null {
 
 export async function fetchAdminUserStats(): Promise<AdminUserStat> {
   try {
-    const { data } = await http.get<{ result?: AdminUserStat; message?: string }>('/api/admin/monitoring/users');
+    const { data } = await http.get<{ result?: AdminUserStat; message?: string }>(
+      '/api/admin/monitoring/users',
+      { skipApiToast: true },
+    );
     const stats = data.result ?? (data as unknown as AdminUserStat);
     return stats;
   } catch (e) {
@@ -86,12 +89,16 @@ export async function fetchAdminUserStats(): Promise<AdminUserStat> {
 
 export async function fetchAdminActivityStats(from: Date, to: Date): Promise<AdminActivityStat> {
   try {
-    const { data } = await http.get<{ result?: AdminActivityStat; message?: string }>('/api/admin/monitoring/activity', {
-      params: {
-        from: from.toISOString(),
-        to: to.toISOString(),
+    const { data } = await http.get<{ result?: AdminActivityStat; message?: string }>(
+      '/api/admin/monitoring/activity',
+      {
+        skipApiToast: true,
+        params: {
+          from: from.toISOString(),
+          to: to.toISOString(),
+        },
       },
-    });
+    );
     const stats = data.result ?? (data as unknown as AdminActivityStat);
     return stats;
   } catch (e) {
@@ -101,7 +108,10 @@ export async function fetchAdminActivityStats(from: Date, to: Date): Promise<Adm
 
 export async function fetchAdminRagStats(): Promise<AdminRagStat> {
   try {
-    const { data } = await http.get<{ result?: AdminRagStat; message?: string }>('/api/admin/monitoring/rag');
+    const { data } = await http.get<{ result?: AdminRagStat; message?: string }>(
+      '/api/admin/monitoring/rag',
+      { skipApiToast: true },
+    );
     const stats = data.result ?? (data as unknown as AdminRagStat);
     return stats;
   } catch (e) {
@@ -111,7 +121,10 @@ export async function fetchAdminRagStats(): Promise<AdminRagStat> {
 
 export async function fetchAdminExpertReviewStats(): Promise<AdminExpertReviewStat> {
   try {
-    const { data } = await http.get<{ result?: AdminExpertReviewStat; message?: string }>('/api/admin/monitoring/reviews');
+    const { data } = await http.get<{ result?: AdminExpertReviewStat; message?: string }>(
+      '/api/admin/monitoring/reviews',
+      { skipApiToast: true },
+    );
     const stats = data.result ?? (data as unknown as AdminExpertReviewStat);
     return stats;
   } catch (e) {
@@ -142,6 +155,7 @@ export async function fetchAdminRecentUsersPage(
 ): Promise<AdminRecentUsersPage> {
   try {
     const { data } = await http.get<unknown>('/api/admin/users', {
+      skipApiToast: true,
       params: { page, pageSize },
     });
     const body = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};

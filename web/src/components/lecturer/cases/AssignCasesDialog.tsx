@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { assignCasesToClass } from '@/lib/api/lecturer';
-import type { ClassItem } from '@/lib/api/types';
+import type { ClassItem, ClassCaseAssignmentDto } from '@/lib/api/types';
 
 interface AssignCasesDialogProps {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (assignments: ClassCaseAssignmentDto[]) => void;
   selectedCases: Set<string>;
   classes: ClassItem[];
 }
@@ -28,11 +28,11 @@ export default function AssignCasesDialog({
     setAssigning(true);
     setAssignError('');
     try {
-      await assignCasesToClass(assignClassId, {
+      const result = await assignCasesToClass(assignClassId, {
         caseIds: Array.from(selectedCases),
         isMandatory: true,
       });
-      onSuccess();
+      onSuccess(result);
     } catch {
       setAssignError('Failed to assign cases. Please try again.');
     } finally {

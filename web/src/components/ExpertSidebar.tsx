@@ -8,17 +8,15 @@ import {
   FolderOpen,
   MessageSquareText,
   FileText,
-  Settings,
   LogOut,
   Stethoscope,
 } from 'lucide-react';
 
 const expertMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/expert/dashboard' },
-  { icon: FolderOpen, label: 'Cases', href: '/expert/cases' },
-  { icon: MessageSquareText, label: 'Q&A Reviews', href: '/expert/reviews' },
-  { icon: FileText, label: 'Quizzes', href: '/expert/quizzes' },
-  { icon: Settings, label: 'Settings', href: '/expert/settings' },
+  { icon: FileText, label: 'Quiz', href: '/expert/quizzes' },
+  { icon: MessageSquareText, label: 'Reviews', href: '/expert/reviews' },
+  { icon: FolderOpen, label: 'Medical case', href: '/expert/cases' },
 ];
 
 export default function ExpertSidebar() {
@@ -39,7 +37,7 @@ export default function ExpertSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="app-scroll-y flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {expertMenuItems.map((item) => {
             const isActive =
@@ -73,7 +71,7 @@ export default function ExpertSidebar() {
       {/* User & Logout */}
       <div className="px-3 py-4 border-t border-white/10">
         <Link
-          href="/expert/settings"
+          href="/profile"
           className="flex items-center gap-3 px-4 py-3 mb-2 rounded-lg hover:bg-sidebar-hover transition-colors duration-150"
         >
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-sm font-medium">

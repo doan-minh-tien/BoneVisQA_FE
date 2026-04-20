@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
-import {
-  GoogleOAuthProvider,
-  GoogleLogin,
-  type CredentialResponse,
-} from "@react-oauth/google";
 import {
   Activity,
   Cpu,
@@ -21,10 +17,44 @@ import {
 const AUTH_HERO_HAND_IMAGE =
   "https://lh3.googleusercontent.com/aida-public/AB6AXuAiGfyZ6N39coIC7rt9DV9aTzXRG6RQ_nWQrUfzvseTJTzVHZoXBwSIv12MmBhmdXCKbWX0yOvO1cYV7PD9UfLA4HJ5LJYbR5a7WCRZcFGuxPOQFKKtjmvoRikeflzrb1pXA0mbuqokEkhF31OBtOpjFP3RpC7nRzCvmcywMrtx7pTIWOhPMdPOVWxuysyjObpLWjp8rLnbU0NHM3ZEABxi3ERbJ1OOoVoLkfdOfqi-tAhLVrWIPi3aK0AnSjh9PsC7a76wlp81auU";
 import { login } from "@/lib/api/auth";
-import { http, getApiErrorMessage } from "@/lib/api/client";
+import {
+  http,
+  getPublicAuthErrorMessage,
+  sanitizeUserFacingLoginMessage,
+} from "@/lib/api/client";
 import type { LoginResponse } from "@/lib/api/types";
 import { useToast } from "@/components/ui/toast";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+
+const motionEase = [0.22, 1, 0.36, 1] as const;
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (cfg: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+            auto_select?: boolean;
+            cancel_on_tap_outside?: boolean;
+            locale?: string;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: Record<string, string | number | boolean>,
+          ) => void;
+          prompt?: () => void;
+        };
+      };
+    };
+  }
+}
 
 function getRouteForRole(role: string | null | undefined) {
   switch (role?.trim().toLowerCase()) {
@@ -36,20 +66,42 @@ function getRouteForRole(role: string | null | undefined) {
       return { activeRole: "expert", route: "/expert/dashboard" };
     case "admin":
       return { activeRole: "admin", route: "/admin/dashboard" };
+    case "guest":
+      return { activeRole: null, route: "/pending-approval" };
     default:
       return { activeRole: null, route: "/" };
   }
 }
 
+function isGuestOrUnassignedUser(payload: {
+  roles?: string[] | null;
+  status?: string | null;
+  userStatus?: string | null;
+}) {
+  const normalizedStatus = (payload.status ?? payload.userStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'guest') {
+    return true;
+  }
+
+  const roles = Array.isArray(payload.roles)
+    ? payload.roles.map((r) => r.trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (roles.length === 0) {
+    return true;
+  }
+  if (roles.includes('none') || roles.includes('unassigned') || roles.includes('guest')) {
+    return true;
+  }
+  return false;
+}
+
 type LoginPageInnerProps = {
   googleEnabled: boolean;
+  googleClientId: string;
 };
 
-/**
- * Renders the full login UI. When googleEnabled, this component must be a descendant of
- * GoogleOAuthProvider (single provider instance avoids extra GSI initialize warnings).
- */
-function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
+/** Renders the full login UI. Google Sign-In uses the GSI script and `/api/auths/google-login`. */
+function LoginPageInner({ googleEnabled, googleClientId }: LoginPageInnerProps) {
   const router = useRouter();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
@@ -57,6 +109,9 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [gsiScriptReady, setGsiScriptReady] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const isGsiInitialized = useRef(false);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("rememberedEmail");
@@ -72,6 +127,19 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
       localStorage.setItem("fullName", data.fullName);
       localStorage.setItem("email", data.email);
       localStorage.setItem("roles", JSON.stringify(data.roles));
+      const resolvedStatus = data.status ?? data.userStatus ?? null;
+      if (resolvedStatus) {
+        localStorage.setItem("userStatus", resolvedStatus);
+      } else {
+        localStorage.removeItem("userStatus");
+      }
+
+      if (isGuestOrUnassignedUser(data)) {
+        localStorage.removeItem("activeRole");
+        router.push("/pending-approval");
+        return;
+      }
+
       const primaryRole = Array.isArray(data.roles)
         ? data.roles.find((role: string) => getRouteForRole(role).activeRole)
         : null;
@@ -100,20 +168,23 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         return;
       }
 
-      const msg = data.message || "Invalid email or password.";
+      const msg = sanitizeUserFacingLoginMessage(
+        data.message,
+        "Invalid email or password.",
+      );
       setError(msg);
       toast.error(msg);
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err);
-      setError(message || "Cannot connect to server. Please try again.");
-      toast.error(message || "Cannot connect to server. Please try again.");
+      const message = getPublicAuthErrorMessage(err, "credentials");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLoginSuccess = async (
-    credentialResponse: CredentialResponse,
+  const handleGoogleLoginSuccess = useCallback(async (
+    credentialResponse: GoogleCredentialResponse,
   ) => {
     setError("");
     setLoading(true);
@@ -123,7 +194,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         throw new Error("Google did not return a credential token.");
       }
 
-      const { data } = await http.post("/api/Auths/google-login", {
+      const { data } = await http.post("/api/auths/google-login", {
         idToken: credentialResponse.credential,
       });
 
@@ -137,22 +208,90 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         toast.success(data.message || "Please confirm your medical information to complete registration.");
         router.push("/auth/medical-verification");
       } else {
-        const message = data.message || "Google login failed.";
+        const message = sanitizeUserFacingLoginMessage(
+          data.message,
+          "Google sign-in was not accepted. Please try again or use email and password.",
+        );
         setError(message);
         toast.error(message);
       }
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err);
-      console.warn("Google login failed:", message);
-      setError(message || "Cannot connect to server. Please try again later.");
-      toast.error(message || "Google login failed.");
+      const message = getPublicAuthErrorMessage(err, "google");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Google sign-in]", err);
+      }
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [handleLoginSuccess, router, toast]);
+
+  const triggerGoogleSignIn = useCallback(() => {
+    const tryClick = (attempt: number) => {
+      const root = googleButtonRef.current;
+      if (!root) {
+        toast.error("Google sign-in is still loading. Please try again.");
+        return;
+      }
+      const el = root.querySelector<HTMLElement>('[role="button"]');
+      if (el) {
+        el.click();
+        return;
+      }
+      if (attempt < 15) {
+        window.setTimeout(() => tryClick(attempt + 1), 50);
+        return;
+      }
+      toast.error("Google sign-in is still loading. Please try again.");
+    };
+    tryClick(0);
+  }, [toast]);
+
+  useEffect(() => {
+    if (window.google?.accounts?.id) {
+      setGsiScriptReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!googleEnabled || !googleClientId || isGsiInitialized.current) return;
+    const gsi = window.google?.accounts?.id;
+    const target = googleButtonRef.current;
+    if (!gsiScriptReady || !gsi || !target) return;
+
+    target.innerHTML = "";
+    gsi.initialize({
+      client_id: googleClientId,
+      callback: (response) => {
+        void handleGoogleLoginSuccess(response);
+      },
+      locale: "en",
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+    gsi.renderButton(target, {
+      theme: "outline",
+      size: "large",
+      shape: "pill",
+      type: "standard",
+      text: "signin_with",
+      logo_alignment: "left",
+      width: 300,
+    });
+
+    isGsiInitialized.current = true;
+  }, [googleEnabled, googleClientId, gsiScriptReady, handleGoogleLoginSuccess]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-950">
+      {googleEnabled ? (
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+          onLoad={() => setGsiScriptReady(true)}
+        />
+      ) : null}
       {/*
         dir="ltr" keeps hero on the left and form on the right regardless of browser locale.
         max-lg:hidden avoids Tailwind hidden/lg:flex ordering quirks; flex-col keeps content stacked.
@@ -162,7 +301,19 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
         dir="ltr"
         className="grid min-h-[100dvh] w-full grid-cols-1 items-stretch lg:grid-cols-[1.22fr_1fr]"
       >
-        <section className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col">
+        <motion.section
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: motionEase }}
+          className="relative isolate max-lg:hidden min-h-[100dvh] w-full min-w-0 overflow-hidden bg-[#0A0A14] lg:flex lg:min-h-0 lg:flex-col"
+        >
+          {/* Animated mesh — soft drifting blobs + grid (no heavy JS). */}
+          <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
+            <div className="absolute -left-[10%] top-[8%] h-[min(52vw,420px)] w-[min(52vw,420px)] rounded-full bg-blue-500/25 blur-3xl animate-blob" />
+            <div className="absolute right-[-8%] top-[22%] h-[min(48vw,380px)] w-[min(48vw,380px)] rounded-full bg-cyan-400/20 blur-3xl animate-blob-slow" />
+            <div className="absolute bottom-[5%] left-[18%] h-[min(44vw,340px)] w-[min(44vw,340px)] rounded-full bg-indigo-500/20 blur-3xl animate-blob-delayed" />
+            <div className="absolute right-[12%] top-[55%] h-[min(36vw,280px)] w-[min(36vw,280px)] rounded-full bg-sky-400/15 blur-3xl animate-blob" />
+          </div>
           <div
             className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(0,229,255,0.12),transparent_25%),radial-gradient(circle_at_80%_0%,rgba(0,123,255,0.18),transparent_28%),linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:auto,auto,32px_32px,32px_32px]"
             aria-hidden
@@ -213,7 +364,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </div>
             </div>
 
-            <div className="max-w-xl shrink-0">
+            <motion.div
+              className="max-w-xl shrink-0"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.12, ease: motionEase }}
+            >
               <h1 className="text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl">
                 BoneVisQA
               </h1>
@@ -224,12 +380,17 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                 A medical imaging workspace for students, lecturers, experts, and administrators to
                 analyze radiographs, validate AI reasoning, and accelerate radiology education.
               </p>
-            </div>
+            </motion.div>
           </div>
-        </section>
+        </motion.section>
 
         <section className="flex min-h-[100dvh] min-w-0 items-center justify-center bg-surface px-6 py-10 lg:min-h-0">
-          <div className="w-full max-w-md">
+          <motion.div
+            className="w-full max-w-md"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08, ease: motionEase }}
+          >
             <div className="mb-8 text-center lg:text-left">
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
                 Secure access
@@ -242,7 +403,12 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
               </p>
             </div>
 
-            <div className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+            <motion.div
+              className="rounded-[28px] border border-border-color bg-surface p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.18, ease: motionEase }}
+            >
               {error ? (
                 <div className="mb-5 rounded-xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
                   {error}
@@ -293,7 +459,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-xl border border-border-color bg-background px-4 py-3 pr-11 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                     />
                     <button
                       type="button"
@@ -324,7 +490,7 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
 
               {!googleEnabled ? (
                 <div className="w-full rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-                  Missing Google Client ID in .env file
+                  Google sign-in is disabled: set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your environment file.
                 </div>
               ) : (
                 <div className="rounded-xl border border-border-color bg-background p-3">
@@ -332,26 +498,29 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
                       <span className="text-sm font-bold text-[#4285F4]">G</span>
                     </div>
-                    <span>Sign in with Google</span>
+                    <span>Google Login</span>
                   </div>
-                  <div className="flex justify-center">
-                    <GoogleLogin
-                      onSuccess={handleGoogleLoginSuccess}
-                      onError={() => {
-                        const msg =
-                          "Google sign-in popup failed or was closed. Check Google Cloud origins for this URL.";
-                        console.warn("Google login onError:", msg);
-                        setError(msg);
-                        toast.error(msg);
-                      }}
-                      useOneTap={false}
+                  <div className="relative w-full">
+                    <div
+                      ref={googleButtonRef}
+                      className="fixed left-[-10000px] top-0 min-h-[44px] w-[300px] overflow-hidden opacity-0"
+                      aria-hidden
+                      tabIndex={-1}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={triggerGoogleSignIn}
+                    >
+                      Google Login
+                    </Button>
                   </div>
                 </div>
               )}
 
               <p className="mt-8 text-center text-sm text-text-muted">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link
                   href="/auth/sign-up"
                   className="font-bold text-primary hover:underline"
@@ -359,8 +528,8 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
                   Sign up
                 </Link>
               </p>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </section>
       </div>
     </div>
@@ -370,14 +539,5 @@ function LoginPageInner({ googleEnabled }: LoginPageInnerProps) {
 export default function LoginPage() {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
   const hasGoogleClientId = googleClientId.length > 0;
-
-  if (!hasGoogleClientId) {
-    return <LoginPageInner googleEnabled={false} />;
-  }
-
-  return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <LoginPageInner googleEnabled />
-    </GoogleOAuthProvider>
-  );
+  return <LoginPageInner googleEnabled={hasGoogleClientId} googleClientId={googleClientId} />;
 }

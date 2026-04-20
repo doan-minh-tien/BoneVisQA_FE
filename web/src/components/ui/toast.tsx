@@ -11,14 +11,20 @@ import {
 
 type ToastKind = 'success' | 'error' | 'info';
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 }
 
 interface ToastApi {
-  success: (message: string) => void;
+  success: (message: string, options?: { action?: ToastAction }) => void;
   error: (message: string) => void;
   info: (message: string) => void;
 }
@@ -34,9 +40,9 @@ const kindStyles: Record<ToastKind, string> = {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
-  const push = useCallback((kind: ToastKind, message: string) => {
+  const push = useCallback((kind: ToastKind, message: string, action?: ToastAction) => {
     const id = Date.now() + Math.random();
-    setItems((prev) => [...prev, { id, kind, message }]);
+    setItems((prev) => [...prev, { id, kind, message, action }]);
     window.setTimeout(() => {
       setItems((prev) => prev.filter((t) => t.id !== id));
     }, 6000);
@@ -44,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ToastApi>(
     () => ({
-      success: (m) => push('success', m),
+      success: (m, opts) => push('success', m, opts?.action),
       error: (m) => push('error', m),
       info: (m) => push('info', m),
     }),
@@ -55,15 +61,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="fixed left-1/2 top-6 z-[200] flex w-full max-w-2xl -translate-x-1/2 flex-col gap-3 px-4 pointer-events-none"
+        className="pointer-events-none fixed right-6 top-6 z-[200] flex w-full max-w-md flex-col gap-3"
         aria-live="polite"
       >
         {items.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto rounded-2xl border px-6 py-5 text-base font-semibold leading-snug shadow-lg backdrop-blur sm:text-lg ${kindStyles[t.kind]}`}
+            className={`pointer-events-auto rounded-2xl border px-6 py-5 text-base font-semibold leading-snug shadow-lg backdrop-blur sm:text-lg flex items-center justify-between gap-4 ${kindStyles[t.kind]}`}
           >
-            {t.message}
+            <span>{t.message}</span>
+            {t.action && (
+              <button
+                onClick={t.action.onClick}
+                className="shrink-0 px-4 py-1.5 rounded-lg bg-success/10 text-success text-sm font-semibold hover:bg-success/20 transition-colors"
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

@@ -222,7 +222,6 @@ export default function StudentQuizPage() {
   const [search, setSearch] = useState('');
   const [filterTopic, setFilterTopic] = useState('');
 
-  // ── Quiz History ──────────────────────────────────────────────────────────
   const [historyAttempts, setHistoryAttempts] = useState<StudentQuizAttemptSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'ai' | 'assigned'>('all');
@@ -242,7 +241,6 @@ export default function StudentQuizPage() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [currentReview, setCurrentReview] = useState<QuizAttemptReview | null>(null);
   const [reviewActive, setReviewActive] = useState(false);
-  const [reviewAttemptId, setReviewAttemptId] = useState<string | null>(null);
 
   // ── Pagination (assigned quiz questions) ─────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
@@ -273,31 +271,50 @@ export default function StudentQuizPage() {
     setCurrentReview(null);
   }, [filterTab]);
 
-  // Load quiz history when switching to history tab
   useEffect(() => {
-    if (filterTab !== 'history' || historyAttempts.length > 0) return;
+    if (filterTab !== 'history') return;
     let cancelled = false;
-    (async () => {
-      setHistoryLoading(true);
-      try {
-        const data = await fetchStudentQuizHistory();
-        if (!cancelled) setHistoryAttempts(data);
-      } catch {
+    setHistoryLoading(true);
+    fetchStudentQuizHistory()
+      .then((rows) => {
+        if (!cancelled) setHistoryAttempts(rows);
+      })
+      .catch(() => {
         if (!cancelled) setHistoryAttempts([]);
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setHistoryLoading(false);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
   }, [filterTab]);
 
+  const historyStats = useMemo(() => {
+    const total = historyAttempts.length;
+    const completed = historyAttempts.filter((a) => Boolean(a.completedAt)).length;
+    const ai = historyAttempts.filter((a) => a.isAiGenerated).length;
+    const scored = historyAttempts.filter((a) => a.completedAt != null && a.score != null);
+    const avgScore =
+      scored.length > 0
+        ? scored.reduce((sum, a) => sum + (a.score ?? 0), 0) / scored.length
+        : null;
+    return { total, completed, ai, avgScore };
+  }, [historyAttempts]);
+
+  const historyFiltered = useMemo(() => {
+    return historyAttempts.filter((a) => {
+      if (historyFilter === 'ai') return a.isAiGenerated;
+      if (historyFilter === 'assigned') return !a.isAiGenerated;
+      return true;
+    });
+  }, [historyAttempts, historyFilter]);
+
   function formatDate(iso?: string | null): string {
     if (!iso) return '—';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString('vi-VN', {
+    return d.toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -305,20 +322,6 @@ export default function StudentQuizPage() {
       minute: '2-digit',
     });
   }
-
-  const historyFiltered = useMemo(() => {
-    if (historyFilter === 'ai') return historyAttempts.filter((a) => a.isAiGenerated);
-    if (historyFilter === 'assigned') return historyAttempts.filter((a) => !a.isAiGenerated);
-    return historyAttempts;
-  }, [historyAttempts, historyFilter]);
-
-  const historyStats = useMemo(() => {
-    const completed = historyAttempts.filter((a) => a.completedAt);
-    const aiAttempts = historyAttempts.filter((a) => a.isAiGenerated);
-    const scores = completed.map((a) => a.score ?? 0).filter((s) => s > 0);
-    const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    return { total: historyAttempts.length, completed: completed.length, ai: aiAttempts.length, avgScore: avg };
-  }, [historyAttempts]);
 
   const filteredQuizzes = useMemo(() => {
     return assignedQuizzes.filter((q) => {
@@ -385,7 +388,6 @@ export default function StudentQuizPage() {
   };
 
   const openReview = async (attemptId: string) => {
-    setReviewAttemptId(attemptId);
     setReviewLoading(true);
     try {
       const data = await fetchQuizAttemptReview(attemptId);
@@ -398,20 +400,20 @@ export default function StudentQuizPage() {
     }
   };
 
-  const handleDeleteAttempt = async (attemptId: string) => {
-    if (!confirm('Are you sure you want to delete this quiz attempt?')) return;
-    try {
-      await deleteQuizAttempt(attemptId);
-      setHistoryAttempts(historyAttempts.filter((a) => a.attemptId !== attemptId));
-      toast.success('Quiz attempt deleted.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete quiz attempt.');
-    }
-  };
-
   const goToAIPractice = () => {
     setFilterTab('practice');
     setShowGenerator(true);
+  };
+
+  const handleDeleteAttempt = async (attemptId: string) => {
+    try {
+      await deleteQuizAttempt(attemptId);
+      setHistoryAttempts((prev) => prev.filter((a) => a.attemptId !== attemptId));
+      if (historyExpanded === attemptId) setHistoryExpanded(null);
+      toast.success('Attempt removed from history.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete attempt.');
+    }
   };
 
   const aiProgress = aiSession
@@ -442,11 +444,11 @@ export default function StudentQuizPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={goToAIPractice}
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-95"
+              disabled
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#00478d] to-[#005eb8] px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all opacity-50 cursor-not-allowed"
             >
               <Sparkles className="h-4 w-4" />
-              AI Quiz
+              Practice Quizzes
             </button>
           </div>
         </div>
@@ -454,17 +456,14 @@ export default function StudentQuizPage() {
         {/* ── Tab navigation ── */}
         <div className="mb-6 flex items-center gap-1 border-b border-[#c2c6d4]/30">
           {([
-            ['assigned', 'Assigned Quizzes', Trophy, assignedQuizzes.length] as const,
-            ['practice', 'AI Quizzes', BotMessageSquare, 0] as const,
-            ['history', 'History', Clock, historyAttempts.filter(a => a.completedAt).length] as const,
+            ['assigned', 'Assigned Practice Quizzes', Trophy, assignedQuizzes.length] as const,
+            ['practice', 'Practice Quizzes', BotMessageSquare, 0] as const,
+            ['history', 'History', Clock, historyAttempts.filter((a) => a.completedAt).length] as const,
           ]).map(([key, label, Icon, count]) => (
             <button
               key={key}
               type="button"
               onClick={() => {
-                if (key === 'history' && historyAttempts.length === 0) {
-                  setHistoryAttempts([]); // trigger reload
-                }
                 setFilterTab(key);
               }}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold transition-colors ${
@@ -595,12 +594,22 @@ export default function StudentQuizPage() {
                           <span className="text-sm font-bold text-[#006a68]">
                             {quiz.score != null ? `Score: ${Math.round(quiz.score)}%` : 'Submitted'}
                           </span>
-                          <a
-                            href={`/student/quiz/${quiz.quizId}`}
-                            className="flex items-center gap-1 text-sm font-bold text-[#00478d] hover:underline"
-                          >
-                            Retake <RotateCcw className="h-3.5 w-3.5" />
-                          </a>
+                          <div className="flex items-center gap-2">
+                            {quiz.attemptId && (
+                              <a
+                                href={`/student/quiz/history?review=${quiz.attemptId}`}
+                                className="flex items-center gap-1 text-sm font-bold text-[#006a68] hover:underline"
+                              >
+                                <Eye className="h-3.5 w-3.5" /> Review
+                              </a>
+                            )}
+                            <a
+                              href={`/student/quiz/${quiz.quizId}`}
+                              className="flex items-center gap-1 text-sm font-bold text-[#00478d] hover:underline"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" /> Retake
+                            </a>
+                          </div>
                         </div>
                       ) : (
                         <a
@@ -626,7 +635,7 @@ export default function StudentQuizPage() {
               aiState !== 'active' &&
               aiState !== 'submitting' &&
               aiState !== 'result' && (
-                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm dark:from-amber-950/30 dark:to-slate-900">
+                <div className="mb-6 rounded-2xl border border-[#924e00]/25 bg-gradient-to-br from-[#ffdcc3]/25 to-white p-5 shadow-sm">
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 shrink-0 text-[#703a00]" />
@@ -739,10 +748,10 @@ export default function StudentQuizPage() {
                 {aiSession && (
                   <div className="flex items-center justify-between rounded-2xl border border-[#924e00]/30 bg-[#ffdcc3]/20 p-4">
                     <div>
-                      <p className="font-semibold text-[#703a00]">{aiSession.title}</p>
+                      <p className="font-semibold text-[#703a00]">{aiSession?.title}</p>
                       <p className="text-xs text-[#703a00]/70">
-                        {aiSession.questions.length} questions •{' '}
-                        {aiSession.topic ? `Topic: ${aiSession.topic}` : 'AI-generated'}
+                        {aiSession?.questions?.length} questions •{' '}
+                        {aiSession?.topic ? `Topic: ${aiSession?.topic}` : 'AI-generated'}
                       </p>
                     </div>
                     {aiState === 'result' && (
@@ -761,27 +770,20 @@ export default function StudentQuizPage() {
                 {aiState === 'result' && aiResult && (
                   <div className="rounded-2xl border border-[#006a68]/30 bg-[#94efec]/20 p-6">
                     <div className="mb-4 flex items-center gap-3">
-                      {aiResult.passed
+                      {aiResult?.passed
                         ? <CheckCircle className="h-8 w-8 text-[#006a68]" />
                         : <XCircle className="h-8 w-8 text-[#ba1a1a]" />}
                       <div>
-                        <h3 className={`text-2xl font-black ${scoreColor(aiResult.score)}`}>
-                          {Math.round(aiResult.score)}%
+                        <h3 className={`text-2xl font-black ${scoreColor(aiResult?.score ?? undefined)}`}>
+                          {Math.round(aiResult?.score ?? 0)}%
                         </h3>
                         <p className="text-sm text-[#424752]">
-                          {aiResult.correctAnswers}/{aiResult.totalQuestions} correct —{' '}
-                          {aiResult.passed ? 'Passed' : 'Needs improvement'}
+                          {aiResult?.correctAnswers}/{aiResult?.totalQuestions} correct —{' '}
+                          {aiResult?.passed ? 'Passed' : 'Needs improvement'}
                         </p>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => { setFilterTab('history'); setHistoryAttempts([]); }}
-                        className="flex items-center gap-2 rounded-xl bg-[#006a68] px-4 py-2 text-sm font-bold text-white"
-                      >
-                        <Clock className="h-4 w-4" /> View History
-                      </button>
                       <button
                         type="button"
                         onClick={() => aiSession && openReview(aiSession.attemptId)}
@@ -795,7 +797,7 @@ export default function StudentQuizPage() {
                         )}
                         Review Answers
                       </button>
-                      {!aiResult.passed && (
+                      {!aiResult?.passed && (
                         <button
                           type="button"
                           onClick={() => {
@@ -813,7 +815,7 @@ export default function StudentQuizPage() {
 
                 {/* Review Answers Panel */}
                 {reviewActive && currentReview && (
-                  <ReviewAnswersPanel review={currentReview} onClose={() => setReviewActive(false)} />
+                  <ReviewAnswersPanel review={currentReview!} onClose={() => setReviewActive(false)} />
                 )}
 
                 {/* Questions */}
@@ -936,7 +938,7 @@ export default function StudentQuizPage() {
                     <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#006a68]">{historyStats.completed}</p>
                   </div>
                   <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Quiz AI</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#424752]">Practice Quizzes</p>
                     <p className="mt-1 font-['Manrope',sans-serif] text-3xl font-black text-[#924e00]">{historyStats.ai}</p>
                   </div>
                   <div className="rounded-2xl border border-[#c2c6d4]/30 bg-white p-5 text-center">
@@ -954,7 +956,7 @@ export default function StudentQuizPage() {
                   </div>
                   {([
                     ['all', 'All'],
-                    ['ai', 'AI Quizzes'],
+                    ['ai', 'Practice Quizzes'],
                     ['assigned', 'Assigned'],
                   ] as [typeof historyFilter, string][]).map(([val, label]) => (
                     <button
@@ -982,7 +984,7 @@ export default function StudentQuizPage() {
                     <h3 className="mt-4 text-lg font-semibold text-[#191c1e]">No quiz history yet</h3>
                     <p className="mt-2 text-sm text-[#424752]">
                       {historyFilter === 'ai'
-                        ? 'You have not created any AI quizzes yet. Try creating one in the "AI Quizzes" tab.'
+                        ? 'You have not created any practice quizzes yet. Try creating one in the "Practice Quizzes" tab.'
                         : 'Your submitted quizzes will appear here.'}
                     </p>
                   </div>
@@ -1175,7 +1177,7 @@ export default function StudentQuizPage() {
 
         {/* ── Quick topic chips ── */}
         {!loading && filterTab === 'assigned' && (
-          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5 dark:bg-slate-900/40">
+          <div className="mt-8 rounded-2xl border border-[#c2c6d4]/30 bg-[#f8fafc] px-4 py-4 md:px-5">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#727783]">Quick practice by topic</p>
             <div className="flex flex-wrap gap-2">
               {QUICK_TOPICS.map((topic) => (
