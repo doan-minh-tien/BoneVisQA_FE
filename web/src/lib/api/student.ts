@@ -21,7 +21,6 @@ import type {
   StudentSessionQuestion,
   StudentSubmitQuestionDto,
   StudentTopicStat,
-  AnnouncementAssignmentInfo,
 } from './types';
 import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
 
