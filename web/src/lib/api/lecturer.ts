@@ -24,7 +24,6 @@ import type {
   QuizWithQuestionsDto,
   ClassCaseAssignmentDto,
   ClassQuizSessionDto,
-  AnnouncementAssignmentInfo,
 } from './types';
 import {
   isValidNormalizedBoundingBox,
