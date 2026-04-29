@@ -17,6 +17,11 @@ export interface ExpertQuiz {
   classification: string | null;
   createdAt: string;
   expertName?: string;
+  // Deep classification
+  boneSpecialtyId?: string;
+  boneSpecialtyName?: string;
+  pathologyCategoryId?: string;
+  pathologyCategoryName?: string;
 }
 
 interface ExpertQuizListResponse {
@@ -47,6 +52,8 @@ export interface CreateExpertQuizRequest {
   difficulty: ExpertQuizDifficulty | string;
   classification: string | null;
   createdByExpertId?: string;
+  boneSpecialtyId?: string | null;
+  pathologyCategoryId?: string | null;
 }
 
 export type UpdateExpertQuizRequest = Partial<CreateExpertQuizRequest>;
@@ -86,6 +93,9 @@ function mapExpertQuiz(row: unknown, fallbackId?: string): ExpertQuiz | null {
           : null,
     createdAt: String(r.createdAt ?? r.CreatedAt ?? ''),
     expertName: r.expertName != null ? String(r.expertName) : r.ExpertName != null ? String(r.ExpertName) : undefined,
+    // Deep classification
+    boneSpecialtyId: r.boneSpecialtyId != null ? String(r.boneSpecialtyId) : r.BoneSpecialtyId != null ? String(r.BoneSpecialtyId) : undefined,
+    pathologyCategoryId: r.pathologyCategoryId != null ? String(r.pathologyCategoryId) : r.PathologyCategoryId != null ? String(r.PathologyCategoryId) : undefined,
   };
 }
 
@@ -559,6 +569,74 @@ export async function assignExpertQuizFromLibrary(
     const { data } = await http.post<unknown>(`/api/expert/classes/${classId}/library-quizzes/${quizId}`, payload);
     const row = (data as any)?.result ?? data;
     return mapAssignQuizResult(row);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Quiz Questions ==========
+
+export interface QuizQuestionDto {
+  id: string;
+  quizId: string;
+  quizTitle: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  questionText: string;
+  type: string;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  imageUrl: string | null;
+}
+
+export interface CreateQuizQuestionRequest {
+  quizId: string;
+  questionText: string;
+  type: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer?: string;
+  essayAnswer?: string;
+  imageUrl?: string;
+  caseId?: string;
+}
+
+export async function getQuizQuestions(quizId: string): Promise<QuizQuestionDto[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/quizzes/${quizId}/questions`);
+    const rawQuestions = data?.questions ?? data?.result ?? data?.items ?? [];
+    const list = Array.isArray(rawQuestions) ? rawQuestions : [];
+    return list.map((q: any): QuizQuestionDto => ({
+      id: String(q.id ?? q.Id ?? q.questionId ?? q.QuestionId ?? ''),
+      quizId: String(q.quizId ?? q.QuizId ?? quizId),
+      quizTitle: q.quizTitle ?? q.QuizTitle ?? null,
+      caseId: q.caseId ?? q.CaseId ?? null,
+      caseTitle: q.caseTitle ?? q.CaseTitle ?? null,
+      questionText: String(q.questionText ?? q.QuestionText ?? ''),
+      type: String(q.type ?? q.Type ?? 'MultipleChoice'),
+      optionA: q.optionA ?? q.OptionA ?? null,
+      optionB: q.optionB ?? q.OptionB ?? null,
+      optionC: q.optionC ?? q.OptionC ?? null,
+      optionD: q.optionD ?? q.OptionD ?? null,
+      correctAnswer: q.correctAnswer ?? q.CorrectAnswer ?? null,
+      imageUrl: q.imageUrl ?? q.ImageUrl ?? null,
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function addQuizQuestionsBatched(
+  quizId: string,
+  questions: CreateQuizQuestionRequest[],
+): Promise<void> {
+  try {
+    await http.post(`/api/expert/quizzes/${quizId}/questions/batch`, { questions });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

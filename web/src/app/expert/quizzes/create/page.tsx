@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
   Loader2,
   PlusCircle,
@@ -14,7 +13,6 @@ import {
   Send,
   Trash2,
   Pencil,
-  ArrowLeft,
   UploadCloud,
   Sparkles,
   CheckCircle2,
@@ -26,35 +24,30 @@ import {
   Search,
   Bone,
   Stethoscope,
+  ArrowLeft,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
-import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
 import {
-  createQuiz,
+  createExpertQuiz,
   addQuizQuestionsBatched,
   getQuizQuestions,
-  aiAutoGenerateQuiz,
-  aiSuggestQuestions,
-} from '@/lib/api/lecturer-quiz';
-import { getLecturerClasses, getLecturerCases, getClassStats } from '@/lib/api/lecturer';
-import { getStoredUserId } from '@/lib/getStoredUserId';
+  updateExpertQuiz,
+  type ExpertQuiz,
+  type CreateExpertQuizRequest,
+} from '@/lib/api/expert-quizzes';
 import classificationApi, { type BoneSpecialtyTreeDto, type PathologyCategorySimpleDto } from '@/lib/api/classification';
 import type {
-  CaseDto,
-  ClassItem,
-  ClassStats,
   CreateQuizQuestionRequest,
   QuizQuestionDto,
-  AIQuizQuestion,
 } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
+import ExpertQuestionCard from '@/components/expert/quizzes/ExpertQuestionCard';
+import ExpertQuestionEditorDialog from '@/components/expert/quizzes/ExpertQuestionEditorDialog';
+import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
 import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
-import QuestionCard from '@/components/lecturer/quizzes/QuestionCard';
 
-const QUESTIONS_PER_PAGE = 3;
-const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
-const POINTS_ROTATION = [10, 15, 5] as const;
+const QUESTIONS_PER_PAGE = 5;
 
 const CLASSIFICATION_OPTIONS = [
   'Resident Year 1',
@@ -70,6 +63,14 @@ const TOPIC_OPTIONS = [
   { value: 'Bone Tumors', label: 'Bone Tumors' },
   { value: 'Upper Extremity', label: 'Upper Extremity' },
   { value: 'Lower Extremity', label: 'Lower Extremity' },
+  { value: 'Lower Limb', label: 'Lower Limb' },
+  { value: 'Upper Limb', label: 'Upper Limb' },
+  { value: 'Spine', label: 'Spine' },
+  { value: 'Chest', label: 'Chest' },
+  { value: 'Abdomen', label: 'Abdomen' },
+  { value: 'Head & Neck', label: 'Head & Neck' },
+  { value: 'Pelvis', label: 'Pelvis' },
+  { value: 'General', label: 'General' },
 ] as const;
 
 const DIFFICULTY_OPTIONS = [
@@ -78,7 +79,6 @@ const DIFFICULTY_OPTIONS = [
   { value: 'Hard', label: 'Hard' },
 ] as const;
 
-// Flatten bone specialties tree for dropdown
 function flattenBoneSpecialties(tree: BoneSpecialtyTreeDto[], level = 0): (BoneSpecialtyTreeDto & { level: number })[] {
   const result: (BoneSpecialtyTreeDto & { level: number })[] = [];
   for (const item of tree) {
@@ -90,15 +90,31 @@ function flattenBoneSpecialties(tree: BoneSpecialtyTreeDto[], level = 0): (BoneS
   return result;
 }
 
-export default function CreateQuizPage() {
+function utcToLocalDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeLocalToIso(local: string): string {
+  const t = local.trim();
+  if (!t) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
+export default function ExpertCreateQuizPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [classes, setClasses] = useState<ClassItem[]>([]);
   const [createdQuizId, setCreatedQuizId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionDto[]>([]);
+  const [editQuiz, setEditQuiz] = useState<ExpertQuiz | null>(null);
 
   // Deep classification state
   const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyTreeDto[]>([]);
@@ -108,24 +124,17 @@ export default function CreateQuizPage() {
 
   const [formData, setFormData] = useState({
     title: '',
-    description: '',
-    classId: '',
     topic: '',
     difficulty: 'Medium',
     openTime: '',
     closeTime: '',
     timeLimit: '30',
-    passingScore: '80',
+    passingScore: '70',
   });
 
   const [classification, setClassification] = useState<string>('');
   const [boneSpecialtyId, setBoneSpecialtyId] = useState<string>('');
   const [pathologyCategoryId, setPathologyCategoryId] = useState<string>('');
-
-  const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
-  const [casePickerOpen, setCasePickerOpen] = useState(false);
-  const [caseLibrary, setCaseLibrary] = useState<CaseDto[]>([]);
-  const [casesLoading, setCasesLoading] = useState(false);
 
   const [tempQuestions, setTempQuestions] = useState<CreateQuizQuestionRequest[]>([]);
 
@@ -134,18 +143,9 @@ export default function CreateQuizPage() {
   const [editingTempIndex, setEditingTempIndex] = useState<number | null>(null);
 
   const [importOpen, setImportOpen] = useState(false);
-  const [createClassStats, setCreateClassStats] = useState<ClassStats | null>(null);
-  const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [activeStep, setActiveStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-
-  const [questionCount, setQuestionCount] = useState(5);
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiSuggesting, setAiSuggesting] = useState(false);
-  const [aiQuestions, setAiQuestions] = useState<AIQuizQuestion[]>([]);
-  const [aiSuggestionMode, setAiSuggestionMode] = useState<'auto' | 'suggest' | null>(null);
 
   // Success dialog state
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
@@ -169,7 +169,6 @@ export default function CreateQuizPage() {
   }, [allQuestions.length]);
 
   useEffect(() => {
-    loadClasses();
     loadClassifications();
   }, []);
 
@@ -190,63 +189,9 @@ export default function CreateQuizPage() {
     }
   };
 
-  // Filter pathology categories based on selected bone specialty
   const filteredPathologyCategories = pathologyCategories.filter(
     (p) => !boneSpecialtyId || p.boneSpecialtyId === boneSpecialtyId || !p.boneSpecialtyId
   );
-
-  useEffect(() => {
-    const id = formData.classId?.trim();
-    if (!id || id === '00000000-0000-0000-0000-000000000000') {
-      setCreateClassStats(null);
-      return;
-    }
-    let cancelled = false;
-    setCreateStatsLoading(true);
-    getClassStats(id)
-      .then((s) => {
-        if (!cancelled) setCreateClassStats(s);
-      })
-      .catch(() => {
-        if (!cancelled) setCreateClassStats(null);
-      })
-      .finally(() => {
-        if (!cancelled) setCreateStatsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [formData.classId]);
-
-  const loadClasses = async () => {
-    try {
-      const userId = getStoredUserId();
-      if (!userId) return;
-      const data = await getLecturerClasses(userId);
-      setClasses(data);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load classes.');
-    }
-  };
-
-  const openCasePicker = async () => {
-    setCasePickerOpen(true);
-    setCasesLoading(true);
-    try {
-      const data = await getLecturerCases();
-      setCaseLibrary(data);
-    } catch {
-      setCaseLibrary([]);
-    } finally {
-      setCasesLoading(false);
-    }
-  };
-
-  const toggleReferenceCase = (id: string) => {
-    setReferenceCaseIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
 
   const toUTC = (local: string) => {
     const t = local.trim();
@@ -256,180 +201,30 @@ export default function CreateQuizPage() {
     return d.toISOString();
   };
 
-  const buildCreatePayload = () => ({
+  const buildCreatePayload = (): CreateExpertQuizRequest => ({
     title: formData.title,
     topic: formData.topic || undefined,
     difficulty: formData.difficulty || undefined,
     classification: classification || undefined,
     isAiGenerated: false,
-    classId: formData.classId || '00000000-0000-0000-0000-000000000000',
-    openTime: toUTC(formData.openTime),
-    closeTime: toUTC(formData.closeTime),
+    openTime: toUTC(formData.openTime) || undefined,
+    closeTime: toUTC(formData.closeTime) || undefined,
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
     boneSpecialtyId: boneSpecialtyId || undefined,
     pathologyCategoryId: pathologyCategoryId || undefined,
   });
 
-  // ========== AI Quiz Handlers ==========
-
-  const handleAIAutoGenerate = async () => {
-    if (!formData.title.trim()) {
-      setError('Please enter a quiz title first');
-      return;
-    }
-    if (!formData.topic) {
-      setError('Please select a topic first');
-      return;
-    }
-
-    setAiGenerating(true);
-    setAiSuggestionMode('auto');
-    setError(null);
-
-    try {
-      const result = await aiAutoGenerateQuiz({
-        title: formData.title,
-        topic: formData.topic,
-        difficulty: formData.difficulty,
-        questionCount: questionCount,
-      });
-
-      if (result.success && result.questions.length > 0) {
-        setAiQuestions(result.questions);
-        setTempQuestions([]);
-        setActiveStep(2);
-      } else {
-        setError(result.message || 'Cannot create questions from AI');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while creating the quiz');
-    } finally {
-      setAiGenerating(false);
-    }
-  };
-
-  const handleAISuggestFromCases = async () => {
-    if (referenceCaseIds.length === 0) {
-      setError('Please select at least 1 case first');
-      return;
-    }
-
-    setAiSuggesting(true);
-    setAiSuggestionMode('suggest');
-    setError(null);
-
-    try {
-      const selectedCases = caseLibrary.filter((c) => referenceCaseIds.includes(c.id));
-      const caseInputs = selectedCases.map((c) => ({
-        caseId: c.id,
-        caseTitle: c.title,
-        caseDescription: c.description,
-        difficulty: c.difficulty,
-      }));
-
-      const result = await aiSuggestQuestions({
-        cases: caseInputs,
-        questionsPerCase: Math.ceil(questionCount / referenceCaseIds.length),
-        difficulty: formData.difficulty,
-      });
-
-      if (result.success && result.questions.length > 0) {
-        setAiQuestions(result.questions);
-        setTempQuestions([]);
-        setActiveStep(2);
-      } else {
-        setError(result.message || 'Cannot suggest questions from AI');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while suggesting');
-    } finally {
-      setAiSuggesting(false);
-    }
-  };
-
-  const handleAddAIQuestionsToQuiz = () => {
-    const newQuestions: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
-      quizId: createdQuizId || '',
-      questionText: q.questionText,
-      type: q.type || 'MultipleChoice',
-      optionA: q.optionA,
-      optionB: q.optionB,
-      optionC: q.optionC,
-      optionD: q.optionD,
-      correctAnswer: q.correctAnswer,
-      caseId: q.caseId,
-    }));
-
-    setTempQuestions([...tempQuestions, ...newQuestions]);
-    setAiQuestions([]);
-    setAiSuggestionMode(null);
-    setActiveStep(2);
-  };
-
-  const handleCreateAndAddAIQuestions = async () => {
-    if (!formData.title.trim()) {
-      setError('Please enter a quiz title.');
-      return;
-    }
-    if (!formData.topic) {
-      setError('Please select a topic.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // 1. Create quiz
-      const quiz = await createQuiz({
-        title: formData.title,
-        topic: formData.topic,
-        difficulty: formData.difficulty,
-        classification: classification || undefined,
-        isAiGenerated: true,
-        classId: formData.classId || '00000000-0000-0000-0000-000000000000',
-        openTime: formData.openTime || undefined,
-        closeTime: formData.closeTime || undefined,
-        timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
-        passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
-        boneSpecialtyId: boneSpecialtyId || undefined,
-        pathologyCategoryId: pathologyCategoryId || undefined,
-      });
-
-      const payloads: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
-        quizId: quiz.id,
-        questionText: q.questionText,
-        type: q.type || 'MultipleChoice',
-        optionA: q.optionA,
-        optionB: q.optionB,
-        optionC: q.optionC,
-        optionD: q.optionD,
-        correctAnswer: q.correctAnswer,
-        caseId: q.caseId,
-      }));
-      await addQuizQuestionsBatched(quiz.id, payloads);
-
-      toast.success('Quiz created and AI questions added.');
-      router.push(`/lecturer/quizzes/${quiz.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // ========== Quiz Handlers ==========
   const handleSaveDraft = async () => {
     if (!formData.title.trim()) {
-      setError('Please enter an assessment title');
+      setError('Please enter a quiz title');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const quiz = await createQuiz(buildCreatePayload());
+      const quiz = await createExpertQuiz(buildCreatePayload());
       if (tempQuestions.length > 0) {
         await addQuizQuestionsBatched(quiz.id, tempQuestions);
       }
@@ -447,7 +242,7 @@ export default function CreateQuizPage() {
 
   const handleCreateQuiz = async () => {
     if (!formData.title.trim()) {
-      setError('Please enter an assessment title');
+      setError('Please enter a quiz title');
       return;
     }
     if (allQuestions.length === 0) {
@@ -457,9 +252,11 @@ export default function CreateQuizPage() {
     setLoading(true);
     setError(null);
     try {
-      const quiz = await createQuiz(buildCreatePayload());
+      const quiz = await createExpertQuiz(buildCreatePayload());
       setCreatedQuizId(quiz.id);
-      await addQuizQuestionsBatched(quiz.id, tempQuestions);
+      if (tempQuestions.length > 0) {
+        await addQuizQuestionsBatched(quiz.id, tempQuestions);
+      }
       toast.success('Quiz created and published successfully.');
       setLastCreatedQuizId(quiz.id);
       setLastCreatedQuizTitle(quiz.title);
@@ -475,15 +272,15 @@ export default function CreateQuizPage() {
   const handleSuccessGoToEdit = () => {
     setSuccessDialogOpen(false);
     if (lastCreatedQuizId) {
-      router.push(`/lecturer/quizzes/${lastCreatedQuizId}`);
+      router.push(`/expert/quizzes/${lastCreatedQuizId}`);
     } else {
-      router.push('/lecturer/quizzes');
+      router.push('/expert/quizzes');
     }
   };
 
   const handleSuccessGoToList = () => {
     setSuccessDialogOpen(false);
-    router.push('/lecturer/quizzes');
+    router.push('/expert/quizzes');
   };
 
   const handleAddQuestion = () => {
@@ -564,6 +361,18 @@ export default function CreateQuizPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
+      {/* Back Button */}
+      <div>
+        <button
+          type="button"
+          onClick={() => router.push('/expert/quizzes')}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-card-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Quizzes
+        </button>
+      </div>
+
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -572,7 +381,7 @@ export default function CreateQuizPage() {
             {formData.title || 'New Quiz'}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Configure quiz settings and add questions.
+            Configure quiz settings and add questions for the expert library.
           </p>
         </div>
         <div className="flex shrink-0 gap-2 mt-1">
@@ -602,7 +411,7 @@ export default function CreateQuizPage() {
         <div className="rounded-2xl border border-border/10 bg-card p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <ListChecks className="h-4 w-4 text-primary" />
+              <BookOpen className="h-4 w-4 text-primary" />
             </div>
           </div>
           <p className="text-xs font-medium text-muted-foreground">Questions</p>
@@ -636,6 +445,13 @@ export default function CreateQuizPage() {
           <p className="text-xl font-bold text-card-foreground">{formData.passingScore || '—'}%</p>
         </div>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {/* Main Content - Bento Layout */}
       <div className="grid grid-cols-12 gap-6">
@@ -678,56 +494,6 @@ export default function CreateQuizPage() {
             </div>
 
             <div className="p-4">
-              {/* AI Questions Section */}
-              {aiQuestions.length > 0 && (
-                <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-purple-600" />
-                      <span className="text-sm font-bold text-purple-700">
-                        AI Generated Questions ({aiQuestions.length})
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAddAIQuestionsToQuiz}
-                        className="h-8 text-xs"
-                      >
-                        Add to Quiz
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={handleCreateAndAddAIQuestions}
-                        className="h-8 bg-purple-600 text-xs hover:bg-purple-700"
-                      >
-                        Create Quiz now
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {aiQuestions.map((q, index) => (
-                      <div key={index} className="rounded-lg border border-purple-200 bg-white p-3">
-                        <div className="mb-2 flex items-start gap-2">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">
-                            {index + 1}
-                          </span>
-                          <p className="text-sm font-medium">{q.questionText}</p>
-                        </div>
-                        <div className="ml-9 grid grid-cols-2 gap-1 text-xs">
-                          <span className={q.correctAnswer === 'A' ? 'text-green-600 font-bold' : ''}>A: {q.optionA}</span>
-                          <span className={q.correctAnswer === 'B' ? 'text-green-600 font-bold' : ''}>B: {q.optionB}</span>
-                          <span className={q.correctAnswer === 'C' ? 'text-green-600 font-bold' : ''}>C: {q.optionC}</span>
-                          <span className={q.correctAnswer === 'D' ? 'text-green-600 font-bold' : ''}>D: {q.optionD}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {allQuestions.length === 0 ? (
                 <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/20 p-6">
                   <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
@@ -754,7 +520,7 @@ export default function CreateQuizPage() {
               ) : (
                 <div className="space-y-3">
                   {displayedQuestions.map((question, index) => (
-                    <QuestionCard
+                    <ExpertQuestionCard
                       key={!createdQuizId ? `t-${startIndex + index}` : (question as QuizQuestionDto).id}
                       question={question as QuizQuestionDto}
                       variant="curated"
@@ -850,7 +616,6 @@ export default function CreateQuizPage() {
                       value={boneSpecialtyId}
                       onChange={(e) => {
                         setBoneSpecialtyId(e.target.value);
-                        // Reset pathology when bone specialty changes
                         setPathologyCategoryId('');
                       }}
                       disabled={loadingClassifications}
@@ -890,7 +655,7 @@ export default function CreateQuizPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Classification (Legacy)</label>
+                <label className="text-xs font-semibold text-muted-foreground">Classification</label>
                 <div className="relative">
                   <select
                     value={classification}
@@ -906,7 +671,7 @@ export default function CreateQuizPage() {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                <p className="text-[10px] text-muted-foreground">Optional: for backward compatibility with academic level classification</p>
+                <p className="text-[10px] text-muted-foreground">Optional: academic level or classification</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
@@ -925,36 +690,18 @@ export default function CreateQuizPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Topic</label>
                 <input
-                  list="topic-options-create"
+                  list="topic-options-create-expert"
                   type="text"
                   value={formData.topic}
                   onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
                   placeholder="Select or type topic..."
                   className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
                 />
-                <datalist id="topic-options-create">
+                <datalist id="topic-options-create-expert">
                   {TOPIC_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value} />
                   ))}
                 </datalist>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Class</label>
-                <div className="relative">
-                  <select
-                    value={formData.classId}
-                    onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                    className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Select class…</option>
-                    {classes.map((cls) => (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.className}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -994,116 +741,25 @@ export default function CreateQuizPage() {
                     value={formData.passingScore}
                     onChange={(e) => setFormData({ ...formData, passingScore: e.target.value.replace(/\D/g, '').slice(0, 3)})}
                     className="w-full rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
-                    placeholder="80"
+                    placeholder="70"
                   />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={2}
-                  placeholder="Description..."
-                  className="w-full resize-none rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
-                />
               </div>
             </div>
           </div>
 
-          {/* Quick Actions Card */}
+          {/* Info Card */}
           <div className="mt-4 rounded-2xl border border-secondary/20 bg-secondary/10 p-5">
-            <h3 className="font-semibold text-sm text-card-foreground mb-3">Quick Actions</h3>
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={openCasePicker}
-                className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-              >
-                Tag reference cases ({referenceCaseIds.length})
-              </button>
-              {referenceCaseIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {referenceCaseIds.slice(0, 3).map((id) => {
-                    const c = caseLibrary.find((x) => x.id === id);
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-semibold text-secondary"
-                      >
-                        {c?.title?.slice(0, 15) || id.slice(0, 8)}
-                      </span>
-                    );
-                  })}
-                  {referenceCaseIds.length > 3 && (
-                    <span className="text-[10px] text-muted-foreground">+{referenceCaseIds.length - 3} more</span>
-                  )}
-                </div>
-              )}
-            </div>
+            <h3 className="font-semibold text-sm text-card-foreground mb-2">Quiz Library</h3>
+            <p className="text-xs text-muted-foreground">
+              Your quiz will be saved to the expert library and can be assigned to classes by lecturers.
+              These settings will be used as defaults when lecturers assign this quiz.
+            </p>
           </div>
         </div>
       </div>
 
-      {casePickerOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            aria-label="Close"
-            onClick={() => setCasePickerOpen(false)}
-          />
-          <div className="relative max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-            <div className="flex items-center justify-between border-b border-border p-4">
-              <h3 className="font-semibold text-card-foreground">Reference cases</h3>
-              <button type="button" onClick={() => setCasePickerOpen(false)} className="rounded-lg p-2 hover:bg-muted">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto p-4">
-              {casesLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : caseLibrary.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">No cases in library.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {caseLibrary.map((c) => {
-                    const sel = referenceCaseIds.includes(c.id);
-                    return (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          onClick={() => toggleReferenceCase(c.id)}
-                          className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition-colors ${
-                            sel ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
-                          }`}
-                        >
-                          <input type="checkbox" readOnly checked={sel} className="mt-1" />
-                          <span>
-                            <span className="font-medium text-card-foreground">{c.title || 'Untitled'}</span>
-                            {c.categoryName ? (
-                              <span className="mt-0.5 block text-xs text-muted-foreground">{c.categoryName}</span>
-                            ) : null}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="border-t border-border p-4">
-              <Button className="w-full" onClick={() => setCasePickerOpen(false)}>
-                Done
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <QuestionEditorDialog
+      <ExpertQuestionEditorDialog
         open={editorOpen}
         onClose={() => {
           setEditorOpen(false);

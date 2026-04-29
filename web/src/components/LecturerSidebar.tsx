@@ -16,6 +16,7 @@ import {
   ListFilter,
   FileQuestion,
   ClipboardCheck,
+  UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const lecturerMenuItems: LecturerMenuItem[] = [
   { icon: ClipboardCheck, label: 'QA Triage', href: '/lecturer/qa-triage' },
   { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
   { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },
+  { icon: UserCog, label: 'Expert Assignments', href: '/lecturer/expert-assignments' },
   { icon: BarChart3, label: 'Analytics', href: '/lecturer/analytics' },
   { icon: Bell, label: 'Announcements', href: '/lecturer/announcements' },
   { icon: Settings, label: 'Settings', href: '/lecturer/settings' },

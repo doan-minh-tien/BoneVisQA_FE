@@ -26,6 +26,8 @@ export interface UpdateQuizRequest {
   topic?: string | null;
   difficulty?: string | null;
   classification?: string | null;
+  boneSpecialtyId?: string | null;
+  pathologyCategoryId?: string | null;
 }
 
 // ========== Quiz Management ==========

@@ -23,6 +23,7 @@ import type {
   QuizWithQuestionsDto,
   ClassCaseAssignmentDto,
   ClassQuizSessionDto,
+  AnnouncementAssignmentInfo,
 } from './types';
 import { parseNormalizedBoundingBox, parsePercentageBoundingBox } from '@/lib/utils/annotations';
 

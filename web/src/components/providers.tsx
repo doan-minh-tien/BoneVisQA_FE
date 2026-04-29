@@ -28,6 +28,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
               error: 'border-destructive/40',
             },
           }}
+          theme="dark"
         />
         <AuthRedirector />
         {children}

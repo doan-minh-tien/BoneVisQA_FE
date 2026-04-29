@@ -17,6 +17,8 @@ import {
   Timer,
   PlusCircle,
   UploadCloud,
+  Bone,
+  Stethoscope,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -35,7 +37,20 @@ import {
 } from '@/lib/api/lecturer-quiz';
 import { getLecturerClasses, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
+import classificationApi, { type BoneSpecialtyTreeDto, type PathologyCategorySimpleDto } from '@/lib/api/classification';
 import type { QuizDto, QuizQuestionDto, ClassItem, ClassStats } from '@/lib/api/types';
+
+// Flatten bone specialties tree for dropdown
+function flattenBoneSpecialties(tree: BoneSpecialtyTreeDto[], level = 0): (BoneSpecialtyTreeDto & { level: number })[] {
+  const result: (BoneSpecialtyTreeDto & { level: number })[] = [];
+  for (const item of tree) {
+    result.push({ ...item, level });
+    if (item.children && item.children.length > 0) {
+      result.push(...flattenBoneSpecialties(item.children, level + 1));
+    }
+  }
+  return result;
+}
 
 const QUESTIONS_PER_PAGE = 3;
 const TOPIC_ROTATION = ['Trauma', 'Imaging', 'Joints'] as const;
@@ -104,7 +119,15 @@ export default function QuizDetailPage() {
   const [passingScore, setPassingScore] = useState('');
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
-  const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>('Resident Year 1');
+  const [classification, setClassification] = useState<string>('Resident Year 1');
+
+  // Deep classification state
+  const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyTreeDto[]>([]);
+  const [flatBoneSpecialties, setFlatBoneSpecialties] = useState<(BoneSpecialtyTreeDto & { level: number })[]>([]);
+  const [pathologyCategories, setPathologyCategories] = useState<PathologyCategorySimpleDto[]>([]);
+  const [loadingClassifications, setLoadingClassifications] = useState(false);
+  const [boneSpecialtyId, setBoneSpecialtyId] = useState<string>('');
+  const [pathologyCategoryId, setPathologyCategoryId] = useState<string>('');
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -143,14 +166,20 @@ export default function QuizDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const [quizData, questionsData, classesData] = await Promise.all([
+      // Load all data in parallel
+      const [quizData, questionsData, classesData, specialtiesTree, pathologyList] = await Promise.all([
         getQuiz(quizId),
         getQuizQuestions(quizId),
         getLecturerClasses(getStoredUserId()),
+        classificationApi.getBoneSpecialtiesTree(),
+        classificationApi.getPathologyCategories(),
       ]);
       setQuiz(quizData);
       setQuestions(questionsData);
       setClasses(classesData);
+      setBoneSpecialties(specialtiesTree);
+      setFlatBoneSpecialties(flattenBoneSpecialties(specialtiesTree));
+      setPathologyCategories(pathologyList);
       setTitle(quizData.title);
       setSelectedClassId(quizData.classId);
       setOriginalClassId(quizData.classId);
@@ -162,7 +191,14 @@ export default function QuizDetailPage() {
       setTopic(quizData.topic || '');
       setDifficulty(quizData.difficulty || 'Medium');
       if (quizData.classification && (CLASSIFICATION_OPTIONS as readonly string[]).includes(quizData.classification)) {
-        setClassification(quizData.classification as (typeof CLASSIFICATION_OPTIONS)[number]);
+        setClassification(quizData.classification);
+      }
+      // Load deep classification
+      if (quizData.boneSpecialtyId) {
+        setBoneSpecialtyId(quizData.boneSpecialtyId);
+      }
+      if (quizData.pathologyCategoryId) {
+        setPathologyCategoryId(quizData.pathologyCategoryId);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load quiz');
@@ -442,33 +478,89 @@ export default function QuizDetailPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Classification</label>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                    <Bone className="h-3 w-3" />
+                    Bone Specialty
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={boneSpecialtyId}
+                      onChange={(e) => {
+                        setBoneSpecialtyId(e.target.value);
+                        // Reset pathology when bone specialty changes
+                        setPathologyCategoryId('');
+                      }}
+                      disabled={loading}
+                      className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
+                    >
+                      <option value="">Select specialty…</option>
+                      {flatBoneSpecialties.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {'\u00A0\u00A0'.repeat(s.level)}{s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                    <Stethoscope className="h-3 w-3" />
+                    Pathology Category
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={pathologyCategoryId}
+                      onChange={(e) => setPathologyCategoryId(e.target.value)}
+                      disabled={loading}
+                      className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
+                    >
+                      <option value="">Select pathology…</option>
+                      {pathologyCategories
+                        .filter((p) => !boneSpecialtyId || p.boneSpecialtyId === boneSpecialtyId || !p.boneSpecialtyId)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Classification (Legacy)</label>
+                <div className="relative">
                   <select
                     value={classification}
-                    onChange={(e) => setClassification(e.target.value as (typeof CLASSIFICATION_OPTIONS)[number])}
-                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                    onChange={(e) => setClassification(e.target.value)}
+                    disabled={loading}
+                    className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
                   >
+                    <option value="">None</option>
                     {CLASSIFICATION_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
                       </option>
                     ))}
                   </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value)}
-                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
-                  >
-                    {DIFFICULTY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <p className="text-[10px] text-muted-foreground">Optional: for backward compatibility with academic level classification</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
+                <select
+                  value={difficulty}
+                  onChange={(e) => setDifficulty(e.target.value)}
+                  className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                >
+                  {DIFFICULTY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Topic</label>

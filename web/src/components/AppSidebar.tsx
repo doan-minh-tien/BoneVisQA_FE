@@ -26,6 +26,12 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  Settings,
+  Settings2,
+  FileText,
+  Server,
+  HardDrive,
+  FileBarChart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -42,10 +48,15 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
-    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
-    { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
+    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
+    { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
+    { label: 'System Logs', href: '/admin/logs', icon: FileText },
+    { label: 'System Configuration', href: '/admin/system-config', icon: Server },
+    { label: 'Classifications', href: '/admin/classifications', icon: Stethoscope },
+    { label: 'Backup & Export', href: '/admin/backup', icon: HardDrive },
+    { label: 'Reports', href: '/admin/reports', icon: FileBarChart },
   ],
   lecturer: [
     { label: 'Dashboard', href: '/lecturer/dashboard', icon: LayoutDashboard },
@@ -113,9 +124,7 @@ export function AppSidebar({
     if (!resolvedRole) return { dashboardItem: null, otherItems: [] as NavItem[] };
     const base = navByRole[resolvedRole] ?? [];
     const dashboard = base.find((item) => item.label.toLowerCase() === 'dashboard') ?? null;
-    const rest = base
-      .filter((item) => item.label.toLowerCase() !== 'dashboard')
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    const rest = base.filter((item) => item.label.toLowerCase() !== 'dashboard');
     return { dashboardItem: dashboard, otherItems: rest };
   }, [resolvedRole]);
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;

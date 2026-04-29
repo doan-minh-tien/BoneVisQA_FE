@@ -18,6 +18,7 @@ import type {
   StudentSessionQuestion,
   StudentSubmitQuestionDto,
   StudentTopicStat,
+  AnnouncementAssignmentInfo,
 } from './types';
 
 function normalizeDifficulty(raw: unknown): StudentCaseHistoryItem['difficulty'] {

@@ -818,6 +818,12 @@ export interface QuizDto {
   timeLimit: number | null;
   passingScore: number | null;
   createdAt: string | null;
+  /** Deep classification - Bone Specialty */
+  boneSpecialtyId?: string | null;
+  boneSpecialtyName?: string | null;
+  /** Deep classification - Pathology Category */
+  pathologyCategoryId?: string | null;
+  pathologyCategoryName?: string | null;
   /** Present when API returns aggregate question count. */
   questionCount?: number | null;
   quizName?: string | null;
@@ -886,6 +892,8 @@ export interface CreateQuizRequest {
   timeLimit?: number;
   passingScore?: number;
   classId: string;
+  boneSpecialtyId?: string;
+  pathologyCategoryId?: string;
 }
 
 export interface QuizQuestionDto {
