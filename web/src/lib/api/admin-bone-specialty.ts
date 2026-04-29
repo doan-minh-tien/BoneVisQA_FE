@@ -110,6 +110,17 @@ const boneSpecialtyApi = {
     );
     return getResponse<void>(response);
   },
+
+  async reorder(id: string, moveUp: boolean): Promise<void> {
+    const response = await fetch(
+      `${API_BASE()}/bone-specialties/${id}/reorder?moveUp=${moveUp}`,
+      {
+        method: "PATCH",
+        headers: authHeader(),
+      }
+    );
+    return getResponse<void>(response);
+  },
 };
 
 export default boneSpecialtyApi;

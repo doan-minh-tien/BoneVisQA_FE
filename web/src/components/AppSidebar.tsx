@@ -55,7 +55,6 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'Flagged chunks', href: '/admin/flagged-chunks', icon: Flag },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
-    { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'System Logs', href: '/admin/logs', icon: FileText },
     { label: 'System Configuration', href: '/admin/system-config', icon: Server },
     { label: 'Classifications', href: '/admin/classifications', icon: Stethoscope },

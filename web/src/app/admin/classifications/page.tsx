@@ -9,16 +9,18 @@ import boneSpecialtyApi, { type BoneSpecialtyDto } from '@/lib/api/admin-bone-sp
 import pathologyCategoryApi, { type PathologyCategoryDto } from '@/lib/api/admin-pathology-category';
 import {
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Loader2,
   Plus,
   Edit2,
   Trash2,
   ToggleLeft,
   ToggleRight,
+  ArrowUp,
+  ArrowDown,
   Bone,
   Stethoscope,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 type Tab = 'bone' | 'pathology';
@@ -237,7 +239,8 @@ export default function AdminClassificationsPage() {
       }
       toast.success('Deleted successfully.');
       await invalidateClassificationQueries();
-      await forceRefresh();
+      // Force refresh in background - don't block UI
+      forceRefresh().catch(console.error);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete.');
     }
@@ -254,6 +257,17 @@ export default function AdminClassificationsPage() {
       await forceRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update status.');
+    }
+  };
+
+  const handleReorder = async (id: string, moveUp: boolean) => {
+    try {
+      await boneSpecialtyApi.reorder(id, moveUp);
+      toast.success('Reordered successfully.');
+      await invalidateClassificationQueries();
+      await forceRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder.');
     }
   };
 
@@ -275,80 +289,118 @@ export default function AdminClassificationsPage() {
     return items.map((item) => (
       <div key={item.id}>
         <div
-          className={`flex items-center gap-3 border-b border-border/50 px-4 py-3 hover:bg-muted/30 transition-colors ${
-            !item.isActive ? 'opacity-60' : ''
-          }`}
-          style={{ paddingLeft: `${1 + level * 1.5}rem` }}
+          className={`flex items-center gap-4 border-b border-border/60 px-5 py-4 hover:bg-muted/40 transition-all duration-200 rounded-lg mx-3 my-1 ${
+            !item.isActive ? 'opacity-65' : ''
+          } ${level === 0 ? 'bg-card shadow-sm border-l-4 border-l-primary' : 'bg-surface'}`}
+          style={{ marginLeft: level === 0 ? 0 : `${level * 24}px` }}
         >
+          {/* Expand/Collapse Button */}
           {item.children.length > 0 && (
             <button
               onClick={() => toggleExpanded(item.id)}
-              className="p-1 hover:bg-muted rounded"
+              className="p-2 hover:bg-primary/10 rounded-lg transition-colors flex-shrink-0"
             >
               {expanded.has(item.id) ? (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                <ChevronUp className="w-5 h-5 text-primary font-bold" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                <ChevronDown className="w-5 h-5 text-primary font-bold" />
               )}
             </button>
           )}
-          {item.children.length === 0 && <div className="w-6" />}
+          {item.children.length === 0 && <div className="w-10" />}
 
+          {/* Icon & Main Content */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              level === 0 ? 'bg-primary/15' : 'bg-secondary/30'
+            }`}>
+              <Bone className={`w-5 h-5 ${level === 0 ? 'text-primary' : 'text-secondary'}`} />
+            </div>
+          </div>
+
+          {/* Info Section */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={`font-medium ${level === 0 ? 'text-primary' : 'text-foreground'}`}>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={`font-bold text-base ${level === 0 ? 'text-primary' : 'text-foreground'}`}>
                 {item.name}
               </span>
-              <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+              <span className="text-sm bg-muted px-3 py-1 rounded-lg font-mono font-medium text-muted-foreground border border-border/50">
                 {item.code}
               </span>
               {level > 0 && (
-                <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded text-secondary-foreground">
-                  Level {level}
+                <span className="text-xs bg-secondary/60 px-2.5 py-1 rounded-full font-semibold text-secondary-foreground">
+                  Lv.{level}
                 </span>
               )}
               {!item.isActive && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                <span className="text-xs bg-red-100 text-red-700 px-2.5 py-1 rounded-full font-semibold border border-red-200">
                   Inactive
+                </span>
+              )}
+              {item.children.length > 0 && (
+                <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-medium">
+                  {item.children.length} child{item.children.length > 1 ? 'ren' : ''}
                 </span>
               )}
             </div>
             {item.description && (
-              <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</p>
+              <p className="text-sm text-muted-foreground mt-1.5 truncate max-w-xl">{item.description}</p>
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          {/* Order Badge */}
+          <div className="flex-shrink-0">
+            <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-lg font-medium">
+              #{item.displayOrder}
+            </span>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => handleReorder(item.id, true)}
+              className="p-2.5 hover:bg-blue-50 rounded-xl transition-colors"
+              title="Move Up"
+            >
+              <ArrowUp className="w-4 h-4 text-blue-600" />
+            </button>
+            <button
+              onClick={() => handleReorder(item.id, false)}
+              className="p-2.5 hover:bg-blue-50 rounded-xl transition-colors"
+              title="Move Down"
+            >
+              <ArrowDown className="w-4 h-4 text-blue-600" />
+            </button>
             <button
               onClick={() => handleToggleActive(item)}
-              className="p-2 hover:bg-muted rounded-lg"
+              className="p-2.5 hover:bg-muted rounded-xl transition-colors"
               title={item.isActive ? 'Deactivate' : 'Activate'}
             >
               {item.isActive ? (
-                <ToggleRight className="w-5 h-5 text-green-600" />
+                <ToggleRight className="w-6 h-6 text-green-600" />
               ) : (
-                <ToggleLeft className="w-5 h-5 text-muted-foreground" />
+                <ToggleLeft className="w-6 h-6 text-gray-400" />
               )}
             </button>
             <button
               onClick={() => startEdit(item)}
-              className="p-2 hover:bg-muted rounded-lg"
+              className="p-2.5 hover:bg-amber-50 rounded-xl transition-colors"
               title="Edit"
             >
-              <Edit2 className="w-4 h-4 text-muted-foreground" />
+              <Edit2 className="w-4 h-4 text-amber-600" />
             </button>
             <button
               onClick={() => handleDelete(item.id)}
-              className="p-2 hover:bg-muted rounded-lg"
+              className="p-2.5 hover:bg-red-50 rounded-xl transition-colors"
               title="Delete"
               disabled={item.children.length > 0}
             >
-              <Trash2 className={`w-4 h-4 ${item.children.length > 0 ? 'text-muted-foreground/30' : 'text-red-500'}`} />
+              <Trash2 className={`w-4 h-4 ${item.children.length > 0 ? 'text-gray-300' : 'text-red-500'}`} />
             </button>
           </div>
         </div>
         {expanded.has(item.id) && item.children.length > 0 && (
-          <div className="bg-muted/20">
+          <div className="border-l-2 border-dashed border-primary/30 ml-6 mr-3">
             {renderBoneTree(item.children, level + 1)}
           </div>
         )}
@@ -366,236 +418,261 @@ export default function AdminClassificationsPage() {
       />
 
       <div className="mx-auto max-w-[1400px] space-y-6 p-6">
-        {/* Tabs */}
-        <div className="flex gap-2 border-b border-border">
-          <button
-            onClick={() => setActiveTab('bone')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-              activeTab === 'bone'
-                ? 'border-primary text-primary font-semibold'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Bone className="w-4 h-4" />
-            Bone Specialties
-          </button>
-          <button
-            onClick={() => setActiveTab('pathology')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-              activeTab === 'pathology'
-                ? 'border-primary text-primary font-semibold'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Stethoscope className="w-4 h-4" />
-            Pathology Categories
-          </button>
+        {/* Tabs & View Mode */}
+        <div className="flex items-center justify-between border-b border-border bg-card rounded-t-2xl px-2 pt-2">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('bone')}
+              className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
+                activeTab === 'bone'
+                  ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <Bone className="w-5 h-5" />
+              <span className="text-sm">Bone Specialties</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('pathology')}
+              className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
+                activeTab === 'pathology'
+                  ? 'bg-secondary text-secondary-foreground shadow-lg shadow-secondary/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <Stethoscope className="w-5 h-5" />
+              <span className="text-sm">Pathology Categories</span>
+            </button>
+          </div>
+
+          {/* View Mode Toggle - chỉ hiện khi ở tab Bone */}
+          {activeTab === 'bone' && (
+            <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl mr-2">
+              <span className="text-xs text-muted-foreground px-2 font-medium">View:</span>
+              <button
+                onClick={() => setViewMode('tree')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                  viewMode === 'tree'
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 3v18M3 12h18M5 5v14M19 5v14M5 12h14" />
+                </svg>
+                Tree
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                  viewMode === 'table'
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+                </svg>
+                Table
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Form */}
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">
-            {editingId ? 'Edit' : isCreating ? 'Create New' : `${activeTab === 'bone' ? 'Bone Specialty' : 'Pathology Category'}`}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Code *</label>
-              <input
-                type="text"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="e.g., SHOULDER"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Name *</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="e.g., Shoulder Complex"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
-              <input
-                type="text"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Optional description"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Display Order</label>
-              <input
-                type="number"
-                value={form.displayOrder}
-                onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value) || 0 })}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            {activeTab === 'bone' && (
+        {/* Form - Ẩn ban đầu, chỉ hiện khi nhấn Create New hoặc Edit */}
+        {(isCreating || editingId) && (
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <h3 className="text-lg font-semibold mb-4">
+              {editingId ? 'Edit' : 'Create New'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Parent Specialty</label>
-                <select
-                  value={form.parentId || ''}
-                  onChange={(e) => setForm({ ...form, parentId: e.target.value || null })}
+                <label className="block text-sm font-medium mb-1">Code *</label>
+                <input
+                  type="text"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
                   className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">-- Root (No Parent) --</option>
-                  {allBoneSpecialties
-                    .filter((s) => s.id !== editingId)
-                    .map((s) => (
+                  placeholder="e.g., SHOULDER"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="e.g., Shoulder Complex"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="Optional description"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Display Order</label>
+                <input
+                  type="number"
+                  value={form.displayOrder}
+                  onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value) || 0 })}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              {activeTab === 'bone' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Parent Specialty</label>
+                  <select
+                    value={form.parentId || ''}
+                    onChange={(e) => setForm({ ...form, parentId: e.target.value || null })}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">-- Root (No Parent) --</option>
+                    {allBoneSpecialties
+                      .filter((s) => s.id !== editingId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+              {activeTab === 'pathology' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Bone Specialty</label>
+                  <select
+                    value={form.boneSpecialtyId || ''}
+                    onChange={(e) => setForm({ ...form, boneSpecialtyId: e.target.value || null })}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">-- General (All Specialties) --</option>
+                    {allBoneSpecialties.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.code})
                       </option>
                     ))}
-                </select>
-              </div>
-            )}
-            {activeTab === 'pathology' && (
+                  </select>
+                </div>
+              )}
               <div>
-                <label className="block text-sm font-medium mb-1">Bone Specialty</label>
-                <select
-                  value={form.boneSpecialtyId || ''}
-                  onChange={(e) => setForm({ ...form, boneSpecialtyId: e.target.value || null })}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">-- General (All Specialties) --</option>
-                  {allBoneSpecialties.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </option>
-                  ))}
-                </select>
+                <label className="flex items-center gap-2 h-10 px-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm">Active</span>
+                </label>
               </div>
-            )}
-            <div>
-              <label className="flex items-center gap-2 h-10 px-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.isActive}
-                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                />
-                <span className="text-sm">Active</span>
-              </label>
+            </div>
+            <div className="flex gap-2 mt-4">
+              {editingId ? (
+                <>
+                  <button
+                    onClick={handleUpdate}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
+                  >
+                    Update
+                  </button>
+                  <button
+                    onClick={resetForm}
+                    className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : isCreating ? (
+                <>
+                  <button
+                    onClick={handleCreate}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
+                  >
+                    Create New
+                  </button>
+                  <button
+                    onClick={resetForm}
+                    className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
-          <div className="flex gap-2 mt-4">
-            {editingId ? (
-              <>
-                <button
-                  onClick={handleUpdate}
-                  className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
-                >
-                  Update
-                </button>
-                <button
-                  onClick={resetForm}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : isCreating ? (
-              <>
-                <button
-                  onClick={handleCreate}
-                  className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={resetForm}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-bold shadow-sm hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
-              >
-                <Plus className="w-4 h-4" />
-                Create New
-              </button>
-            )}
-          </div>
-        </div>
+        )}
+
+        {/* Nút Create New - chỉ hiện khi form đang ẩn */}
+        {!isCreating && !editingId && (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:opacity-95"
+          >
+            <Plus className="w-4 h-4" />
+            Create New
+          </button>
+        )}
 
         {/* List */}
-        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border bg-muted/30">
+        <div className="rounded-2xl border border-border bg-card shadow-lg overflow-hidden">
+          <div className="px-6 py-5 border-b border-border bg-gradient-to-r from-primary/5 to-secondary/10">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <h3 className="font-semibold">
-                  {activeTab === 'bone' ? 'Bone Specialties Tree' : 'Pathology Categories'}
-                </h3>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {activeTab === 'bone'
-                    ? viewMode === 'table'
-                      ? `${flatBoneSpecialties.length} total specialties (${boneSpecialties.length} root)`
-                      : `${boneSpecialties.length} root categories`
-                    : `${pathologyCategories.length} categories`}
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center">
+                  <Bone className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">
+                    {activeTab === 'bone' ? (viewMode === 'tree' ? 'Bone Specialties Tree' : 'Bone Specialties List') : 'Pathology Categories'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {activeTab === 'bone'
+                      ? viewMode === 'table'
+                        ? `${flatBoneSpecialties.length} total specialties (${boneSpecialties.length} root categories)`
+                        : `${boneSpecialties.length} root categories`
+                      : `${pathologyCategories.length} categories`}
+                  </p>
+                </div>
               </div>
               {activeTab === 'bone' && (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-xl">
                   <button
                     onClick={() => setStatusFilter('all')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'all'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50'
+                        ? 'bg-card shadow-sm text-foreground font-semibold'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     All
                   </button>
                   <button
                     onClick={() => setStatusFilter('active')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'active'
-                        ? 'bg-green-100 text-green-700 font-semibold'
-                        : 'text-muted-foreground hover:bg-muted/50'
+                        ? 'bg-green-100 text-green-700 font-semibold shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     Active
                   </button>
                   <button
                     onClick={() => setStatusFilter('inactive')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'inactive'
-                        ? 'bg-red-100 text-red-700 font-semibold'
-                        : 'text-muted-foreground hover:bg-muted/50'
+                        ? 'bg-red-100 text-red-700 font-semibold shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     Inactive
-                  </button>
-                  <div className="w-px h-4 bg-border mx-1" />
-                  <button
-                    onClick={() => setViewMode('tree')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                      viewMode === 'tree'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50'
-                    }`}
-                  >
-                    Tree
-                  </button>
-                  <button
-                    onClick={() => setViewMode('table')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                      viewMode === 'table'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/50'
-                    }`}
-                  >
-                    Table
                   </button>
                 </div>
               )}
@@ -603,99 +680,120 @@ export default function AdminClassificationsPage() {
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+              <p className="text-muted-foreground font-medium">Loading data...</p>
             </div>
           ) : activeTab === 'bone' ? (
             boneSpecialties.length === 0 ? (
-              <div className="py-12 text-center text-muted-foreground">
-                No bone specialties found. Create one above.
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                  <Bone className="w-10 h-10 text-muted-foreground/50" />
+                </div>
+                <p className="text-muted-foreground font-medium text-lg">No bone specialties found</p>
+                <p className="text-muted-foreground/70 text-sm">Create your first bone specialty using the form above</p>
               </div>
             ) : viewMode === 'table' ? (
               // Table View - shows all bone specialties in a flat table
               <table className="w-full">
-                <thead className="bg-muted/30">
+                <thead className="bg-gradient-to-r from-primary/8 to-secondary/8">
                   <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Code</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Name</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Parent</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Level</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Order</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Status</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium">Description</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium">Actions</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Code</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Name</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Parent</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Level</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Order</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Status</th>
+                    <th className="text-left px-5 py-4 text-sm font-bold text-primary">Description</th>
+                    <th className="text-right px-5 py-4 text-sm font-bold text-primary">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {getFilteredFlatList().map((item) => (
                     <tr
                       key={item.id}
-                      className={`border-b border-border/50 hover:bg-muted/30 ${!item.isActive ? 'opacity-60' : ''}`}
+                      className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${!item.isActive ? 'opacity-65' : ''}`}
                     >
-                      <td className="px-4 py-3">
-                        <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{item.code}</span>
+                      <td className="px-5 py-4">
+                        <span className="text-sm bg-muted px-3 py-1.5 rounded-lg font-mono font-semibold border border-border/50">{item.code}</span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
                           {item.level > 0 && (
                             <span
-                              className="inline-block border-l-2 border-muted-foreground/30 pl-2"
-                              style={{ marginLeft: `${(item.level - 1) * 16}px` }}
+                              className="inline-flex items-center border-l-2 border-primary/40 pl-3"
+                              style={{ marginLeft: `${(item.level - 1) * 20}px` }}
                             >
-                              <ChevronRight className="w-3 h-3 inline-block text-muted-foreground/50" />
+                              <ChevronRight className="w-4 h-4 text-primary/60" />
                             </span>
                           )}
-                          <span className={`font-medium ${item.level === 0 ? 'text-primary' : ''}`}>
+                          <span className={`font-semibold text-base ${item.level === 0 ? 'text-primary' : 'text-foreground'}`}>
                             {item.name}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                      <td className="px-5 py-4 text-sm text-muted-foreground font-medium">
                         {item.parentName || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-5 py-4">
                         {item.level > 0 && (
-                          <span className="bg-secondary/50 px-2 py-0.5 rounded text-xs">
-                            Level {item.level}
+                          <span className="bg-secondary/50 px-3 py-1 rounded-lg text-sm font-semibold">
+                            Lv.{item.level}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm">{item.displayOrder}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded ${item.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                      <td className="px-5 py-4 text-sm font-medium">#{item.displayOrder}</td>
+                      <td className="px-5 py-4">
+                        <span className={`text-sm px-3 py-1.5 rounded-lg font-semibold ${item.isActive ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border border-border/50'}`}>
                           {item.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground max-w-[200px] truncate">
+                      <td className="px-5 py-4 text-sm text-muted-foreground max-w-[200px] truncate font-medium">
                         {item.description || '-'}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
+                            onClick={() => handleReorder(item.id, true)}
+                            className="p-2.5 hover:bg-blue-50 rounded-xl transition-colors"
+                            title="Move Up"
+                          >
+                            <ArrowUp className="w-4 h-4 text-blue-600" />
+                          </button>
+                          <button
+                            onClick={() => handleReorder(item.id, false)}
+                            className="p-2.5 hover:bg-blue-50 rounded-xl transition-colors"
+                            title="Move Down"
+                          >
+                            <ArrowDown className="w-4 h-4 text-blue-600" />
+                          </button>
+                          <button
                             onClick={() => handleToggleActive(item)}
-                            className="p-2 hover:bg-muted rounded-lg"
+                            className="p-2.5 hover:bg-muted rounded-xl transition-colors"
                             title={item.isActive ? 'Deactivate' : 'Activate'}
                           >
                             {item.isActive ? (
-                              <ToggleRight className="w-5 h-5 text-green-600" />
+                              <ToggleRight className="w-6 h-6 text-green-600" />
                             ) : (
-                              <ToggleLeft className="w-5 h-5 text-muted-foreground" />
+                              <ToggleLeft className="w-6 h-6 text-gray-400" />
                             )}
                           </button>
                           <button
                             onClick={() => startEdit(item)}
-                            className="p-2 hover:bg-muted rounded-lg"
+                            className="p-2.5 hover:bg-amber-50 rounded-xl transition-colors"
                             title="Edit"
                           >
-                            <Edit2 className="w-4 h-4 text-muted-foreground" />
+                            <Edit2 className="w-4 h-4 text-amber-600" />
                           </button>
                           <button
                             onClick={() => handleDelete(item.id)}
-                            className="p-2 hover:bg-muted rounded-lg"
+                            className="p-2.5 hover:bg-red-50 rounded-xl transition-colors"
                             title="Delete"
                             disabled={item.children.length > 0}
                           >
-                            <Trash2 className={`w-4 h-4 ${item.children.length > 0 ? 'text-muted-foreground/30' : 'text-red-500'}`} />
+                            <Trash2 className={`w-4 h-4 ${item.children.length > 0 ? 'text-gray-300' : 'text-red-500'}`} />
                           </button>
                         </div>
                       </td>
@@ -708,60 +806,64 @@ export default function AdminClassificationsPage() {
               <div>{renderBoneTree(filteredBoneSpecialties)}</div>
             )
           ) : pathologyCategories.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">
-              No pathology categories found. Create one above.
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-20 h-20 rounded-full bg-secondary/20 flex items-center justify-center">
+                <Stethoscope className="w-10 h-10 text-secondary" />
+              </div>
+              <p className="text-muted-foreground font-medium text-lg">No pathology categories found</p>
+              <p className="text-muted-foreground/70 text-sm">Create your first pathology category using the form above</p>
             </div>
           ) : (
             <table className="w-full">
-              <thead className="bg-muted/30">
+              <thead className="bg-gradient-to-r from-secondary/10 to-primary/5">
                 <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium">Code</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium">Name</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium">Bone Specialty</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium">Order</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium">Status</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium">Actions</th>
+                  <th className="text-left px-5 py-4 text-sm font-bold text-primary">Code</th>
+                  <th className="text-left px-5 py-4 text-sm font-bold text-primary">Name</th>
+                  <th className="text-left px-5 py-4 text-sm font-bold text-primary">Bone Specialty</th>
+                  <th className="text-left px-5 py-4 text-sm font-bold text-primary">Order</th>
+                  <th className="text-left px-5 py-4 text-sm font-bold text-primary">Status</th>
+                  <th className="text-right px-5 py-4 text-sm font-bold text-primary">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pathologyCategories.map((item) => (
-                  <tr key={item.id} className={`border-b border-border/50 hover:bg-muted/30 ${!item.isActive ? 'opacity-60' : ''}`}>
-                    <td className="px-4 py-3">
-                      <span className="text-xs bg-muted px-2 py-0.5 rounded">{item.code}</span>
+                  <tr key={item.id} className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${!item.isActive ? 'opacity-65' : ''}`}>
+                    <td className="px-5 py-4">
+                      <span className="text-sm bg-muted px-3 py-1.5 rounded-lg font-mono font-semibold border border-border/50">{item.code}</span>
                     </td>
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                    <td className="px-5 py-4 font-semibold text-base">{item.name}</td>
+                    <td className="px-5 py-4 text-sm text-muted-foreground font-medium">
                       {item.boneSpecialtyName || '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.displayOrder}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded ${item.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                    <td className="px-5 py-4 text-sm font-medium">#{item.displayOrder}</td>
+                    <td className="px-5 py-4">
+                      <span className={`text-sm px-3 py-1.5 rounded-lg font-semibold ${item.isActive ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border border-border/50'}`}>
                         {item.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleToggleActive(item)}
-                          className="p-2 hover:bg-muted rounded-lg"
+                          className="p-2.5 hover:bg-muted rounded-xl transition-colors"
                           title={item.isActive ? 'Deactivate' : 'Activate'}
                         >
                           {item.isActive ? (
-                            <ToggleRight className="w-5 h-5 text-green-600" />
+                            <ToggleRight className="w-6 h-6 text-green-600" />
                           ) : (
-                            <ToggleLeft className="w-5 h-5 text-muted-foreground" />
+                            <ToggleLeft className="w-6 h-6 text-gray-400" />
                           )}
                         </button>
                         <button
                           onClick={() => startEdit(item)}
-                          className="p-2 hover:bg-muted rounded-lg"
+                          className="p-2.5 hover:bg-amber-50 rounded-xl transition-colors"
                           title="Edit"
                         >
-                          <Edit2 className="w-4 h-4 text-muted-foreground" />
+                          <Edit2 className="w-4 h-4 text-amber-600" />
                         </button>
                         <button
                           onClick={() => handleDelete(item.id)}
-                          className="p-2 hover:bg-muted rounded-lg"
+                          className="p-2.5 hover:bg-red-50 rounded-xl transition-colors"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />

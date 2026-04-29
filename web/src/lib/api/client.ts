@@ -369,6 +369,12 @@ export async function getResponse<T>(response: Response): Promise<T> {
     }
     throw new Error(message);
   }
+  // Handle 204 No Content (DELETE often returns no body)
+  const contentLength = response.headers.get('content-length');
+  const contentType = response.headers.get('content-type');
+  if (response.status === 204 || contentLength === '0' || (!contentType?.includes('application/json') && !contentType?.includes('text/'))) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
