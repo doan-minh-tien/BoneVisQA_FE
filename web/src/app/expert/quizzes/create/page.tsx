@@ -311,6 +311,7 @@ export default function ExpertCreateQuizPage() {
         optionD: q.optionD || '',
         correctAnswer: q.correctAnswer || '',
         caseId: q.caseId || undefined,
+        imageUrl: q.imageUrl || undefined,
       });
       setEditingTempIndex(null);
       setEditorOpen(true);

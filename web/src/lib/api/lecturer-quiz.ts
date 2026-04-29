@@ -169,6 +169,11 @@ export function normalizeQuizDto(raw: unknown): QuizDto {
     questionCount: (r.questionCount ?? r.QuestionCount ?? undefined) as number | undefined,
     quizName: (r.quizName ?? r.QuizName ?? null) as string | null,
     isFromExpertLibrary: Boolean(r.isFromExpertLibrary ?? r.IsFromExpertLibrary ?? false),
+    // Deep classification fields
+    boneSpecialtyId: (r.boneSpecialtyId ?? r.BoneSpecialtyId ?? null) as string | null,
+    boneSpecialtyName: (r.boneSpecialtyName ?? r.BoneSpecialtyName ?? null) as string | null,
+    pathologyCategoryId: (r.pathologyCategoryId ?? r.PathologyCategoryId ?? null) as string | null,
+    pathologyCategoryName: (r.pathologyCategoryName ?? r.PathologyCategoryName ?? null) as string | null,
   };
 }
 

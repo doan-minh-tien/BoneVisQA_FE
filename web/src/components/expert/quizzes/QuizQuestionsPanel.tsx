@@ -87,11 +87,17 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
       
       // Calculate the new page if we need to preserve position of a specific question
       const questionIdToTrack = options?.questionIdToTrack;
-      if (questionIdToTrack && questions.length > 0) {
+      if (questionIdToTrack && list.length > 0) {
         const questionIndex = list.findIndex(q => q.questionId === questionIdToTrack);
         if (questionIndex !== -1) {
           const newPage = Math.max(1, Math.ceil((questionIndex + 1) / Q_PAGE_SIZE));
           setQPage(newPage);
+        }
+      } else if (!questionIdToTrack && list.length > 0) {
+        // For create/delete operations without tracking, check if current page is still valid
+        const newTotalPages = Math.max(1, Math.ceil(list.length / Q_PAGE_SIZE));
+        if (qPage > newTotalPages) {
+          setQPage(newTotalPages);
         }
       }
       

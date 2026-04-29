@@ -251,6 +251,8 @@ export default function QuizDetailPage() {
         topic: topic || null,
         difficulty: difficulty || null,
         classification: classification || null,
+        boneSpecialtyId: boneSpecialtyId || null,
+        pathologyCategoryId: pathologyCategoryId || null,
       });
       setQuiz(updated);
       if (selectedClassId && selectedClassId !== originalClassId) {
@@ -516,16 +518,23 @@ export default function QuizDetailPage() {
                       className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
                     >
                       <option value="">Select pathology…</option>
-                      {pathologyCategories
-                        .filter((p) => !boneSpecialtyId || p.boneSpecialtyId === boneSpecialtyId || !p.boneSpecialtyId)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
+                      {loading ? (
+                        <option value="" disabled>Loading...</option>
+                      ) : (
+                        pathologyCategories
+                          .filter((p) => !boneSpecialtyId || p.boneSpecialtyId === boneSpecialtyId || !p.boneSpecialtyId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))
+                      )}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   </div>
+                  {!loading && pathologyCategories.length === 0 && (
+                    <p className="text-[10px] text-muted-foreground/60">No pathology categories available</p>
+                  )}
                 </div>
               </div>
               <div className="space-y-1.5">
