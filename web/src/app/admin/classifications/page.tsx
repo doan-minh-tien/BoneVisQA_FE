@@ -392,68 +392,6 @@ export default function AdminClassificationsPage() {
           </button>
         </div>
 
-        {/* Status Filter Tabs */}
-        {activeTab === 'bone' && (
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex gap-2">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === 'all'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setStatusFilter('active')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                  statusFilter === 'active'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                <ToggleRight className="w-4 h-4" />
-                Active
-              </button>
-              <button
-                onClick={() => setStatusFilter('inactive')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                  statusFilter === 'inactive'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-red-100 text-red-700 hover:bg-red-200'
-                }`}
-              >
-                <ToggleLeft className="w-4 h-4" />
-                Inactive
-              </button>
-            </div>
-            <div className="flex gap-2 ml-auto">
-              <button
-                onClick={() => setViewMode('tree')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
-                  viewMode === 'tree'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                Tree View
-              </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
-                  viewMode === 'table'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                Table View
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Form */}
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <h3 className="text-lg font-semibold mb-4">
@@ -593,16 +531,75 @@ export default function AdminClassificationsPage() {
         {/* List */}
         <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-border bg-muted/30">
-            <h3 className="font-semibold">
-              {activeTab === 'bone' ? 'Bone Specialties Tree' : 'Pathology Categories'}
-            </h3>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {activeTab === 'bone'
-                ? viewMode === 'table'
-                  ? `${flatBoneSpecialties.length} total specialties (${boneSpecialties.length} root)`
-                  : `${boneSpecialties.length} root categories`
-                : `${pathologyCategories.length} categories`}
-            </p>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="font-semibold">
+                  {activeTab === 'bone' ? 'Bone Specialties Tree' : 'Pathology Categories'}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {activeTab === 'bone'
+                    ? viewMode === 'table'
+                      ? `${flatBoneSpecialties.length} total specialties (${boneSpecialties.length} root)`
+                      : `${boneSpecialties.length} root categories`
+                    : `${pathologyCategories.length} categories`}
+                </p>
+              </div>
+              {activeTab === 'bone' && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusFilter === 'all'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setStatusFilter('active')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusFilter === 'active'
+                        ? 'bg-green-100 text-green-700 font-semibold'
+                        : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    onClick={() => setStatusFilter('inactive')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      statusFilter === 'inactive'
+                        ? 'bg-red-100 text-red-700 font-semibold'
+                        : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Inactive
+                  </button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <button
+                    onClick={() => setViewMode('tree')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      viewMode === 'tree'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Tree
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      viewMode === 'table'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Table
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {isLoading ? (
