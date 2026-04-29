@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 type Tab = 'bone' | 'pathology';
+type ViewMode = 'tree' | 'table';
 
 interface FormState {
   code: string;
@@ -38,6 +39,7 @@ export default function AdminClassificationsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>('bone');
+  const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -116,6 +118,30 @@ export default function AdminClassificationsPage() {
   };
 
   const filteredBoneSpecialties = filterBoneSpecialties(boneSpecialties);
+
+  // Helper to flatten tree for table view
+  const flattenBoneTree = (items: BoneSpecialtyDto[], level = 0): BoneSpecialtyDto[] => {
+    const result: BoneSpecialtyDto[] = [];
+    for (const item of items) {
+      result.push({ ...item, level });
+      if (item.children.length > 0) {
+        result.push(...flattenBoneTree(item.children, level + 1));
+      }
+    }
+    return result;
+  };
+
+  const flatBoneSpecialties = flattenBoneTree(boneSpecialties);
+
+  // Filter flat list by status
+  const getFilteredFlatList = () => {
+    if (statusFilter === 'all') return flatBoneSpecialties;
+    return flatBoneSpecialties.filter(item => {
+      if (statusFilter === 'active') return item.isActive;
+      if (statusFilter === 'inactive') return !item.isActive;
+      return true;
+    });
+  };
 
   const resetForm = () => {
     setForm({
@@ -368,39 +394,63 @@ export default function AdminClassificationsPage() {
 
         {/* Status Filter Tabs */}
         {activeTab === 'bone' && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                statusFilter === 'all'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter('active')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                statusFilter === 'active'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-100 text-green-700 hover:bg-green-200'
-              }`}
-            >
-              <ToggleRight className="w-4 h-4" />
-              Active
-            </button>
-            <button
-              onClick={() => setStatusFilter('inactive')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                statusFilter === 'inactive'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-red-100 text-red-700 hover:bg-red-200'
-              }`}
-            >
-              <ToggleLeft className="w-4 h-4" />
-              Inactive
-            </button>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === 'all'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setStatusFilter('active')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  statusFilter === 'active'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                <ToggleRight className="w-4 h-4" />
+                Active
+              </button>
+              <button
+                onClick={() => setStatusFilter('inactive')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  statusFilter === 'inactive'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                }`}
+              >
+                <ToggleLeft className="w-4 h-4" />
+                Inactive
+              </button>
+            </div>
+            <div className="flex gap-2 ml-auto">
+              <button
+                onClick={() => setViewMode('tree')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                  viewMode === 'tree'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                Tree View
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                  viewMode === 'table'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                Table View
+              </button>
+            </div>
           </div>
         )}
 
@@ -548,7 +598,9 @@ export default function AdminClassificationsPage() {
             </h3>
             <p className="text-sm text-muted-foreground mt-0.5">
               {activeTab === 'bone'
-                ? `${boneSpecialties.length} root categories`
+                ? viewMode === 'table'
+                  ? `${flatBoneSpecialties.length} total specialties (${boneSpecialties.length} root)`
+                  : `${boneSpecialties.length} root categories`
                 : `${pathologyCategories.length} categories`}
             </p>
           </div>
@@ -562,7 +614,100 @@ export default function AdminClassificationsPage() {
               <div className="py-12 text-center text-muted-foreground">
                 No bone specialties found. Create one above.
               </div>
+            ) : viewMode === 'table' ? (
+              // Table View - shows all bone specialties in a flat table
+              <table className="w-full">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Code</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Name</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Parent</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Level</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Order</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Status</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium">Description</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getFilteredFlatList().map((item) => (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-border/50 hover:bg-muted/30 ${!item.isActive ? 'opacity-60' : ''}`}
+                    >
+                      <td className="px-4 py-3">
+                        <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{item.code}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {item.level > 0 && (
+                            <span
+                              className="inline-block border-l-2 border-muted-foreground/30 pl-2"
+                              style={{ marginLeft: `${(item.level - 1) * 16}px` }}
+                            >
+                              <ChevronRight className="w-3 h-3 inline-block text-muted-foreground/50" />
+                            </span>
+                          )}
+                          <span className={`font-medium ${item.level === 0 ? 'text-primary' : ''}`}>
+                            {item.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {item.parentName || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {item.level > 0 && (
+                          <span className="bg-secondary/50 px-2 py-0.5 rounded text-xs">
+                            Level {item.level}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{item.displayOrder}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded ${item.isActive ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                          {item.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground max-w-[200px] truncate">
+                        {item.description || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleToggleActive(item)}
+                            className="p-2 hover:bg-muted rounded-lg"
+                            title={item.isActive ? 'Deactivate' : 'Activate'}
+                          >
+                            {item.isActive ? (
+                              <ToggleRight className="w-5 h-5 text-green-600" />
+                            ) : (
+                              <ToggleLeft className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => startEdit(item)}
+                            className="p-2 hover:bg-muted rounded-lg"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-4 h-4 text-muted-foreground" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            className="p-2 hover:bg-muted rounded-lg"
+                            title="Delete"
+                            disabled={item.children.length > 0}
+                          >
+                            <Trash2 className={`w-4 h-4 ${item.children.length > 0 ? 'text-muted-foreground/30' : 'text-red-500'}`} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
+              // Tree View - existing hierarchical display
               <div>{renderBoneTree(filteredBoneSpecialties)}</div>
             )
           ) : pathologyCategories.length === 0 ? (

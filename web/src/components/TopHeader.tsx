@@ -176,25 +176,25 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-blue-100 bg-[#f8fbff]/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 border-b border-[var(--border-color)] bg-[var(--surface)]/95 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
           {showBackButton ? (
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 hover:bg-blue-50 hover:text-slate-900"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--text-main)]"
               aria-label="Go back"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
           ) : null}
           <div className="min-w-0 py-0.5">
-            <h1 className="truncate font-headline text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
+            <h1 className="truncate font-headline text-base font-semibold tracking-tight text-[var(--text-main)] sm:text-lg md:text-xl">
               {title}
             </h1>
             {subtitle ? (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground sm:line-clamp-1 sm:text-sm">
+              <p className="mt-0.5 line-clamp-2 text-xs text-[var(--text-muted)] sm:line-clamp-1 sm:text-sm">
                 {subtitle}
               </p>
             ) : null}
@@ -205,30 +205,30 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
             <button
               type="button"
               onClick={() => setOpenNotifications((prev) => !prev)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-white text-slate-600 hover:bg-blue-50 hover:text-slate-900"
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--text-main)]"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
               {connectionStatus === 'connected' ? (
                 <span
-                  className="absolute bottom-1.5 left-1.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-background"
+                  className="absolute bottom-1.5 left-1.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-[var(--background)]"
                   title="Live notifications connected"
                   aria-hidden
                 />
               ) : null}
               {unreadCount > 0 ? (
-                <span className="absolute right-1.5 top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow-sm">
+                <span className="absolute right-1.5 top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white shadow-sm">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               ) : null}
             </button>
             {openNotifications ? (
-              <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-blue-100 bg-white p-2 shadow-xl">
-                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-[var(--border-color)] bg-[var(--surface)] p-2 shadow-xl">
+                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   Notifications
                 </div>
                 {mergedNotifications.length === 0 ? (
-                  <div className="px-2 py-3 text-sm text-muted-foreground">No notifications.</div>
+                  <div className="px-2 py-3 text-sm text-[var(--text-muted)]">No notifications.</div>
                 ) : (
                   <ul className="scrollbar-hide max-h-72 overflow-y-auto">
                     {mergedNotifications.map((item) => (
@@ -236,11 +236,11 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
                         <button
                           type="button"
                           onClick={() => handleNotificationClick(item)}
-                          className="w-full rounded-lg px-2 py-2 text-left hover:bg-muted/60"
+                          className="w-full rounded-lg px-2 py-2 text-left hover:bg-[var(--muted)]"
                         >
-                          <p className="text-sm font-medium text-card-foreground">{item.title}</p>
+                          <p className="text-sm font-medium text-[var(--text-main)]">{item.title}</p>
                           {item.message ? (
-                            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.message}</p>
+                            <p className="mt-0.5 line-clamp-2 text-xs text-[var(--text-muted)]">{item.message}</p>
                           ) : null}
                         </button>
                       </li>
@@ -255,7 +255,7 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex max-w-[220px] items-center gap-2 rounded-xl border border-blue-100 bg-white px-2 py-1.5 outline-none hover:bg-blue-50/80 focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none sm:gap-3 sm:px-3 sm:py-2"
+                className="flex max-w-[220px] items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--surface)] px-2 py-1.5 outline-none hover:bg-[var(--sidebar-hover)] focus-visible:ring-2 focus-visible:ring-ring sm:max-w-none sm:gap-3 sm:px-3 sm:py-2"
                 aria-label="Open account menu"
               >
                 {avatarSrc && !avatarLoadFailed ? (
@@ -263,41 +263,41 @@ export default function TopHeader({ title, subtitle }: TopHeaderProps) {
                   <img
                     src={avatarSrc}
                     alt=""
-                    className="h-9 w-9 shrink-0 rounded-full border border-border object-cover sm:h-10 sm:w-10"
+                    className="h-9 w-9 shrink-0 rounded-full border border-[var(--border-color)] object-cover sm:h-10 sm:w-10"
                     onError={() => setAvatarLoadFailed(true)}
                   />
                 ) : (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground sm:h-10 sm:w-10 sm:text-sm">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm">
                     {initials || 'BV'}
                   </div>
                 )}
                 <div className="hidden min-w-0 text-left sm:block">
-                  <p className="truncate text-sm font-semibold text-foreground">{fullName}</p>
-                  <p className="truncate text-xs text-muted-foreground">{roleLabel}</p>
+                  <p className="truncate text-sm font-semibold text-[var(--text-main)]">{fullName}</p>
+                  <p className="truncate text-xs text-[var(--text-muted)]">{roleLabel}</p>
                 </div>
-                <ChevronDown className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" aria-hidden />
+                <ChevronDown className="hidden h-4 w-4 shrink-0 text-[var(--text-muted)] sm:block" aria-hidden />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel className="cursor-default select-none font-normal">
-                <p className="truncate text-sm font-semibold text-card-foreground">{fullName}</p>
+                <p className="truncate text-sm font-semibold text-[var(--text-main)]">{fullName}</p>
                 {emailDisplay ? (
-                  <p className="truncate text-xs font-normal text-muted-foreground">{emailDisplay}</p>
+                  <p className="truncate text-xs font-normal text-[var(--text-muted)]">{emailDisplay}</p>
                 ) : null}
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                   {roleLabel}
                 </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="cursor-pointer">
                 <Link href="/profile" className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
+                  <User className="h-4 w-4 text-[var(--text-muted)]" />
                   Profile
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild className="cursor-pointer">
                 <Link href="/settings" className="flex items-center gap-2">
-                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <Settings className="h-4 w-4 text-[var(--text-muted)]" />
                   Settings
                 </Link>
               </DropdownMenuItem>
