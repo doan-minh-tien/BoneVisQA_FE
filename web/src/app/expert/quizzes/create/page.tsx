@@ -42,10 +42,10 @@ import type {
   QuizQuestionDto,
 } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
-import ExpertQuestionCard from '@/components/expert/quizzes/ExpertQuestionCard';
-import ExpertQuestionEditorDialog from '@/components/expert/quizzes/ExpertQuestionEditorDialog';
-import QuestionImportDialog from '@/components/lecturer/quizzes/QuestionImportDialog';
-import type { ParsedQuestion } from '@/components/lecturer/quizzes/QuestionImportDialog';
+import ExpertQuestionCard from '../../../../components/expert/quizzes/ExpertQuestionCard';
+import ExpertQuestionEditorDialog from '../../../../components/expert/quizzes/ExpertQuestionEditorDialog';
+import QuestionImportDialog from '../../../../components/lecturer/quizzes/QuestionImportDialog';
+import type { ParsedQuestion } from '../../../../components/lecturer/quizzes/QuestionImportDialog';
 
 const QUESTIONS_PER_PAGE = 5;
 
@@ -203,16 +203,16 @@ export default function ExpertCreateQuizPage() {
 
   const buildCreatePayload = (): CreateExpertQuizRequest => ({
     title: formData.title,
-    topic: formData.topic || undefined,
-    difficulty: formData.difficulty || undefined,
-    classification: classification || undefined,
+    topic: formData.topic || null,
+    difficulty: formData.difficulty || '',
+    classification: classification || null,
     isAiGenerated: false,
-    openTime: toUTC(formData.openTime) || undefined,
-    closeTime: toUTC(formData.closeTime) || undefined,
+    openTime: toUTC(formData.openTime) || '',
+    closeTime: toUTC(formData.closeTime) || '',
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
-    boneSpecialtyId: boneSpecialtyId || undefined,
-    pathologyCategoryId: pathologyCategoryId || undefined,
+    boneSpecialtyId: boneSpecialtyId || null,
+    pathologyCategoryId: pathologyCategoryId || null,
   });
 
   // ========== Quiz Handlers ==========

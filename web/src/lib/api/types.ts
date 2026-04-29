@@ -966,7 +966,7 @@ export interface CreateQuizQuestionRequest {
   quizId: string;
   caseId?: string;
   questionText: string;
-  type?: string;
+  type: string;
   optionA?: string;
   optionB?: string;
   optionC?: string;
