@@ -26,9 +26,15 @@ import {
 import { getApiErrorMessage, resolveApiAssetUrl } from '@/lib/api/client';
 import { TRIAGE_ALREADY_ESCALATED, WORKFLOW_CONFLICT, respondToQuestion } from '@/lib/api/lecturer-triage';
 import { getStoredUserId } from '@/lib/getStoredUserId';
-import type { ClassItem, LectStudentQuestionDto, LecturerTriageRequestKind } from '@/lib/api/types';
+import type {
+  ClassItem,
+  LectStudentQuestionDto,
+  LecturerTriageRequestKind,
+  NormalizedImageBoundingBox,
+  PercentageBoundingBox,
+} from '@/lib/api/types';
 import { RectangleAnnotationOverlay } from '@/components/shared/RectangleAnnotationOverlay';
-import { isValidNormalizedBoundingBox } from '@/lib/utils/annotations';
+import { isValidNormalizedBoundingBox, isValidPercentageBoundingBox } from '@/lib/utils/annotations';
 import type { VisualQaTurn } from '@/lib/api/types';
 import { isEscalationBlocked } from '@/lib/visual-qa-workflow';
 
@@ -147,6 +153,32 @@ function hasSelectedPairMismatch(item: LectStudentQuestionDto | null): boolean {
   return false;
 }
 
+function percentageBoxToNormalized(box: PercentageBoundingBox): NormalizedImageBoundingBox {
+  return {
+    x: box.xPct / 100,
+    y: box.yPct / 100,
+    width: box.widthPct / 100,
+    height: box.heightPct / 100,
+  };
+}
+
+/** ROI theo turn (`roiBoundingBox` / `questionCoordinates`) hoặc fallback `customCoordinates` (%). */
+function resolvedTriageStudyRoi(
+  selectedTurn: VisualQaTurn | null,
+  selectedQuestion: LectStudentQuestionDto,
+): NormalizedImageBoundingBox | null {
+  if (selectedTurn) {
+    for (const cand of [selectedTurn.roiBoundingBox, selectedTurn.questionCoordinates]) {
+      if (cand && isValidNormalizedBoundingBox(cand)) return cand;
+    }
+  }
+  const pct = selectedQuestion.customCoordinates;
+  if (pct && isValidPercentageBoundingBox(pct)) {
+    return percentageBoxToNormalized(pct);
+  }
+  return null;
+}
+
 export default function QATriagePage() {
   const toast = useToast();
   const searchParams = useSearchParams();
@@ -158,7 +190,6 @@ export default function QATriagePage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [escalatingId, setEscalatingId] = useState<string | null>(null);
 
-  const [selectedTurnIndex, setSelectedTurnIndex] = useState<number | null>(null);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
@@ -181,12 +212,11 @@ export default function QATriagePage() {
     [selectedQuestion],
   );
 
+  /** Only the Visual QA turn tied to this triage request (message ids / review target), not the whole thread. */
   const selectedTurn = useMemo(() => {
     if (!selectedQuestion?.turns || selectedQuestion.turns.length === 0) return null;
-    const defaultTurn = resolveSelectedTurn(selectedQuestion);
-    if (selectedTurnIndex == null) return defaultTurn;
-    return selectedQuestion.turns.find((t) => t.turnIndex === selectedTurnIndex) ?? defaultTurn;
-  }, [selectedQuestion, selectedTurnIndex]);
+    return resolveSelectedTurn(selectedQuestion);
+  }, [selectedQuestion]);
   const selectedPairMismatch = useMemo(
     () => hasSelectedPairMismatch(selectedQuestion),
     [selectedQuestion],
@@ -216,7 +246,6 @@ export default function QATriagePage() {
       const data = await fetchLecturerVisualQaTriageQueue(classId);
       setQuestions(data);
       setSelectedQuestionId(data[0]?.id ?? null);
-      setSelectedTurnIndex(data[0]?.turns?.[data[0].turns.length - 1]?.turnIndex ?? null);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Failed to load triage queue.');
       setQuestions([]);
@@ -230,15 +259,6 @@ export default function QATriagePage() {
     if (!selectedClassId) return;
     void loadQuestions(selectedClassId);
   }, [selectedClassId, loadQuestions]);
-
-  useEffect(() => {
-    if (!selectedQuestion) {
-      setSelectedTurnIndex(null);
-      return;
-    }
-    const defaultTurn = resolveSelectedTurn(selectedQuestion);
-    setSelectedTurnIndex(defaultTurn?.turnIndex ?? null);
-  }, [selectedQuestionId, selectedQuestion]);
 
   const handleEscalate = async (item: LectStudentQuestionDto) => {
     if (hasSelectedPairMismatch(item)) {
@@ -275,11 +295,9 @@ export default function QATriagePage() {
         selectedUserMessageId: item.selectedUserMessageId ?? null,
         selectedAssistantMessageId: item.selectedAssistantMessageId ?? null,
       });
-      setQuestions((prev) =>
-        prev.map((q) => (q.id === item.id ? { ...q, escalatedById: 'lecturer' } : q)),
-      );
+      setQuestions((prev) => prev.filter((q) => q.id !== item.id));
+      setSelectedQuestionId((prevSel) => (prevSel === item.id ? null : prevSel));
       toast.success('Escalated successfully');
-      if (selectedClassId) void loadQuestions(selectedClassId);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       if (message === TRIAGE_ALREADY_ESCALATED) {
@@ -326,14 +344,11 @@ export default function QATriagePage() {
     setRejectError(null);
     try {
       await rejectTriageAnswer(targetId, reason);
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === selectedQuestion.id ? { ...q, answerStatus: 'Rejected' } : q,
-        ),
-      );
+      const rejectedId = selectedQuestion.id;
+      setQuestions((prev) => prev.filter((q) => q.id !== rejectedId));
+      setSelectedQuestionId((prevSel) => (prevSel === rejectedId ? null : prevSel));
       setShowRejectDialog(false);
       toast.success('Answer rejected and feedback sent to student.');
-      if (selectedClassId) void loadQuestions(selectedClassId);
     } catch (error) {
       setRejectError(getApiErrorMessage(error));
     } finally {
@@ -550,11 +565,7 @@ export default function QATriagePage() {
                               loading="lazy"
                             />
                             <RectangleAnnotationOverlay
-                              closed={
-                                selectedTurn?.roiBoundingBox && isValidNormalizedBoundingBox(selectedTurn.roiBoundingBox)
-                                  ? selectedTurn.roiBoundingBox
-                                  : null
-                              }
+                              closed={resolvedTriageStudyRoi(selectedTurn, selectedQuestion)}
                               draft={null}
                               label="Turn ROI"
                               className="drop-shadow-[0_0_8px_rgba(239,68,68,0.45)]"
@@ -563,51 +574,55 @@ export default function QATriagePage() {
                         </div>
                       </article>
                     ) : null}
-                    {selectedQuestion.turns && selectedQuestion.turns.length > 0 ? (
+                    {selectedTurn ? (
                       <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
                         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Chat session context
+                          Review target (single Q → A)
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Select a turn to inspect its ROI. AI Final Assessment below uses the latest turn.
+                          This is the pair the student submitted for lecturer review — not the full chat history.
+                          {selectedQuestion.turns && selectedQuestion.turns.length > 1 ? (
+                            <span className="block pt-1">
+                              Session has {selectedQuestion.turns.length} turn(s); triage uses turn{' '}
+                              <span className="font-mono">{selectedTurn.turnIndex}</span> only.
+                            </span>
+                          ) : null}
                         </p>
-                        <ol className="mt-3 space-y-2">
-                          {selectedQuestion.turns.slice(-3).map((turn) => (
-                            <li key={turn.turnIndex}>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTurnIndex(turn.turnIndex)}
-                                className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
-                                  selectedTurn?.turnIndex === turn.turnIndex
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:bg-muted/40'
-                                }`}
-                              >
-                                <p className="font-medium">Turn {turn.turnIndex}: {turn.questionText || '—'}</p>
-                                <p className="mt-1 text-muted-foreground line-clamp-2">{turn.answerText || '—'}</p>
-                              </button>
-                            </li>
-                          ))}
-                        </ol>
+                        <div className="mt-3 space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Question
+                            </p>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground">
+                              {selectedTurn.questionText?.trim() || '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Assistant answer
+                            </p>
+                            <p className="mt-1 text-sm leading-relaxed text-foreground/90">
+                              {selectedTurn.answerText?.trim() || '—'}
+                            </p>
+                          </div>
+                        </div>
                       </article>
-                    ) : null}
-                    <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Student question</p>
-                      <p className="mt-2 text-sm leading-relaxed text-foreground">
-                        {selectedTurn?.questionText?.trim() || selectedQuestion.questionText}
-                      </p>
-                    </article>
-
-                    <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        AI Final Assessment (latest session turn)
-                      </p>
-                      <p className="mt-2 text-sm leading-relaxed text-foreground/90">
-                        {(selectedTurn?.answerText ||
-                          selectedQuestion.answerText ||
-                          '').trim() || 'No generated answer available.'}
-                      </p>
-                    </article>
+                    ) : (
+                      <article className="rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Review request (no per-turn data)
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          The API did not return turn history; showing the row-level question and answer only.
+                        </p>
+                        <p className="mt-3 text-sm font-medium text-foreground">
+                          {selectedQuestion.questionText}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-foreground/90">
+                          {(selectedQuestion.answerText || '').trim() || 'No generated answer available.'}
+                        </p>
+                      </article>
+                    )}
 
                     {selectedTurn &&
                     (selectedTurn.structuredDiagnosis?.trim() ||

@@ -16,6 +16,8 @@ export interface VisualQaCitation {
   documentId?: string;
   /** Clinical case id when citation points at a case. */
   caseId?: string;
+  /** RAG chunk id when API returns retrieval rows (`chunkId`, etc.). */
+  chunkId?: string;
   /** Document revision — appended as `?v=` on file URLs when present. */
   version?: string;
 }
@@ -134,6 +136,8 @@ export interface VisualQaSessionReport {
   /** Thread-level banner when BE blocks interaction (VisualQaThreadDto). */
   blockingNotice?: string | null;
   systemNotice?: string | null;
+  /** Chuỗi reject mới nhất từ lecturer/expert khi session Rejected (BE VisualQaThreadDto). */
+  rejectionReason?: string | null;
   policyReason?: string | null;
   systemNoticeCode?: string | null;
   capabilities?: {
@@ -671,13 +675,36 @@ export interface StudentCaseHistoryItem {
   rejectionReason?: string | null;
 }
 
+/** Nguồn case trong thư viện công khai — chỉ hai nhãn UI theo nghiệp vụ. */
+export type StudentCaseCatalogOrigin = 'expertCreated' | 'communityPromoted';
+
 export interface StudentCaseCatalogItem {
   id: string;
   title: string;
   imageUrl?: string;
+  /** Vùng giải phẫu / bone location (hiển thị chip). */
   location: string;
+  /** Category hiển thị (tách khỏi lesionType khi BE trả đủ). */
+  categoryDisplay?: string;
   lesionType: string;
-  difficulty: 'basic' | 'intermediate' | 'advanced';
+  /**
+   * Tier chuẩn hóa khi map được từ enum BE; `null` khi không khớp — không ép 'basic'.
+   * Giữ optional để tương thích code cũ dùng `difficulty`.
+   */
+  difficultyTier?: 'basic' | 'intermediate' | 'advanced' | null;
+  /** Nhãn hiển thị độ khó (ưu tiên raw từ BE). */
+  difficultyLabel: string;
+  /** @deprecated Dùng difficultyLabel + difficultyTier */
+  difficulty?: 'basic' | 'intermediate' | 'advanced';
+  tags: string[];
+  createdAt?: string;
+  caseOrigin: StudentCaseCatalogOrigin;
+}
+
+/** Ảnh ẩn danh + ROI tùy chọn trên chi tiết case catalog. */
+export interface StudentCatalogCaseImage {
+  imageUrl: string;
+  roiBoundingBox?: NormalizedImageBoundingBox | null;
 }
 
 export interface StudentCaseCatalogDetail extends StudentCaseCatalogItem {
@@ -685,6 +712,11 @@ export interface StudentCaseCatalogDetail extends StudentCaseCatalogItem {
   expertSummary?: string;
   keyFindings?: string[];
   approvedAt?: string;
+  diagnosis?: string;
+  keyLearningPoints?: string[];
+  images?: StudentCatalogCaseImage[];
+  /** true = chỉ tham khảo, không mở Visual QA “Ask AI”. */
+  communityReferenceOnly?: boolean;
 }
 
 /** Real-time payload from SignalR `ReceiveNotification` (aligned with backend hub). */
@@ -795,6 +827,8 @@ export interface ExpertReviewItem {
 export interface Citation {
   chunkId: string;
   sourceText: string;
+  /** Knowledge-base document id when BE sends `ExpertCitationDto.documentId`. */
+  documentId?: string;
   referenceUrl?: string;
   pageNumber?: number;
   flagged?: boolean;

@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
 import type { VisualQaCitation } from '@/lib/api/types';
+import { resolveApiAssetUrl, withVersionedAssetUrl } from '@/lib/api/client';
 import { buildVisualQaReferences } from '@/lib/utils/visual-qa-references';
 import { AlertTriangle, BookOpen, FileText, SearchCheck, Stethoscope, TriangleAlert } from 'lucide-react';
 
@@ -100,6 +101,8 @@ export function VisualQaRichAnswer({ markdown, citations, className = '' }: Prop
 type StructuredAnswerProps = {
   markdown?: string;
   diagnosis?: string | null;
+  /** JSON hoặc plain text từ triage — gộp vào card Diagnosis khi `diagnosis` trống. */
+  structuredDiagnosis?: string | null;
   findings?: string[];
   differentialDiagnoses?: string[];
   reflectiveQuestions?: string[];
@@ -116,6 +119,88 @@ export function withPageAnchor(url: string, startPage?: number): string {
   if (!url || !startPage || !Number.isFinite(startPage) || startPage <= 0) return url;
   const baseUrl = url.replace(/#.*$/, '');
   return `${baseUrl}#page=${Math.floor(startPage)}`;
+}
+
+function parseStructuredDiagnosisPlain(raw?: string | null): string | undefined {
+  const t = raw?.trim();
+  if (!t) return undefined;
+  if (t.startsWith('{')) {
+    try {
+      const o = JSON.parse(t) as Record<string, unknown>;
+      const d = typeof o.diagnosis === 'string' ? o.diagnosis.trim() : '';
+      if (d) return d;
+    } catch {
+      /* fall through — plain text */
+    }
+  }
+  return t;
+}
+
+/** Gộp `diagnosis` với `structuredDiagnosis` (JSON/plain) để card và dedup dùng cùng một nguồn sự thật. */
+export function mergeDiagnosisForDisplay(
+  diagnosis?: string | null,
+  structuredDiagnosis?: string | null,
+): string {
+  const d = diagnosis?.trim();
+  if (d) return d;
+  return parseStructuredDiagnosisPlain(structuredDiagnosis)?.trim() ?? '';
+}
+
+/**
+ * Gỡ khối narrative trùng Diagnosis / Findings / Differential (BE thường nhân đôi cùng đoạn vào `answerText`).
+ */
+export function dedupeNarrativeAgainstClinicalFields(
+  markdown: string | undefined,
+  clinicalDiagnosis: string | null | undefined,
+  findings: string[] = [],
+  differentialDiagnoses: string[] = [],
+): string | undefined {
+  const md = markdown?.trim();
+  if (!md) return undefined;
+
+  const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const sm = squash(md);
+
+  const blocks: string[] = [];
+  const pushBlock = (s: string | null | undefined) => {
+    const t = s?.trim();
+    if (t) blocks.push(squash(t));
+  };
+  pushBlock(clinicalDiagnosis);
+  for (const f of findings) pushBlock(String(f));
+  for (const d of differentialDiagnoses) pushBlock(String(d));
+
+  for (const b of blocks) {
+    if (!b.length) continue;
+    if (sm === b) return undefined;
+    if (b.length >= 24 && sm.startsWith(b.slice(0, Math.min(b.length, 280)))) return undefined;
+  }
+
+  const firstBlock = md.split(/\n\s*\n/)[0]?.trim();
+  if (firstBlock) {
+    const sf = squash(firstBlock);
+    for (const b of blocks) {
+      if (!b.length) continue;
+      if (sf === b) {
+        const rest = md.slice(md.indexOf(firstBlock) + firstBlock.length).trim();
+        return rest || undefined;
+      }
+      if (b.length >= 24 && sf.startsWith(b.slice(0, Math.min(b.length, 280)))) {
+        const rest = md.slice(md.indexOf(firstBlock) + firstBlock.length).trim();
+        return rest || undefined;
+      }
+    }
+  }
+
+  return md;
+}
+
+/** @deprecated Dùng dedupeNarrativeAgainstClinicalFields — giữ export để tránh gãy import ngoài bundle. */
+export function narrativeMarkdownDedupAgainstDiagnosis(
+  markdown: string | undefined,
+  diagnosis?: string | null,
+): string | undefined {
+  return dedupeNarrativeAgainstClinicalFields(markdown, diagnosis, [], []);
 }
 
 export function shouldSuppressLeakedMedicalJsonMarkdown(markdown: string | undefined): boolean {
@@ -144,61 +229,63 @@ export function shouldSuppressLeakedMedicalJsonMarkdown(markdown: string | undef
   }
 }
 
+function resolveCitationHref(citation: VisualQaCitation): string | undefined {
+  const direct = citation.href?.trim();
+  if (direct) return direct;
+  const caseId = citation.caseId?.trim();
+  if (caseId) return `/student/cases/${caseId}`;
+  const raw = citation.documentUrl?.trim();
+  if (!raw) return undefined;
+  const resolved = resolveApiAssetUrl(raw);
+  const versioned = resolved ? withVersionedAssetUrl(resolved, citation.version) : '';
+  return withPageAnchor(versioned, citation.startPage ?? citation.pageNumber);
+}
+
 function formatReferenceRows(citations: VisualQaCitation[]): StructuredReferenceRow[] {
   if (!citations.length) return [];
-  const displayReady = citations
-    .map((citation): StructuredReferenceRow | null => {
-      const displayLabel = citation.displayLabel?.trim();
-      const fallbackLabel = citation.label?.trim();
-      const label = displayLabel || fallbackLabel;
-      if (!label) return null;
-      const pageLabel = citation.pageLabel?.trim();
-      const shouldAppendPage =
-        !displayLabel &&
-        Boolean(pageLabel) &&
-        !label.toLowerCase().includes(pageLabel!.toLowerCase());
-      return {
-        label: shouldAppendPage ? `${label} - ${pageLabel}` : label,
-        href: citation.href?.trim() || withPageAnchor(citation.documentUrl?.trim() || '', citation.startPage),
-        snippet: citation.snippet?.trim() || undefined,
-      };
-    })
-    .filter((row): row is StructuredReferenceRow => row !== null);
-  if (displayReady.length > 0) return displayReady;
-  const grouped = new Map<string, { pages: number[]; href?: string; startPage?: number }>();
-  citations.forEach((c, idx) => {
-    const key = (c.documentId?.trim() || c.documentUrl?.trim() || `ref-${idx}`).toLowerCase();
-    const parsedStartPage =
-      typeof c.startPage === 'number' && Number.isFinite(c.startPage) && c.startPage > 0
-        ? c.startPage
-        : typeof c.pageNumber === 'number' && Number.isFinite(c.pageNumber) && c.pageNumber > 0
-          ? c.pageNumber
+
+  return citations.map((citation, index): StructuredReferenceRow => {
+    const snippet = citation.snippet?.trim() || undefined;
+    const displayLabel = citation.displayLabel?.trim();
+    const fallbackLabel = citation.label?.trim();
+    const title = citation.title?.trim();
+    const pageLabel = citation.pageLabel?.trim();
+    const pageNum =
+      typeof citation.pageNumber === 'number' && Number.isFinite(citation.pageNumber) && citation.pageNumber > 0
+        ? Math.floor(citation.pageNumber)
+        : typeof citation.startPage === 'number' && Number.isFinite(citation.startPage) && citation.startPage > 0
+          ? Math.floor(citation.startPage)
           : undefined;
-    const row = grouped.get(key) ?? {
-      pages: [],
-      href: c.documentUrl?.trim() || undefined,
-      startPage: parsedStartPage,
-    };
-    if (parsedStartPage != null) row.pages.push(parsedStartPage);
-    if (!row.href && c.documentUrl?.trim()) row.href = c.documentUrl.trim();
-    if (!row.startPage && parsedStartPage) row.startPage = parsedStartPage;
-    grouped.set(key, row);
-  });
-  return Array.from(grouped.values()).map(({ pages, href, startPage }, index) => {
-    const refNo = index + 1;
-    const normalizedHref = href ? withPageAnchor(href, startPage) : undefined;
-    if (!pages.length) {
-      return {
-        label: `Reference [${refNo}]`,
-        href: normalizedHref,
-      };
+
+    let label = displayLabel || fallbackLabel || title;
+    if (!label && pageLabel) label = pageLabel;
+    if (!label && citation.chunkId?.trim()) {
+      label = `Chunk ${citation.chunkId.trim().slice(0, 8)}…`;
     }
-    const sorted = [...pages].sort((a, b) => a - b);
-    const start = sorted[0];
-    const end = sorted[sorted.length - 1];
+    if (!label) {
+      label =
+        typeof pageNum === 'number'
+          ? `Reference [${index + 1}] · Page ${pageNum}`
+          : `Reference [${index + 1}]`;
+    } else if (
+      !displayLabel &&
+      pageLabel &&
+      !label.toLowerCase().includes(pageLabel.toLowerCase())
+    ) {
+      label = `${label} - ${pageLabel}`;
+    } else if (
+      !displayLabel &&
+      typeof pageNum === 'number' &&
+      !/\bpage\b/i.test(label) &&
+      !label.includes(String(pageNum))
+    ) {
+      label = `${label} · p. ${pageNum}`;
+    }
+
     return {
-      label: `Reference [${refNo}] - Page ${start}${end !== start ? `-${end}` : ''}`,
-      href: normalizedHref,
+      label,
+      href: resolveCitationHref(citation),
+      snippet,
     };
   });
 }
@@ -206,12 +293,26 @@ function formatReferenceRows(citations: VisualQaCitation[]): StructuredReference
 export function VisualQaStructuredAnswer({
   markdown,
   diagnosis,
+  structuredDiagnosis,
   findings = [],
   differentialDiagnoses = [],
   reflectiveQuestions = [],
   citations = [],
 }: StructuredAnswerProps) {
   const refs = formatReferenceRows(citations);
+  const displayDiagnosis = useMemo(
+    () => mergeDiagnosisForDisplay(diagnosis, structuredDiagnosis),
+    [diagnosis, structuredDiagnosis],
+  );
+  const narrativeMarkdown = dedupeNarrativeAgainstClinicalFields(
+    markdown,
+    displayDiagnosis || null,
+    findings,
+    differentialDiagnoses,
+  );
+  const showNarrativeMarkdown =
+    Boolean(narrativeMarkdown?.trim()) &&
+    !shouldSuppressLeakedMedicalJsonMarkdown(narrativeMarkdown);
 
   return (
     <div className="space-y-3">
@@ -221,7 +322,7 @@ export function VisualQaStructuredAnswer({
           Diagnosis
         </p>
         <p className="mt-2 font-semibold leading-relaxed text-slate-900">
-          {diagnosis?.trim() || 'No diagnosis provided.'}
+          {displayDiagnosis || 'No diagnosis provided.'}
         </p>
       </div>
       <div className="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
@@ -263,7 +364,7 @@ export function VisualQaStructuredAnswer({
           </ul>
         </div>
       ) : null}
-      {markdown?.trim() && !shouldSuppressLeakedMedicalJsonMarkdown(markdown) ? (
+      {showNarrativeMarkdown ? (
         <div className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-relaxed text-slate-950 shadow-sm break-words [&_a]:break-all [&_pre]:overflow-x-auto">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -287,7 +388,7 @@ export function VisualQaStructuredAnswer({
               p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-slate-950">{children}</p>,
             }}
           >
-            {markdown}
+            {narrativeMarkdown}
           </ReactMarkdown>
         </div>
       ) : null}

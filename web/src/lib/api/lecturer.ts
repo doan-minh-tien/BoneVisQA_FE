@@ -2,6 +2,7 @@ import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 import type {
   Announcement,
+  AnnouncementAssignmentInfo,
   ClassAssignment,
   CaseDto,
   ClassItem,
@@ -25,7 +26,12 @@ import type {
   ClassQuizSessionDto,
   AnnouncementAssignmentInfo,
 } from './types';
-import { parseNormalizedBoundingBox, parsePercentageBoundingBox } from '@/lib/utils/annotations';
+import {
+  isValidNormalizedBoundingBox,
+  parseNormalizedBoundingBox,
+  parsePercentageBoundingBox,
+  percentageBoundingBoxToNormalized,
+} from '@/lib/utils/annotations';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -557,11 +563,126 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
       ? String(caseAnswerIdRaw).trim()
       : null;
 
+  /**
+   * BE `VisualQaTurnDto`: camelCase **`answerText`** và **`messageText`** cùng chuỗi hiển thị assistant.
+   * Giữ các fallback nested cho API cũ hoặc payload không đầy đủ.
+   */
+  function extractTurnAssistantText(row: Record<string, unknown>): string {
+    const tryStr = (v: unknown): string => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v.trim();
+      return String(v).trim();
+    };
+
+    for (const key of [
+      row.answerText,
+      row.AnswerText,
+      row.messageText,
+      row.MessageText,
+      row.aiAnswerText,
+      row.AiAnswerText,
+      row.assistantAnswer,
+      row.AssistantAnswer,
+      row.responseText,
+      row.ResponseText,
+      row.reply,
+      row.Reply,
+      row.content,
+      row.Content,
+    ]) {
+      const s = tryStr(key);
+      if (s) return s;
+    }
+
+    const am =
+      row.assistantMessage ??
+      row.AssistantMessage ??
+      row.assistant_message ??
+      row.latestAssistantMessage ??
+      row.LatestAssistantMessage;
+    if (am && typeof am === 'object') {
+      const amr = am as Record<string, unknown>;
+      const fromAm = tryStr(
+        amr.content ??
+          amr.Content ??
+          amr.text ??
+          amr.Text ??
+          amr.body ??
+          amr.answerText ??
+          amr.AnswerText,
+      );
+      if (fromAm) return fromAm;
+    }
+
+    const messagesRaw = row.messages ?? row.Messages;
+    if (Array.isArray(messagesRaw)) {
+      for (let i = messagesRaw.length - 1; i >= 0; i -= 1) {
+        const m = messagesRaw[i];
+        if (!m || typeof m !== 'object') continue;
+        const mr = m as Record<string, unknown>;
+        const role = String(mr.role ?? mr.Role ?? '').toLowerCase();
+        if (!role.includes('assistant') && role !== 'ai' && role !== 'model') continue;
+        const body = tryStr(
+          mr.content ?? mr.Content ?? mr.text ?? mr.Text ?? mr.answerText ?? mr.AnswerText,
+        );
+        if (body) return body;
+      }
+    }
+
+    const reportRaw =
+      row.report ??
+      row.Report ??
+      row.structuredReport ??
+      row.StructuredReport ??
+      row.visualQaReport ??
+      row.VisualQaReport ??
+      row.aiReport ??
+      row.AiReport;
+    if (reportRaw && typeof reportRaw === 'object') {
+      const rr = reportRaw as Record<string, unknown>;
+      const fromReport = tryStr(
+        rr.answerText ??
+          rr.AnswerText ??
+          rr.messageText ??
+          rr.MessageText ??
+          rr.answer ??
+          rr.Answer,
+      );
+      if (fromReport) return fromReport;
+    }
+
+    return '';
+  }
+
+  function fallbackAssistantSummaryFromStructured(row: Record<string, unknown>): string {
+    const findings = Array.isArray(row.findings)
+      ? row.findings.map((x) => String(x).trim()).filter(Boolean)
+      : Array.isArray(row.keyFindings)
+        ? row.keyFindings.map((x) => String(x).trim()).filter(Boolean)
+        : [];
+    const diff = Array.isArray(row.differentialDiagnoses)
+      ? row.differentialDiagnoses.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const diag = String(row.diagnosis ?? row.Diagnosis ?? row.suggestedDiagnosis ?? '').trim();
+    const sd = String(row.structuredDiagnosis ?? row.StructuredDiagnosis ?? '').trim();
+    const kim = String(row.keyImagingFindings ?? row.KeyImagingFindings ?? '').trim();
+    const chunks: string[] = [];
+    if (diag) chunks.push(`Diagnosis: ${diag}`);
+    if (sd && sd !== diag) chunks.push(sd);
+    if (kim) chunks.push(`Key imaging: ${kim}`);
+    if (findings.length) chunks.push(`Findings:\n${findings.map((f) => `• ${f}`).join('\n')}`);
+    if (diff.length) chunks.push(`Differential:\n${diff.map((d) => `• ${d}`).join('\n')}`);
+    return chunks.join('\n\n').trim();
+  }
+
   const normalizeTurn = (row: unknown, idx: number): VisualQaTurn | null => {
     if (!row || typeof row !== 'object') return null;
     const t = row as Record<string, unknown>;
     const q = String(t.questionText ?? t.QuestionText ?? '').trim();
-    const a = String(t.answerText ?? t.AnswerText ?? '').trim();
+    let a = extractTurnAssistantText(t);
+    if (!a) {
+      a = fallbackAssistantSummaryFromStructured(t);
+    }
     const turnIndexRaw = t.turnIndex ?? t.TurnIndex ?? idx + 1;
     const turnIndex =
       typeof turnIndexRaw === 'number'
@@ -577,19 +698,36 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
         um.coordinates ??
         um.Coordinates;
     }
+    const pctFromTurn = parsePercentageBoundingBox(
+      t.customCoordinates ??
+        t.CustomCoordinates ??
+        t.annotationCoordinates ??
+        t.AnnotationCoordinates,
+    );
+    const fromPctBox = pctFromTurn ? percentageBoundingBoxToNormalized(pctFromTurn) : null;
+
+    const qcParsed =
+      parseNormalizedBoundingBox(t.questionCoordinates ?? t.QuestionCoordinates) ??
+      parseNormalizedBoundingBox(userMsgCoords);
     const roiBoundingBox =
       parseNormalizedBoundingBox(t.roiBoundingBox ?? t.RoiBoundingBox) ??
-      parseNormalizedBoundingBox(t.questionCoordinates ?? t.QuestionCoordinates) ??
-      parseNormalizedBoundingBox(userMsgCoords) ??
+      qcParsed ??
       parseNormalizedBoundingBox(
         t.coordinates ?? t.Coordinates ?? t.customPolygon ?? t.CustomPolygon,
-      );
+      ) ??
+      fromPctBox;
+
+    const questionCoordinates = qcParsed ?? fromPctBox ?? roiBoundingBox ?? undefined;
+
     return {
       turnId: String(t.turnId ?? t.TurnId ?? '').trim() || null,
       turnIndex,
       questionText: q,
       answerText: a,
       roiBoundingBox,
+      ...(questionCoordinates && isValidNormalizedBoundingBox(questionCoordinates)
+        ? { questionCoordinates }
+        : {}),
       structuredDiagnosis: String(t.structuredDiagnosis ?? t.StructuredDiagnosis ?? '').trim() || null,
       keyImagingFindings: String(t.keyImagingFindings ?? t.KeyImagingFindings ?? '').trim() || null,
       diagnosis: String(
@@ -683,7 +821,14 @@ function normalizeLectStudentQuestionDto(raw: unknown): LectStudentQuestionDto |
     selectedAssistantMessageId:
       String(r.selectedAssistantMessageId ?? r.SelectedAssistantMessageId ?? '').trim() || null,
     customCoordinates: parsePercentageBoundingBox(
-      r.customCoordinates ?? r.CustomCoordinates ?? r.coordinates ?? r.Coordinates,
+      r.customCoordinates ??
+        r.CustomCoordinates ??
+        r.annotationCoordinates ??
+        r.AnnotationCoordinates ??
+        r.questionCoordinatesPercent ??
+        r.visualQaRoiPercent ??
+        r.coordinates ??
+        r.Coordinates,
     ),
     citations: Array.isArray(r.citations)
       ? r.citations
@@ -771,11 +916,15 @@ export async function rejectTriageAnswer(answerId: string, reason: string): Prom
   if (!id) throw new Error('Answer id is required to reject.');
   const payload = { reason: String(reason ?? '').trim() };
   try {
-    await http.post(`/api/lecturer/triage/${encodeURIComponent(id)}/reject`, payload);
+    await http.post(`/api/lecturer/triage/${encodeURIComponent(id)}/reject`, payload, {
+      clearSessionOn401: false,
+    });
     return;
   } catch (e) {
     if ((e as { response?: { status?: number } })?.response?.status === 404) {
-      await http.put(`/api/lecturer/reviews/${encodeURIComponent(id)}/reject`, payload);
+      await http.put(`/api/lecturer/reviews/${encodeURIComponent(id)}/reject`, payload, {
+        clearSessionOn401: false,
+      });
       return;
     }
     throw new Error(getApiErrorMessage(e));

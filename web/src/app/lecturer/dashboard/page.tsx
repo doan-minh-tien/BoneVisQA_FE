@@ -72,6 +72,8 @@ function Card({
   className?: string;
 }) {
   const [open, setOpen] = useState(true);
+  const badgeCount = typeof badge === 'number' ? badge : Number(badge);
+  const showBadge = badge !== undefined && Number.isFinite(badgeCount) && badgeCount > 0;
   return (
     <div className={`rounded-2xl border bg-card overflow-hidden ${className}`}>
       <button

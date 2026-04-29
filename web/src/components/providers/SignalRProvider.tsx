@@ -11,6 +11,13 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { HubConnectionState, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+
+/** Library logs at Warning flood the console when the hub is down (negotiate “Failed to fetch”, WS 1006). */
+function configureSignalRLogging(builder: HubConnectionBuilder): HubConnectionBuilder {
+  const verbose =
+    typeof process !== 'undefined' && process.env.NEXT_PUBLIC_SIGNALR_VERBOSE === 'true';
+  return verbose ? builder.configureLogging(LogLevel.Warning) : builder.configureLogging(LogLevel.None);
+}
 import { toast } from 'sonner';
 import { getPublicApiOrigin } from '@/lib/api/client';
 import type { DocumentIngestionStatusDto, NotificationDto } from '@/lib/api/types';
@@ -181,13 +188,13 @@ export function SignalRProvider({ children }: { children: ReactNode }) {
       if (!aborted) setConnectionStatus('connecting');
     }, 0);
 
-    const connection = new HubConnectionBuilder()
-      .withUrl(hubUrl, {
-        accessTokenFactory: () => Promise.resolve(localStorage.getItem('token') ?? ''),
-      })
-      .withAutomaticReconnect([0, 2_000, 10_000, 30_000])
-      .configureLogging(LogLevel.Warning)
-      .build();
+    const connection = configureSignalRLogging(
+      new HubConnectionBuilder()
+        .withUrl(hubUrl, {
+          accessTokenFactory: () => Promise.resolve(localStorage.getItem('token') ?? ''),
+        })
+        .withAutomaticReconnect([0, 2_000, 10_000, 30_000]),
+    ).build();
 
     connection.on('ReceiveNotification', onNotification);
     connection.on('DocumentIndexingProgressUpdated', (payload) => {
@@ -219,7 +226,13 @@ export function SignalRProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (aborted) return;
-        console.warn('SignalR start failed:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(
+            `[SignalR] Notifications hub unavailable (${hubUrl}). ` +
+              'Typical causes: API not running, wrong NEXT_PUBLIC_API_URL, missing CORS for this origin, or hub not mapped. ' +
+              'Set NEXT_PUBLIC_SIGNALR_VERBOSE=true to see @microsoft/signalr logs.',
+          );
+        }
         setConnectionStatus('disconnected');
       }
     };

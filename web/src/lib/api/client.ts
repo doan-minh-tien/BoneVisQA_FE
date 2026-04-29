@@ -155,8 +155,12 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 http.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
-    const cfg = err.config as (InternalAxiosRequestConfig & { skipApiToast?: boolean }) | undefined;
+    const cfg = err.config as
+      | (InternalAxiosRequestConfig & { skipApiToast?: boolean; clearSessionOn401?: boolean })
+      | undefined;
     const skipToast = Boolean(cfg?.skipApiToast);
+    /** Default true: misconfigured APIs sometimes return 401 for “forbidden” — optional opt-out per request. */
+    const clearSessionOn401 = cfg?.clearSessionOn401 !== false;
     if (
       !skipToast &&
       typeof window !== 'undefined' &&
@@ -167,7 +171,17 @@ http.interceptors.response.use(
       const friendly = friendlyGlobalApiToastMessage(err);
       if (friendly) queueSonnerErrorToast(friendly);
     }
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
+    if (
+      err.response?.status === 401 &&
+      typeof window !== 'undefined' &&
+      !skipToast &&
+      !clearSessionOn401
+    ) {
+      queueSonnerErrorToast(
+        'This action could not be completed (access denied or server error). You have not been signed out — try again or contact support if it persists.',
+      );
+    }
+    if (err.response?.status === 401 && typeof window !== 'undefined' && clearSessionOn401) {
       localStorage.removeItem('token');
       localStorage.removeItem('activeRole');
       window.dispatchEvent(new Event('auth:unauthorized'));
@@ -356,4 +370,14 @@ export async function getResponse<T>(response: Response): Promise<T> {
     throw new Error(message);
   }
   return response.json() as Promise<T>;
+}
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * When `false`, HTTP 401 does not remove the JWT or fire `auth:unauthorized`.
+     * Use for endpoints where the API may incorrectly return 401 instead of 403 until the backend is fixed.
+     */
+    clearSessionOn401?: boolean;
+  }
 }
