@@ -108,6 +108,19 @@ export async function fetchExpertQuizzes(pageIndex = 1, pageSize = 100): Promise
   }
 }
 
+export async function getExpertQuiz(id: string): Promise<ExpertQuiz> {
+  try {
+    // Use the library endpoint that exists in backend
+    const { data } = await http.get<any>(`/api/expert/library/quizzes/${id}`);
+    const row = data?.result ?? data;
+    const mapped = mapExpertQuiz(row, id);
+    if (!mapped) throw new Error('Quiz not found');
+    return mapped;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
 export async function fetchExpertQuizzesPaged(pageIndex = 1, pageSize = 100): Promise<ExpertQuizPagedResponse> {
   try {
     const { data } = await http.get<ExpertQuizListResponse>(
@@ -134,11 +147,23 @@ export async function fetchExpertQuizzesPaged(pageIndex = 1, pageSize = 100): Pr
   }
 }
 
+/** Convert camelCase to PascalCase for C# backend DTOs */
+function toPascalCase(input: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const pascal = key.charAt(0).toUpperCase() + key.slice(1);
+    result[pascal] = value;
+  }
+  return result;
+}
+
 export async function createExpertQuiz(input: CreateExpertQuizRequest): Promise<ExpertQuiz> {
   try {
+    // Convert camelCase to PascalCase for C# backend
+    const pascalInput = toPascalCase(input as unknown as Record<string, unknown>);
     const { data } = await http.post<ExpertQuizListResponse | { result?: unknown; message?: string }>(
       '/api/expert/quizzes',
-      input,
+      pascalInput,
     );
 
     // BE thường trả: { message, result: { ... } }
@@ -157,7 +182,9 @@ export async function createExpertQuiz(input: CreateExpertQuizRequest): Promise<
 
 export async function updateExpertQuiz(id: string, input: UpdateExpertQuizRequest): Promise<ExpertQuiz> {
   // BE C# thường bind DTO.Id, nên gửi cả `Id` và `id` để chắc chắn.
-  const bodyWithId = { Id: id, id, ...(input ?? {}) };
+  // Also convert camelCase to PascalCase
+  const pascalInput = toPascalCase(input as unknown as Record<string, unknown>);
+  const bodyWithId = { Id: id, id, ...pascalInput };
   try {
     // Theo BE của bạn: update chạy ở PUT /api/expert/quizzes (id nằm trong body)
     const { data } = await http.put<{ result?: unknown; message?: string }>(
@@ -508,15 +535,18 @@ export async function fetchExpertQuizLibrary(
     if (difficulty) params.append('difficulty', difficulty);
     if (classification) params.append('classification', classification);
 
-    const { data } = await http.get<ExpertQuizLibraryResponse>(`/api/expert/library/quizzes?${params.toString()}`);
+    const { data } = await http.get<any>(`/api/expert/library/quizzes?${params.toString()}`);
 
-    const itemsRaw = data?.items;
-    const totalCount = Number(data?.totalCount ?? 0);
-    const pageIndexOut = Number(data?.pageIndex ?? pageIndex);
-    const pageSizeOut = Number(data?.pageSize ?? pageSize);
+    // Handle both direct response and wrapped response { result: {...} }
+    const response = (data as any)?.result ?? data ?? {};
+
+    const itemsRaw = response.items ?? response.Items ?? [];
+    const totalCount = Number(response.totalCount ?? response.TotalCount ?? 0);
+    const pageIndexOut = Number(response.pageIndex ?? response.PageIndex ?? pageIndex);
+    const pageSizeOut = Number(response.pageSize ?? response.PageSize ?? pageSize);
 
     const items = Array.isArray(itemsRaw)
-      ? itemsRaw.map((row) => mapExpertQuizLibraryItem(row)).filter((q): q is ExpertQuizLibraryItem => q !== null)
+      ? itemsRaw.map((row: unknown) => mapExpertQuizLibraryItem(row)).filter((q): q is ExpertQuizLibraryItem => q !== null)
       : [];
 
     return { items, totalCount, pageIndex: pageIndexOut, pageSize: pageSizeOut };
@@ -636,7 +666,13 @@ export async function addQuizQuestionsBatched(
   questions: CreateQuizQuestionRequest[],
 ): Promise<void> {
   try {
-    await http.post(`/api/expert/quizzes/${quizId}/questions/batch`, { questions });
+    // Backend expects POST to /api/expert/quizzes/{quizId}/questions for each question
+    // Convert camelCase to PascalCase for C# backend
+    await Promise.all(
+      questions.map((q) =>
+        http.post(`/api/expert/quizzes/${quizId}/questions`, toPascalCase(q as unknown as Record<string, unknown>))
+      )
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

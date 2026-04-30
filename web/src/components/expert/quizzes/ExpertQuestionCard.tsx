@@ -75,22 +75,32 @@ export default function ExpertQuestionCard({
       [question.optionA, question.optionB].filter(Boolean).join(' · ') ||
       'Clinical imaging assessment item.';
 
-    const thumbSrc = caseThumbnail || `/api/placeholder/288/176`;
+    const thumbSrc = question.imageUrl || caseThumbnail || null;
 
     return (
       <div className="group flex gap-8 rounded-3xl bg-card p-8 shadow-lg shadow-black/5 transition-all hover:bg-muted/20 hover:shadow-xl hover:shadow-black/10 border border-border/30">
         <div className="relative h-44 w-72 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-900 shadow-xl">
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbSrc}
-              alt={question.caseTitle || 'Diagnostic placeholder'}
-              className="h-full w-full object-cover opacity-95"
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-              <ZoomIn className="h-10 w-10 text-white" />
+          {thumbSrc ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbSrc}
+                alt={question.caseTitle || 'Diagnostic image'}
+                className="h-full w-full object-cover opacity-95"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                <ZoomIn className="h-10 w-10 text-white" />
+              </div>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+              <span className="text-slate-500 text-sm">No image</span>
             </div>
-          </>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col justify-between">

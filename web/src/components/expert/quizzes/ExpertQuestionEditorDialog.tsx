@@ -11,11 +11,9 @@ import {
   PlusCircle,
   ChevronDown,
 } from 'lucide-react';
-import type {
-  QuizQuestionDto,
-  CreateQuizQuestionRequest,
-} from '@/lib/api/types';
-import { uploadImage } from '@/lib/api/upload';
+import type { CreateQuizQuestionRequest } from '@/lib/api/types';
+import type { QuizQuestionDto } from '@/lib/api/expert-quizzes';
+import { uploadExpertWorkbenchImage as uploadImage } from '@/lib/supabase/upload-medical-case-image';
 
 interface QuestionEditorDialogProps {
   open: boolean;
@@ -24,7 +22,7 @@ interface QuestionEditorDialogProps {
   question?: QuizQuestionDto | null;
   onSuccess?: () => void;
   draftMode?: boolean;
-  onDraftSave?: (payload: CreateQuizQuestionRequest) => void;
+  onDraftSave?: (payload: CreateQuizQuestionRequest, questionId?: string) => void;
 }
 
 const TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -96,6 +94,9 @@ export default function ExpertQuestionEditorDialog({
         (t) => (t || '').trim().length > 0,
       ).length;
       setVisibleMcCount(Math.min(4, Math.max(3, filled || 3)));
+      // Load imageUrl from question prop
+      const qImg = question.imageUrl || (question as any).ImageUrl || null;
+      setImageUrl(qImg);
     } else {
       setFormData({
         questionText: '',
@@ -108,8 +109,8 @@ export default function ExpertQuestionEditorDialog({
         essayAnswer: '',
       });
       setVisibleMcCount(3);
+      setImageUrl(null); // Only reset image when no question
     }
-    setImageUrl(null);
     setDifficulty('Medium');
     setError(null);
   }, [question, open]);
@@ -142,15 +143,9 @@ export default function ExpertQuestionEditorDialog({
         imageUrl: imageUrl || undefined,
       };
 
-      if (draftMode) {
-        onDraftSave?.(payload);
-        onSuccess?.();
-        onClose();
-        return;
-      }
-
-      // For expert quiz, just save locally in draft mode
-      onDraftSave?.(payload);
+      // Pass questionId if editing existing question
+      const questionId = question?.id || undefined;
+      onDraftSave?.(payload, questionId);
       onSuccess?.();
       onClose();
     } catch (err) {
@@ -195,6 +190,7 @@ export default function ExpertQuestionEditorDialog({
 
     try {
       const url = await uploadImage(file);
+      console.log('[ExpertQuestionEditorDialog] Uploaded image URL:', url);
       setImageUrl(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Image upload failed.');
@@ -268,6 +264,11 @@ export default function ExpertQuestionEditorDialog({
                       src={imageUrl}
                       alt="Uploaded diagnostic image"
                       className="absolute inset-0 h-full w-full object-contain"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        handleRemoveImage();
+                      }}
                     />
                     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
                       <div className="flex justify-end">

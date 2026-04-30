@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Loader2,
   PlusCircle,
@@ -32,15 +32,15 @@ import {
   createExpertQuiz,
   addQuizQuestionsBatched,
   getQuizQuestions,
+  getExpertQuiz,
   updateExpertQuiz,
   type ExpertQuiz,
   type CreateExpertQuizRequest,
+  type QuizQuestionDto,
 } from '@/lib/api/expert-quizzes';
+import { updateExpertQuizQuestion, fetchExpertQuizQuestions, createExpertQuizQuestion, deleteExpertQuizQuestion } from '@/lib/api/expert-quiz-questions';
+import type { CreateQuizQuestionRequest } from '@/lib/api/types';
 import classificationApi, { type BoneSpecialtyTreeDto, type PathologyCategorySimpleDto } from '@/lib/api/classification';
-import type {
-  CreateQuizQuestionRequest,
-  QuizQuestionDto,
-} from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
 import ExpertQuestionCard from '../../../../components/expert/quizzes/ExpertQuestionCard';
 import ExpertQuestionEditorDialog from '../../../../components/expert/quizzes/ExpertQuestionEditorDialog';
@@ -106,11 +106,15 @@ function localDatetimeLocalToIso(local: string): string {
   return d.toISOString();
 }
 
-export default function ExpertCreateQuizPage() {
+function ExpertCreateQuizContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('edit');
+
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const [createdQuizId, setCreatedQuizId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionDto[]>([]);
@@ -138,9 +142,32 @@ export default function ExpertCreateQuizPage() {
 
   const [tempQuestions, setTempQuestions] = useState<CreateQuizQuestionRequest[]>([]);
 
+  // Load temp questions from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('expertDraftQuiz_questions');
+    if (saved) {
+      try {
+        setTempQuestions(JSON.parse(saved));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  // Save temp questions to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('expertDraftQuiz_questions', JSON.stringify(tempQuestions));
+  }, [tempQuestions]);
+
+  // Clear localStorage when quiz is saved successfully
+  const clearDraftStorage = () => {
+    localStorage.removeItem('expertDraftQuiz_questions');
+  };
+
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<CreateQuizQuestionRequest | null>(null);
   const [editingTempIndex, setEditingTempIndex] = useState<number | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
 
   const [importOpen, setImportOpen] = useState(false);
 
@@ -171,6 +198,52 @@ export default function ExpertCreateQuizPage() {
   useEffect(() => {
     loadClassifications();
   }, []);
+
+  // Load quiz data when editing
+  useEffect(() => {
+    if (!editId) return;
+    
+    const loadQuizData = async () => {
+      setLoading(true);
+      setIsEditMode(true);
+      try {
+        // First try to load from sessionStorage (passed from list page)
+        const savedQuiz = sessionStorage.getItem('editQuiz');
+        if (savedQuiz) {
+          const quiz = JSON.parse(savedQuiz);
+          sessionStorage.removeItem('editQuiz'); // Clean up
+          
+          setEditQuiz(quiz);
+          setCreatedQuizId(quiz.id);
+          
+          // Populate form data
+          setFormData({
+            title: quiz.title || '',
+            topic: quiz.topic || '',
+            difficulty: quiz.difficulty || 'Medium',
+            openTime: utcToLocalDatetimeLocal(quiz.openTime),
+            closeTime: utcToLocalDatetimeLocal(quiz.closeTime),
+            timeLimit: quiz.timeLimit?.toString() || '30',
+            passingScore: quiz.passingScore?.toString() || '70',
+          });
+          setClassification(quiz.classification || '');
+          setBoneSpecialtyId(quiz.boneSpecialtyId || '');
+          setPathologyCategoryId(quiz.pathologyCategoryId || '');
+        }
+        
+        // Always load questions from API
+        const quizQuestions = await getQuizQuestions(editId);
+        setQuestions(quizQuestions);
+      } catch (err) {
+        toast.error('Failed to load quiz data');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadQuizData();
+  }, [editId]);
 
   const loadClassifications = async () => {
     setLoadingClassifications(true);
@@ -215,8 +288,56 @@ export default function ExpertCreateQuizPage() {
     pathologyCategoryId: pathologyCategoryId || null,
   });
 
+  // Build payload for update - only send changed fields
+  const buildUpdatePayload = (): Record<string, unknown> => {
+    const payload: Record<string, unknown> = {
+      Id: editQuiz?.id,
+      id: editQuiz?.id,
+      Title: formData.title,
+    };
+    
+    if (formData.topic) payload['Topic'] = formData.topic;
+    if (formData.difficulty) payload['Difficulty'] = formData.difficulty;
+    if (classification) payload['Classification'] = classification;
+    if (formData.openTime) payload['OpenTime'] = toUTC(formData.openTime);
+    if (formData.closeTime) payload['CloseTime'] = toUTC(formData.closeTime);
+    if (formData.timeLimit) payload['TimeLimit'] = parseInt(formData.timeLimit, 10);
+    if (formData.passingScore) payload['PassingScore'] = parseInt(formData.passingScore, 10);
+    if (boneSpecialtyId) payload['BoneSpecialtyId'] = boneSpecialtyId;
+    if (pathologyCategoryId) payload['PathologyCategoryId'] = pathologyCategoryId;
+    
+    return payload;
+  };
+
   // ========== Quiz Handlers ==========
+  const handleUpdateQuiz = async () => {
+    if (!formData.title.trim()) {
+      setError('Please enter a quiz title');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      if (editQuiz) {
+        const payload = buildUpdatePayload();
+        await updateExpertQuiz(editQuiz.id, payload);
+        toast.success('Quiz updated successfully.');
+        setSuccessDialogOpen(true);
+        setLastCreatedQuizId(editQuiz.id);
+        setLastCreatedQuizTitle(editQuiz.title);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update quiz');
+      toast.error(err instanceof Error ? err.message : 'Failed to update quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveDraft = async () => {
+    if (isEditMode) {
+      return handleUpdateQuiz();
+    }
     if (!formData.title.trim()) {
       setError('Please enter a quiz title');
       return;
@@ -232,6 +353,7 @@ export default function ExpertCreateQuizPage() {
       setLastCreatedQuizId(quiz.id);
       setLastCreatedQuizTitle(quiz.title);
       setSuccessDialogOpen(true);
+      clearDraftStorage();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save draft');
       toast.error(err instanceof Error ? err.message : 'Failed to save draft');
@@ -241,6 +363,9 @@ export default function ExpertCreateQuizPage() {
   };
 
   const handleCreateQuiz = async () => {
+    if (isEditMode) {
+      return handleUpdateQuiz();
+    }
     if (!formData.title.trim()) {
       setError('Please enter a quiz title');
       return;
@@ -261,6 +386,7 @@ export default function ExpertCreateQuizPage() {
       setLastCreatedQuizId(quiz.id);
       setLastCreatedQuizTitle(quiz.title);
       setSuccessDialogOpen(true);
+      clearDraftStorage();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quiz');
       toast.error(err instanceof Error ? err.message : 'Failed to create quiz');
@@ -272,7 +398,8 @@ export default function ExpertCreateQuizPage() {
   const handleSuccessGoToEdit = () => {
     setSuccessDialogOpen(false);
     if (lastCreatedQuizId) {
-      router.push(`/expert/quizzes/${lastCreatedQuizId}`);
+      // Navigate to create page with edit param
+      router.push(`/expert/quizzes/create?edit=${lastCreatedQuizId}`);
     } else {
       router.push('/expert/quizzes');
     }
@@ -286,6 +413,7 @@ export default function ExpertCreateQuizPage() {
   const handleAddQuestion = () => {
     setEditingQuestion(null);
     setEditingTempIndex(null);
+    setEditingQuestionId(null); // Clear when adding new question
     setEditorOpen(true);
   };
 
@@ -295,6 +423,7 @@ export default function ExpertCreateQuizPage() {
       if (!Number.isNaN(idx) && tempQuestions[idx]) {
         setEditingQuestion(tempQuestions[idx]);
         setEditingTempIndex(idx);
+        setEditingQuestionId(null); // New question in draft mode
         setEditorOpen(true);
       }
       return;
@@ -314,31 +443,125 @@ export default function ExpertCreateQuizPage() {
         imageUrl: q.imageUrl || undefined,
       });
       setEditingTempIndex(null);
+      setEditingQuestionId(q.id); // Store the question ID for update
       setEditorOpen(true);
     }
   };
 
-  const handleDeleteQuestion = (questionId: string) => {
+  const handleDeleteQuestion = async (questionId: string) => {
     if (!confirm('Remove this question?')) return;
-    setTempQuestions(tempQuestions.filter((_, i) => i.toString() !== questionId));
-    setQuestions(questions.filter((q) => q.id !== questionId));
+    
+    // If we're in edit mode (quiz already created), delete from server
+    if (createdQuizId && questionId && !questionId.startsWith('t-')) {
+      setLoading(true);
+      try {
+        await deleteExpertQuizQuestion(questionId);
+        toast.success('Question deleted successfully.');
+        // Reload questions from server
+        const updatedQuestions = await fetchExpertQuizQuestions(createdQuizId);
+        setQuestions(updatedQuestions.map(q => ({
+          id: q.questionId,
+          quizId: q.quizId || createdQuizId,
+          quizTitle: q.quizTitle || null,
+          caseId: q.caseId || null,
+          caseTitle: q.caseTitle || null,
+          questionText: q.questionText,
+          type: q.type,
+          optionA: q.optionA || null,
+          optionB: q.optionB || null,
+          optionC: q.optionC || null,
+          optionD: q.optionD || null,
+          correctAnswer: q.correctAnswer || null,
+          imageUrl: q.imageUrl || null,
+        })));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete question.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Draft mode - delete locally
+      setTempQuestions(tempQuestions.filter((_, i) => i.toString() !== questionId));
+      setQuestions(questions.filter((q) => q.id !== questionId));
+    }
   };
 
-  const handleDraftSave = (payload: CreateQuizQuestionRequest) => {
-    const row = { ...payload, quizId: 'temp' };
-    if (editingTempIndex !== null) {
-      const u = [...tempQuestions];
-      u[editingTempIndex] = row;
-      setTempQuestions(u);
+  const handleDraftSave = async (payload: CreateQuizQuestionRequest, questionId?: string) => {
+    // Use editingQuestionId if available, otherwise use questionId from dialog
+    const existingQuestionId = editingQuestionId || questionId;
+    
+    // If we're in edit mode (quiz already created), save to server
+    if (createdQuizId) {
+      setLoading(true);
+      try {
+        if (existingQuestionId) {
+          // Update existing question via API
+          await updateExpertQuizQuestion(existingQuestionId, {
+            quizId: createdQuizId,
+            questionText: payload.questionText,
+            type: payload.type,
+            optionA: payload.optionA,
+            optionB: payload.optionB,
+            optionC: payload.optionC,
+            optionD: payload.optionD,
+            correctAnswer: payload.correctAnswer,
+            imageUrl: payload.imageUrl,
+          });
+          toast.success('Question updated successfully.');
+        } else {
+          // Create new question via API
+          await createExpertQuizQuestion(createdQuizId, {
+            questionText: payload.questionText,
+            type: payload.type,
+            optionA: payload.optionA,
+            optionB: payload.optionB,
+            optionC: payload.optionC,
+            optionD: payload.optionD,
+            correctAnswer: payload.correctAnswer,
+            imageUrl: payload.imageUrl,
+          });
+          toast.success('Question added successfully.');
+        }
+        // Reload questions from server
+        const updatedQuestions = await fetchExpertQuizQuestions(createdQuizId);
+        setQuestions(updatedQuestions.map(q => ({
+          id: q.questionId,
+          quizId: q.quizId || createdQuizId,
+          quizTitle: q.quizTitle || null,
+          caseId: q.caseId || null,
+          caseTitle: q.caseTitle || null,
+          questionText: q.questionText,
+          type: q.type,
+          optionA: q.optionA || null,
+          optionB: q.optionB || null,
+          optionC: q.optionC || null,
+          optionD: q.optionD || null,
+          correctAnswer: q.correctAnswer || null,
+          imageUrl: q.imageUrl || null,
+        })));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save question.');
+      } finally {
+        setLoading(false);
+      }
     } else {
-      setTempQuestions([...tempQuestions, row]);
+      // Draft mode - save locally
+      const row = { ...payload, quizId: 'temp' };
+      if (editingTempIndex !== null) {
+        const u = [...tempQuestions];
+        u[editingTempIndex] = row;
+        setTempQuestions(u);
+      } else {
+        setTempQuestions([...tempQuestions, row]);
+      }
     }
     setEditorOpen(false);
     setEditingQuestion(null);
     setEditingTempIndex(null);
+    setEditingQuestionId(null); // Clear after save
   };
 
-  const handleImportQuestions = (parsed: ParsedQuestion[]) => {
+  const handleImportQuestions = async (parsed: ParsedQuestion[]) => {
     const newQs: CreateQuizQuestionRequest[] = parsed.map((p) => ({
       quizId: 'temp',
       questionText: p.questionText,
@@ -349,7 +572,49 @@ export default function ExpertCreateQuizPage() {
       optionD: p.optionD,
       correctAnswer: p.correctAnswer,
     }));
-    setTempQuestions((prev) => [...prev, ...newQs]);
+    
+    // If in edit mode, add questions via API
+    if (createdQuizId) {
+      setLoading(true);
+      try {
+        for (const q of newQs) {
+          await createExpertQuizQuestion(createdQuizId, {
+            questionText: q.questionText,
+            type: q.type,
+            optionA: q.optionA,
+            optionB: q.optionB,
+            optionC: q.optionC,
+            optionD: q.optionD,
+            correctAnswer: q.correctAnswer,
+          });
+        }
+        toast.success(`${newQs.length} questions imported successfully.`);
+        // Reload questions from server
+        const updatedQuestions = await fetchExpertQuizQuestions(createdQuizId);
+        setQuestions(updatedQuestions.map(q => ({
+          id: q.questionId,
+          quizId: q.quizId || createdQuizId,
+          quizTitle: q.quizTitle || null,
+          caseId: q.caseId || null,
+          caseTitle: q.caseTitle || null,
+          questionText: q.questionText,
+          type: q.type,
+          optionA: q.optionA || null,
+          optionB: q.optionB || null,
+          optionC: q.optionC || null,
+          optionD: q.optionD || null,
+          correctAnswer: q.correctAnswer || null,
+          imageUrl: q.imageUrl || null,
+        })));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to import questions.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Draft mode - save locally
+      setTempQuestions((prev) => [...prev, ...newQs]);
+    }
   };
 
   useEffect(() => {
@@ -377,12 +642,14 @@ export default function ExpertCreateQuizPage() {
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-primary">Create Quiz</p>
+          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-primary">{isEditMode ? 'Edit Quiz' : 'Create Quiz'}</p>
           <h1 className="font-['Manrope',sans-serif] text-2xl font-bold leading-tight tracking-tight text-card-foreground">
-            {formData.title || 'New Quiz'}
+            {formData.title || (isEditMode ? 'Edit Quiz' : 'New Quiz')}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Configure quiz settings and add questions for the expert library.
+            {isEditMode 
+              ? 'Update quiz settings and manage questions for the expert library.' 
+              : 'Configure quiz settings and add questions for the expert library.'}
           </p>
         </div>
         <div className="flex shrink-0 gap-2 mt-1">
@@ -766,6 +1033,7 @@ export default function ExpertCreateQuizPage() {
           setEditorOpen(false);
           setEditingQuestion(null);
           setEditingTempIndex(null);
+          setEditingQuestionId(null);
         }}
         quizId={createdQuizId || 'temp'}
         draftMode={!createdQuizId}
@@ -773,8 +1041,8 @@ export default function ExpertCreateQuizPage() {
         question={
           editingQuestion
             ? {
-                id: editingTempIndex !== null ? String(editingTempIndex) : '',
-                quizId: '',
+                id: editingQuestionId || (editingTempIndex !== null ? String(editingTempIndex) : ''),
+                quizId: editingQuestion.quizId || '',
                 quizTitle: null,
                 caseId: null,
                 caseTitle: null,
@@ -785,6 +1053,7 @@ export default function ExpertCreateQuizPage() {
                 optionC: editingQuestion.optionC || null,
                 optionD: editingQuestion.optionD || null,
                 correctAnswer: editingQuestion.correctAnswer || null,
+                imageUrl: editingQuestion.imageUrl || null,
               }
             : null
         }
@@ -792,6 +1061,7 @@ export default function ExpertCreateQuizPage() {
           setEditorOpen(false);
           setEditingQuestion(null);
           setEditingTempIndex(null);
+          setEditingQuestionId(null);
         }}
       />
 
@@ -843,5 +1113,18 @@ export default function ExpertCreateQuizPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ExpertCreateQuizPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+        <div className="h-64 bg-muted animate-pulse rounded-2xl" />
+      </div>
+    }>
+      <ExpertCreateQuizContent />
+    </Suspense>
   );
 }

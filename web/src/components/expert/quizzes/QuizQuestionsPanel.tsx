@@ -551,6 +551,10 @@ function QuizQuestionsPanel({ quizId }: { quizId: string }) {
                             src={resolveApiAssetUrl(q.imageUrl)}
                             alt="Question"
                             className="max-h-24 rounded-lg border border-border mb-2 object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
                           />
                         )}
                         <div className="text-xs text-muted-foreground mb-0.5">
