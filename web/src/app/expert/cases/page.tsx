@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import useSWR, { useSWRConfig } from 'swr';
+import useSWR from 'swr';
 import Header from '@/components/Header';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageLoadingSkeleton, SkeletonBlock } from '@/components/shared/DashboardSkeletons';
@@ -13,43 +13,53 @@ import CaseAssetsDialog from '@/components/expert/cases/CaseAssetsDialog';
 import CreateExpertCaseModal from '@/components/expert/cases/CreateExpertCaseModal';
 import { Button } from '@/components/ui/button';
 import { FolderCog, FolderOpen, Plus, Search, Sparkles } from 'lucide-react';
-import {
-  EXPERT_DASHBOARD_QUERY_KEY,
-  fetchExpertRecentCases,
-  type ExpertRecentCase,
-} from '@/lib/api/expert-dashboard';
+import { EXPERT_DASHBOARD_QUERY_KEY } from '@/lib/api/expert-dashboard';
+import { fetchExpertCasesPaged, type ExpertCasePagedResponse } from '@/lib/api/expert-cases';
 import { getApiProblemDetails } from '@/lib/api/client';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 
 type StatusTab = 'all' | 'pending' | 'approved' | 'draft';
 
+const PAGE_SIZE = 8;
+
 export default function ExpertCasesPage() {
   const router = useRouter();
   const toast = useToast();
   const toastedErrorRef = useRef<string | null>(null);
-  const { mutate } = useSWRConfig();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [assetsCaseId, setAssetsCaseId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const { data, isLoading, error } = useSWR<ExpertRecentCase[]>('expert-case-library', fetchExpertRecentCases, {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: true,
-    dedupingInterval: 4000,
-  });
+  const [pageIndex, setPageIndex] = useState(1);
 
-  const cases = data ?? [];
+  // Fetch all cases for stats counts and display (cached with SWR)
+  const { data: allCasesData, isLoading: isFetchingAll } = useSWR<ExpertCasePagedResponse | null>(
+    ['expert-case-library-paged'],
+    async () => {
+      try {
+        return await fetchExpertCasesPaged(1, 1000);
+      } catch {
+        return null;
+      }
+    },
+    { revalidateOnFocus: false, dedupingInterval: 10000 },
+  );
+
+  const cases = allCasesData?.items ?? [];
+
   const counts = useMemo(() => {
+    const all = cases;
     return {
-      all: cases.length,
-      pending: cases.filter((c) => c.status === 'pending').length,
-      approved: cases.filter((c) => c.status === 'approved').length,
-      draft: cases.filter((c) => c.status === 'draft').length,
+      all: all.length,
+      pending: all.filter((c) => c.status === 'pending').length,
+      approved: all.filter((c) => c.status === 'approved').length,
+      draft: all.filter((c) => c.status === 'draft').length,
     };
   }, [cases]);
 
+  // Filter cases by tab and search
   const filtered = useMemo(() => {
     const byTab = activeTab === 'all' ? cases : cases.filter((c) => c.status === activeTab);
     const q = query.trim().toLowerCase();
@@ -57,17 +67,43 @@ export default function ExpertCasesPage() {
     return byTab.filter((c) => c.title.toLowerCase().includes(q));
   }, [activeTab, cases, query]);
 
+  // Recalculate total pages based on filtered items
+  const filteredTotal = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
+
+  // Ensure page index is valid
   useEffect(() => {
-    if (!error) {
+    setPageIndex((prev) => {
+      if (prev > totalPages) return Math.max(1, totalPages);
+      return prev;
+    });
+  }, [totalPages]);
+
+  // Reset page when tab or search changes
+  useEffect(() => {
+    setPageIndex(1);
+  }, [activeTab, query]);
+
+  const pagedItems = useMemo(() => {
+    const start = (pageIndex - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, pageIndex]);
+
+  // Show error toast
+  useEffect(() => {
+    if (!allCasesData) {
       toastedErrorRef.current = null;
       return;
     }
-    const { title: errTitle, detail } = getApiProblemDetails(error);
-    const msg = detail ? `${errTitle}: ${detail}` : errTitle;
-    if (toastedErrorRef.current === msg) return;
-    toastedErrorRef.current = msg;
-    toast.error(msg);
-  }, [error, toast]);
+    // Data loaded successfully, clear any previous error
+    toastedErrorRef.current = null;
+  }, [allCasesData]);
+
+  const handleRetry = () => {
+    toastedErrorRef.current = null;
+    void queryClient.invalidateQueries({ queryKey: ['expert-case-library-paged'] });
+    router.refresh();
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -147,7 +183,7 @@ export default function ExpertCasesPage() {
           />
         </div>
 
-        {isLoading ? (
+        {isFetchingAll && !allCasesData ? (
           <PageLoadingSkeleton>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {[0, 1, 2, 3].map((i) => (
@@ -160,23 +196,6 @@ export default function ExpertCasesPage() {
               ))}
             </div>
           </PageLoadingSkeleton>
-        ) : error ? (
-          <EmptyState
-            icon={<FolderCog className="h-7 w-7 text-primary" />}
-            title="Unable to load case library"
-            description={error instanceof Error ? error.message : 'Please try again in a moment.'}
-            action={
-              <Button
-                onClick={() => {
-                  toastedErrorRef.current = null;
-                  void mutate('expert-case-library');
-                  router.refresh();
-                }}
-              >
-                Retry
-              </Button>
-            }
-          />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={<FolderOpen className="h-7 w-7 text-primary" />}
@@ -204,24 +223,55 @@ export default function ExpertCasesPage() {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {filtered.map((item) => (
-              <CaseManagementCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                boneLocation={item.boneLocation}
-                lesionType={item.lesionType}
-                difficulty={item.difficulty}
-                status={item.status}
-                addedBy={item.addedBy}
-                addedDate={item.addedDate}
-                viewCount={item.viewCount}
-                usageCount={item.usageCount}
-                thumbnailUrl={item.thumbnailUrl}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {pagedItems.map((item) => (
+                <CaseManagementCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  boneLocation={item.boneLocation}
+                  lesionType={item.categoryName}
+                  difficulty={(item.difficulty ?? 'basic') as 'basic' | 'intermediate' | 'advanced'}
+                  status={item.status}
+                  addedBy={item.addedBy}
+                  addedDate={item.addedDate}
+                  viewCount={0}
+                  usageCount={0}
+                  thumbnailUrl={item.medicalImages?.[0]?.imageUrl ?? null}
+                />
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
+                <p className="text-sm text-muted-foreground">
+                  Showing {(pageIndex - 1) * PAGE_SIZE + 1} to {Math.min(pageIndex * PAGE_SIZE, filteredTotal)} of {filteredTotal} cases
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+                    disabled={pageIndex === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="flex items-center px-3 text-sm">
+                    Page {pageIndex} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPageIndex((p) => Math.min(totalPages, p + 1))}
+                    disabled={pageIndex === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -229,8 +279,8 @@ export default function ExpertCasesPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={(newId) => {
-          void mutate('expert-case-library');
           void queryClient.invalidateQueries({ queryKey: EXPERT_DASHBOARD_QUERY_KEY });
+          void queryClient.invalidateQueries({ queryKey: ['expert-case-library-paged'] });
           if (newId) setAssetsCaseId(newId);
           else
             toast.info(

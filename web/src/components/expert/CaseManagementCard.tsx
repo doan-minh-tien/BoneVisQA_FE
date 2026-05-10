@@ -12,7 +12,7 @@ import { EXPERT_DASHBOARD_QUERY_KEY } from '@/lib/api/expert-dashboard';
 import { getApiProblemDetails } from '@/lib/api/client';
 import { useState } from 'react';
 
-const EXPERT_CASE_LIBRARY_SWR_KEY = 'expert-case-library';
+const EXPERT_CASE_LIBRARY_SWR_KEY = 'expert-case-library-paged';
 
 interface CaseManagementCardProps {
   id: string;
