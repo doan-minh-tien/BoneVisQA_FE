@@ -29,7 +29,7 @@ export function ClassSpecialtyDialog({
   onOpenChange,
   classData,
 }: ClassSpecialtyDialogProps) {
-  const { toast } = useToast();
+  const toast = useToast();
   const queryClient = useQueryClient();
 
   const [selectedSpecialtyId, setSelectedSpecialtyId] = useState<string | null>(null);

@@ -504,7 +504,7 @@ function ExpertCreateQuizContent() {
             optionB: payload.optionB,
             optionC: payload.optionC,
             optionD: payload.optionD,
-            correctAnswer: payload.correctAnswer,
+            correctAnswer: payload.correctAnswer ?? '',
             imageUrl: payload.imageUrl,
           });
           toast.success('Question updated successfully.');
@@ -517,7 +517,7 @@ function ExpertCreateQuizContent() {
             optionB: payload.optionB,
             optionC: payload.optionC,
             optionD: payload.optionD,
-            correctAnswer: payload.correctAnswer,
+            correctAnswer: payload.correctAnswer ?? '',
             imageUrl: payload.imageUrl,
           });
           toast.success('Question added successfully.');
@@ -585,7 +585,7 @@ function ExpertCreateQuizContent() {
             optionB: q.optionB,
             optionC: q.optionC,
             optionD: q.optionD,
-            correctAnswer: q.correctAnswer,
+            correctAnswer: q.correctAnswer ?? '',
           });
         }
         toast.success(`${newQs.length} questions imported successfully.`);

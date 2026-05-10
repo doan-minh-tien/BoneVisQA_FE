@@ -192,14 +192,18 @@ export default function AdminClassificationsPage() {
     setEditingId(null);
   };
 
-  // Helper: Calculate next display order for siblings (same parent)
-  const getNextDisplayOrder = (
-    siblings: BoneSpecialtyDto[],
-    parentId: string | null | undefined
-  ): number => {
-    const sameLevel = siblings.filter((s) => s.parentId === parentId);
-    if (sameLevel.length === 0) return 1;
-    return Math.max(...sameLevel.map((s) => s.displayOrder)) + 1;
+  // Helper: Calculate next display order for Bone Specialty siblings (same parent)
+  const getNextBoneOrder = (parentId: string | null | undefined): number => {
+    const siblings = allBoneSpecialties.filter((s) => s.parentId === parentId);
+    if (siblings.length === 0) return 1;
+    return Math.max(...siblings.map((s) => s.displayOrder)) + 1;
+  };
+
+  // Helper: Calculate next display order for Pathology siblings (same bone specialty)
+  const getNextPathologyOrder = (boneSpecialtyId: string | null | undefined): number => {
+    const siblings = pathologyCategories.filter((p) => p.boneSpecialtyId === boneSpecialtyId);
+    if (siblings.length === 0) return 1;
+    return Math.max(...siblings.map((p) => p.displayOrder)) + 1;
   };
 
   const handleCreate = async () => {
@@ -209,8 +213,9 @@ export default function AdminClassificationsPage() {
     }
 
     // Auto-calculate display order based on siblings
-    const siblings = activeTab === 'bone' ? allBoneSpecialties : pathologyCategories as unknown as BoneSpecialtyDto[];
-    const calculatedOrder = getNextDisplayOrder(siblings, form.parentId);
+    const calculatedOrder = activeTab === 'bone'
+      ? getNextBoneOrder(form.parentId)
+      : getNextPathologyOrder(form.boneSpecialtyId);
 
     try {
       if (activeTab === 'bone') {

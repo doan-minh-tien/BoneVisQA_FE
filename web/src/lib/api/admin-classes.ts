@@ -154,11 +154,14 @@ export function normalizeAdminClassRow(item: unknown): AdminClassModel | null {
 
 function normalizeExpertSpecialties(data: unknown): ExpertSpecialtyInfo[] {
   if (!data || !Array.isArray(data)) return [];
-  return data.map((item: unknown) => {
-    if (!item || typeof item !== 'object') return null;
+  const result: ExpertSpecialtyInfo[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== 'object') continue;
     const s = item as Record<string, unknown>;
-    return {
-      id: String(s.id ?? s.Id ?? ''),
+    const id = String(s.id ?? s.Id ?? '').trim();
+    if (!id) continue;
+    result.push({
+      id,
       boneSpecialtyId: String(s.boneSpecialtyId ?? s.BoneSpecialtyId ?? ''),
       boneSpecialtyName: s.boneSpecialtyName != null ? String(s.boneSpecialtyName) : s.BoneSpecialtyName != null ? String(s.BoneSpecialtyName) : null,
       boneSpecialtyCode: s.boneSpecialtyCode != null ? String(s.boneSpecialtyCode) : s.BoneSpecialtyCode != null ? String(s.BoneSpecialtyCode) : null,
@@ -168,8 +171,9 @@ function normalizeExpertSpecialties(data: unknown): ExpertSpecialtyInfo[] {
       yearsExperience: s.yearsExperience != null ? Number(s.yearsExperience) : s.YearsExperience != null ? Number(s.YearsExperience) : null,
       certifications: s.certifications != null ? String(s.certifications) : s.Certifications != null ? String(s.Certifications) : null,
       isPrimary: Boolean(s.isPrimary ?? s.IsPrimary ?? false),
-    };
-  }).filter((x): x is ExpertSpecialtyInfo => x !== null);
+    });
+  }
+  return result;
 }
 
 // ── READ CLASSES ────────────────────────────────────────────────────────────
