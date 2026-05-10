@@ -23,7 +23,12 @@ import {
   Bone,
   Stethoscope,
   BarChart3,
+  ChevronLeft,
+  ChevronFirst,
+  ChevronLast,
 } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 5;
 
 type Tab = 'analytics' | 'bone' | 'pathology';
 type ViewMode = 'tree' | 'table';
@@ -48,6 +53,8 @@ export default function AdminClassificationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [bonePage, setBonePage] = useState(1);
+  const [pathologyPage, setPathologyPage] = useState(1);
 
   // Helper to invalidate and refetch all classification queries
   const invalidateClassificationQueries = async () => {
@@ -123,6 +130,18 @@ export default function AdminClassificationsPage() {
 
   const filteredBoneSpecialties = filterBoneSpecialties(boneSpecialties);
 
+  // Reset page when filter or tab changes
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setBonePage(1);
+    setPathologyPage(1);
+  };
+
+  const handleStatusFilterChange = (filter: 'all' | 'active' | 'inactive') => {
+    setStatusFilter(filter);
+    setBonePage(1);
+  };
+
   // Helper to flatten tree for table view
   const flattenBoneTree = (items: BoneSpecialtyDto[], level = 0): BoneSpecialtyDto[] => {
     const result: BoneSpecialtyDto[] = [];
@@ -147,6 +166,20 @@ export default function AdminClassificationsPage() {
     });
   };
 
+  // Pagination for flat bone list (table view)
+  const totalBonePages = Math.ceil(getFilteredFlatList().length / ITEMS_PER_PAGE);
+  const paginatedBoneItems = getFilteredFlatList().slice(
+    (bonePage - 1) * ITEMS_PER_PAGE,
+    bonePage * ITEMS_PER_PAGE
+  );
+
+  // Pagination for pathology categories
+  const totalPathologyPages = Math.ceil(pathologyCategories.length / ITEMS_PER_PAGE);
+  const paginatedPathologyItems = pathologyCategories.slice(
+    (pathologyPage - 1) * ITEMS_PER_PAGE,
+    pathologyPage * ITEMS_PER_PAGE
+  );
+
   const resetForm = () => {
     setForm({
       code: '',
@@ -159,11 +192,25 @@ export default function AdminClassificationsPage() {
     setEditingId(null);
   };
 
+  // Helper: Calculate next display order for siblings (same parent)
+  const getNextDisplayOrder = (
+    siblings: BoneSpecialtyDto[],
+    parentId: string | null | undefined
+  ): number => {
+    const sameLevel = siblings.filter((s) => s.parentId === parentId);
+    if (sameLevel.length === 0) return 1;
+    return Math.max(...sameLevel.map((s) => s.displayOrder)) + 1;
+  };
+
   const handleCreate = async () => {
     if (!form.code || !form.name) {
       toast.error('Code and Name are required.');
       return;
     }
+
+    // Auto-calculate display order based on siblings
+    const siblings = activeTab === 'bone' ? allBoneSpecialties : pathologyCategories as unknown as BoneSpecialtyDto[];
+    const calculatedOrder = getNextDisplayOrder(siblings, form.parentId);
 
     try {
       if (activeTab === 'bone') {
@@ -171,7 +218,7 @@ export default function AdminClassificationsPage() {
           code: form.code,
           name: form.name,
           description: form.description || undefined,
-          displayOrder: form.displayOrder,
+          displayOrder: calculatedOrder,
           isActive: form.isActive,
           parentId: form.parentId || undefined,
         });
@@ -180,7 +227,7 @@ export default function AdminClassificationsPage() {
           code: form.code,
           name: form.name,
           description: form.description || undefined,
-          displayOrder: form.displayOrder,
+          displayOrder: calculatedOrder,
           isActive: form.isActive,
           boneSpecialtyId: form.boneSpecialtyId || undefined,
         });
@@ -424,7 +471,7 @@ export default function AdminClassificationsPage() {
         <div className="flex items-center justify-between border-b border-border bg-card rounded-t-2xl px-2 pt-2">
           <div className="flex gap-1">
             <button
-              onClick={() => setActiveTab('analytics')}
+              onClick={() => handleTabChange('analytics')}
               className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
                 activeTab === 'analytics'
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
@@ -435,7 +482,7 @@ export default function AdminClassificationsPage() {
               <span className="text-sm">Analytics</span>
             </button>
             <button
-              onClick={() => setActiveTab('bone')}
+              onClick={() => handleTabChange('bone')}
               className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
                 activeTab === 'bone'
                   ? 'bg-primary text-white shadow-lg shadow-primary/30'
@@ -446,7 +493,7 @@ export default function AdminClassificationsPage() {
               <span className="text-sm">Bone Specialties</span>
             </button>
             <button
-              onClick={() => setActiveTab('pathology')}
+              onClick={() => handleTabChange('pathology')}
               className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
                 activeTab === 'pathology'
                   ? 'bg-secondary text-secondary-foreground shadow-lg shadow-secondary/30'
@@ -528,15 +575,6 @@ export default function AdminClassificationsPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   placeholder="Optional description"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Display Order</label>
-                <input
-                  type="number"
-                  value={form.displayOrder}
-                  onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value) || 0 })}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               {activeTab === 'bone' && (
@@ -658,7 +696,7 @@ export default function AdminClassificationsPage() {
               {activeTab === 'bone' && (
                 <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-xl">
                   <button
-                    onClick={() => setStatusFilter('all')}
+                    onClick={() => handleStatusFilterChange('all')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'all'
                         ? 'bg-card shadow-sm text-foreground font-semibold'
@@ -668,7 +706,7 @@ export default function AdminClassificationsPage() {
                     All
                   </button>
                   <button
-                    onClick={() => setStatusFilter('active')}
+                    onClick={() => handleStatusFilterChange('active')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'active'
                         ? 'bg-green-100 text-green-700 font-semibold shadow-sm'
@@ -678,7 +716,7 @@ export default function AdminClassificationsPage() {
                     Active
                   </button>
                   <button
-                    onClick={() => setStatusFilter('inactive')}
+                    onClick={() => handleStatusFilterChange('inactive')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       statusFilter === 'inactive'
                         ? 'bg-red-100 text-red-700 font-semibold shadow-sm'
@@ -726,7 +764,7 @@ export default function AdminClassificationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {getFilteredFlatList().map((item) => (
+                  {paginatedBoneItems.map((item) => (
                     <tr
                       key={item.id}
                       className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${!item.isActive ? 'opacity-65' : ''}`}
@@ -815,6 +853,68 @@ export default function AdminClassificationsPage() {
                     </tr>
                   ))}
                 </tbody>
+                {totalBonePages > 1 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={8} className="px-5 py-4 bg-muted/20 border-t border-border/40">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            Showing {(bonePage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(bonePage * ITEMS_PER_PAGE, getFilteredFlatList().length)} of {getFilteredFlatList().length} items
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setBonePage(1)}
+                              disabled={bonePage === 1}
+                              className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              title="First page"
+                            >
+                              <ChevronFirst className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setBonePage(p => Math.max(1, p - 1))}
+                              disabled={bonePage === 1}
+                              className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              title="Previous page"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <div className="flex items-center gap-1 px-2">
+                              {Array.from({ length: totalBonePages }, (_, i) => i + 1).map((pageNum) => (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => setBonePage(pageNum)}
+                                  className={`w-8 h-8 text-sm font-medium rounded-lg transition-colors ${
+                                    bonePage === pageNum
+                                      ? 'bg-primary text-primary-foreground shadow-sm'
+                                      : 'hover:bg-muted text-muted-foreground'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => setBonePage(p => Math.min(totalBonePages, p + 1))}
+                              disabled={bonePage === totalBonePages}
+                              className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              title="Next page"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setBonePage(totalBonePages)}
+                              disabled={bonePage === totalBonePages}
+                              className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              title="Last page"
+                            >
+                              <ChevronLast className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             ) : (
               // Tree View - existing hierarchical display
@@ -841,7 +941,7 @@ export default function AdminClassificationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {pathologyCategories.map((item) => (
+                {paginatedPathologyItems.map((item) => (
                   <tr key={item.id} className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${!item.isActive ? 'opacity-65' : ''}`}>
                     <td className="px-5 py-4">
                       <span className="text-sm bg-muted px-3 py-1.5 rounded-lg font-mono font-semibold border border-border/50">{item.code}</span>
@@ -888,6 +988,68 @@ export default function AdminClassificationsPage() {
                   </tr>
                 ))}
               </tbody>
+              {totalPathologyPages > 1 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={6} className="px-5 py-4 bg-muted/20 border-t border-border/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          Showing {(pathologyPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(pathologyPage * ITEMS_PER_PAGE, pathologyCategories.length)} of {pathologyCategories.length} items
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setPathologyPage(1)}
+                            disabled={pathologyPage === 1}
+                            className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="First page"
+                          >
+                            <ChevronFirst className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setPathologyPage(p => Math.max(1, p - 1))}
+                            disabled={pathologyPage === 1}
+                            className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Previous page"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <div className="flex items-center gap-1 px-2">
+                            {Array.from({ length: totalPathologyPages }, (_, i) => i + 1).map((pageNum) => (
+                              <button
+                                key={pageNum}
+                                onClick={() => setPathologyPage(pageNum)}
+                                className={`w-8 h-8 text-sm font-medium rounded-lg transition-colors ${
+                                  pathologyPage === pageNum
+                                    ? 'bg-secondary text-secondary-foreground shadow-sm'
+                                    : 'hover:bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setPathologyPage(p => Math.min(totalPathologyPages, p + 1))}
+                            disabled={pathologyPage === totalPathologyPages}
+                            className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Next page"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setPathologyPage(totalPathologyPages)}
+                            disabled={pathologyPage === totalPathologyPages}
+                            className="p-2 hover:bg-muted rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Last page"
+                          >
+                            <ChevronLast className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           )}
         </div>
