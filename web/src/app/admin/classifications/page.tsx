@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import { useToast } from '@/components/ui/toast';
 import boneSpecialtyApi, { type BoneSpecialtyDto } from '@/lib/api/admin-bone-specialty';
 import pathologyCategoryApi, { type PathologyCategoryDto } from '@/lib/api/admin-pathology-category';
+import ClassificationAnalyticsDashboard from '@/components/admin/classifications/ClassificationAnalyticsDashboard';
 import {
   ChevronRight,
   ChevronUp,
@@ -21,9 +22,10 @@ import {
   ArrowDown,
   Bone,
   Stethoscope,
+  BarChart3,
 } from 'lucide-react';
 
-type Tab = 'bone' | 'pathology';
+type Tab = 'analytics' | 'bone' | 'pathology';
 type ViewMode = 'tree' | 'table';
 
 interface FormState {
@@ -422,6 +424,17 @@ export default function AdminClassificationsPage() {
         <div className="flex items-center justify-between border-b border-border bg-card rounded-t-2xl px-2 pt-2">
           <div className="flex gap-1">
             <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
+                activeTab === 'analytics'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span className="text-sm">Analytics</span>
+            </button>
+            <button
               onClick={() => setActiveTab('bone')}
               className={`flex items-center gap-3 px-6 py-4 rounded-xl transition-all font-semibold ${
                 activeTab === 'bone'
@@ -686,6 +699,8 @@ export default function AdminClassificationsPage() {
               </div>
               <p className="text-muted-foreground font-medium">Loading data...</p>
             </div>
+          ) : activeTab === 'analytics' ? (
+            <ClassificationAnalyticsDashboard />
           ) : activeTab === 'bone' ? (
             boneSpecialties.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">

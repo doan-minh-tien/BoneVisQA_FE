@@ -22,6 +22,10 @@ export interface ExpertQuiz {
   boneSpecialtyName?: string;
   pathologyCategoryId?: string;
   pathologyCategoryName?: string;
+  // Extended classification
+  teachingPoints?: number;
+  learningObjectives?: string[];
+  targetStudentLevel?: string;
 }
 
 interface ExpertQuizListResponse {
@@ -54,6 +58,10 @@ export interface CreateExpertQuizRequest {
   createdByExpertId?: string;
   boneSpecialtyId?: string | null;
   pathologyCategoryId?: string | null;
+  // Extended classification
+  teachingPoints?: number;
+  learningObjectives?: string[];
+  targetStudentLevel?: string;
 }
 
 export type UpdateExpertQuizRequest = Partial<CreateExpertQuizRequest>;
@@ -95,8 +103,28 @@ function mapExpertQuiz(row: unknown, fallbackId?: string): ExpertQuiz | null {
     expertName: r.expertName != null ? String(r.expertName) : r.ExpertName != null ? String(r.ExpertName) : undefined,
     // Deep classification
     boneSpecialtyId: r.boneSpecialtyId != null ? String(r.boneSpecialtyId) : r.BoneSpecialtyId != null ? String(r.BoneSpecialtyId) : undefined,
+    boneSpecialtyName: r.boneSpecialtyName != null ? String(r.boneSpecialtyName) : r.BoneSpecialtyName != null ? String(r.BoneSpecialtyName) : undefined,
     pathologyCategoryId: r.pathologyCategoryId != null ? String(r.pathologyCategoryId) : r.PathologyCategoryId != null ? String(r.PathologyCategoryId) : undefined,
+    pathologyCategoryName: r.pathologyCategoryName != null ? String(r.pathologyCategoryName) : r.PathologyCategoryName != null ? String(r.PathologyCategoryName) : undefined,
+    // Extended classification
+    teachingPoints: r.teachingPoints != null ? Number(r.teachingPoints) : r.TeachingPoints != null ? Number(r.TeachingPoints) : undefined,
+    learningObjectives: parseLearningObjectives(r.learningObjectives ?? r.LearningObjectives),
+    targetStudentLevel: r.targetStudentLevel != null ? String(r.targetStudentLevel) : r.TargetStudentLevel != null ? String(r.TargetStudentLevel) : undefined,
   };
+}
+
+function parseLearningObjectives(raw: unknown): string[] | undefined {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 export async function fetchExpertQuizzes(pageIndex = 1, pageSize = 100): Promise<ExpertQuiz[]> {

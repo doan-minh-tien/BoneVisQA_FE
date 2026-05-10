@@ -18,6 +18,7 @@ import {
   FileQuestion,
   ClipboardCheck,
   UserCog,
+  CalendarPlus,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -32,6 +33,7 @@ const lecturerMenuItems: LecturerMenuItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/lecturer/dashboard' },
   { icon: Users, label: 'My Classes', href: '/lecturer/classes' },
   { icon: FileQuestion, label: 'Quiz Library', href: '/lecturer/quizzes' },
+  { icon: CalendarPlus, label: 'Schedule Quiz', href: '/lecturer/quizzes/schedule' },
   { icon: ClipboardCheck, label: 'QA Triage', href: '/lecturer/qa-triage' },
   { icon: FolderOpen, label: 'Cases', href: '/lecturer/cases' },
   { icon: ClipboardList, label: 'Assignments', href: '/lecturer/assignments' },

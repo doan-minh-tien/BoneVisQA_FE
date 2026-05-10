@@ -23,6 +23,7 @@ import {
   FileQuestion,
   BarChart3,
   Megaphone,
+  Award,
 
   Sparkles,
   ChevronLeft,
@@ -34,6 +35,7 @@ import {
   Server,
   HardDrive,
   FileBarChart,
+  CalendarPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -58,6 +60,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'System Logs', href: '/admin/logs', icon: FileText },
     { label: 'System Configuration', href: '/admin/system-config', icon: Server },
     { label: 'Classifications', href: '/admin/classifications', icon: Stethoscope },
+    { label: 'Expert Specialties', href: '/admin/specialties', icon: Award },
     { label: 'Backup & Export', href: '/admin/backup', icon: HardDrive },
     { label: 'Reports', href: '/admin/reports', icon: FileBarChart },
   ],
@@ -66,6 +69,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Triage Workbench', href: '/lecturer/qa-triage', icon: Stethoscope },
     { label: 'Classes', href: '/lecturer/classes', icon: Users },
     { label: 'Quiz Library', href: '/lecturer/quizzes', icon: FileQuestion },
+    { label: 'Schedule Quiz', href: '/lecturer/quizzes/schedule', icon: CalendarPlus },
     { label: 'Assignments', href: '/lecturer/assignments', icon: ClipboardList },
     { label: 'Cases', href: '/lecturer/cases', icon: BookOpen },
     { label: 'Analytics', href: '/lecturer/analytics', icon: BarChart3 },
@@ -76,6 +80,8 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Expert review', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
     { label: 'Quiz Library', href: '/expert/quizzes', icon: FileQuestion },
+    { label: 'Specialties', href: '/expert/specialties', icon: Stethoscope },
+    { label: 'Settings', href: '/expert/settings', icon: Settings },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
