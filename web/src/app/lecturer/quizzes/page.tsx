@@ -41,6 +41,7 @@ import ExpertQuizLibrary from '@/components/lecturer/quizzes/ExpertQuizLibrary';
 import { fetchExpertQuizQuestions, assignExpertQuizToClass } from '@/lib/api/lecturer-expert-quiz';
 import { fetchLecturerClasses } from '@/lib/api/lecturer-classes';
 import { resolveApiAssetUrl } from '@/lib/api/client';
+import { quizExtensionsApi } from '@/lib/api/quiz-extensions';
 
 type QuizStatus = 'Active' | 'Draft' | 'Completed';
 type TabType = 'my-quizzes' | 'expert-library' | 'assigned-quizzes';
@@ -1047,6 +1048,8 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
   );
   const [timeLimit, setTimeLimit] = useState<number | ''>(quiz.timeLimit ?? '');
   const [passingScore, setPassingScore] = useState<number | ''>(quiz.passingScore ?? '');
+  const [adaptiveMode, setAdaptiveMode] = useState(false);
+  const [spacedRepetition, setSpacedRepetition] = useState(false);
 
   const toggleClass = (classId: string) => {
     setSelectedClassIds((prev) =>
@@ -1133,6 +1136,23 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
           }
         );
       }
+
+      // Enable Adaptive Mode / Spaced Repetition if selected
+      if (adaptiveMode) {
+        try {
+          await quizExtensionsApi.enableAdaptiveMode(quiz.quizId);
+        } catch (e) {
+          console.warn('Failed to enable adaptive mode:', e);
+        }
+      }
+      if (spacedRepetition) {
+        try {
+          await quizExtensionsApi.enableSpacedRepetition(quiz.quizId);
+        } catch (e) {
+          console.warn('Failed to enable spaced repetition:', e);
+        }
+      }
+
       toast.success(`Successfully assigned quiz to ${selectedClassIds.length} class(es)!`);
       onAssigned();
     } catch (e) {
@@ -1263,6 +1283,43 @@ function AssignModal({ quiz, onClose, onAssigned }: AssignModalProps) {
                 Original quiz: {quiz.passingScore} points
               </p>
             )}
+          </div>
+
+          {/* Advanced Options */}
+          <div className="border-t border-border pt-4">
+            <h3 className="text-sm font-medium text-card-foreground mb-3">Advanced Options</h3>
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="adaptiveMode"
+                  checked={adaptiveMode}
+                  onChange={(e) => setAdaptiveMode(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <div>
+                  <span className="text-sm font-medium text-card-foreground">Adaptive Quiz Mode</span>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically adjust question difficulty based on student performance
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="spacedRepetition"
+                  checked={spacedRepetition}
+                  onChange={(e) => setSpacedRepetition(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <div>
+                  <span className="text-sm font-medium text-card-foreground">Spaced Repetition</span>
+                  <p className="text-xs text-muted-foreground">
+                    Enable intelligent review scheduling using SM-2 algorithm
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
 

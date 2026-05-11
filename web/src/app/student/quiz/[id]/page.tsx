@@ -22,12 +22,12 @@ import {
   Contrast,
   Ruler,
   Mail,
-  Eye,
   Hand,
+  ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getAssignedQuizzes, startQuizSession, submitQuizSession, fetchQuizAttemptReview, requestRetake } from '@/lib/api/student';
-import type { QuizAttemptReview } from '@/lib/api/student';
+import { getAssignedQuizzes, startQuizSession, submitQuizSession, requestRetake, fetchQuizAttemptReview } from '@/lib/api/student';
 import { resolveApiAssetUrl, getApiErrorMessage } from '@/lib/api/client';
 import type { StudentQuizResultDto } from '@/lib/api/types';
 import type { AssignedQuizItem, QuizSessionDto, StudentSubmitQuestionDto } from '@/lib/api/types';
@@ -80,23 +80,29 @@ export default function QuizSessionPage({
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<StudentQuizResultDto | null>(null);
-  const [quizReview, setQuizReview] = useState<QuizAttemptReview | null>(null);
+  const [reviewData, setReviewData] = useState<{ correctAnswer: string }[]>([]);
   const [startError, setStartError] = useState<string | null>(null);
   const [requestingRetake, setRequestingRetake] = useState(false);
   const [retakeSent, setRetakeSent] = useState(false);
+
+  // Helper function to get essay model answer from reviewData
+  const getEssayModelAnswer = useCallback((questionId: string): string | null => {
+    if (!reviewData || reviewData.length === 0) return null;
+    const question = reviewData.find((q) => (q as unknown as { questionId: string }).questionId === questionId);
+    return question?.correctAnswer ?? null;
+  }, [reviewData]);
 
   const [zoomIndex, setZoomIndex] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [highContrastImg, setHighContrastImg] = useState(false);
   const [straightenActive, setStraightenActive] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const timeUpAutoSubmitTriggered = useRef(false);
-  const retakeRequestedRef = useRef(false); // Prevent duplicate retake requests
+  const retakeRequestedRef = useRef(false);
 
   // Tải lại thông tin quiz từ server để lấy trạng thái cập nhật (isCompleted, score)
   const reloadQuizInfo = useCallback(async () => {
@@ -158,12 +164,6 @@ export default function QuizSessionPage({
   const positionPct = totalQ > 0 ? Math.round(((currentIndex + 1) / totalQ) * 100) : 0;
   const moduleLabel = session?.topic ?? quizInfo?.className ?? 'Clinical module';
 
-  // Get essay model answer from review data if available
-  const getEssayModelAnswer = (questionId: string): string | null | undefined => {
-    if (!quizReview) return undefined;
-    const reviewQ = quizReview.questions.find(q => q.questionId === questionId);
-    return reviewQ?.essayAnswer;
-  };
   const rawTimeLimit = session?.timeLimit ?? quizInfo?.timeLimit;
   const timeLimitMinutes =
     rawTimeLimit != null && Number(rawTimeLimit) > 0 ? Math.round(Number(rawTimeLimit)) : null;
@@ -243,12 +243,6 @@ export default function QuizSessionPage({
       const result = await submitQuizSession(session.attemptId, payload);
       setQuizResult(result);
       setSubmitted(true);
-      try {
-        const review = await fetchQuizAttemptReview(session.attemptId);
-        setQuizReview(review);
-      } catch {
-        // Việc tải review thất bại là không quan trọng
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(`Failed to submit: ${msg}`);
@@ -484,6 +478,50 @@ export default function QuizSessionPage({
                     : 'N/A'}
                 </p>
               </div>
+              {/* Nếu đáp án đã được công bố - cho phép xem lại đáp án */}
+              {quizInfo?.answersReleased && (
+                <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3">
+                  <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">
+                    Answers have been released by your lecturer.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (quizInfo?.attemptId) {
+                        try {
+                          const review = await fetchQuizAttemptReview(quizInfo.attemptId);
+                          review.questions.forEach((q) => {
+                            const selected = answers[q.questionId];
+                            setAnswerStates((prev) => ({
+                              ...prev,
+                              [q.questionId]: selected === q.correctAnswer ? 'correct' : 'incorrect',
+                            }));
+                            setSession((prev) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                questions: prev.questions.map((sq) =>
+                                  sq.questionId === q.questionId
+                                    ? { ...sq, correctAnswer: q.correctAnswer ?? undefined }
+                                    : sq
+                                ),
+                              };
+                            });
+                          });
+                          setShowFeedback(true);
+                        } catch {
+                          toast.error('Failed to load answers. Please try again.');
+                        }
+                      }
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 text-sm font-bold transition-colors"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Reveal Answers
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-col gap-3">
                 {!retakeSent ? (
                   <button
@@ -523,13 +561,13 @@ export default function QuizSessionPage({
                     </div>
                   </div>
                 )}
-                <Link href="/student/quizzes">
-                  <Button variant="outline" className="h-12 w-full rounded-xl border-outline-variant/30 font-bold">
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Quizzes
-                  </Button>
-                </Link>
               </div>
+              <Link href="/student/quizzes">
+                <Button variant="outline" className="h-12 w-full rounded-xl border-outline-variant/30 font-bold">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to quizzes
+                </Button>
+              </Link>
             </>
           ) : (
             <>
@@ -1079,13 +1117,13 @@ export default function QuizSessionPage({
                         {answers[currentQ.questionId] || '(No answer provided)'}
                       </p>
                     </div>
-                    {getEssayModelAnswer(currentQ.questionId) && (
+                    {currentQ.essayAnswer && (
                       <div className="rounded-xl bg-primary/5 p-4">
                         <h5 className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
                           Reference / Model Answer
                         </h5>
                         <p className="whitespace-pre-wrap text-sm leading-relaxed text-on-surface-variant">
-                          {getEssayModelAnswer(currentQ.questionId)}
+                          {currentQ.essayAnswer}
                         </p>
                       </div>
                     )}
@@ -1193,6 +1231,44 @@ export default function QuizSessionPage({
                 )}
 
                 <div className="flex flex-wrap justify-center gap-3">
+                  {quizInfo?.answersReleased && !showFeedback && (
+                    <Button
+                      onClick={async () => {
+                        if (quizInfo?.attemptId) {
+                          try {
+                            const review = await fetchQuizAttemptReview(quizInfo.attemptId);
+                            // Update answer states with correct answers from review
+                            review.questions.forEach((q) => {
+                              const selected = answers[q.questionId];
+                              setAnswerStates((prev) => ({
+                                ...prev,
+                                [q.questionId]: selected === q.correctAnswer ? 'correct' : 'incorrect',
+                              }));
+                              // Update question correct answers in session
+                              setSession((prev) => {
+                                if (!prev) return prev;
+                                return {
+                                  ...prev,
+                                  questions: prev.questions.map((sq) =>
+                                    sq.questionId === q.questionId
+                                      ? { ...sq, correctAnswer: q.correctAnswer ?? undefined }
+                                      : sq
+                                  ),
+                                };
+                              });
+                            });
+                            setShowFeedback(true);
+                          } catch (err) {
+                            toast.error('Failed to load answers. Please try again.');
+                          }
+                        }
+                      }}
+                      className="rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Reveal Answers
+                    </Button>
+                  )}
                   <Link href="/student/quizzes">
                     <Button variant="outline" className="rounded-xl font-bold">
                       Back to quizzes
@@ -1256,11 +1332,12 @@ export default function QuizSessionPage({
           <Link href="/student/quizzes" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Back to quizzes
           </Link>
-          <Link href="/student/quizzes/history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
+          <Link href="/student/quizzes?tab=history" className="text-xs font-bold text-on-surface-variant hover:text-primary">
             Quiz history
           </Link>
         </div>
       </footer>
+
     </div>
   );
 }

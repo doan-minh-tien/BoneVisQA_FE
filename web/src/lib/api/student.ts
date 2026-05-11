@@ -630,6 +630,7 @@ function mapQuizListItem(item: Record<string, unknown>): AssignedQuizItem {
     score: typeof item.score === 'number' ? item.score : null,
     attemptId: item.attemptId != null ? String(item.attemptId) : item.AttemptId != null ? String(item.AttemptId) : null,
     createdAt: item.createdAt != null ? String(item.createdAt) : item.CreatedAt != null ? String(item.CreatedAt) : null,
+    answersReleased: Boolean(item.answersReleased ?? item.AnswersReleased ?? false),
   };
 }
 
@@ -666,6 +667,8 @@ function normalizeStudentSessionQuestion(row: unknown): StudentSessionQuestion {
     optionC: pickStrAny(q, 'optionC', 'OptionC', 'option_c'),
     optionD: pickStrAny(q, 'optionD', 'OptionD', 'option_d'),
     imageUrl: pickStrAny(q, 'imageUrl', 'ImageUrl', 'image_url'),
+    essayAnswer: pickStrAny(q, 'essayAnswer', 'EssayAnswer', 'essay_answer'),
+    correctAnswer: pickStrAny(q, 'correctAnswer', 'CorrectAnswer', 'correct_answer'),
   };
 }
 
@@ -830,6 +833,10 @@ export async function fetchCaseCatalog(filters: {
   location?: string;
   lesionType?: string;
   difficulty?: string;
+  boneSpecialtyId?: string;
+  pathologyCategoryId?: string;
+  severity?: string;
+  patientAgeGroup?: string;
   /** Tìm kiếm text — gửi lên BE (một số bản BE dùng `q`, một số dùng `search`). */
   q?: string;
 }): Promise<StudentCaseCatalogItem[]> {
@@ -844,7 +851,7 @@ export async function fetchCaseCatalog(filters: {
       params.q = qTrim;
       params.search = qTrim;
     }
-    const { data } = await http.get<unknown>('/api/student/cases/catalog', { params });
+    const { data } = await http.get<unknown>('/api/cases/catalog', { params });
     const list = Array.isArray(data)
       ? data
       : data && typeof data === 'object' && 'items' in data
@@ -862,6 +869,30 @@ export interface StudentCaseCatalogFilters {
   locations: string[];
   lesionTypes: string[];
   difficulties: string[];
+  /** Deep classification: Bone Specialty IDs */
+  boneSpecialtyIds: string[];
+  /** Deep classification: Pathology Category IDs */
+  pathologyCategoryIds: string[];
+  /** Severity levels (Mild/Moderate/Severe) */
+  severities: string[];
+  /** Patient age groups (Pediatric/Adult/Geriatric) */
+  patientAgeGroups: string[];
+}
+
+export interface BoneSpecialtyOption {
+  id: string;
+  code: string;
+  name: string;
+  level: number;
+  parentId: string | null;
+  parentName: string | null;
+}
+
+export interface PathologyCategoryOption {
+  id: string;
+  code: string;
+  name: string;
+  boneSpecialtyName: string | null;
 }
 
 export async function fetchCaseCatalogFilters(): Promise<StudentCaseCatalogFilters> {
@@ -876,7 +907,51 @@ export async function fetchCaseCatalogFilters(): Promise<StudentCaseCatalogFilte
       locations: asList(payload.locations ?? payload.Locations),
       lesionTypes: asList(payload.lesionTypes ?? payload.LesionTypes ?? payload.lesionType),
       difficulties: asList(payload.difficulties ?? payload.Difficulties),
+      boneSpecialtyIds: asList(payload.boneSpecialtyIds ?? payload.BoneSpecialtyIds),
+      pathologyCategoryIds: asList(payload.pathologyCategoryIds ?? payload.PathologyCategoryIds),
+      severities: asList(payload.severities ?? payload.Severities),
+      patientAgeGroups: asList(payload.patientAgeGroups ?? payload.PatientAgeGroups),
     };
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchBoneSpecialtyOptions(): Promise<BoneSpecialtyOption[]> {
+  try {
+    const { data } = await http.get<unknown[]>('/api/common/classifications/bone-specialties');
+    const list = Array.isArray(data) ? data : [];
+    return list.map((item) => {
+      const r = item as Record<string, unknown>;
+      const parentId = r.parentId ?? r.ParentId ?? r.parentId ?? null;
+      const parentName = r.parentName ?? r.ParentName ?? null;
+      return {
+        id: String(r.id ?? r.Id ?? ''),
+        code: String(r.code ?? r.Code ?? ''),
+        name: String(r.name ?? r.Name ?? ''),
+        level: Number(r.level ?? r.Level ?? 0),
+        parentId: parentId != null ? String(parentId) : null,
+        parentName: parentName != null ? String(parentName) : null,
+      };
+    });
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function fetchPathologyCategoryOptions(): Promise<PathologyCategoryOption[]> {
+  try {
+    const { data } = await http.get<unknown[]>('/api/common/classifications/pathology-categories');
+    const list = Array.isArray(data) ? data : [];
+    return list.map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        id: String(r.id ?? r.Id ?? ''),
+        code: String(r.code ?? r.Code ?? ''),
+        name: String(r.name ?? r.Name ?? ''),
+        boneSpecialtyName: r.boneSpecialtyName != null ? String(r.boneSpecialtyName) : r.BoneSpecialtyName != null ? String(r.BoneSpecialtyName) : null,
+      };
+    });
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -1030,6 +1105,8 @@ export interface QuizAttemptReview {
   totalQuestions: number;
   correctAnswers: number;
   passed: boolean;
+  /** True nếu quiz đã đóng HOẶC lecturer đã release đáp án. */
+  answersReleased: boolean;
   questions: Array<{
     questionId: string;
     questionText: string;
@@ -1038,11 +1115,11 @@ export interface QuizAttemptReview {
     optionC?: string | null;
     optionD?: string | null;
     studentAnswer?: string | null;
-    correctAnswer?: string | null;
+    correctAnswer?: string | null; // Chỉ có giá trị khi answersReleased = true
     isCorrect: boolean;
     imageUrl?: string | null;
     caseId?: string | null;
-    essayAnswer?: string | null; // Model answer for essay questions
+    essayAnswer?: string | null;
   }>;
 }
 
@@ -1057,7 +1134,8 @@ export async function fetchQuizAttemptReview(attemptId: string): Promise<QuizAtt
       score: item.score != null ? Number(item.score) : item.Score != null ? Number(item.Score) : null,
       totalQuestions: Number(item.totalQuestions ?? item.TotalQuestions ?? 0),
       correctAnswers: Number(item.correctAnswers ?? item.CorrectAnswers ?? 0),
-      passed: Boolean(item.passed ?? item.Passed ?? false),
+      passed: Boolean(item.passed ?? item.Passed ?? (Number(item.score ?? 0) >= 70)),
+      answersReleased: true,
       questions: questions.map((q) => ({
         questionId: String(q.questionId ?? q.QuestionId ?? ''),
         questionText: String(q.questionText ?? q.QuestionText ?? ''),

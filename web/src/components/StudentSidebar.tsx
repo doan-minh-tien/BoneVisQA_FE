@@ -23,8 +23,8 @@ const studentMenuItems = [
   { icon: BookOpen, label: 'Case Catalog', href: '/student/catalog' },
   { icon: ClipboardList, label: 'History', href: '/student/history' },
   { icon: BotMessageSquare, label: 'AI Q&A', href: '/student/qa' },
-  { icon: Trophy, label: 'Quizzes', href: '/student/quiz' },
-  { icon: Eye, label: 'Review', href: '/student/quiz/history' },
+  { icon: Trophy, label: 'Quizzes', href: '/student/quizzes' },
+  { icon: Eye, label: 'Flashcards', href: '/student/review' },
   // TODO: Uncomment when AI Quiz is ready for production
   // { icon: Sparkles, label: 'AI Quiz', href: '/student/ai-quiz' },
   { icon: UserCircle, label: 'Profile', href: '/student/profile' },

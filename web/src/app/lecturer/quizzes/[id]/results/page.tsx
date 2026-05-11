@@ -19,8 +19,10 @@ import {
   RotateCcw,
   AlertTriangle,
   Download,
+  EyeOff,
+  CheckCircle2,
 } from 'lucide-react';
-import { getQuiz } from '@/lib/api/lecturer-quiz';
+import { getQuiz, releaseQuizAnswers, hideQuizAnswers, getQuizReleaseStatus } from '@/lib/api/lecturer-quiz';
 import {
   getClassQuizAttempts,
   getQuizAttemptDetail,
@@ -692,7 +694,63 @@ export default function QuizResultsPage({
     null | { kind: 'single'; attempt: StudentQuizAttemptDto } | { kind: 'all'; count: number }
   >(null);
 
+  // Release answers state
+  const [isReleased, setIsReleased] = useState(false);
+  const [releasedAt, setReleasedAt] = useState<string | null>(null);
+  const [isQuizClosed, setIsQuizClosed] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+
+  // Release dialog state
+  const [releaseDialogOpen, setReleaseDialogOpen] = useState(false);
+
   const classId = quiz?.classId ?? '';
+
+  // Load release status when quiz loads
+  useEffect(() => {
+    if (!classId || !quizId) return;
+    async function loadReleaseStatus() {
+      try {
+        const status = await getQuizReleaseStatus(classId, quizId);
+        setIsReleased(status.isReleased);
+        setReleasedAt(status.releasedAt);
+        setIsQuizClosed(status.isQuizClosed);
+      } catch {
+        // Silently fail - release status is not critical
+      }
+    }
+    loadReleaseStatus();
+  }, [classId, quizId]);
+
+  async function handleReleaseAnswers() {
+    if (!classId || !quizId) return;
+    setReleasing(true);
+    try {
+      await releaseQuizAnswers(classId, quizId);
+      setIsReleased(true);
+      setReleasedAt(new Date().toISOString());
+      toast.success('Đáp án đã được công bố cho tất cả sinh viên.');
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setReleasing(false);
+      setReleaseDialogOpen(false);
+    }
+  }
+
+  async function handleHideAnswers() {
+    if (!classId || !quizId) return;
+    setReleasing(true);
+    try {
+      await hideQuizAnswers(classId, quizId);
+      setIsReleased(false);
+      setReleasedAt(null);
+      toast.success('Đáp án đã được ẩn khỏi sinh viên.');
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setReleasing(false);
+    }
+  }
 
   const handleExportExcel = async () => {
     if (!classId || !quizId) return;
@@ -976,6 +1034,55 @@ export default function QuizResultsPage({
         </div>
       </div>
 
+      {/* Release Answers Section */}
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isReleased ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+            {isReleased ? <CheckCircle2 className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-card-foreground">Release Answers</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {isReleased
+                ? `Đáp án đã được công bố (${releasedAt ? new Date(releasedAt).toLocaleString('vi-VN') : ''}). Sinh viên có thể xem đáp án đúng.`
+                : isQuizClosed
+                  ? 'Quiz đã đóng. Bạn có thể công bố đáp án để sinh viên xem.'
+                  : 'Quiz đang chạy. Sinh viên sẽ thấy đáp án sau khi bạn công bố.'}
+            </p>
+          </div>
+        </div>
+        {isReleased ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleHideAnswers}
+            disabled={releasing}
+            className="shrink-0 border-destructive/30 bg-destructive/5 font-semibold text-destructive hover:bg-destructive/10"
+          >
+            {releasing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <EyeOff className="mr-2 h-4 w-4" />
+            )}
+            Hide Answers
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            onClick={() => setReleaseDialogOpen(true)}
+            disabled={releasing}
+            className="shrink-0 bg-success font-semibold text-white hover:bg-success/90"
+          >
+            {releasing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            )}
+            Release Answers
+          </Button>
+        )}
+      </div>
+
       {/* Retake management */}
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
@@ -1242,6 +1349,61 @@ export default function QuizResultsPage({
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      {/* Release Answers Confirm Dialog */}
+      <Modal
+        open={releaseDialogOpen}
+        onClose={() => !releasing && setReleaseDialogOpen(false)}
+        title="Release answers?"
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReleaseDialogOpen(false)}
+              disabled={releasing}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleReleaseAnswers()}
+              disabled={releasing}
+              className="bg-success font-semibold text-white hover:bg-success/90"
+            >
+              {releasing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Releasing…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Release Answers
+                </>
+              )}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 space-y-2 text-sm text-muted-foreground">
+            <p>
+              All students in the class will be able to view the{" "}
+              <span className="font-semibold text-card-foreground">correct answers</span> and{" "}
+              <span className="font-semibold text-card-foreground">explanations</span> after the
+              release.
+            </p>
+            <p className="text-xs">
+              This action cannot be easily undone. Students will see the correct answers for all
+              multiple-choice questions.
+            </p>
+          </div>
+        </div>
       </Modal>
     </div>
   );

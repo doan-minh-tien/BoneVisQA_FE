@@ -34,6 +34,8 @@ export interface ExpertCase {
   keyFindings: string;
   medicalImages?: ExpertCaseMedicalImageJson[];
   tags?: ExpertCaseTag[];
+  /** Direct thumbnail URL from backend (list view) */
+  thumbnailUrl?: string;
 }
 
 export function formatCaseDateForDisplay(raw: string | undefined | null): string {
@@ -81,6 +83,8 @@ interface ExpertCaseApiRow {
   MedicalImages?: unknown;
   tags?: unknown;
   Tags?: unknown;
+  thumbnailUrl?: unknown;
+  ThumbnailUrl?: unknown;
 }
 
 function mapDifficulty(raw: unknown): CaseDifficulty {
@@ -126,9 +130,14 @@ function mapMedicalImagesRaw(raw: unknown): ExpertCaseMedicalImageJson[] | undef
     if (!row || typeof row !== 'object') continue;
     const o = row as Record<string, unknown>;
     const id = o.id != null ? String(o.id) : o.Id != null ? String(o.Id) : o.imageId != null ? String(o.imageId) : o.ImageId != null ? String(o.ImageId) : undefined;
-    const imageUrl = String(o.imageUrl ?? o.ImageUrl ?? '');
+    
+    // Support multiple URL field names
+    const imageUrl = String(
+      o.imageUrl ?? o.ImageUrl ?? o.url ?? o.Url ?? o.URL ?? o.src ?? o.Src ?? o.path ?? o.Path ?? o.filePath ?? o.FilePath ?? ''
+    );
     if (!imageUrl.trim()) continue;
-    const label = o.label ?? o.Label ?? o.fileName ?? o.FileName ?? null;
+    
+    const label = o.label ?? o.Label ?? o.fileName ?? o.FileName ?? o.name ?? o.Name ?? null;
     const modality = o.modality ?? o.Modality;
     const annRaw = o.annotations ?? o.Annotations;
     let annotations: ExpertCaseMedicalImageAnnotationJson[] | null = null;
@@ -228,8 +237,17 @@ export function mapCase(row: unknown): ExpertCase | null {
     item.createdAt ?? item.created_at ?? record.CreatedAt ?? record.createdAt ?? record.addedDate ?? '',
   );
 
-  const medicalImages = mapMedicalImagesRaw(item.medicalImages ?? item.MedicalImages ?? record.medicalImages);
+  const medicalImages = mapMedicalImagesRaw(
+    item.medicalImages ?? item.MedicalImages ?? 
+    record.medicalImages ?? record.MedicalImages ??
+    record.images ?? record.Images ?? record.Image ?? record.image
+  );
   const tags = mapTags(item.tags ?? item.Tags ?? record.tags ?? record.Tags);
+  
+  // Get thumbnail URL directly (for list view)
+  const thumbnailUrlRaw = String(
+    item.thumbnailUrl ?? item.ThumbnailUrl ?? record.thumbnailUrl ?? record.ThumbnailUrl ?? record.thumbnail ?? ''
+  ).trim();
 
   return {
     id,
@@ -255,6 +273,7 @@ export function mapCase(row: unknown): ExpertCase | null {
     keyFindings: String(item.keyFindings ?? record.key_findings ?? record.KeyFindings ?? ''),
     medicalImages,
     tags,
+    thumbnailUrl: thumbnailUrlRaw || undefined,
   };
 }
 

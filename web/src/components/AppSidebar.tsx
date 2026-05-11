@@ -35,7 +35,6 @@ import {
   Server,
   HardDrive,
   FileBarChart,
-  CalendarPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -69,7 +68,6 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Triage Workbench', href: '/lecturer/qa-triage', icon: Stethoscope },
     { label: 'Classes', href: '/lecturer/classes', icon: Users },
     { label: 'Quiz Library', href: '/lecturer/quizzes', icon: FileQuestion },
-    { label: 'Schedule Quiz', href: '/lecturer/quizzes/schedule', icon: CalendarPlus },
     { label: 'Assignments', href: '/lecturer/assignments', icon: ClipboardList },
     { label: 'Cases', href: '/lecturer/cases', icon: BookOpen },
     { label: 'Analytics', href: '/lecturer/analytics', icon: BarChart3 },
@@ -88,6 +86,7 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
+    { label: 'Analytics', href: '/student/analytics', icon: BarChart3 },
     { label: 'Class', href: '/student/classes', icon: Users },
   ],
 };

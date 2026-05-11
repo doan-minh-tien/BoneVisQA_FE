@@ -423,3 +423,56 @@ export async function aiCreateQuiz(
     throw new Error(getApiErrorMessage(e));
   }
 }
+
+// ========== Release/Hide Answers ==========
+
+export interface QuizReleaseStatus {
+  classId: string;
+  quizId: string;
+  quizTitle: string;
+  isReleased: boolean;
+  releasedAt: string | null;
+  isQuizClosed: boolean;
+}
+
+/**
+ * Get release status for a quiz in a class.
+ */
+export async function getQuizReleaseStatus(classId: string, quizId: string): Promise<QuizReleaseStatus> {
+  try {
+    const { data } = await http.get<QuizReleaseStatus>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/release-status`
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Release quiz answers for all students in a class.
+ */
+export async function releaseQuizAnswers(classId: string, quizId: string): Promise<{ message: string }> {
+  try {
+    const { data } = await http.post<{ message: string }>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/release-answers`
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/**
+ * Hide quiz answers (undo release) for all students in a class.
+ */
+export async function hideQuizAnswers(classId: string, quizId: string): Promise<{ message: string }> {
+  try {
+    const { data } = await http.post<{ message: string }>(
+      `/api/lecturer/classes/${classId}/assignments/quizzes/${quizId}/hide-answers`
+    );
+    return data;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import ExpertQuizList from '@/components/expert/quizzes/ExpertQuizList';
@@ -8,6 +8,8 @@ import { fetchExpertQuizzesPaged, fetchExpertQuizLibrary, type ExpertQuizLibrary
 import { useToast } from '@/components/ui/toast';
 import { Library, BarChart3, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const LIBRARY_PAGE_SIZE = 4;
 
 export default function ExpertQuizzesPage() {
   const router = useRouter();
@@ -101,6 +103,7 @@ function QuizLibrarySection() {
   const [libraryQuizzes, setLibraryQuizzes] = useState<ExpertQuizLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [pageIndex, setPageIndex] = useState(1);
 
   useEffect(() => {
     loadLibraryQuizzes();
@@ -131,6 +134,25 @@ function QuizLibrarySection() {
       quiz.expertName?.toLowerCase().includes(term)
     );
   });
+
+  const filteredTotal = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / LIBRARY_PAGE_SIZE));
+
+  useEffect(() => {
+    setPageIndex(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPageIndex((prev) => {
+      if (prev > totalPages) return Math.max(1, totalPages);
+      return prev;
+    });
+  }, [totalPages]);
+
+  const pagedItems = useMemo(() => {
+    const start = (pageIndex - 1) * LIBRARY_PAGE_SIZE;
+    return filtered.slice(start, start + LIBRARY_PAGE_SIZE);
+  }, [filtered, pageIndex]);
 
   return (
     <div className="rounded-3xl border border-border/40 bg-card shadow-sm overflow-x-auto">
@@ -166,20 +188,21 @@ function QuizLibrarySection() {
           <p className="mt-4 text-muted-foreground">No quizzes found in library.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full table-auto text-left">
-            <thead>
-              <tr className="bg-muted/40">
-                <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Quiz Title</th>
-                <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Topic</th>
-                <th className="px-2 py-4 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Difficulty</th>
-                <th className="px-2 py-4 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Questions</th>
-                <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Created By</th>
-                <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Created At</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.map((quiz) => (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full table-auto text-left">
+              <thead>
+                <tr className="bg-muted/40">
+                  <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Quiz Title</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Topic</th>
+                  <th className="px-2 py-4 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Difficulty</th>
+                  <th className="px-2 py-4 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">Questions</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Created By</th>
+                  <th className="px-3 py-4 text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">Created At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pagedItems.map((quiz) => (
                 <tr key={quiz.id} className="group hover:bg-muted/40 transition-colors">
                   <td className="px-3 py-4">
                     <div className="flex items-center gap-3">
@@ -219,7 +242,37 @@ function QuizLibrarySection() {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-border">
+              <p className="text-sm text-muted-foreground">
+                Showing {(pageIndex - 1) * LIBRARY_PAGE_SIZE + 1} to {Math.min(pageIndex * LIBRARY_PAGE_SIZE, filteredTotal)} of {filteredTotal} quizzes
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+                  disabled={pageIndex === 1}
+                >
+                  Previous
+                </Button>
+                <span className="flex items-center px-3 text-sm">
+                  Page {pageIndex} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex((p) => Math.min(totalPages, p + 1))}
+                  disabled={pageIndex === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -16,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Filter,
+  X,
 } from 'lucide-react';
 import {
   getLecturerCasesPaged,
@@ -30,6 +32,47 @@ type StatusFilter = 'all' | 'approved' | 'unapproved' | 'active' | 'inactive';
 
 const PAGE_SIZE = 20;
 
+// Filter options
+const LOCATION_OPTIONS = ['All', 'Upper Limb', 'Lower Limb', 'Spine', 'Pelvis', 'Shoulder', 'Elbow', 'Wrist', 'Hand', 'Hip', 'Knee', 'Ankle', 'Foot'];
+const LESION_TYPE_OPTIONS = ['All', 'Fracture', 'Arthritis', 'Tumor', 'Infection', 'Congenital', 'Trauma', 'Degenerative', 'Other'];
+const DIFFICULTY_OPTIONS = ['All', 'Basic', 'Intermediate', 'Advanced'];
+const SEVERITY_OPTIONS = ['All', 'Mild', 'Moderate', 'Severe'];
+const AGE_GROUP_OPTIONS = ['All', 'Pediatric', 'Adult', 'Geriatric'];
+const BONE_SPECIALTY_OPTIONS = [
+  { id: 'upper_limb', name: 'Upper Limb' },
+  { id: 'lower_limb', name: 'Lower Limb' },
+  { id: 'spine', name: 'Spine' },
+  { id: 'pelvis', name: 'Pelvis' },
+  { id: 'shoulder', name: 'Shoulder' },
+  { id: 'elbow', name: 'Elbow' },
+  { id: 'wrist', name: 'Wrist' },
+  { id: 'hand', name: 'Hand' },
+  { id: 'hip', name: 'Hip' },
+  { id: 'knee', name: 'Knee' },
+  { id: 'ankle', name: 'Ankle' },
+  { id: 'foot', name: 'Foot' },
+];
+const PATHOLOGY_OPTIONS = [
+  { id: 'fracture', name: 'Fracture' },
+  { id: 'arthritis', name: 'Arthritis' },
+  { id: 'tumor', name: 'Tumor' },
+  { id: 'infection', name: 'Infection' },
+  { id: 'congenital', name: 'Congenital' },
+  { id: 'trauma', name: 'Trauma' },
+  { id: 'degenerative', name: 'Degenerative' },
+  { id: 'other', name: 'Other' },
+];
+
+interface LecturerFilterState {
+  location: string;
+  lesionType: string;
+  difficulty: string;
+  boneSpecialty: string;
+  pathology: string;
+  severity: string;
+  patientAgeGroup: string;
+}
+
 export default function LecturerCasesPage() {
   const router = useRouter();
   const toast = useToast();
@@ -40,6 +83,37 @@ export default function LecturerCasesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [pageIndex, setPageIndex] = useState(1);
   const [isValidating, setIsValidating] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Advanced filter states
+  const [filters, setFilters] = useState<LecturerFilterState>({
+    location: 'All',
+    lesionType: 'All',
+    difficulty: 'All',
+    boneSpecialty: '',
+    pathology: '',
+    severity: 'All',
+    patientAgeGroup: 'All',
+  });
+
+  const hasActiveFilters = filters.location !== 'All' || filters.lesionType !== 'All' || filters.difficulty !== 'All' ||
+    filters.boneSpecialty !== '' || filters.pathology !== '' || filters.severity !== 'All' || filters.patientAgeGroup !== 'All';
+
+  const updateFilter = (key: keyof LecturerFilterState, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      location: 'All',
+      lesionType: 'All',
+      difficulty: 'All',
+      boneSpecialty: '',
+      pathology: '',
+      severity: 'All',
+      patientAgeGroup: 'All',
+    });
+  };
 
   // Assign dialog
   const [showAssign, setShowAssign] = useState(false);
@@ -122,9 +196,18 @@ export default function LecturerCasesPage() {
         (statusFilter === 'unapproved' && !c.isApproved) ||
         (statusFilter === 'active' && c.isActive) ||
         (statusFilter === 'inactive' && !c.isActive);
-      return matchSearch && matchStatus;
+
+      // Apply advanced filters
+      const matchLocation = filters.location === 'All' ||
+        (c.categoryName?.toLowerCase().includes(filters.location.toLowerCase()) ?? false);
+      const matchLesionType = filters.lesionType === 'All' ||
+        (c.categoryName?.toLowerCase().includes(filters.lesionType.toLowerCase()) ?? false);
+      const matchDifficulty = filters.difficulty === 'All' ||
+        (c.difficulty?.toLowerCase() === filters.difficulty.toLowerCase() || false);
+
+      return matchSearch && matchStatus && matchLocation && matchLesionType && matchDifficulty;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, filters]);
 
   const approvedCount = rows.filter((c) => c.isApproved).length;
   const activeCount = rows.filter((c) => c.isActive).length;
@@ -203,6 +286,40 @@ export default function LecturerCasesPage() {
                 className="w-64 rounded-xl border border-border bg-card py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
+            <Button
+              type="button"
+              variant={showFilters ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="mr-1 h-4 w-4" />
+              Filters
+              {hasActiveFilters && (
+                <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">
+                  {[
+                    filters.location !== 'All',
+                    filters.lesionType !== 'All',
+                    filters.difficulty !== 'All',
+                    filters.boneSpecialty !== '',
+                    filters.pathology !== '',
+                    filters.severity !== 'All',
+                    filters.patientAgeGroup !== 'All',
+                  ].filter(Boolean).length}
+                </span>
+              )}
+            </Button>
+            {hasActiveFilters && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-muted-foreground"
+              >
+                <X className="mr-1 h-4 w-4" />
+                Clear
+              </Button>
+            )}
             {selectedCases.size > 0 && (
               <button
                 onClick={() => setShowAssign(true)}
@@ -215,13 +332,111 @@ export default function LecturerCasesPage() {
           </div>
         </div>
 
+        {/* Advanced Filters Panel */}
+        {showFilters && (
+          <div className="mb-6 rounded-xl border border-border bg-muted/30 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Filter className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold">Advanced Filters</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Location</label>
+                <select
+                  value={filters.location}
+                  onChange={(e) => updateFilter('location', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  {LOCATION_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Lesion Type</label>
+                <select
+                  value={filters.lesionType}
+                  onChange={(e) => updateFilter('lesionType', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  {LESION_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Difficulty</label>
+                <select
+                  value={filters.difficulty}
+                  onChange={(e) => updateFilter('difficulty', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  {DIFFICULTY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Bone Specialty</label>
+                <select
+                  value={filters.boneSpecialty}
+                  onChange={(e) => updateFilter('boneSpecialty', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  <option value="">All</option>
+                  {BONE_SPECIALTY_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Pathology</label>
+                <select
+                  value={filters.pathology}
+                  onChange={(e) => updateFilter('pathology', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  <option value="">All</option>
+                  {PATHOLOGY_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Severity</label>
+                <select
+                  value={filters.severity}
+                  onChange={(e) => updateFilter('severity', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground">Age Group</label>
+                <select
+                  value={filters.patientAgeGroup}
+                  onChange={(e) => updateFilter('patientAgeGroup', e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                >
+                  {AGE_GROUP_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Pagination info */}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-xs text-muted-foreground">
             {totalCount > 0
               ? `Showing page ${displayPage} of ${totalPages} · ${totalCount} case${totalCount === 1 ? '' : 's'} total`
               : null}
-            {rows.length > 0 ? ' · Search filters this page only.' : ''}
+            {hasActiveFilters ? ` · ${filtered.length} match filters.` : ' · Filters apply to this page.'}
           </p>
         </div>
 
