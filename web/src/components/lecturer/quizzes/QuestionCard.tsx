@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   FileQuestion,
   Pencil,
@@ -7,8 +8,8 @@ import {
   CheckCircle2,
   ZoomIn,
   CircleDot,
-  PenLine,
   Award,
+  ImageOff,
 } from 'lucide-react';
 import type { QuizQuestionDto } from '@/lib/api/types';
 import {
@@ -20,7 +21,7 @@ interface QuestionCardProps {
   question: QuizQuestionDto;
   caseThumbnail?: string;
   onEdit?: (question: QuizQuestionDto) => void;
-  onDelete?: (questionId: string) => void;
+  onDelete?: (questionId: string, questionText: string) => void;
   points?: number;
   /** Rich layout for quiz detail / Question Manager */
   variant?: 'default' | 'manager' | 'curated';
@@ -47,13 +48,46 @@ function getQuestionTypeStyle(type: string | null): {
   if (t === 'annotation' || t === 'draw') {
     return {
       label: 'Annotation',
-      badgeClass: 'bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100',
+      badgeClass: 'bg-violet-100 text-violet-900',
     };
   }
   return {
     label: 'Multiple Choice',
     badgeClass: 'bg-[#94efec] text-[#006e6d]',
   };
+}
+
+function ImageWithFallback({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError || !src) {
+    return (
+      <div className={`flex items-center justify-center bg-slate-900 ${className}`}>
+        <div className="flex flex-col items-center gap-2 text-slate-500">
+          <ImageOff className="h-8 w-8" />
+          <span className="text-xs">No image</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setHasError(true)}
+    />
+  );
 }
 
 export default function QuestionCard({
@@ -68,17 +102,15 @@ export default function QuestionCard({
   const typeStyle = getQuestionTypeStyle(question.type);
   const isTrueFalse =
     question.type?.toLowerCase() === 'truefalse' || question.type?.toLowerCase() === 'true/false';
-  const isAnnotation =
-    question.type?.toLowerCase() === 'annotation' || question.type?.toLowerCase() === 'draw';
 
   if (variant === 'curated') {
     const topic = topicCategory;
     const topicClass =
       topic === 'Imaging'
-        ? 'bg-orange-100 text-orange-950 dark:bg-orange-950/50 dark:text-orange-100'
+        ? 'bg-orange-100 text-orange-950'
         : topic === 'Joints'
-          ? 'bg-teal-100 text-teal-950 dark:bg-teal-900/40 dark:text-teal-50'
-          : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-900/40 dark:text-emerald-100';
+          ? 'bg-teal-100 text-teal-950'
+          : 'bg-emerald-100 text-emerald-950';
     const subtitle =
       question.caseTitle ||
       [question.optionA, question.optionB].filter(Boolean).join(' · ') ||
@@ -88,66 +120,64 @@ export default function QuestionCard({
     const hasRealImage = hasQuizQuestionCustomImage(question, caseThumbnail);
 
     return (
-      <div className="group flex gap-6 rounded-3xl bg-muted/50 p-6 transition-colors hover:bg-muted/70">
-        <div className="relative h-32 w-48 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-900">
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbSrc}
-              alt={hasRealImage ? '' : 'Placeholder — lecturer can add diagnostic image'}
-              className={`h-full w-full object-cover ${hasRealImage ? 'opacity-80' : 'opacity-95'}`}
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-              <ZoomIn className="h-8 w-8 text-white" />
-            </div>
-          </>
+      <div className="group flex gap-8 rounded-3xl bg-card p-8 shadow-lg shadow-black/5 transition-all hover:bg-muted/20 hover:shadow-xl hover:shadow-black/10 border border-border/30">
+        <div className="relative h-44 w-72 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-900 shadow-xl">
+          <ImageWithFallback
+            src={thumbSrc}
+            alt={hasRealImage ? '' : 'Placeholder — lecturer can add diagnostic image'}
+            className={`h-full w-full object-cover ${hasRealImage ? 'opacity-80' : 'opacity-95'}`}
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <ZoomIn className="h-10 w-10 text-white" />
+          </div>
         </div>
 
         <div className="flex flex-1 flex-col justify-between">
           <div>
-            <div className="flex items-start justify-between gap-2">
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${topicClass}`}
-              >
-                {topic}
-              </span>
-              <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`rounded-full px-4 py-1.5 text-xs font-extrabold uppercase ${topicClass}`}
+                >
+                  {topic}
+                </span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${typeStyle.badgeClass}`}>
+                  {typeStyle.label}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
                 {onEdit && (
                   <button
                     type="button"
                     onClick={() => onEdit(question)}
-                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-primary"
+                    className="rounded-xl p-2.5 text-muted-foreground transition-all hover:bg-primary/10 hover:text-primary"
                     aria-label="Edit question"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Pencil className="h-5 w-5" />
                   </button>
                 )}
                 {onDelete && (
                   <button
                     type="button"
-                    onClick={() => onDelete(question.id)}
-                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive"
+                    onClick={() => onDelete(question.id, question.questionText)}
+                    className="rounded-xl p-2.5 text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive"
                     aria-label="Delete question"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-5 w-5" />
                   </button>
                 )}
               </div>
             </div>
-            <h4 className="mt-1 line-clamp-2 font-bold text-foreground">{question.questionText}</h4>
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
+            <h4 className="mt-3 line-clamp-3 text-lg font-bold text-foreground leading-relaxed">{question.questionText}</h4>
+            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{subtitle}</p>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-4">
-            <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
-              {isAnnotation ? (
-                <PenLine className="h-3.5 w-3.5" />
-              ) : (
-                <CircleDot className="h-3.5 w-3.5" />
-              )}
+          <div className="mt-4 flex flex-wrap items-center gap-5">
+            <span className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
+              <CircleDot className="h-4 w-4" />
               {typeStyle.label}
             </span>
-            <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground">
-              <Award className="h-3.5 w-3.5" />
+            <span className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
+              <Award className="h-4 w-4" />
               {points} Points
             </span>
           </div>
@@ -184,7 +214,7 @@ export default function QuestionCard({
             {onDelete && (
               <button
                 type="button"
-                onClick={() => onDelete(question.id)}
+                onClick={() => onDelete(question.id, question.questionText)}
                 className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                 aria-label="Delete"
               >
@@ -228,32 +258,31 @@ export default function QuestionCard({
             })}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <div className="relative aspect-video overflow-hidden rounded-2xl bg-black">
-              {(() => {
-                const src = getLecturerQuestionImageSrc(question, caseThumbnail);
-                const custom = hasQuizQuestionCustomImage(question, caseThumbnail);
-                return (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={src}
-                      alt={custom ? '' : 'Placeholder diagnostic image'}
-                      className={`h-full w-full object-cover ${custom ? 'opacity-85' : 'opacity-95'}`}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
-                      {question.caseTitle
-                        ? `Case · ${question.caseTitle.slice(0, 32)}`
-                        : custom
-                          ? 'Radiographic reference'
-                          : 'No image yet · edit to upload'}
-                    </span>
-                  </>
-                );
-              })()}
-            </div>
-            <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+          <div className="relative aspect-video overflow-hidden rounded-2xl bg-black">
+            {(() => {
+              const src = getLecturerQuestionImageSrc(question, caseThumbnail);
+              const custom = hasQuizQuestionCustomImage(question, caseThumbnail);
+              return (
+                <>
+                  <ImageWithFallback
+                    src={src}
+                    alt={custom ? '' : 'Placeholder diagnostic image'}
+                    className={`h-full w-full object-cover ${custom ? 'opacity-85' : 'opacity-95'}`}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-widest text-white/80">
+                    {question.caseTitle
+                      ? `Case · ${question.caseTitle.slice(0, 32)}`
+                      : custom
+                        ? 'Radiographic reference'
+                        : 'No image yet · edit to upload'}
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+          <div className="space-y-3">
               {(
                 [
                   { key: 'A', text: question.optionA },
@@ -315,17 +344,14 @@ export default function QuestionCard({
     <div className="bg-card rounded-2xl border-2 border-border p-5 transition-colors hover:bg-accent/5 group">
       <div className="flex gap-5">
         <div className="relative h-32 w-44 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={defaultThumb}
-              alt={question.caseTitle || (defaultHasCustom ? 'Case thumbnail' : 'Default placeholder image')}
-              className={`h-full w-full object-cover ${defaultHasCustom ? 'opacity-80' : 'opacity-95'}`}
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-              <FileQuestion className="h-8 w-8 text-white" />
-            </div>
-          </>
+          <ImageWithFallback
+            src={defaultThumb}
+            alt={question.caseTitle || (defaultHasCustom ? 'Case thumbnail' : 'Default placeholder image')}
+            className={`h-full w-full object-cover ${defaultHasCustom ? 'opacity-80' : 'opacity-95'}`}
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <FileQuestion className="h-8 w-8 text-white" />
+          </div>
         </div>
 
         <div className="flex flex-1 flex-col justify-between">
@@ -350,7 +376,7 @@ export default function QuestionCard({
                 {onDelete && (
                   <button
                     type="button"
-                    onClick={() => onDelete(question.id)}
+                    onClick={() => onDelete(question.id, question.questionText)}
                     className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
                     aria-label="Delete question"
                   >

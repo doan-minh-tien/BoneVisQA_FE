@@ -1,180 +1,321 @@
 'use client';
+
+import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
-import {
-  BarChart3, Users, BookOpen, Trophy, TrendingUp, TrendingDown,
-  Download, Target, AlertTriangle,
+import { fetchLecturerAnalytics, type LecturerAnalyticsData } from '@/lib/api/lecturer-dashboard';
+import { lecturerAnalyticsApi, type ClassOverview, type StudentAnalytics } from '@/lib/api/lecturer-analytics';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { 
+  BarChart3, 
+  Users, 
+  BookOpen, 
+  Trophy, 
+  AlertTriangle, 
+  Target,
+  TrendingUp,
+  ChevronRight,
+  Download
 } from 'lucide-react';
+import Link from 'next/link';
 
-interface ClassStat {
-  className: string;
-  studentCount: number;
-  casesStudied: number;
-  avgQuizScore: number;
-  completionRate: number;
-  trend: number;
-}
+export default function EnhancedLecturerAnalyticsPage() {
+  const [existingAnalytics, setExistingAnalytics] = useState<LecturerAnalyticsData | null>(null);
+  const [myClasses, setMyClasses] = useState<{ id: string; className: string; semester: string | null; studentCount: number }[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [classOverview, setClassOverview] = useState<ClassOverview | null>(null);
+  const [atRiskStudents, setAtRiskStudents] = useState<StudentAnalytics[]>([]);
+  const [errorDistribution, setErrorDistribution] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
 
-interface TopicScore {
-  topic: string;
-  avgScore: number;
-  attempts: number;
-  commonErrors: string[];
-}
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [analytics, classes] = await Promise.all([
+          fetchLecturerAnalytics().catch(() => null),
+          lecturerAnalyticsApi.getMyClasses().catch(() => []),
+        ]);
+        
+        setExistingAnalytics(analytics);
+        setMyClasses(classes);
+        
+        if (classes.length > 0) {
+          setSelectedClass(classes[0].id);
+        }
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-interface StudentStat {
-  name: string;
-  casesStudied: number;
-  quizScore: number;
-  className: string;
-  lastActive: string;
-}
+    fetchData();
+  }, []);
 
-const classStats: ClassStat[] = [
-  { className: 'SE1801', studentCount: 35, casesStudied: 156, avgQuizScore: 78, completionRate: 82, trend: 5 },
-  { className: 'SE1802', studentCount: 32, casesStudied: 128, avgQuizScore: 72, completionRate: 75, trend: -3 },
-  { className: 'SE1803', studentCount: 30, casesStudied: 142, avgQuizScore: 81, completionRate: 88, trend: 8 },
-  { className: 'SE1804', studentCount: 28, casesStudied: 98, avgQuizScore: 68, completionRate: 65, trend: -5 },
-];
+  useEffect(() => {
+    if (!selectedClass) return;
 
-const topicScores: TopicScore[] = [
-  { topic: 'Fracture Classification', avgScore: 82, attempts: 120, commonErrors: ['Confusing AO Type B and C', 'Missing Schatzker subtypes'] },
-  { topic: 'Degenerative Disease', avgScore: 75, attempts: 95, commonErrors: ['Kellgren-Lawrence grading inconsistency', 'Missing subchondral changes'] },
-  { topic: 'Bone Tumor', avgScore: 65, attempts: 45, commonErrors: ['Periosteal reaction patterns', 'Benign vs malignant differentiation'] },
-  { topic: 'Spine', avgScore: 78, attempts: 80, commonErrors: ['Compression vs burst fracture', 'Disc herniation classification'] },
-  { topic: 'Trauma', avgScore: 71, attempts: 68, commonErrors: ['Dislocation direction', 'Associated fracture identification'] },
-];
+    const fetchClassData = async () => {
+      try {
+        const [overview, atRisk, errors] = await Promise.all([
+          lecturerAnalyticsApi.getClassOverview(selectedClass).catch(() => null),
+          lecturerAnalyticsApi.getAtRiskStudents(selectedClass).catch(() => []),
+          lecturerAnalyticsApi.getErrorDistribution(selectedClass).catch(() => ({})),
+        ]);
+        
+        setClassOverview(overview);
+        setAtRiskStudents(atRisk);
+        setErrorDistribution(errors);
+      } catch (error) {
+        console.error('Error fetching class data:', error);
+      }
+    };
 
-const topStudents: StudentStat[] = [
-  { name: 'Nguyen Van A', casesStudied: 24, quizScore: 92, className: 'SE1801', lastActive: '2 hours ago' },
-  { name: 'Vo Thi F', casesStudied: 22, quizScore: 88, className: 'SE1803', lastActive: '1 hour ago' },
-  { name: 'Tran Thi B', casesStudied: 20, quizScore: 85, className: 'SE1801', lastActive: '3 hours ago' },
-  { name: 'Hoang Van E', casesStudied: 18, quizScore: 82, className: 'SE1803', lastActive: '5 hours ago' },
-  { name: 'Le Van C', casesStudied: 15, quizScore: 78, className: 'SE1802', lastActive: '1 day ago' },
-];
+    fetchClassData();
+  }, [selectedClass]);
 
-const bottomStudents: StudentStat[] = [
-  { name: 'Dang Van G', casesStudied: 3, quizScore: 42, className: 'SE1801', lastActive: '5 days ago' },
-  { name: 'Pham Thi D', casesStudied: 5, quizScore: 48, className: 'SE1802', lastActive: '3 days ago' },
-  { name: 'Ngo Van I', casesStudied: 6, quizScore: 52, className: 'SE1804', lastActive: '4 days ago' },
-];
+  if (loading) {
+    return (
+      <div className="min-h-screen">
+        <Header title="Enhanced Analytics" subtitle="Deep learning insights and student performance" />
+        <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
+          <div className="grid gap-4 md:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="pt-6">
+                  <Skeleton className="h-20" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Skeleton className="h-96" />
+        </div>
+      </div>
+    );
+  }
 
-export default function LecturerAnalyticsPage() {
-  const totalStudents = classStats.reduce((s, c) => s + c.studentCount, 0);
-  const avgScore = Math.round(classStats.reduce((s, c) => s + c.avgQuizScore, 0) / classStats.length);
-  const totalCases = classStats.reduce((s, c) => s + c.casesStudied, 0);
+  const totalStudents = myClasses.reduce((sum, c) => sum + c.studentCount, 0);
+  const avgScore = classOverview?.averageScore ?? existingAnalytics?.classPerformance?.[0]?.avgQuizScore ?? 0;
 
   return (
     <div className="min-h-screen">
-      <Header title="Analytics" subtitle="Learning outcomes and performance insights" />
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Overview Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><Users className="w-5 h-5 text-primary" /></div>
-            <div><p className="text-lg font-bold text-card-foreground">{totalStudents}</p><p className="text-xs text-muted-foreground">Total Students</p></div>
+      <Header 
+        title="Enhanced Analytics" 
+        subtitle="Deep learning insights and advanced student performance analytics" 
+      />
+      
+      <div className="mx-auto max-w-7xl px-4 py-8 space-y-8">
+        {/* Class Selector */}
+        {myClasses.length > 1 && (
+          <div className="flex gap-2 flex-wrap">
+            {myClasses.map((cls) => (
+              <Button
+                key={cls.id}
+                variant={selectedClass === cls.id ? 'default' : 'outline'}
+                onClick={() => setSelectedClass(cls.id)}
+                className="capitalize"
+              >
+                {cls.className}
+                <span className="ml-2 text-xs opacity-70">({cls.studentCount})</span>
+              </Button>
+            ))}
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center"><BookOpen className="w-5 h-5 text-accent" /></div>
-            <div><p className="text-lg font-bold text-card-foreground">{totalCases}</p><p className="text-xs text-muted-foreground">Cases Studied</p></div>
-          </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center"><Trophy className="w-5 h-5 text-success" /></div>
-            <div><p className="text-lg font-bold text-card-foreground">{avgScore}%</p><p className="text-xs text-muted-foreground">Avg Quiz Score</p></div>
-          </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer text-sm font-medium w-full justify-center"><Download className="w-4 h-4" />Export Report</button>
-          </div>
+        )}
+
+        {/* Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="rounded-full bg-primary/10 p-3">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Students</p>
+                  <p className="text-2xl font-bold">{totalStudents}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="rounded-full bg-success/10 p-3">
+                  <Trophy className="h-6 w-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Avg Score</p>
+                  <p className="text-2xl font-bold">{avgScore.toFixed(1)}%</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="rounded-full bg-warning/10 p-3">
+                  <AlertTriangle className="h-6 w-6 text-warning" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">At Risk</p>
+                  <p className="text-2xl font-bold">{classOverview?.atRiskStudentCount ?? atRiskStudents.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="rounded-full bg-accent/10 p-3">
+                  <BookOpen className="h-6 w-6 text-accent" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Completion</p>
+                  <p className="text-2xl font-bold">{classOverview?.completionRate.toFixed(0) ?? 0}%</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Class Performance */}
-          <div className="lg:col-span-2">
-            <div className="bg-card rounded-xl border border-border overflow-hidden">
-              <div className="px-5 py-4 border-b border-border"><h3 className="font-semibold text-card-foreground flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary" />Class Performance</h3></div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead><tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Class</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Students</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Cases</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Avg Score</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Completion</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Trend</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-border">
-                    {classStats.map((cls) => (
-                      <tr key={cls.className} className="hover:bg-input/30 transition-colors">
-                        <td className="px-5 py-3 text-sm font-medium text-card-foreground">{cls.className}</td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">{cls.studentCount}</td>
-                        <td className="px-5 py-3 text-sm text-muted-foreground">{cls.casesStudied}</td>
-                        <td className="px-5 py-3"><span className={`text-sm font-medium ${cls.avgQuizScore >= 75 ? 'text-success' : cls.avgQuizScore >= 60 ? 'text-warning' : 'text-destructive'}`}>{cls.avgQuizScore}%</span></td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2"><div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${cls.completionRate}%` }} /></div><span className="text-xs text-muted-foreground">{cls.completionRate}%</span></div>
-                        </td>
-                        <td className="px-5 py-3"><span className={`flex items-center gap-1 text-xs font-medium ${cls.trend >= 0 ? 'text-success' : 'text-destructive'}`}>{cls.trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}{Math.abs(cls.trend)}%</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* At-Risk Students */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-warning" />
+                Students Needing Attention
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {atRiskStudents.length > 0 ? (
+                <div className="space-y-3">
+                  {atRiskStudents.slice(0, 5).map((student) => (
+                    <div key={student.studentId} className="flex items-center justify-between p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+                      <div>
+                        <p className="font-medium">{student.studentName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Avg: {student.averageScore.toFixed(1)}% · {student.totalQuizzesTaken} quizzes
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive">{student.masteryLevel}</Badge>
+                        <Button size="sm" variant="ghost" asChild>
+                          <Link href={`/lecturer/students/${student.studentId}`}>
+                            <ChevronRight className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Trophy className="h-12 w-12 mx-auto mb-4 text-success opacity-50" />
+                  <p>All students are performing well!</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Topic Scores */}
-          <div>
-            <div className="bg-card rounded-xl border border-border overflow-hidden">
-              <div className="px-5 py-4 border-b border-border"><h3 className="font-semibold text-card-foreground flex items-center gap-2"><Target className="w-5 h-5 text-primary" />Score by Topic</h3></div>
-              <div className="divide-y divide-border">
-                {topicScores.map((topic) => (
-                  <div key={topic.topic} className="px-5 py-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-card-foreground">{topic.topic}</span>
-                      <span className={`text-sm font-bold ${topic.avgScore >= 75 ? 'text-success' : topic.avgScore >= 60 ? 'text-warning' : 'text-destructive'}`}>{topic.avgScore}%</span>
+          {/* Error Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-destructive" />
+                Common Error Topics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {Object.keys(errorDistribution).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(errorDistribution)
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 5)
+                    .map(([topic, count]) => (
+                      <div key={topic} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{topic}</span>
+                          <span className="text-muted-foreground">{count} errors</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-destructive rounded-full"
+                            style={{ width: `${Math.min(100, (count / Math.max(...Object.values(errorDistribution))) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No error data available yet.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Topic Averages */}
+        {classOverview && Object.keys(classOverview.topicAverages).length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Score by Topic
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(classOverview.topicAverages).map(([topic, score]) => (
+                  <div key={topic} className="p-4 rounded-lg border">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">{topic}</span>
+                      <Badge variant={
+                        score >= 75 ? 'default' as const :
+                        score >= 60 ? 'secondary' as const :
+                        'destructive' as const
+                      }>
+                        {score.toFixed(0)}%
+                      </Badge>
                     </div>
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-2">
-                      <div className={`h-full rounded-full ${topic.avgScore >= 75 ? 'bg-success' : topic.avgScore >= 60 ? 'bg-warning' : 'bg-destructive'}`} style={{ width: `${topic.avgScore}%` }} />
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${
+                          score >= 75 ? 'bg-success' :
+                          score >= 60 ? 'bg-warning' :
+                          'bg-destructive'
+                        }`}
+                        style={{ width: `${score}%` }}
+                      />
                     </div>
-                    <p className="text-xs text-muted-foreground">{topic.attempts} attempts &middot; Common: {topic.commonErrors[0]}</p>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Student Rankings */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Top Performers */}
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-4 border-b border-border"><h3 className="font-semibold text-card-foreground flex items-center gap-2"><Trophy className="w-5 h-5 text-success" />Top Performers</h3></div>
-            <div className="divide-y divide-border">
-              {topStudents.map((s, i) => (
-                <div key={s.name} className="px-5 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-warning/20 text-warning' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
-                    <div><p className="text-sm font-medium text-card-foreground">{s.name}</p><p className="text-xs text-muted-foreground">{s.className} &middot; {s.casesStudied} cases &middot; {s.lastActive}</p></div>
-                  </div>
-                  <span className="text-sm font-bold text-success">{s.quizScore}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Needs Attention */}
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="px-5 py-4 border-b border-border"><h3 className="font-semibold text-card-foreground flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-warning" />Needs Attention</h3></div>
-            <div className="divide-y divide-border">
-              {bottomStudents.map((s) => (
-                <div key={s.name} className="px-5 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full bg-destructive/10 flex items-center justify-center"><AlertTriangle className="w-3 h-3 text-destructive" /></div>
-                    <div><p className="text-sm font-medium text-card-foreground">{s.name}</p><p className="text-xs text-muted-foreground">{s.className} &middot; {s.casesStudied} cases &middot; Last: {s.lastActive}</p></div>
-                  </div>
-                  <span className="text-sm font-bold text-destructive">{s.quizScore}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Quick Actions */}
+        <div className="flex gap-4 flex-wrap">
+          <Button asChild>
+            <Link href="/lecturer/analytics">
+              View Basic Analytics
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/lecturer/classes">
+              Manage Classes
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Link>
+          </Button>
         </div>
       </div>
     </div>

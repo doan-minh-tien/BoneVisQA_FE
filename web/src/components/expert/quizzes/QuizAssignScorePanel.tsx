@@ -16,6 +16,7 @@ import {
 import {
   Clock, Calendar, ClipboardList, BadgeCheck,
   BookOpen, Search, Loader2, CheckCircle2, XCircle, AlertCircle,
+  Check, X,
 } from 'lucide-react';
 
 function isoToLocalInputValue(iso: string): string {
@@ -49,7 +50,7 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-card-foreground mb-4">{title}</h3>
         {children}
@@ -83,7 +84,7 @@ export default function QuizAssignScorePanel() {
       setClassesList(cRes);
       setExpertsList(eRes);
     } catch (e) {
-      console.error('loadShared failed', e);
+      toast.error(e instanceof Error ? e.message : 'Could not load assignment lists.');
     } finally {
       setSharedLoading(false);
     }
@@ -120,7 +121,7 @@ export default function QuizAssignScorePanel() {
     [attempts, selectedStudentId],
   );
 
-  // ─── Tab: Assigned Quizzes ─────────────────────────────────────────────────
+  // ─── Tab: Assigned Quizzes ───────────────────────────────────────────────
   const [assignedList, setAssignedList] = useState<AssignedQuizRecord[]>([]);
   const [assignedLoading, setAssignedLoading] = useState(false);
   const [assignedLoaded, setAssignedLoaded] = useState(false);
@@ -166,22 +167,35 @@ export default function QuizAssignScorePanel() {
     return filteredAssigned.slice(start, start + ASSIGNED_PAGE_SIZE);
   }, [filteredAssigned, assignedPage]);
 
-  // ─── Tab: Assign Quiz (modal form) ────────────────────────────────────────
+  // ─── Tab: Assign Quiz (form modal) ────────────────────────────────────────
   const [assignOpen, setAssignOpen] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [quizId, setQuizId] = useState('');
-  const [classId, setClassId] = useState('');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
   const [assignedExpertId, setAssignedExpertId] = useState('');
   const [openTime, setOpenTime] = useState('');
   const [closeTime, setCloseTime] = useState('');
   const [passingScore, setPassingScore] = useState<number | ''>('');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState<number | ''>('');
 
-  const canAssign = Boolean(quizId.trim()) && Boolean(classId.trim());
+  const toggleClass = (classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId)
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId]
+    );
+  };
+
+  const removeClass = (classId: string) => {
+    setSelectedClassIds((prev) => prev.filter((id) => id !== classId));
+  };
+
+  const canAssign = Boolean(quizId.trim()) && selectedClassIds.length > 0;
 
   const openAssignModal = () => {
     setQuizId('');
-    setClassId('');
+    setSelectedClassIds([]);
     setAssignedExpertId('');
     setOpenTime('');
     setCloseTime('');
@@ -196,19 +210,34 @@ export default function QuizAssignScorePanel() {
     if (openIso && closeIso && Date.parse(openIso) > Date.parse(closeIso)) {
       return toast.error('Open time must be before or equal to close time.');
     }
-    if (!canAssign) return toast.error('Quiz và Class là bắt buộc.');
+    if (!canAssign) return toast.error('Quiz and Class are required.');
+    const selectedClassNames = selectedClassIds
+      .map((id) => classesList.find((c) => c.id === id)?.className)
+      .filter(Boolean)
+      .join(', ');
     try {
       setIsAssigning(true);
-      await assignQuiz({
-        classId: classId.trim(),
-        quizId: quizId.trim(),
-        assignedExpertId: assignedExpertId.trim() || null,
-        openTime: openIso,
-        closeTime: closeIso,
-        passingScore: passingScore === '' ? null : Number(passingScore),
-        timeLimitMinutes: timeLimitMinutes === '' ? null : Number(timeLimitMinutes),
-      });
-      toast.success('Quiz assigned successfully.');
+      
+      // Assign quiz to each selected class
+      await Promise.all(
+        selectedClassIds.map((cid) =>
+          assignQuiz({
+            classId: cid.trim(),
+            quizId: quizId.trim(),
+            assignedExpertId: assignedExpertId.trim() || null,
+            openTime: openIso,
+            closeTime: closeIso,
+            passingScore: passingScore === '' ? null : Number(passingScore),
+            timeLimitMinutes: timeLimitMinutes === '' ? null : Number(timeLimitMinutes),
+          })
+        )
+      );
+      
+      toast.success(
+        selectedClassIds.length === 1
+          ? 'Quiz assigned successfully.'
+          : `Quiz assigned to ${selectedClassIds.length} classes (${selectedClassNames}).`
+      );
       setAssignOpen(false);
       // refresh assigned list
       setAssignedLoaded(false);
@@ -221,16 +250,16 @@ export default function QuizAssignScorePanel() {
     }
   };
 
-  // ─── Tabs config ─────────────────────────────────────────────────────────
+  // ─── Tab configuration ─────────────────────────────────────────────────────────
   const tabs: { key: TabKey; label: string; icon: typeof Search }[] = [
     { key: 'score', label: 'Score Lookup', icon: BadgeCheck },
     { key: 'assigned', label: 'Assigned Quizzes', icon: BookOpen },
   ];
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="w-full overflow-hidden rounded-xl border-0 bg-transparent">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="text-sm font-semibold text-card-foreground">Assign Quiz &amp; Score</div>
         <button
           onClick={openAssignModal}
@@ -264,7 +293,7 @@ export default function QuizAssignScorePanel() {
           {/* Step 1 – pick Quiz */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              1. Chọn Quiz
+              1. Select Quiz
             </label>
             {sharedLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -291,7 +320,7 @@ export default function QuizAssignScorePanel() {
           {scoreQuizId && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                2. Chọn Student
+                2. Select Student
               </label>
               {attemptsLoading ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -300,7 +329,7 @@ export default function QuizAssignScorePanel() {
               ) : attempts.length === 0 ? (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
                   <AlertCircle className="w-4 h-4 text-warning shrink-0" />
-                  Chưa có sinh viên nào làm quiz này.
+                  No students have attempted this quiz yet.
                 </div>
               ) : (
                 <select
@@ -356,7 +385,7 @@ export default function QuizAssignScorePanel() {
               ) : (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-warning/10 border border-warning/30 text-xs text-warning">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  Sinh viên <strong className="mx-1">{selectedAttempt.studentName}</strong> chưa hoàn thành quiz này.
+                  Student <strong className="mx-1">{selectedAttempt.studentName}</strong> has not completed this quiz yet.
                 </div>
               )}
             </div>
@@ -366,7 +395,7 @@ export default function QuizAssignScorePanel() {
           {selectedStudentId && !selectedAttempt && !attemptsLoading && (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              Không tìm thấy attempt của sinh viên này.
+              No attempt found for this student.
             </div>
           )}
         </div>
@@ -478,16 +507,76 @@ export default function QuizAssignScorePanel() {
 
             <div>
               <label className="block text-sm font-medium text-card-foreground mb-1.5">Class Name</label>
-              <select
-                value={classId}
-                onChange={(e) => setClassId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
-              >
-                <option value="">Select Class...</option>
-                {classesList.map((c) => (
-                  <option key={c.id} value={c.id}>{c.className}</option>
-                ))}
-              </select>
+              
+              {/* Selected classes tags */}
+                  {selectedClassIds.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2 p-2 bg-primary/5 border border-primary/20 rounded-lg">
+                      {selectedClassIds.map((cid) => {
+                        const cls = classesList.find((c) => c.id === cid);
+                        if (!cls) return null;
+                        return (
+                          <span
+                            key={cid}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-primary text-white rounded-full text-xs font-medium"
+                          >
+                            {cls.className}
+                            <button
+                              onClick={() => removeClass(cid)}
+                              className="hover:bg-primary-foreground/20 rounded-full p-0.5 cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
+              {/* Dropdown for class selection */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowClassDropdown(!showClassDropdown)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-sm focus:outline-none focus:ring-2 focus:ring-ring text-left cursor-pointer flex items-center justify-between"
+                >
+                  <span className={selectedClassIds.length > 0 ? 'text-card-foreground' : 'text-muted-foreground'}>
+                    {selectedClassIds.length === 0
+                      ? 'Select Classes...'
+                      : `${selectedClassIds.length} class(es) selected`}
+                  </span>
+                  <span className="text-muted-foreground">▼</span>
+                </button>
+
+                {showClassDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {classesList.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No classes available</p>
+                    ) : (
+                      classesList.map((cls) => {
+                        const isSelected = selectedClassIds.includes(cls.id);
+                        return (
+                          <button
+                            key={cls.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleClass(cls.id);
+                            }}
+                            className={`w-full px-3 py-2 text-sm text-left cursor-pointer transition-colors flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-primary/5 text-primary'
+                                : 'hover:bg-muted/50 text-card-foreground'
+                            }`}
+                          >
+                            <span>{cls.className}</span>
+                            {isSelected && <Check className="w-4 h-4 text-primary" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -558,9 +647,11 @@ export default function QuizAssignScorePanel() {
             <button
               disabled={isAssigning || !canAssign}
               onClick={handleAssign}
-              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-colors"
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 cursor-pointer transition-colors"
             >
-              {isAssigning ? 'Assigning...' : 'Assign'}
+              {isAssigning 
+                ? 'Assigning...' 
+                : `Assign to ${selectedClassIds.length} Class${selectedClassIds.length > 1 ? 'es' : ''}`}
             </button>
           </div>
         </ModalShell>

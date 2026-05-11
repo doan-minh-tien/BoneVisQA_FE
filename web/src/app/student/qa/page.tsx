@@ -34,7 +34,7 @@ const modes = [
 export default function StudentQAPage() {
   return (
     <div className="min-h-screen">
-      <StudentAppChrome title="AI Q&A" subtitle="Choose a mode to start asking questions" />
+      <StudentAppChrome breadcrumb="AI Q&A" title="AI Q&A" subtitle="Choose a mode to start asking questions" />
 
       <div className="p-6 max-w-4xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

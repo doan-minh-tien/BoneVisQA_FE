@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   X,
@@ -14,10 +14,11 @@ import {
   Trash2,
   Info,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface ParsedQuestion {
   questionText: string;
-  type: 'MultipleChoice' | 'TrueFalse' | 'Annotation';
+  type: 'MultipleChoice' | 'Annotation' | 'Essay';
   optionA?: string;
   optionB?: string;
   optionC?: string;
@@ -38,8 +39,7 @@ type ParseResult =
   | { ok: false; error: string };
 
 const SAMPLE_CSV = `questionText,type,optionA,optionB,optionC,optionD,correctAnswer,difficulty
-"What is the most common fracture site in the femur?","MultipleChoice","Proximal shaft","Distal metaphysis","Femoral neck","Medial epicondyle","A","basic"
-"True or False: The tibial plateau is part of the knee joint.","TrueFalse","True","False","","","True","basic"`;
+"What is the most common fracture site in the femur?","MultipleChoice","Proximal shaft","Distal metaphysis","Femoral neck","Medial epicondyle","A","basic"`;
 
 const SAMPLE_JSON = `[
   {
@@ -50,11 +50,6 @@ const SAMPLE_JSON = `[
     "optionC": "Femoral neck",
     "optionD": "Medial epicondyle",
     "correctAnswer": "A"
-  },
-  {
-    "questionText": "True or False: The tibial plateau is part of the knee joint.",
-    "type": "TrueFalse",
-    "correctAnswer": "True"
   }
 ]`;
 
@@ -71,16 +66,16 @@ Answer: Transverse fracture`;
 
 function detectType(text: string): ParsedQuestion['type'] {
   const lower = text.toLowerCase();
-  if (lower.includes('true or false') || lower.includes('t/f')) return 'TrueFalse';
   if (lower.includes('identify') || lower.includes('label') || lower.includes('point')) return 'Annotation';
+  if (lower.includes('essay') || lower.includes('written')) return 'Essay';
   return 'MultipleChoice';
 }
 
-/** Split pasted text into one block per question (numbered "1.", "Câu 1", "Question 1", etc.). */
+/** Split pasted text into one block per question (numbered "1.", "Q1", "Question 1", etc.). */
 function splitPasteBlocks(raw: string): string[] {
   const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   return normalized
-    .split(/\n(?=\s*(?:Câu\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
+    .split(/\n(?=\s*(?:Q\s*\d+\b|Question\s*\d+\b|\d+\.[\s\)]))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -93,12 +88,12 @@ function parsePaste(raw: string): ParsedQuestion[] {
     const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
     if (lines.length < 2) continue;
 
-    while (lines.length && /^Câu\s*\d+\s*$/i.test(lines[0])) {
+    while (lines.length && (/^Q\s*\d+\s*$/i.test(lines[0]))) {
       lines.shift();
     }
     if (lines.length < 2) continue;
 
-    const firstLine = lines[0].replace(/^[\d.]+\s*[\.\)]\s*/i, '').trim();
+    const firstLine = lines[0].replace(/^(?:[\d.]+\s*[\.\)]\s*)/i, '').trim();
 
     let questionText = firstLine;
     let type: ParsedQuestion['type'] = 'MultipleChoice';
@@ -109,24 +104,24 @@ function parsePaste(raw: string): ParsedQuestion[] {
     let correctAnswer = '';
 
     const answerLineIdx = lines.findIndex((l) =>
-      /^answer\s*[:\)]/i.test(l) || /^đáp án\s*[:\)]/i.test(l)
+      /^answer\s*[:\)]/i.test(l) || /^correct answer\s*[:\)]/i.test(l)
     );
     if (answerLineIdx !== -1) {
-      const ansRaw = lines[answerLineIdx].replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').trim();
+      const ansRaw = lines[answerLineIdx].replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').trim();
       correctAnswer = ansRaw.charAt(0).toUpperCase();
     }
 
-    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|true[\s\/]?false|annotation)/i);
+    const mcMatch = firstLine.match(/type\s*[:\)]*\s*(multiple[\s-]?choice|annotation|essay)/i);
     if (mcMatch) {
       const t = mcMatch[1].toLowerCase().replace(/\s/g, '');
-      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-      else if (t.includes('annotation')) type = 'Annotation';
+      if (t.includes('annotation')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
     }
 
     for (const line of lines) {
-      if (/^answer\s*[:\)]/i.test(line) || /^đáp án\s*[:\)]/i.test(line)) {
-        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^đáp án\s*[:\)\-]+\s*/i, '').trim();
+      if (/^answer\s*[:\)]/i.test(line) || /^correct answer\s*[:\)]/i.test(line)) {
+        const val = line.replace(/^answer\s*[:\)\-]+\s*/i, '').replace(/^correct answer\s*[:\)\-]+\s*/i, '').trim();
         correctAnswer = val.charAt(0).toUpperCase();
       }
       if (/^[A-D][\)\.\-\:]\s*/.test(line)) {
@@ -186,8 +181,8 @@ function parseCSV(raw: string): ParseResult {
     const typeVal = cells[typeIdx] ?? 'MultipleChoice';
     let type: ParsedQuestion['type'] = 'MultipleChoice';
     const t = typeVal.toLowerCase().replace(/\s/g, '');
-    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-    else if (t.includes('annotation')) type = 'Annotation';
+    if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({
@@ -216,8 +211,8 @@ function parseJSON(raw: string): ParseResult {
       const typeVal = item.type ?? 'MultipleChoice';
       let type: ParsedQuestion['type'] = 'MultipleChoice';
       const t = String(typeVal).toLowerCase().replace(/\s/g, '');
-      if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-      else if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      if (t.includes('annotation') || t.includes('draw') || t.includes('identification')) type = 'Annotation';
+      else if (t.includes('essay')) type = 'Essay';
       else type = 'MultipleChoice';
       questions.push({
         questionText: qText,
@@ -273,8 +268,8 @@ function parseExcel(workbook: XLSX.WorkBook): ParseResult {
     const typeVal = cells[typeIdx] ?? 'MultipleChoice';
     let type: ParsedQuestion['type'] = 'MultipleChoice';
     const t = typeVal.toLowerCase().replace(/\s/g, '');
-    if (t.includes('true') && t.includes('false')) type = 'TrueFalse';
-    else if (t.includes('annotation')) type = 'Annotation';
+    if (t.includes('annotation')) type = 'Annotation';
+    else if (t.includes('essay')) type = 'Essay';
     else type = 'MultipleChoice';
 
     questions.push({
@@ -313,6 +308,12 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      reset();
+    }
+  }, [open]);
 
   const parse = useCallback(() => {
     if (mode === 'paste') {
@@ -372,7 +373,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
       reader.onload = (e) => setFileContent(e.target?.result as string ?? '');
       reader.readAsText(file);
     } else {
-      alert('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
+      toast.error('Unsupported file type. Please use Excel (.xlsx/.xls), CSV, JSON, or TXT.');
     }
   }, []);
 
@@ -401,13 +402,18 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
     onClose();
   };
 
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
   if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-md"
       role="presentation"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="flex min-h-[100dvh] items-center justify-center p-4 pb-8 sm:p-6 sm:pb-10">
         <div
@@ -423,12 +429,15 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
               Import Questions
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Import từ file Excel (.xlsx/.xls), CSV, JSON hoặc paste trực tiếp.
+              Import from Excel (.xlsx/.xls), CSV, JSON, or paste text directly.
             </p>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              reset();
+              onClose();
+            }}
             className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted transition-colors"
           >
             <X className="h-6 w-6" />
@@ -466,7 +475,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
 
           {/* Sample Download */}
           <div className="mb-4 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Tải file mẫu:</span>
+            <span className="text-xs text-muted-foreground">Download sample files:</span>
             <button type="button" onClick={() => downloadSample('csv')} className="text-xs text-primary hover:underline">
               CSV
             </button>
@@ -479,7 +488,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
               TXT
             </button>
             <span className="text-muted-foreground ml-2">
-              (Dùng file mẫu CSV/JSON để nhập trong Excel — cột: questionText, type, optionA, optionB, optionC, optionD, correctAnswer)
+              (Use CSV/JSON samples for Excel import — columns: questionText, type, optionA, optionB, optionC, optionD, correctAnswer)
             </span>
           </div>
 
@@ -493,7 +502,9 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 className="h-64 w-full resize-none rounded-2xl border border-border bg-muted/50 p-4 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Hỗ trợ định dạng tự do: tách câu bằng &quot;Câu 1&quot;, &quot;1.&quot; hoặc &quot;Question 1&quot;; đáp án gõ &quot;Answer: X&quot; hoặc &quot;Đáp án: X&quot; (A–D hoặc True/False).
+                Flexible format: split questions with &quot;Q1&quot;, &quot;1.&quot;, or &quot;Question 1&quot;;
+                or &quot;Question 1&quot;; answers as &quot;Answer: X&quot; or &quot;Correct Answer: X&quot; (A–D or
+                True/False).
               </p>
             </div>
           ) : (
@@ -530,14 +541,14 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                     }}
                     className="mt-2 flex items-center gap-1 text-xs text-destructive hover:underline"
                   >
-                    <Trash2 className="h-3 w-3" /> Xóa file
+                    <Trash2 className="h-3 w-3" /> Remove file
                   </button>
                 </>
               ) : (
                 <>
                   <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
-                  <p className="font-semibold text-card-foreground">Kéo thả file vào đây</p>
-                  <p className="mt-1 text-xs text-muted-foreground">hoặc click để chọn file (.xlsx, .xls, .csv, .json, .txt)</p>
+                  <p className="font-semibold text-card-foreground">Drag and drop a file here</p>
+                  <p className="mt-1 text-xs text-muted-foreground">or click to choose a file (.xlsx, .xls, .csv, .json, .txt)</p>
                 </>
               )}
             </div>
@@ -556,14 +567,14 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-card-foreground">
-                  Preview — {parseResult.questions.length} câu hỏi được nhận diện
+                  Preview - {parseResult.questions.length} questions detected
                 </h3>
                 <button
                   type="button"
                   onClick={reset}
                   className="text-xs text-muted-foreground hover:text-destructive"
                 >
-                  Xóa &amp; nhập lại
+                  Clear &amp; re-import
                 </button>
               </div>
               <div className="max-h-[min(16rem,35svh)] space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-4">
@@ -587,7 +598,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 ))}
                 {parseResult.questions.length > 10 && (
                   <p className="text-center text-xs text-muted-foreground">
-                    … và {parseResult.questions.length - 10} câu hỏi nữa
+                    ... and {parseResult.questions.length - 10} more questions
                   </p>
                 )}
               </div>
@@ -595,20 +606,23 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
           )}
         </div>
 
-        {/* Footer — căn phải để dễ thao tác */}
+        {/* Footer */}
         <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-border px-8 py-6 sm:flex-row sm:items-center sm:justify-end sm:gap-6">
           <div className="flex items-start justify-end gap-2 text-right text-xs text-muted-foreground sm:max-w-[55%]">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               {mode === 'paste'
-                ? 'Parse tự động từ text. Kiểm tra preview trước khi import.'
-                : 'Hỗ trợ định dạng chuẩn CSV/JSON. Kiểm tra preview trước khi import.'}
+                ? 'Automatically parses text input. Review the preview before importing.'
+                : 'Supports standard CSV/JSON formats. Review the preview before importing.'}
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                reset();
+                onClose();
+              }}
               className="rounded-full px-6 py-2.5 text-sm font-bold text-muted-foreground hover:bg-muted transition-colors"
             >
               Cancel
@@ -621,7 +635,7 @@ export default function QuestionImportDialog({ open, onClose, onImport }: Questi
                 className="flex items-center gap-2 rounded-full bg-gradient-to-br from-primary to-primary-container px-8 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
               >
                 {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Import {parseResult.questions.length} câu hỏi
+                Import {parseResult.questions.length} questions
               </button>
             ) : (
               <button

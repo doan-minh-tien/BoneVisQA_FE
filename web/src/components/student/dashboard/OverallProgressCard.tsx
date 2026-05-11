@@ -15,7 +15,7 @@ export default function OverallProgressCard({ progress, completedCases, totalCas
         <ProgressRing progress={progress} size={140} strokeWidth={10} />
         <div className="mt-4 text-center">
           <p className="text-sm text-muted-foreground">{completedCases} of {totalCases} cases completed</p>
-          <p className="text-xs text-muted-foreground mt-1">You're doing great!</p>
+          <p className="text-xs text-muted-foreground mt-1">You&apos;re doing great!</p>
         </div>
       </div>
     </div>

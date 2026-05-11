@@ -1,480 +1,436 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import Header from '@/components/Header';
-import {
-  FileText,
-  Search,
-  Filter,
-  Eye,
-  EyeOff,
-  Trash2,
-  CheckCircle,
-  Clock,
-  XCircle,
-  ChevronDown,
-  ChevronRight,
-  X,
-  AlertTriangle,
-  ShieldAlert,
-  ImageOff,
-  BarChart3,
-} from 'lucide-react';
+import { SectionCard } from '@/components/shared/SectionCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
+import { fetchAdminCasesPaged } from '@/lib/api/admin-cases';
+import { Filter, AlertCircle, ChevronLeft, ChevronRight, Eye, Loader2, Search, X } from 'lucide-react';
 
-type CaseStatus = 'approved' | 'pending' | 'hidden' | 'rejected';
-type Difficulty = 'basic' | 'intermediate' | 'advanced';
+const PAGE_SIZE = 20;
 
-interface Case {
-  id: string;
-  title: string;
-  boneLocation: string;
-  lesionType: string;
-  difficulty: Difficulty;
-  status: CaseStatus;
-  addedBy: string;
-  addedDate: string;
-  viewCount: number;
-  usageCount: number;
-  imageAnonymized: boolean;
-  flagReason?: string;
-}
-
-const initialCases: Case[] = [
-  { id: '1', title: 'Distal Radius Fracture - Case Study', boneLocation: 'Wrist', lesionType: 'Fracture', difficulty: 'basic', status: 'approved', addedBy: 'Dr. Nguyen Minh', addedDate: '2025-08-15', viewCount: 342, usageCount: 128, imageAnonymized: true },
-  { id: '2', title: 'Osteoarthritis of the Knee Joint', boneLocation: 'Knee', lesionType: 'Degenerative', difficulty: 'intermediate', status: 'approved', addedBy: 'Dr. Tran Hoang', addedDate: '2025-08-20', viewCount: 287, usageCount: 95, imageAnonymized: true },
-  { id: '3', title: 'Complex Tibial Plateau Fracture', boneLocation: 'Tibia', lesionType: 'Fracture', difficulty: 'advanced', status: 'pending', addedBy: 'Dr. Le Thanh', addedDate: '2025-09-01', viewCount: 0, usageCount: 0, imageAnonymized: true },
-  { id: '4', title: 'Shoulder Dislocation Analysis', boneLocation: 'Shoulder', lesionType: 'Dislocation', difficulty: 'intermediate', status: 'approved', addedBy: 'Dr. Pham Expert', addedDate: '2025-07-10', viewCount: 198, usageCount: 72, imageAnonymized: true },
-  { id: '5', title: 'Lumbar Spine Compression Fracture', boneLocation: 'Spine', lesionType: 'Fracture', difficulty: 'advanced', status: 'hidden', addedBy: 'Dr. Nguyen Minh', addedDate: '2025-09-05', viewCount: 56, usageCount: 12, imageAnonymized: false, flagReason: 'Patient name visible in DICOM metadata' },
-  { id: '6', title: 'Osteosarcoma of the Distal Femur', boneLocation: 'Femur', lesionType: 'Tumor', difficulty: 'advanced', status: 'approved', addedBy: 'Dr. Hoang Expert', addedDate: '2025-06-22', viewCount: 412, usageCount: 156, imageAnonymized: true },
-  { id: '7', title: 'Hip Osteoarthritis - Preoperative Planning', boneLocation: 'Hip', lesionType: 'Degenerative', difficulty: 'intermediate', status: 'rejected', addedBy: 'Dr. Tran Hoang', addedDate: '2025-09-10', viewCount: 0, usageCount: 0, imageAnonymized: true, flagReason: 'Incorrect diagnosis labeling' },
-  { id: '8', title: 'Clavicle Midshaft Fracture', boneLocation: 'Clavicle', lesionType: 'Fracture', difficulty: 'basic', status: 'approved', addedBy: 'Dr. Le Thanh', addedDate: '2025-07-28', viewCount: 156, usageCount: 68, imageAnonymized: true },
-  { id: '9', title: 'Pelvic Ring Fracture - Trauma Case', boneLocation: 'Pelvis', lesionType: 'Fracture', difficulty: 'advanced', status: 'pending', addedBy: 'Dr. Pham Expert', addedDate: '2025-09-18', viewCount: 0, usageCount: 0, imageAnonymized: true },
-  { id: '10', title: 'Elbow Dislocation with Radial Head Fracture', boneLocation: 'Elbow', lesionType: 'Dislocation', difficulty: 'intermediate', status: 'hidden', addedBy: 'Dr. Nguyen Minh', addedDate: '2025-08-30', viewCount: 89, usageCount: 34, imageAnonymized: false, flagReason: 'Hospital watermark not removed from images' },
-  { id: '11', title: 'Scaphoid Fracture - Occult Detection', boneLocation: 'Wrist', lesionType: 'Fracture', difficulty: 'intermediate', status: 'approved', addedBy: 'Dr. Hoang Expert', addedDate: '2025-07-15', viewCount: 223, usageCount: 89, imageAnonymized: true },
-  { id: '12', title: 'Spinal Metastasis - Multi-level', boneLocation: 'Spine', lesionType: 'Tumor', difficulty: 'advanced', status: 'pending', addedBy: 'Dr. Tran Hoang', addedDate: '2025-09-22', viewCount: 0, usageCount: 0, imageAnonymized: true },
+// Filter options
+const LOCATION_OPTIONS = ['All', 'Upper Limb', 'Lower Limb', 'Spine', 'Pelvis', 'Shoulder', 'Elbow', 'Wrist', 'Hand', 'Hip', 'Knee', 'Ankle', 'Foot'];
+const LESION_TYPE_OPTIONS = ['All', 'Fracture', 'Arthritis', 'Tumor', 'Infection', 'Congenital', 'Trauma', 'Degenerative', 'Other'];
+const DIFFICULTY_OPTIONS = ['All', 'Basic', 'Intermediate', 'Advanced'];
+const SEVERITY_OPTIONS = ['All', 'Mild', 'Moderate', 'Severe'];
+const AGE_GROUP_OPTIONS = ['All', 'Pediatric', 'Adult', 'Geriatric'];
+const BONE_SPECIALTY_OPTIONS = [
+  { id: 'upper_limb', name: 'Upper Limb' },
+  { id: 'lower_limb', name: 'Lower Limb' },
+  { id: 'spine', name: 'Spine' },
+  { id: 'pelvis', name: 'Pelvis' },
+  { id: 'shoulder', name: 'Shoulder' },
+  { id: 'elbow', name: 'Elbow' },
+  { id: 'wrist', name: 'Wrist' },
+  { id: 'hand', name: 'Hand' },
+  { id: 'hip', name: 'Hip' },
+  { id: 'knee', name: 'Knee' },
+  { id: 'ankle', name: 'Ankle' },
+  { id: 'foot', name: 'Foot' },
+];
+const PATHOLOGY_OPTIONS = [
+  { id: 'fracture', name: 'Fracture' },
+  { id: 'arthritis', name: 'Arthritis' },
+  { id: 'tumor', name: 'Tumor' },
+  { id: 'infection', name: 'Infection' },
+  { id: 'congenital', name: 'Congenital' },
+  { id: 'trauma', name: 'Trauma' },
+  { id: 'degenerative', name: 'Degenerative' },
+  { id: 'other', name: 'Other' },
 ];
 
-const statusConfig: Record<CaseStatus, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
-  approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: 'Approved' },
-  pending: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10', label: 'Pending' },
-  hidden: { icon: EyeOff, color: 'text-muted-foreground', bg: 'bg-muted', label: 'Hidden' },
-  rejected: { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10', label: 'Rejected' },
-};
+function statusClass(statusRaw: string): string {
+  const s = statusRaw.trim().toLowerCase();
+  if (s === 'approved' || s === 'completed') return 'border-emerald-300 bg-emerald-50 text-emerald-700';
+  if (s === 'pending') return 'border-amber-300 bg-amber-50 text-amber-700';
+  if (s === 'hidden') return 'border-slate-300 bg-slate-100 text-slate-700';
+  if (s === 'rejected' || s === 'failed') return 'border-red-300 bg-red-50 text-red-700';
+  return 'border-border bg-muted text-muted-foreground';
+}
 
-const difficultyConfig: Record<Difficulty, { color: string; label: string }> = {
-  basic: { color: 'bg-success/10 text-success', label: 'Basic' },
-  intermediate: { color: 'bg-warning/10 text-warning', label: 'Intermediate' },
-  advanced: { color: 'bg-destructive/10 text-destructive', label: 'Advanced' },
-};
-
-const allStatuses: CaseStatus[] = ['approved', 'pending', 'hidden', 'rejected'];
+interface FilterState {
+  location: string;
+  lesionType: string;
+  difficulty: string;
+  boneSpecialty: string;
+  pathology: string;
+  severity: string;
+  patientAgeGroup: string;
+}
 
 export default function AdminCasesPage() {
-  const [cases, setCases] = useState<Case[]>(initialCases);
+  const toast = useToast();
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<CaseStatus | 'All'>('All');
-  const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'All'>('All');
-  const [expandedCase, setExpandedCase] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ caseItem: Case; action: 'approve' | 'hide' | 'delete' } | null>(null);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
 
-  const filtered = useMemo(() => {
-    return cases.filter((c) => {
-      const matchSearch =
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        c.boneLocation.toLowerCase().includes(search.toLowerCase()) ||
-        c.lesionType.toLowerCase().includes(search.toLowerCase()) ||
-        c.addedBy.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = filterStatus === 'All' || c.status === filterStatus;
-      const matchDifficulty = filterDifficulty === 'All' || c.difficulty === filterDifficulty;
-      return matchSearch && matchStatus && matchDifficulty;
+  // Filter states
+  const [filters, setFilters] = useState<FilterState>({
+    location: 'All',
+    lesionType: 'All',
+    difficulty: 'All',
+    boneSpecialty: '',
+    pathology: '',
+    severity: 'All',
+    patientAgeGroup: 'All',
+  });
+
+  const hasActiveFilters = filters.location !== 'All' || filters.lesionType !== 'All' || filters.difficulty !== 'All' ||
+    filters.boneSpecialty !== '' || filters.pathology !== '' || filters.severity !== 'All' || filters.patientAgeGroup !== 'All';
+
+  const updateFilter = (key: keyof FilterState, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setPageIndex(1);
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      location: 'All',
+      lesionType: 'All',
+      difficulty: 'All',
+      boneSpecialty: '',
+      pathology: '',
+      severity: 'All',
+      patientAgeGroup: 'All',
     });
-  }, [cases, search, filterStatus, filterDifficulty]);
+    setPageIndex(1);
+  };
 
-  const stats = useMemo(() => ({
-    approved: cases.filter((c) => c.status === 'approved').length,
-    pending: cases.filter((c) => c.status === 'pending').length,
-    hidden: cases.filter((c) => c.status === 'hidden').length,
-    rejected: cases.filter((c) => c.status === 'rejected').length,
-    privacyIssues: cases.filter((c) => !c.imageAnonymized).length,
-  }), [cases]);
+  const { data, error, isLoading, mutate, isValidating } = useSWR(
+    ['admin-cases', pageIndex, PAGE_SIZE],
+    () => fetchAdminCasesPaged(pageIndex, PAGE_SIZE),
+    {
+      revalidateOnFocus: true,
+      keepPreviousData: true,
+      onSuccess: (res) => {
+        const tc = res?.totalCount ?? 0;
+        const tp = Math.max(1, Math.ceil(tc / PAGE_SIZE));
+        setPageIndex((p) => (p > tp ? tp : p));
+      },
+    },
+  );
 
-  const handleAction = useCallback((caseItem: Case, action: 'approve' | 'hide' | 'delete') => {
-    setDialog({ caseItem, action });
-  }, []);
+  const totalCount = data?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const displayPage = Math.min(pageIndex, totalPages);
 
-  const confirmAction = useCallback(() => {
-    if (!dialog) return;
-    const { caseItem, action } = dialog;
-    if (action === 'delete') {
-      setCases((prev) => prev.filter((c) => c.id !== caseItem.id));
-    } else if (action === 'approve') {
-      setCases((prev) => prev.map((c) => c.id === caseItem.id ? { ...c, status: 'approved' as CaseStatus } : c));
-    } else if (action === 'hide') {
-      setCases((prev) => prev.map((c) => c.id === caseItem.id ? { ...c, status: 'hidden' as CaseStatus } : c));
+  const rows = useMemo(() => data?.items ?? [], [data]);
+  const filteredRows = useMemo(() => {
+    let result = rows;
+
+    // Apply search filter
+    const q = search.trim().toLowerCase();
+    if (q) {
+      result = result.filter((row) =>
+        row.title.toLowerCase().includes(q) ||
+        row.boneLocation.toLowerCase().includes(q) ||
+        row.lesionType.toLowerCase().includes(q) ||
+        row.status.toLowerCase().includes(q)
+      );
     }
-    setDialog(null);
-  }, [dialog]);
+
+    // Apply location filter
+    if (filters.location !== 'All') {
+      result = result.filter((row) =>
+        row.boneLocation.toLowerCase().includes(filters.location.toLowerCase())
+      );
+    }
+
+    // Apply lesion type filter
+    if (filters.lesionType !== 'All') {
+      result = result.filter((row) =>
+        row.lesionType.toLowerCase().includes(filters.lesionType.toLowerCase())
+      );
+    }
+
+    // Apply difficulty filter
+    if (filters.difficulty !== 'All') {
+      result = result.filter((row) =>
+        row.difficulty.toLowerCase() === filters.difficulty.toLowerCase()
+      );
+    }
+
+    return result;
+  }, [rows, search, filters]);
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error.message || 'Unable to load medical cases.');
+  }, [error, toast]);
 
   return (
     <div className="min-h-screen">
-      <Header title="Case Management" subtitle={`${cases.length} cases total`} />
-
-      <div className="p-6 max-w-[1600px] mx-auto">
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          {allStatuses.map((status) => {
-            const config = statusConfig[status];
-            const Icon = config.icon;
-            return (
-              <button
-                key={status}
-                onClick={() => setFilterStatus(filterStatus === status ? 'All' : status)}
-                className={`flex items-center gap-3 p-4 rounded-xl border transition-all duration-150 cursor-pointer ${
-                  filterStatus === status
-                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                    : 'border-border bg-card hover:bg-input/50'
-                }`}
+      <Header
+        title="Medical Cases"
+        subtitle="Review medical cases, monitor status, and open case management details."
+      />
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        <SectionCard
+          title="Case Management"
+          description="View all medical cases and manage moderation status."
+          actions={
+            <Button type="button" variant="outline" onClick={() => void mutate()}>
+              Refresh
+            </Button>
+          }
+        >
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="relative max-w-md flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search cases..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                variant={showFilters ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="shrink-0"
               >
-                <div className={`w-10 h-10 rounded-lg ${config.bg} flex items-center justify-center`}>
-                  <Icon className={`w-5 h-5 ${config.color}`} />
-                </div>
-                <div className="text-left">
-                  <p className="text-lg font-bold text-card-foreground">{stats[status]}</p>
-                  <p className="text-xs text-muted-foreground">{config.label}</p>
-                </div>
-              </button>
-            );
-          })}
-          {/* Privacy issues card */}
-          <button
-            onClick={() => setSearch('anonymized')}
-            className={`flex items-center gap-3 p-4 rounded-xl border transition-all duration-150 cursor-pointer ${
-              stats.privacyIssues > 0
-                ? 'border-destructive/50 bg-destructive/5'
-                : 'border-border bg-card'
-            }`}
-          >
-            <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-              <ShieldAlert className={`w-5 h-5 ${stats.privacyIssues > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                <Filter className="mr-1 h-4 w-4" />
+                Filters
+                {hasActiveFilters && (
+                  <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">
+                    {[
+                      filters.location !== 'All',
+                      filters.lesionType !== 'All',
+                      filters.difficulty !== 'All',
+                      filters.boneSpecialty !== '',
+                      filters.pathology !== '',
+                      filters.severity !== 'All',
+                      filters.patientAgeGroup !== 'All',
+                    ].filter(Boolean).length}
+                  </span>
+                )}
+              </Button>
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="shrink-0 text-muted-foreground"
+                >
+                  <X className="mr-1 h-4 w-4" />
+                  Clear
+                </Button>
+              )}
             </div>
-            <div className="text-left">
-              <p className="text-lg font-bold text-card-foreground">{stats.privacyIssues}</p>
-              <p className="text-xs text-muted-foreground">Privacy Issues</p>
-            </div>
-          </button>
-        </div>
-
-        {/* Search & Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by title, location, type, or author..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-10 pl-10 pr-4 rounded-lg bg-card border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <p className="text-xs text-muted-foreground">
+              {totalCount > 0
+                ? `Showing page ${displayPage} of ${totalPages} · ${totalCount} case${totalCount === 1 ? '' : 's'} total`
+                : null}
+              {hasActiveFilters ? ` · ${filteredRows.length} match filters.` : ' · Filters apply to this page.'}
+            </p>
           </div>
-          <div className="flex gap-3">
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as CaseStatus | 'All')}
-                className="h-10 pl-10 pr-8 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
-              >
-                <option value="All">All Status</option>
-                <option value="approved">Approved</option>
-                <option value="pending">Pending</option>
-                <option value="hidden">Hidden</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
-            <select
-              value={filterDifficulty}
-              onChange={(e) => setFilterDifficulty(e.target.value as Difficulty | 'All')}
-              className="h-10 px-4 rounded-lg bg-card border border-border text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none cursor-pointer"
-            >
-              <option value="All">All Difficulty</option>
-              <option value="basic">Basic</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </div>
-        </div>
 
-        {/* Table */}
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="p-12 text-center">
-              <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-lg font-medium text-card-foreground">No cases found</p>
-              <p className="text-sm text-muted-foreground mt-1">Try adjusting your search or filters</p>
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="mb-4 rounded-xl border border-border bg-muted/30 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Filter className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Advanced Filters</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Location</label>
+                  <select
+                    value={filters.location}
+                    onChange={(e) => updateFilter('location', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    {LOCATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Lesion Type</label>
+                  <select
+                    value={filters.lesionType}
+                    onChange={(e) => updateFilter('lesionType', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    {LESION_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Difficulty</label>
+                  <select
+                    value={filters.difficulty}
+                    onChange={(e) => updateFilter('difficulty', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    {DIFFICULTY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Bone Specialty</label>
+                  <select
+                    value={filters.boneSpecialty}
+                    onChange={(e) => updateFilter('boneSpecialty', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="">All</option>
+                    {BONE_SPECIALTY_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Pathology</label>
+                  <select
+                    value={filters.pathology}
+                    onChange={(e) => updateFilter('pathology', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="">All</option>
+                    {PATHOLOGY_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Severity</label>
+                  <select
+                    value={filters.severity}
+                    onChange={(e) => updateFilter('severity', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    {SEVERITY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground">Age Group</label>
+                  <select
+                    value={filters.patientAgeGroup}
+                    onChange={(e) => updateFilter('patientAgeGroup', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm"
+                  >
+                    {AGE_GROUP_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isLoading && !data ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              Loading medical cases...
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-700">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <AlertCircle className="h-4 w-4" />
+                Failed to load medical cases.
+              </p>
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="rounded-xl border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              No medical cases found for the current filters.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="space-y-3">
+            <div className="relative overflow-hidden rounded-xl border border-border">
+              {isValidating && data ? (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Refreshing" />
+                </div>
+              ) : null}
+              <table className="w-full border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Case</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Location / Type</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Difficulty</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Status</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Privacy</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground uppercase px-5 py-3">Stats</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground uppercase px-5 py-3">Actions</th>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="px-4 py-3 font-semibold text-muted-foreground">Case</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground">Location</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground">Lesion</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground">Difficulty</th>
+                    <th className="px-4 py-3 font-semibold text-muted-foreground">Status</th>
+                    <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((c) => {
-                    const stConfig = statusConfig[c.status];
-                    const StIcon = stConfig.icon;
-                    const dConfig = difficultyConfig[c.difficulty];
-                    const isExpanded = expandedCase === c.id;
-
-                    return (
-                      <tr key={c.id} className="group hover:bg-input/30 transition-colors duration-150">
-                        {/* Case Info */}
-                        <td className="px-5 py-3">
-                          <button
-                            onClick={() => setExpandedCase(isExpanded ? null : c.id)}
-                            className="flex items-start gap-2 text-left cursor-pointer"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                            )}
-                            <div>
-                              <Link href={`/admin/cases/${c.id}`} className="text-sm font-medium text-card-foreground leading-snug hover:text-primary transition-colors">
-                                {c.title}
-                              </Link>
-                              {isExpanded && (
-                                <div className="mt-2 text-xs text-muted-foreground space-y-1">
-                                  <p>Added by: <span className="text-card-foreground">{c.addedBy}</span></p>
-                                  <p>Date: <span className="text-card-foreground">{c.addedDate}</span></p>
-                                  {c.flagReason && (
-                                    <div className="flex items-start gap-1.5 mt-1.5 px-2.5 py-2 rounded-md bg-destructive/10 border border-destructive/20">
-                                      <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
-                                      <span className="text-destructive">{c.flagReason}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        </td>
-
-                        {/* Location / Type */}
-                        <td className="px-5 py-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">{c.boneLocation}</span>
-                            <span className="px-2 py-0.5 bg-accent/10 text-accent text-xs rounded font-medium">{c.lesionType}</span>
-                          </div>
-                        </td>
-
-                        {/* Difficulty */}
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${dConfig.color}`}>
-                            {dConfig.label}
-                          </span>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${stConfig.bg} ${stConfig.color}`}>
-                            <StIcon className="w-3.5 h-3.5" />
-                            {stConfig.label}
-                          </span>
-                        </td>
-
-                        {/* Privacy */}
-                        <td className="px-5 py-3">
-                          {c.imageAnonymized ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              OK
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-                              <ImageOff className="w-3.5 h-3.5" />
-                              Issue
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Stats */}
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Eye className="w-3.5 h-3.5" />
-                              {c.viewCount}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <BarChart3 className="w-3.5 h-3.5" />
-                              {c.usageCount}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-5 py-3">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {/* Approve (show for pending, hidden, rejected) */}
-                            {c.status !== 'approved' && (
-                              <button
-                                onClick={() => handleAction(c, 'approve')}
-                                title="Approve case"
-                                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-success/10 cursor-pointer transition-colors"
-                              >
-                                <CheckCircle className="w-4 h-4 text-success" />
-                              </button>
-                            )}
-                            {/* Hide (show for approved, pending) */}
-                            {(c.status === 'approved' || c.status === 'pending') && (
-                              <button
-                                onClick={() => handleAction(c, 'hide')}
-                                title="Hide case from students"
-                                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-warning/10 cursor-pointer transition-colors"
-                              >
-                                <EyeOff className="w-4 h-4 text-warning" />
-                              </button>
-                            )}
-                            {/* Delete */}
-                            <button
-                              onClick={() => handleAction(c, 'delete')}
-                              title="Delete case"
-                              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-destructive/10 cursor-pointer transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-muted/20">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-card-foreground">{row.title}</p>
+                        <p className="text-xs text-muted-foreground">{row.id}</p>
+                      </td>
+                      <td className="px-4 py-3 text-card-foreground">{row.boneLocation}</td>
+                      <td className="px-4 py-3 text-card-foreground">{row.lesionType}</td>
+                      <td className="px-4 py-3 text-card-foreground">{row.difficulty}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass(
+                            row.status,
+                          )}`}
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link href={`/admin/cases/${row.id}`}>
+                          <Button type="button" variant="outline" size="sm">
+                            <Eye className="h-3.5 w-3.5" />
+                            Open
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={displayPage <= 1 || isValidating}
+                onClick={() =>
+                  setPageIndex((p) => Math.max(1, Math.min(p, totalPages) - 1))
+                }
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {displayPage} / {totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={displayPage >= totalPages || isValidating}
+                onClick={() =>
+                  setPageIndex((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))
+                }
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+            </div>
           )}
-        </div>
-      </div>
-
-      {/* Confirm Dialog */}
-      {dialog && (
-        <CaseActionDialog
-          caseItem={dialog.caseItem}
-          action={dialog.action}
-          onConfirm={confirmAction}
-          onCancel={() => setDialog(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function CaseActionDialog({
-  caseItem,
-  action,
-  onConfirm,
-  onCancel,
-}: {
-  caseItem: Case;
-  action: 'approve' | 'hide' | 'delete';
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const config = {
-    approve: {
-      icon: CheckCircle,
-      iconBg: 'bg-success/10',
-      iconColor: 'text-success',
-      title: 'Approve Case',
-      description: <>Approve <strong className="text-card-foreground">{caseItem.title}</strong>? Students will be able to view and study this case.</>,
-      buttonText: 'Approve',
-      buttonClass: 'bg-success hover:bg-success/90',
-      warning: !caseItem.imageAnonymized ? 'This case has privacy issues. Please verify that images are properly anonymized before approving.' : null,
-    },
-    hide: {
-      icon: EyeOff,
-      iconBg: 'bg-warning/10',
-      iconColor: 'text-warning',
-      title: 'Hide Case',
-      description: <>Hide <strong className="text-card-foreground">{caseItem.title}</strong> from students? The case will remain in the system but won&apos;t be visible to students.</>,
-      buttonText: 'Hide Case',
-      buttonClass: 'bg-warning hover:bg-warning/90',
-      warning: null,
-    },
-    delete: {
-      icon: Trash2,
-      iconBg: 'bg-destructive/10',
-      iconColor: 'text-destructive',
-      title: 'Delete Case',
-      description: <>Permanently delete <strong className="text-card-foreground">{caseItem.title}</strong>? This action cannot be undone. All associated data will be removed.</>,
-      buttonText: 'Delete',
-      buttonClass: 'bg-destructive hover:bg-destructive/90',
-      warning: caseItem.usageCount > 0 ? `This case has been used ${caseItem.usageCount} times by students. Deleting it will affect their learning history.` : null,
-    },
-  }[action];
-
-  const Icon = config.icon;
-
-  return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-
-      <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
-        <button
-          onClick={onCancel}
-          className="absolute top-4 right-4 w-8 h-8 rounded-lg hover:bg-input flex items-center justify-center cursor-pointer transition-colors"
-        >
-          <X className="w-4 h-4 text-muted-foreground" />
-        </button>
-
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${config.iconBg}`}>
-          <Icon className={`w-6 h-6 ${config.iconColor}`} />
-        </div>
-
-        <h3 className="text-lg font-semibold text-card-foreground text-center mb-2">{config.title}</h3>
-        <p className="text-sm text-muted-foreground text-center mb-6">{config.description}</p>
-
-        {config.warning && (
-          <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-warning/10 border border-warning/20 mb-6">
-            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-            <p className="text-xs text-warning">{config.warning}</p>
-          </div>
-        )}
-
-        {/* Case info */}
-        <div className="px-4 py-3 rounded-lg bg-input/50 mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded font-medium">{caseItem.boneLocation}</span>
-            <span className="px-2 py-0.5 bg-accent/10 text-accent text-xs rounded font-medium">{caseItem.lesionType}</span>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${difficultyConfig[caseItem.difficulty].color}`}>
-              {difficultyConfig[caseItem.difficulty].label}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            By {caseItem.addedBy} &middot; {caseItem.viewCount} views &middot; {caseItem.usageCount} uses
-          </p>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-card-foreground hover:bg-input cursor-pointer transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer transition-colors ${config.buttonClass}`}
-          >
-            {config.buttonText}
-          </button>
-        </div>
+        </SectionCard>
       </div>
     </div>
   );

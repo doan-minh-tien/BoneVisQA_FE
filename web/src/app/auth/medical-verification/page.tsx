@@ -196,7 +196,7 @@ export default function MedicalVerificationPage() {
             </div>
 
             <div className="rounded-lg bg-amber-500/10 p-3">
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+              <p className="text-xs text-amber-700">
                 <strong>Note:</strong> Your information will be reviewed by an admin. You will
                 receive an email once your account is approved.
               </p>

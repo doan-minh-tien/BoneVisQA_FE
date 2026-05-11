@@ -15,8 +15,10 @@ import {
   Timer,
   CheckCircle2,
   ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import QuestionCard from '@/components/lecturer/quizzes/QuestionCard';
 import {
   getQuiz,
@@ -25,7 +27,7 @@ import {
 } from '@/lib/api/lecturer-quiz';
 import type { QuizDto, QuizQuestionDto } from '@/lib/api/types';
 
-const QUESTIONS_PAGE_SIZE = 10;
+const QUESTIONS_PER_PAGE = 3;
 
 export default function QuestionManagerPage() {
   const router = useRouter();
@@ -39,9 +41,22 @@ export default function QuestionManagerPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestionDto | null>(null);
-  const [questionPagesLoaded, setQuestionPagesLoaded] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [lastEditedQuestionId, setLastEditedQuestionId] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  // Delete question dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{
+    questionId: string;
+    questionText: string;
+  } | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState(false);
+
+  const loadData = useCallback(async (options?: { preserveQuestionId?: string }) => {
+    if (!quizId) {
+      setLoading(false);
+      setError('Quiz ID is missing');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -50,6 +65,16 @@ export default function QuestionManagerPage() {
         getQuizQuestions(quizId),
       ]);
       setQuiz(quizData);
+
+      // Preserve page position for edited questions
+      if (options?.preserveQuestionId) {
+        const questionIndex = questionsData.findIndex(q => q.id === options.preserveQuestionId);
+        if (questionIndex !== -1) {
+          const newPage = Math.max(1, Math.ceil((questionIndex + 1) / QUESTIONS_PER_PAGE));
+          setCurrentPage(newPage);
+        }
+      }
+
       setQuestions(questionsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load questions');
@@ -63,31 +88,42 @@ export default function QuestionManagerPage() {
   }, [loadData]);
 
   useEffect(() => {
-    setQuestionPagesLoaded(1);
-  }, [quizId, searchTerm, questions.length]);
+    setCurrentPage(1);
+  }, [quizId, searchTerm]);
 
   const handleEditQuestion = (question: QuizQuestionDto) => {
     setEditingQuestion(question);
+    setLastEditedQuestionId(question.id);
     setEditorOpen(true);
   };
 
-  const handleDeleteQuestion = async (questionId: string) => {
-    if (!confirm('Remove this question?')) return;
+  const openDeleteQuestionDialog = (questionId: string, questionText: string) => {
+    setDeleteDialog({ questionId, questionText });
+  };
+
+  const handleDeleteQuestionConfirm = async () => {
+    if (!deleteDialog) return;
+    setDeletingQuestion(true);
     try {
-      await deleteQuizQuestion(questionId);
-      setQuestions(questions.filter((q) => q.id !== questionId));
+      await deleteQuizQuestion(deleteDialog.questionId);
+      setQuestions(questions.filter((q) => q.id !== deleteDialog.questionId));
+      setDeleteDialog(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete question');
+    } finally {
+      setDeletingQuestion(false);
     }
   };
 
   const handleAddQuestion = () => {
     setEditingQuestion(null);
+    setLastEditedQuestionId(null);
     setEditorOpen(true);
   };
 
   const handleQuestionSuccess = () => {
-    loadData();
+    // Preserve page position for edited questions
+    loadData(lastEditedQuestionId ? { preserveQuestionId: lastEditedQuestionId } : undefined);
   };
 
   const filtered = questions.filter(
@@ -96,9 +132,9 @@ export default function QuestionManagerPage() {
       false
   );
 
-  const visibleLimit = questionPagesLoaded * QUESTIONS_PAGE_SIZE;
-  const displayedFiltered = filtered.slice(0, visibleLimit);
-  const canLoadMoreQuestions = displayedFiltered.length < filtered.length;
+  const totalPages = Math.ceil(filtered.length / QUESTIONS_PER_PAGE);
+  const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
+  const displayedFiltered = filtered.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
 
   // Stats
   const totalQuestions = questions.length;
@@ -256,23 +292,51 @@ export default function QuestionManagerPage() {
                   question={q}
                   variant="manager"
                   onEdit={handleEditQuestion}
-                  onDelete={handleDeleteQuestion}
+                  onDelete={openDeleteQuestionDialog}
                   points={10}
                 />
               ))}
 
-              {canLoadMoreQuestions ? (
-                <div className="flex justify-center pt-6">
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-6">
                   <button
                     type="button"
-                    onClick={() => setQuestionPagesLoaded((p: number) => p + 1)}
-                    className="flex items-center gap-2 rounded-full p-3 px-6 text-sm font-bold text-primary transition-colors hover:bg-primary-fixed"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary-fixed disabled:opacity-40 disabled:hover:bg-transparent"
                   >
-                    Load More Questions
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-9 w-9 rounded-full text-sm font-bold transition-colors ${
+                          currentPage === page
+                            ? 'bg-primary text-white'
+                            : 'text-primary hover:bg-primary-fixed'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary-fixed disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
-              ) : null}
+              )}
             </div>
           )}
         </div>
@@ -283,10 +347,26 @@ export default function QuestionManagerPage() {
         onClose={() => {
           setEditorOpen(false);
           setEditingQuestion(null);
+          setLastEditedQuestionId(null);
         }}
         quizId={quizId}
         question={editingQuestion}
         onSuccess={handleQuestionSuccess}
+      />
+
+      {/* Delete question confirmation dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialog !== null}
+        title="Delete question?"
+        description="This question will be permanently deleted from the quiz."
+        itemName={deleteDialog?.questionText || ''}
+        itemType="Question"
+        onConfirm={handleDeleteQuestionConfirm}
+        onCancel={() => setDeleteDialog(null)}
+        deleting={deletingQuestion}
+        confirmText="Delete question"
+        cancelText="Cancel"
+        dangerLevel="high"
       />
     </div>
   );

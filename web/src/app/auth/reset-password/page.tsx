@@ -114,7 +114,7 @@ function ResetPasswordForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 pr-11 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 pr-11 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                 />
                 <button
                   type="button"
@@ -144,7 +144,7 @@ function ResetPasswordForm() {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required
-                className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full rounded-xl border-none bg-surface-container-low px-4 py-3 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
               />
             </div>
 

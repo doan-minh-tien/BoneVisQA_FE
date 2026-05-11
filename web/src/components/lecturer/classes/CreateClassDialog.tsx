@@ -24,7 +24,7 @@ export default function CreateClassDialog({ onClose, onSuccess }: CreateClassDia
     try {
       const userId = getStoredUserId();
       if (!userId) {
-        setCreateError('Chưa đăng nhập hoặc thiếu userId. Vui lòng đăng nhập lại.');
+        setCreateError('Not logged in or userId is missing. Please log in again.');
         return;
       }
       const created = await createClass({

@@ -16,12 +16,13 @@ import {
 } from 'lucide-react';
 import ImportPreviewDialog from '@/components/lecturer/classes/ImportPreviewDialog';
 import {
-  getAvailableStudents,
-  enrollManyStudents,
+  // getAvailableStudents,    // DISABLED: Lecturer cannot CRUD students in class
+  // enrollManyStudents,       // DISABLED: Lecturer cannot CRUD students in class
   getLecturerCases,
   assignCasesToClass,
+  getAssignedCasesForClass,
 } from '@/lib/api/lecturer';
-import type { CaseDto, StudentEnrollment } from '@/lib/api/types';
+import type { CaseDto, ClassCaseAssignmentDto } from '@/lib/api/types';
 
 export interface ClassManagementWorkbenchProps {
   classId: string;
@@ -30,7 +31,8 @@ export interface ClassManagementWorkbenchProps {
   caseActivityCount: number;
   /** Optional denominator for enrolled display, e.g. mock capacity. */
   enrolledCapacity?: number;
-  onRosterChanged?: () => void;
+  /** DISABLED: onRosterChanged — Lecturer cannot CRUD students in class */
+  // onRosterChanged?: () => void;
 }
 
 export default function ClassManagementWorkbench({
@@ -38,35 +40,50 @@ export default function ClassManagementWorkbench({
   enrolledCount,
   caseActivityCount,
   enrolledCapacity,
-  onRosterChanged,
 }: ClassManagementWorkbenchProps) {
   const [showImport, setShowImport] = useState(false);
-  const [showBulk, setShowBulk] = useState(false);
+  // DISABLED: showBulk — Lecturer cannot CRUD students in class
+  // const [showBulk, setShowBulk] = useState(false);
 
   const [cases, setCases] = useState<CaseDto[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
+  const [assignedCaseIds, setAssignedCaseIds] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [assigningIds, setAssigningIds] = useState<Set<string>>(new Set());
   const [justAssigned, setJustAssigned] = useState<Set<string>>(new Set());
 
-  const [bulkList, setBulkList] = useState<StudentEnrollment[]>([]);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkSearch, setBulkSearch] = useState('');
-  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkError, setBulkError] = useState('');
+// DISABLED: Bulk enrollment state — Lecturer cannot CRUD students in class
+// const [bulkList, setBulkList] = useState<StudentEnrollment[]>([]);
+// const [bulkLoading, setBulkLoading] = useState(false);
+// const [bulkSearch, setBulkSearch] = useState('');
+// const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+// const [bulkSubmitting, setBulkSubmitting] = useState(false);
+// const [bulkError, setBulkError] = useState('');
 
-  const refreshRoster = useCallback(() => {
-    onRosterChanged?.();
-  }, [onRosterChanged]);
+  // DISABLED: refreshRoster — Lecturer cannot CRUD students in class
+  // const refreshRoster = useCallback(() => {
+  //   onRosterChanged?.();
+  // }, [onRosterChanged]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setCasesLoading(true);
       try {
-        const data = await getLecturerCases();
-        if (!cancelled) setCases(data);
+        // Fetch all available cases and assigned cases in parallel
+        const [allCasesData, assignedData] = await Promise.all([
+          getLecturerCases(),
+          getAssignedCasesForClass(classId),
+        ]);
+        if (!cancelled) {
+          setCases(allCasesData);
+          // Build a Set of assigned case IDs for quick lookup
+          const assignedIds = new Set<string>();
+          assignedData.forEach((item: ClassCaseAssignmentDto) => {
+            assignedIds.add(item.caseId);
+          });
+          setAssignedCaseIds(assignedIds);
+        }
       } catch {
         if (!cancelled) setCases([]);
       } finally {
@@ -76,7 +93,7 @@ export default function ClassManagementWorkbench({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [classId]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -91,45 +108,48 @@ export default function ClassManagementWorkbench({
     return cases.filter((c) => c.categoryName === categoryFilter);
   }, [cases, categoryFilter]);
 
-  const openBulk = async () => {
-    setShowBulk(true);
-    setBulkError('');
-    setBulkSearch('');
-    setBulkSelected(new Set());
-    setBulkLoading(true);
-    try {
-      const data = await getAvailableStudents(classId);
-      setBulkList(data);
-    } catch {
-      setBulkList([]);
-    } finally {
-      setBulkLoading(false);
-    }
-  };
+  // DISABLED: openBulk — Lecturer cannot CRUD students in class
+  // const openBulk = async () => {
+  //   setShowBulk(true);
+  //   setBulkError('');
+  //   setBulkSearch('');
+  //   setBulkSelected(new Set());
+  //   setBulkLoading(true);
+  //   try {
+  //     const data = await getAvailableStudents(classId);
+  //     setBulkList(data);
+  //   } catch {
+  //     setBulkList([]);
+  //   } finally {
+  //     setBulkLoading(false);
+  //   }
+  // };
 
-  const toggleBulk = (studentId: string) => {
-    setBulkSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(studentId)) next.delete(studentId);
-      else next.add(studentId);
-      return next;
-    });
-  };
+  // DISABLED: toggleBulk — Lecturer cannot CRUD students in class
+  // const toggleBulk = (studentId: string) => {
+  //   setBulkSelected((prev) => {
+  //     const next = new Set(prev);
+  //     if (next.has(studentId)) next.delete(studentId);
+  //     else next.add(studentId);
+  //     return next;
+  //   });
+  // };
 
-  const submitBulkEnroll = async () => {
-    if (bulkSelected.size === 0) return;
-    setBulkSubmitting(true);
-    setBulkError('');
-    try {
-      await enrollManyStudents(classId, Array.from(bulkSelected));
-      setShowBulk(false);
-      refreshRoster();
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk enroll failed');
-    } finally {
-      setBulkSubmitting(false);
-    }
-  };
+  // DISABLED: submitBulkEnroll — Lecturer cannot CRUD students in class
+  // const submitBulkEnroll = async () => {
+  //   if (bulkSelected.size === 0) return;
+  //   setBulkSubmitting(true);
+  //   setBulkError('');
+  //   try {
+  //     await enrollManyStudents(classId, Array.from(bulkSelected));
+  //     setShowBulk(false);
+  //     refreshRoster();
+  //   } catch (e) {
+  //     setBulkError(e instanceof Error ? e.message : 'Bulk enroll failed');
+  //   } finally {
+  //     setBulkSubmitting(false);
+  //   }
+  // };
 
   const handleAssignCase = async (caseId: string) => {
     setAssigningIds((prev) => new Set(prev).add(caseId));
@@ -138,7 +158,9 @@ export default function ClassManagementWorkbench({
         caseIds: [caseId],
         isMandatory: true,
       });
+      // Update both justAssigned (for UI feedback) and assignedCaseIds (for persistent state)
       setJustAssigned((prev) => new Set(prev).add(caseId));
+      setAssignedCaseIds((prev) => new Set(prev).add(caseId));
     } catch {
       // keep UI unchanged
     } finally {
@@ -150,21 +172,26 @@ export default function ClassManagementWorkbench({
     }
   };
 
-  const filteredBulk = bulkList.filter((s) => {
-    const q = bulkSearch.toLowerCase();
-    return (
-      (s.studentName?.toLowerCase().includes(q) ?? false) ||
-      (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
-      (s.studentCode?.toLowerCase().includes(q) ?? false)
-    );
-  });
+  // DISABLED: filteredBulk — Lecturer cannot CRUD students in class
+  // const filteredBulk = bulkList.filter((s) => {
+  //   const q = bulkSearch.toLowerCase();
+  //   return (
+  //     (s.studentName?.toLowerCase().includes(q) ?? false) ||
+  //     (s.studentEmail?.toLowerCase().includes(q) ?? false) ||
+  //     (s.studentCode?.toLowerCase().includes(q) ?? false)
+  //   );
+  // });
 
   const displayCases = filteredCases.slice(0, 9);
 
   return (
     <div className="mb-10 space-y-8">
       <div className="flex flex-wrap justify-end gap-3">
-        <button
+        {/*
+          DISABLED: Import students button — Lecturer cannot CRUD students in class.
+          If needed, Admin will handle student imports.
+        */}
+        {/* <button
           type="button"
           onClick={() => setShowImport(true)}
           className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-5 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted"
@@ -179,7 +206,7 @@ export default function ClassManagementWorkbench({
         >
           <UserPlus className="h-4 w-4" />
           Bulk enroll
-        </button>
+        </button> */}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -233,7 +260,7 @@ export default function ClassManagementWorkbench({
 
         <Link
           href="/lecturer/cases"
-          className="group flex flex-col rounded-3xl border border-border bg-slate-900 p-8 text-slate-50 shadow-sm transition-transform hover:scale-[1.01] dark:bg-slate-950 lg:col-span-4"
+          className="group flex flex-col rounded-3xl border border-border bg-slate-900 p-8 text-slate-50 shadow-sm transition-transform hover:scale-[1.01] lg:col-span-4"
         >
           <div className="mb-auto">
             <h3 className="mb-2 text-xl font-bold">Case library</h3>
@@ -291,7 +318,8 @@ export default function ClassManagementWorkbench({
         ) : (
           <div className="relative z-10 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {displayCases.map((c) => {
-              const assigned = justAssigned.has(c.id);
+              // Case is assigned if it was assigned before OR just assigned in this session
+              const assigned = justAssigned.has(c.id) || assignedCaseIds.has(c.id);
               const busy = assigningIds.has(c.id);
               const tag = (c.categoryName || c.difficulty || 'Case').slice(0, 12).toUpperCase();
               return (
@@ -302,7 +330,7 @@ export default function ClassManagementWorkbench({
                   <div className="relative h-36 overflow-hidden bg-gradient-to-br from-primary/20 via-muted to-primary/5">
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute bottom-3 left-4">
-                      <span className="rounded px-2 py-0.5 text-[10px] font-black tracking-tight bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100">
+                      <span className="rounded px-2 py-0.5 text-[10px] font-black tracking-tight bg-amber-100 text-amber-950">
                         {tag}
                       </span>
                     </div>
@@ -346,14 +374,21 @@ export default function ClassManagementWorkbench({
         )}
       </div>
 
-      <ImportPreviewDialog
+      {/*
+        DISABLED: ImportPreviewDialog — Lecturer cannot CRUD students in class.
+        If needed, Admin will handle student imports.
+      */}
+      {/* <ImportPreviewDialog
         open={showImport}
         onClose={() => setShowImport(false)}
         classId={classId}
         onSuccess={refreshRoster}
-      />
+      /> */}
 
-      {showBulk && (
+      {/*
+        DISABLED: Bulk enrollment modal — Lecturer cannot CRUD students in class.
+      */}
+      {/* {showBulk && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <button
             type="button"
@@ -448,7 +483,7 @@ export default function ClassManagementWorkbench({
             </button>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

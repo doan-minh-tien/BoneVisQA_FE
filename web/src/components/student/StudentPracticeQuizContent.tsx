@@ -1,12 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { fetchStudentPracticeQuiz, submitStudentQuiz, generateAIPracticeQuiz } from '@/lib/api/student';
+import { 
+  fetchStudentPracticeQuiz, 
+  submitStudentQuiz, 
+  generateAIPracticeQuiz,
+  fetchBoneSpecialtyOptions,
+  fetchPathologyCategoryOptions,
+  type BoneSpecialtyOption,
+  type PathologyCategoryOption
+} from '@/lib/api/student';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentPracticeQuiz, StudentQuizSubmissionResult } from '@/lib/api/types';
+import { useLocalStorageState } from '@/lib/useLocalStorageState';
 import {
   CheckCircle,
   Loader2,
@@ -15,25 +26,52 @@ import {
   Trophy,
   Zap,
   BarChart3,
-  TrendingUp,
   Plus,
   Search,
   ChevronLeft,
   ChevronRight,
   BookOpen,
-  AlertCircle,
   Sparkles,
   Image as ImageIcon,
+  ChevronDown,
+  X,
+  Layers,
+  Target,
+  BrainCircuit,
+  Stethoscope,
 } from 'lucide-react';
 
-const topicSuggestions = [
-  'Long Bone Fractures',
-  'Spine Lesions',
-  'Joint Diseases',
-  'Bone Tumors',
-  'Upper Extremity',
-  'Lower Extremity',
-];
+// Organized topic structure with categories
+const topicCategories = {
+  'Fractures': [
+    'Long Bone Fractures',
+    'Spine Fractures',
+    'Pelvis & Hip Fractures',
+    'Hand & Foot Fractures',
+    'Stress Fractures',
+  ],
+  'Lesions & Diseases': [
+    'Spine Lesions',
+    'Joint Diseases',
+    'Bone Tumors',
+    'Metabolic Bone Diseases',
+    'Infectious Bone Diseases',
+  ],
+  'Anatomical Regions': [
+    'Upper Extremity',
+    'Lower Extremity',
+    'Skull & Face',
+    'Thorax & Ribs',
+  ],
+  'General Topics': [
+    'Pediatric Bone Conditions',
+    'Degenerative Conditions',
+    'Vascular Bone Disorders',
+  ],
+};
+
+// Flat list of all topics for backward compatibility
+const allTopics = Object.values(topicCategories).flat();
 
 const difficultyOptions = [
   { value: '', label: 'Any difficulty' },
@@ -42,20 +80,59 @@ const difficultyOptions = [
   { value: 'Hard', label: 'Hard' },
 ];
 
-export default function StudentQuizPage() {
+type StudentQuizDraft = {
+  topic: string;
+  difficulty: string;
+  answers: Record<string, string>;
+  searchTerm: string;
+  page: number;
+  questionCount: number;
+  boneSpecialtyId: string;
+  pathologyCategoryId: string;
+};
+
+const EMPTY_QUIZ_DRAFT: StudentQuizDraft = {
+  topic: allTopics[0],
+  difficulty: '',
+  answers: {},
+  searchTerm: '',
+  page: 1,
+  questionCount: 5,
+  boneSpecialtyId: '',
+  pathologyCategoryId: '',
+};
+
+export function StudentPracticeQuizContent({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const toast = useToast();
-  const [topic, setTopic] = useState(topicSuggestions[0]);
-  const [difficulty, setDifficulty] = useState('');
+  const [quizDraft, setQuizDraft, clearQuizDraft] = useLocalStorageState<StudentQuizDraft>(
+    'student-quiz-draft',
+    EMPTY_QUIZ_DRAFT,
+  );
+  
+  // Basic filters
+  const [topic, setTopic] = useState(quizDraft.topic || allTopics[0]);
+  const [difficulty, setDifficulty] = useState(quizDraft.difficulty || '');
+  const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
+  const [page, setPage] = useState(quizDraft.page || 1);
+  const [questionCount, setQuestionCount] = useState(quizDraft.questionCount || 5);
+  
+  // Deep classification filters
+  const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyOption[]>([]);
+  const [pathologyCategories, setPathologyCategories] = useState<PathologyCategoryOption[]>([]);
+  const [selectedBoneSpecialty, setSelectedBoneSpecialty] = useState(quizDraft.boneSpecialtyId || '');
+  const [selectedPathologyCategory, setSelectedPathologyCategory] = useState(quizDraft.pathologyCategoryId || '');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [loadingFilters, setLoadingFilters] = useState(false);
+  
+  // Quiz state
   const [quiz, setQuiz] = useState<StudentPracticeQuiz | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(quizDraft.answers || {});
   const [result, setResult] = useState<StudentQuizSubmissionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-
-  // AI Quiz State
+  
+  // AI Quiz state
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<Array<{
     questionText: string;
@@ -68,7 +145,87 @@ export default function StudentQuizPage() {
     caseId?: string;
     caseTitle?: string;
   }>>([]);
-  const [questionCount, setQuestionCount] = useState(5);
+
+  // Load classification options
+  useEffect(() => {
+    const loadFilters = async () => {
+      setLoadingFilters(true);
+      try {
+        const [specialties, pathologies] = await Promise.all([
+          fetchBoneSpecialtyOptions(),
+          fetchPathologyCategoryOptions(),
+        ]);
+        setBoneSpecialties(specialties);
+        setPathologyCategories(pathologies);
+      } catch (error) {
+        console.error('Error loading classification filters:', error);
+        // Use empty arrays - filters will just show "All" option
+      } finally {
+        setLoadingFilters(false);
+      }
+    };
+    loadFilters();
+  }, []);
+
+  // Filter topics based on search
+  const filteredTopics = useMemo(() => {
+    if (!searchTerm.trim()) return allTopics;
+    const search = searchTerm.toLowerCase();
+    
+    const matchingTopics = allTopics.filter(t => 
+      t.toLowerCase().includes(search)
+    );
+    
+    // Also search in category names
+    const matchingCategories = Object.entries(topicCategories)
+      .filter(([cat]) => cat.toLowerCase().includes(search))
+      .flatMap(([, topics]) => topics);
+    
+    // Combine and dedupe
+    const combined = [...matchingTopics, ...matchingCategories];
+    return [...new Set(combined)];
+  }, [searchTerm]);
+
+  // Group filtered topics by category
+  const filteredTopicCategories = useMemo(() => {
+    if (searchTerm.trim()) {
+      // When searching, show flat list grouped by search results
+      return { 'Search Results': filteredTopics };
+    }
+    
+    // Filter categories based on selected classifications
+    let result: Record<string, string[]> = {};
+    
+    for (const [category, topics] of Object.entries(topicCategories)) {
+      if (selectedBoneSpecialty || selectedPathologyCategory) {
+        // Filter topics based on bone specialty or pathology category
+        const matchingTopics = topics.filter(t => {
+          // Check if topic matches selected bone specialty
+          if (selectedBoneSpecialty) {
+            const specialty = boneSpecialties.find(s => s.id === selectedBoneSpecialty);
+            if (specialty && t.toLowerCase().includes(specialty.name.toLowerCase())) {
+              return true;
+            }
+          }
+          // Check if topic matches selected pathology category
+          if (selectedPathologyCategory) {
+            const pathology = pathologyCategories.find(p => p.id === selectedPathologyCategory);
+            if (pathology && t.toLowerCase().includes(pathology.name.toLowerCase())) {
+              return true;
+            }
+          }
+          return false;
+        });
+        if (matchingTopics.length > 0 || !selectedBoneSpecialty && !selectedPathologyCategory) {
+          result[category] = !selectedBoneSpecialty && !selectedPathologyCategory ? topics : matchingTopics;
+        }
+      } else {
+        result[category] = topics;
+      }
+    }
+    
+    return result;
+  }, [searchTerm, filteredTopics, selectedBoneSpecialty, selectedPathologyCategory, boneSpecialties, pathologyCategories]);
 
   const completion = useMemo(() => {
     if (!quiz) return 0;
@@ -106,7 +263,7 @@ export default function StudentQuizPage() {
         setAiQuestions(data.questions);
         toast.success(`AI generated ${data.questions.length} questions for you!`);
       } else {
-        toast.error(data.message || 'Không thể tạo câu hỏi. Vui lòng thử lại.');
+        toast.error(data.message || 'Unable to generate questions. Please try again.');
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to generate AI quiz.');
@@ -118,11 +275,6 @@ export default function StudentQuizPage() {
 
   const handleSubmitAIQuiz = async () => {
     if (aiQuestions.length === 0) return;
-
-    const payload = aiQuestions.map((question, index) => ({
-      questionId: `ai-${index}`,
-      studentAnswer: answers[`ai-${index}`] || '',
-    }));
 
     setSubmitting(true);
     try {
@@ -142,6 +294,7 @@ export default function StudentQuizPage() {
       });
 
       toast.success('Quiz submitted successfully!');
+      clearQuizDraft();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to submit quiz.');
     } finally {
@@ -162,17 +315,11 @@ export default function StudentQuizPage() {
       const result = await submitStudentQuiz(quiz.attemptId, payload);
       setResult(result);
       toast.success('Quiz submitted successfully!');
+      clearQuizDraft();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to submit quiz.');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleStartAIQuiz = () => {
-    if (aiQuestions.length > 0) {
-      setQuiz(null);
-      setPage(1);
     }
   };
 
@@ -182,38 +329,163 @@ export default function StudentQuizPage() {
     setAnswers({});
     setResult(null);
     setPage(1);
+    clearQuizDraft();
   };
 
+  useEffect(() => {
+    setQuizDraft({
+      topic,
+      difficulty,
+      answers,
+      searchTerm,
+      page,
+      questionCount,
+      boneSpecialtyId: selectedBoneSpecialty,
+      pathologyCategoryId: selectedPathologyCategory,
+    });
+  }, [answers, difficulty, page, questionCount, searchTerm, setQuizDraft, topic, selectedBoneSpecialty, selectedPathologyCategory]);
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 pb-16">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Practice hub
-          </p>
-          <h1 className="font-['Manrope',sans-serif] text-[2.75rem] font-extrabold leading-tight tracking-tight text-card-foreground">
-            Quiz arena
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+    <div className={embedded ? '' : 'min-h-screen'}>
+      {!embedded ? (
+        <Header
+          title="Quiz Arena"
+          subtitle="Practice with live backend quizzes or generate AI-assisted question sets by topic."
+        />
+      ) : null}
+      <div className="mx-auto max-w-7xl space-y-8 px-4 pb-16 pt-6 sm:px-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+          <div className="relative w-full md:w-72">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <Input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search topics…"
-              className="h-11 w-64 rounded-full border border-border bg-muted pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Search topics..."
+              className="rounded-full pl-10 pr-4"
             />
           </div>
-          <select className="h-11 appearance-none rounded-xl border border-border bg-muted px-4 pr-10 text-sm font-semibold focus:ring-2 focus:ring-primary">
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              showAdvancedFilters || selectedBoneSpecialty || selectedPathologyCategory
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border bg-background text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Deep Classification
+            <ChevronDown className={`h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+          <select className="h-10 appearance-none rounded-lg border border-border bg-background px-4 pr-10 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
             <option>Sort by: Recent</option>
             <option>Sort by: Name</option>
             <option>Sort by: Difficulty</option>
           </select>
         </div>
-      </div>
+
+        {/* Advanced Classification Filters */}
+        {showAdvancedFilters && (
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-card-foreground">Deep Classification Filters</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBoneSpecialty('');
+                  setSelectedPathologyCategory('');
+                  setShowAdvancedFilters(false);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear all
+              </button>
+            </div>
+            
+            {loadingFilters ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading classification options...
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Bone Specialty Filter */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                    <Stethoscope className="mr-2 inline h-4 w-4" />
+                    Bone Specialty
+                  </label>
+                  <select
+                    value={selectedBoneSpecialty}
+                    onChange={(e) => setSelectedBoneSpecialty(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">All Bone Specialties</option>
+                    {boneSpecialties.map((specialty) => (
+                      <option key={specialty.id} value={specialty.id}>
+                        {specialty.name} {specialty.parentName ? `(${specialty.parentName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Pathology Category Filter */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                    <BrainCircuit className="mr-2 inline h-4 w-4" />
+                    Pathology Category
+                  </label>
+                  <select
+                    value={selectedPathologyCategory}
+                    onChange={(e) => setSelectedPathologyCategory(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">All Pathology Categories</option>
+                    {pathologyCategories.map((pathology) => (
+                      <option key={pathology.id} value={pathology.id}>
+                        {pathology.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            
+            {/* Active filters display */}
+            {(selectedBoneSpecialty || selectedPathologyCategory) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedBoneSpecialty && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    {boneSpecialties.find(s => s.id === selectedBoneSpecialty)?.name}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBoneSpecialty('')}
+                      className="ml-1 hover:text-primary/70"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {selectedPathologyCategory && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary/20 px-3 py-1 text-xs font-medium text-secondary">
+                    {pathologyCategories.find(p => p.id === selectedPathologyCategory)?.name}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPathologyCategory('')}
+                      className="ml-1 hover:text-secondary/70"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Bento Grid */}
       <div className="grid grid-cols-12 gap-6">
@@ -255,13 +527,13 @@ export default function StudentQuizPage() {
               </>
             )}
           </div>
-          <div className="relative z-10 mt-8 flex gap-4">
+          <div className="relative z-10 mt-8 space-y-3">
             {quiz ? (
               <>
                 <Button
                   type="button"
                   onClick={() => router.push(`/student/quiz/${quiz.attemptId}`)}
-                  className="rounded-full bg-gradient-to-r from-primary to-[#007BFF]/90 px-6 py-3 text-sm font-bold text-white shadow-xl transition-all active:scale-95"
+                  className="w-full rounded-full bg-gradient-to-r from-primary to-[#007BFF]/90 px-6 py-3 text-sm font-bold text-white shadow-xl transition-all active:scale-95 sm:w-auto"
                 >
                   Continue quiz
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -270,7 +542,7 @@ export default function StudentQuizPage() {
                   type="button"
                   variant="ghost"
                   onClick={handleReset}
-                  className="rounded-full bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur-md transition-all hover:bg-white/20"
+                  className="w-full rounded-full bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur-md transition-all hover:bg-white/20 sm:w-auto"
                 >
                   Reset session
                 </Button>
@@ -311,8 +583,10 @@ export default function StudentQuizPage() {
               Choose a clinical topic to generate a personalized practice quiz instantly.
             </p>
           </div>
+          
+          {/* Quick topic buttons */}
           <div className="mt-4 space-y-2">
-            {topicSuggestions.slice(0, 4).map((t) => (
+            {allTopics.slice(0, 4).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -326,35 +600,43 @@ export default function StudentQuizPage() {
                 {t}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilters(true)}
+              className="w-full rounded-xl border border-dashed border-border px-4 py-2.5 text-left text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              + More topics...
+            </button>
           </div>
 
           {/* AI Generate Section */}
-          <div className="mt-6 rounded-xl border-2 border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+          <div className="mt-6 rounded-xl border-2 border-purple-200 bg-purple-50 p-4">
             <div className="mb-3 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-600" />
-              <span className="text-sm font-bold text-purple-700 dark:text-purple-300">
+              <span className="text-sm font-bold text-purple-700">
                 AI Quiz Generator
               </span>
             </div>
             <p className="mb-3 text-xs text-muted-foreground">
-              Tạo quiz ôn luyện bằng AI dựa trên topic đã chọn.
+              Generate an AI practice quiz based on the selected topic.
             </p>
 
             <div className="mb-3 space-y-2">
               <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground">Số câu:</label>
+                <label className="text-xs text-muted-foreground">Number of questions:</label>
                 <select
                   value={questionCount}
                   onChange={(e) => setQuestionCount(parseInt(e.target.value))}
                   className="rounded-md border border-border bg-card px-2 py-1 text-xs"
                 >
-                  <option value={3}>3 câu</option>
-                  <option value={5}>5 câu</option>
-                  <option value={10}>10 câu</option>
+                  <option value={3}>3 questions</option>
+                  <option value={5}>5 questions</option>
+                  <option value={10}>10 questions</option>
+                  <option value={15}>15 questions</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground">Độ khó:</label>
+                <label className="text-xs text-muted-foreground">Difficulty:</label>
                 <select
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value)}
@@ -381,6 +663,50 @@ export default function StudentQuizPage() {
           </div>
         </div>
       </div>
+
+      {/* Topic Browser Section */}
+      {!quiz && aiQuestions.length === 0 && (
+        <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/30 p-6">
+            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">
+              Browse Topics by Category
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Select a topic to start your practice session
+            </p>
+          </div>
+          <div className="p-6">
+            {Object.entries(filteredTopicCategories).map(([category, topics]) => (
+              <div key={category} className="mb-6 last:mb-0">
+                <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                  <Layers className="h-4 w-4" />
+                  {category}
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {topics.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setTopic(t);
+                        handleLoadQuiz();
+                      }}
+                      disabled={loading}
+                      className={`rounded-lg border px-3 py-1.5 text-sm transition-all ${
+                        topic === t
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-border bg-background text-muted-foreground hover:border-primary hover:text-primary'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Practice Quiz Builder / Results */}
       <div className="overflow-hidden rounded-3xl border border-border/40 bg-card shadow-sm">
@@ -423,7 +749,7 @@ export default function StudentQuizPage() {
                 Ready to practice?
               </h2>
               <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Select a topic from the card on the left and click "Start practice" to load a quiz,
+                Select a topic from the card on the left or browse the categories below, then click &quot;Start practice&quot; to load a quiz,
                 or use AI Quiz Generator for instant questions.
               </p>
             </div>
@@ -462,7 +788,7 @@ export default function StudentQuizPage() {
                             type="button"
                             onClick={() => window.open(resolveApiAssetUrl(question.imageUrl), '_blank')}
                             className="rounded-full bg-primary/10 p-2 text-primary hover:bg-primary/20"
-                            title="Xem hình ảnh"
+                            title="View image"
                           >
                             <ImageIcon className="h-4 w-4" />
                           </button>
@@ -474,7 +800,7 @@ export default function StudentQuizPage() {
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={resolveApiAssetUrl(question.imageUrl)}
-                          alt={`Hình ảnh cho câu ${index + 1}`}
+                          alt={`Image for question ${index + 1}`}
                           className="max-h-64 w-full object-contain"
                         />
                       </div>
@@ -510,10 +836,10 @@ export default function StudentQuizPage() {
             </div>
           ) : aiQuestions.length > 0 ? (
             <div className="space-y-4">
-              <div className="mb-4 flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2 dark:bg-purple-900/30">
+              <div className="mb-4 flex items-center gap-2 rounded-lg bg-purple-100 px-4 py-2">
                 <Sparkles className="h-4 w-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                  AI Generated Quiz - {topic} ({aiQuestions.length} câu hỏi)
+                <span className="text-sm font-medium text-purple-700">
+                  AI Generated Quiz - {topic} ({aiQuestions.length} questions)
                 </span>
               </div>
               {aiQuestions.map((question, index) => {
@@ -528,7 +854,7 @@ export default function StudentQuizPage() {
                 return (
                   <div
                     key={questionId}
-                    className="rounded-2xl border border-purple-200 bg-background p-6 shadow-sm dark:border-purple-800"
+                    className="rounded-2xl border border-purple-200 bg-background p-6 shadow-sm"
                   >
                     <div className="mb-4 flex items-center justify-between gap-3">
                       <div>
@@ -560,7 +886,7 @@ export default function StudentQuizPage() {
                             }
                             className={`rounded-xl border px-4 py-3 text-left text-sm transition-all ${
                               isSelected
-                                ? 'border-purple-500 bg-purple-100 text-card-foreground ring-1 ring-purple-500/30 dark:bg-purple-900/30'
+                                ? 'border-purple-500 bg-purple-100 text-card-foreground ring-1 ring-purple-500/30'
                                 : 'border-border bg-background/70 text-muted-foreground hover:bg-muted hover:border-muted-foreground/30'
                             }`}
                           >
@@ -693,6 +1019,38 @@ export default function StudentQuizPage() {
               </p>
             </div>
           </div>
+          
+          {/* Action buttons after submission */}
+          <div className="border-t border-border p-6">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                onClick={() => {
+                  setResult(null);
+                  handleReset();
+                }}
+                className="rounded-xl bg-gradient-to-r from-primary to-[#007BFF] px-6 py-2 text-sm font-medium text-white"
+              >
+                Practice More
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                className="rounded-xl px-6 py-2 text-sm font-medium"
+              >
+                <a href="/student/review">Review Flashcards</a>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                className="rounded-xl px-6 py-2 text-sm font-medium"
+              >
+                <a href="/student/quiz/history">View History</a>
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -714,7 +1072,7 @@ export default function StudentQuizPage() {
           <div className="h-10 w-px bg-border" />
           <div className="text-right">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Topics covered</p>
-            <p className="text-2xl font-black text-secondary">{topicSuggestions.length}</p>
+            <p className="text-2xl font-black text-secondary">{allTopics.length}</p>
           </div>
         </div>
       </div>
@@ -732,6 +1090,7 @@ export default function StudentQuizPage() {
           <Plus className="h-6 w-6" />
         )}
       </button>
+      </div>
     </div>
   );
 }

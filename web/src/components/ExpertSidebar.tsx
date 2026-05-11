@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   LayoutDashboard,
   FolderOpen,
   MessageSquareText,
   FileText,
-  Settings,
   LogOut,
   Stethoscope,
+  Award,
 } from 'lucide-react';
 
 const expertMenuItems = [
@@ -18,7 +19,7 @@ const expertMenuItems = [
   { icon: FileText, label: 'Quiz', href: '/expert/quizzes' },
   { icon: MessageSquareText, label: 'Reviews', href: '/expert/reviews' },
   { icon: FolderOpen, label: 'Medical case', href: '/expert/cases' },
-  { icon: Settings, label: 'Settings', href: '/expert/settings' },
+  { icon: Award, label: 'My Specialties', href: '/expert/specialties' },
 ];
 
 export default function ExpertSidebar() {
@@ -39,7 +40,7 @@ export default function ExpertSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="app-scroll-y flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {expertMenuItems.map((item) => {
             const isActive =
@@ -72,8 +73,13 @@ export default function ExpertSidebar() {
 
       {/* User & Logout */}
       <div className="px-3 py-4 border-t border-white/10">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <div className="bg-white rounded-lg p-0.5 shadow-sm overflow-hidden">
+            <ThemeToggle />
+          </div>
+        </div>
         <Link
-          href="/expert/settings"
+          href="/profile"
           className="flex items-center gap-3 px-4 py-3 mb-2 rounded-lg hover:bg-sidebar-hover transition-colors duration-150"
         >
           <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-sm font-medium">

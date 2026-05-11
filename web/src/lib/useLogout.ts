@@ -12,6 +12,8 @@ export function useLogout() {
     localStorage.removeItem('email');
     localStorage.removeItem('roles');
     localStorage.removeItem('activeRole');
-    router.push('/auth/sign-in');
+    localStorage.removeItem('userStatus');
+    localStorage.removeItem('avatarUrl');
+    router.push('/');
   };
 }

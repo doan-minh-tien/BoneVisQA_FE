@@ -1,0 +1,562 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { AlertTriangle, ArrowDown, Loader2 } from 'lucide-react';
+import { AiMessageBubble } from '@/components/student/AiMessageBubble';
+import { mergeDiagnosisForDisplay } from '@/components/student/VisualQaRichAnswer';
+import { ChatErrorBoundary } from '@/components/student/ChatErrorBoundary';
+import { StudentMessageBubble } from '@/components/student/StudentMessageBubble';
+import { markdownExternalLinkComponents } from '@/components/shared/markdownExternalLinks';
+import { VISUAL_QA_MESSAGE_IN } from '@/components/student/visualQaMessageClasses';
+import { Button } from '@/components/ui/button';
+import type { ExpertSupportInline } from '@/components/student/AiMessageBubble';
+import type { VisualQaSessionReport, VisualQaTurn } from '@/lib/api/types';
+
+type OptimisticMessage = {
+  id: string;
+  content: string;
+  status?: 'sending' | 'sent' | 'failed';
+};
+
+type Props = {
+  messages: VisualQaTurn[];
+  capabilities?: VisualQaSessionReport['capabilities'];
+  optimisticMessages?: OptimisticMessage[];
+  isLoading: boolean;
+  chatRequestPhase?: 'idle' | 'upload' | 'analyzing';
+  isError?: boolean;
+  networkWarning?: string | null;
+  errorCode?: string | null;
+  policyReason?: string | null;
+  systemNoticeCode?: string | null;
+  blockingNotice?: string | null;
+  errorMessage?: string | null;
+  canRequestReview?: boolean;
+  requestingExpertSupport?: boolean;
+  onRequestExpertSupport?: (turn: VisualQaTurn) => void;
+  onSendMessage: (message: string) => void | Promise<void>;
+  onClear: () => void;
+  /** Trạng thái gửi expert theo assistantMessageId — không render thành message mới. */
+  expertSupportByAssistantId?: Record<
+    string,
+    { phase: 'awaiting' } | { phase: 'resolved'; tone: 'success' | 'danger'; message: string }
+  >;
+};
+
+function normalizeResponseKind(kind?: string | null): 'analysis' | 'refusal' | 'clarification' | 'review_update' | 'system_notice' {
+  const normalized = kind?.trim().toLowerCase();
+  if (normalized === 'refusal') return 'refusal';
+  if (normalized === 'clarification') return 'clarification';
+  if (normalized === 'review_update') return 'review_update';
+  if (normalized === 'system_notice') return 'system_notice';
+  return 'analysis';
+}
+
+type DisplayResponseKind = ReturnType<typeof normalizeResponseKind>;
+
+function turnHasStructuredAssistantPayload(turn: VisualQaTurn): boolean {
+  /** Trùng với card Diagnosis trong VisualQaStructuredAnswer — BE có thể chỉ gửi JSON trong `structuredDiagnosis`. */
+  if (mergeDiagnosisForDisplay(turn.diagnosis, turn.structuredDiagnosis).trim()) return true;
+  if (turn.findings?.some((item) => item?.trim())) return true;
+  if (turn.differentialDiagnoses?.some((item) => item?.trim())) return true;
+  if (turn.reflectiveQuestions?.some((item) => item?.trim())) return true;
+  if (turn.keyImagingFindings?.trim()) return true;
+  return false;
+}
+
+function coerceDisplayResponseKind(turn: VisualQaTurn, base: DisplayResponseKind): DisplayResponseKind {
+  if (base === 'system_notice' || base === 'review_update') return base;
+  if (base === 'clarification' && turnHasStructuredAssistantPayload(turn)) return 'analysis';
+  return base;
+}
+
+function normalizeResponseKindRaw(kind?: string | null): string {
+  return kind?.trim().toLowerCase() ?? '';
+}
+
+function resolveReviewUpdateTarget(reviewTurn: VisualQaTurn, sortedTurns: VisualQaTurn[]): VisualQaTurn | null {
+  const aid = reviewTurn.reviewTargetAssistantMessageId?.trim();
+  if (aid) {
+    const hit = sortedTurns.find((t) => t.assistantMessageId?.trim() === aid);
+    if (hit) return hit;
+  }
+  const tid = reviewTurn.reviewTargetTurnId?.trim();
+  if (tid) {
+    const hit = sortedTurns.find((t) => t.turnId?.trim() === tid);
+    if (hit) return hit;
+  }
+  const tidx = reviewTurn.reviewTargetTurnIndex;
+  if (typeof tidx === 'number' && Number.isFinite(tidx)) {
+    const hit = sortedTurns.find((t) => t.turnIndex === tidx);
+    if (hit) return hit;
+  }
+  const reviewIdx = sortedTurns.findIndex((t) =>
+    reviewTurn.turnId && t.turnId ? t.turnId === reviewTurn.turnId : t.turnIndex === reviewTurn.turnIndex,
+  );
+  const start = reviewIdx >= 0 ? reviewIdx - 1 : sortedTurns.length - 1;
+  for (let i = start; i >= 0; i--) {
+    const t = sortedTurns[i];
+    const rk = normalizeResponseKindRaw(t.responseKind);
+    if (rk === 'review_update' || rk === 'system_notice') continue;
+    return t;
+  }
+  return null;
+}
+
+function buildReviewFeedbackMap(messages: VisualQaTurn[]): Map<string, string> {
+  const sorted = [...messages].sort((a, b) => a.turnIndex - b.turnIndex);
+  const map = new Map<string, string>();
+  for (const t of sorted) {
+    if (normalizeResponseKindRaw(t.responseKind) !== 'review_update') continue;
+    const target = resolveReviewUpdateTarget(t, sorted);
+    if (!target) continue;
+    const text = t.answerText?.trim() ?? '';
+    if (!text) continue;
+    const key = target.turnId ?? String(target.turnIndex);
+    map.set(key, text);
+  }
+  return map;
+}
+
+/** Maps BE system notice codes to English; unknown technical codes are hidden (no raw SCREAMING_SNAKE in UI). */
+function formatSystemNoticeCodeLabel(code: string | null | undefined): string | null {
+  const c = code?.trim().toUpperCase();
+  if (!c) return null;
+  const map: Record<string, string> = {
+    SESSION_READ_ONLY: 'Session is in read-only mode per system policy.',
+    SESSION_LOCKED: 'Session is locked.',
+    SESSION_EXPIRED: 'Session has expired.',
+    TURN_LIMIT_EXCEEDED: 'Question limit exceeded for this Visual QA session.',
+    MISSING_IMAGE: 'Image is missing.',
+    MISSING_QUESTION: 'Question content is missing.',
+    AI_SERVICE_UNAVAILABLE: 'AI service is temporarily unavailable.',
+    AI_RESPONSE_INVALID_FORMAT: 'AI response format is invalid.',
+    INTERNAL_SERVER_ERROR: 'Server-side processing error.',
+  };
+  return map[c] ?? null;
+}
+
+function formatTurnTimestamp(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const now = new Date();
+  const sameCalendarDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameCalendarDay) {
+    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+export function ChatConversation({
+  messages,
+  capabilities,
+  optimisticMessages = [],
+  isLoading,
+  chatRequestPhase = 'idle',
+  isError = false,
+  networkWarning,
+  errorCode,
+  systemNoticeCode,
+  blockingNotice,
+  errorMessage,
+  canRequestReview = false,
+  requestingExpertSupport = false,
+  onRequestExpertSupport,
+  onSendMessage,
+  onClear,
+  expertSupportByAssistantId = {},
+}: Props) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [activeAiMenuKey, setActiveAiMenuKey] = useState<string | null>(null);
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
+  const retryMessage = optimisticMessages[optimisticMessages.length - 1]?.content?.trim() || '';
+  const hasInlineAwaitingAssistant = messages.some((m) => m.awaitingAssistant === true);
+  const showGlobalTyping =
+    isLoading &&
+    chatRequestPhase === 'analyzing' &&
+    !hasInlineAwaitingAssistant;
+  const canAskNext = capabilities?.canAskNext ?? true;
+  const capabilityReason = capabilities?.reason?.trim() || '';
+  const sessionFooterNoticeLabel = formatSystemNoticeCodeLabel(systemNoticeCode);
+  const isInvalidFormatError =
+    isError &&
+    (errorCode === 'AI_RESPONSE_INVALID_FORMAT' ||
+      (typeof errorMessage === 'string' && /invalid format|malformed ai response|invalid json/i.test(errorMessage)));
+  const isTurnLimitError = isError && errorCode === 'TURN_LIMIT_EXCEEDED';
+  const displayedErrorMessage = isInvalidFormatError
+    ? 'AI returned an invalid format. Try resending or ask a simpler question.'
+    : isTurnLimitError
+      ? capabilityReason || 'You have reached the question limit for this Visual QA session.'
+      : errorMessage;
+
+  const sessionFooterText = (displayedErrorMessage || (!canAskNext ? capabilityReason : '') || '').trim();
+  const blockingTrim = blockingNotice?.trim() ?? '';
+  const hideSessionFooterAsDuplicate =
+    Boolean(blockingTrim && sessionFooterText) &&
+    (sessionFooterText.toLowerCase() === blockingTrim.toLowerCase() ||
+      (sessionFooterText.toLowerCase().includes('read-only') &&
+        blockingTrim.toLowerCase().includes('read-only')));
+
+  const reviewFeedbackByTargetKey = useMemo(() => buildReviewFeedbackMap(messages), [messages]);
+
+  const renderedTurns = useMemo(() => {
+    const blockingLower = blockingNotice?.trim().toLowerCase() ?? '';
+    const mapped = messages.map((turn) => {
+      const normalizedMessages = (turn.messages ?? [])
+        .filter((message) => message.content?.trim())
+        .map((message, idx) => ({
+          id: `${turn.turnIndex}-m-${idx}`,
+          role: (message.role ?? '').toLowerCase(),
+          content: message.content.trim(),
+        }));
+      return {
+        turn,
+        normalizedMessages,
+        studentMessage:
+          normalizedMessages.find((message) => message.role === 'student' || message.role === 'user')?.content ??
+          turn.questionText?.trim() ??
+          '',
+        assistantText:
+          turn.answerText?.trim() ||
+          turn.diagnosis?.trim() ||
+          turn.findings?.find((item) => item.trim()) ||
+          '',
+        responseKind: coerceDisplayResponseKind(turn, normalizeResponseKind(turn.responseKind)),
+        policyReason: turn.policyReason?.trim() ?? '',
+        systemNoticeCode: turn.systemNoticeCode?.trim() ?? '',
+        reviewerNotes: normalizedMessages.filter(
+          (message) => message.role === 'lecturer' || message.role === 'expert',
+        ),
+      };
+    });
+
+    const withoutBlockingDupes = mapped.filter((row) => {
+      if (row.responseKind !== 'system_notice' || !blockingLower) return true;
+      const body = row.assistantText.trim().toLowerCase();
+      if (!body) return true;
+      if (body === blockingLower) return false;
+      if (blockingLower.includes('read-only') && body.includes('read-only')) return false;
+      if (blockingLower.includes('review') && body.includes('review workflow')) return false;
+      return true;
+    });
+
+    const seenSystemNotice = new Set<string>();
+    const dedupedRows = withoutBlockingDupes.filter((row) => {
+      if (row.responseKind !== 'system_notice') return true;
+      const fingerprint = `${row.turn.turnId ?? row.turn.turnIndex}:${row.assistantText.trim().toLowerCase()}`;
+      if (seenSystemNotice.has(fingerprint)) return false;
+      seenSystemNotice.add(fingerprint);
+      return true;
+    });
+    const withoutReviewUpdates = dedupedRows.filter((row) => row.responseKind !== 'review_update');
+    return withoutReviewUpdates.map((row, idx) => ({
+      ...row,
+      sequenceNo: idx + 1,
+    }));
+  }, [messages, blockingNotice]);
+
+  const isRestoring =
+    isLoading && renderedTurns.length === 0 && optimisticMessages.length === 0;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !isPinnedToBottom) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [renderedTurns, optimisticMessages, isLoading, chatRequestPhase, networkWarning, isError, isPinnedToBottom]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsPinnedToBottom(distanceFromBottom < 96);
+  };
+
+  const scrollToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setIsPinnedToBottom(true);
+  };
+
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={handleScroll}
+      className="app-scroll-y min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4 md:px-5"
+    >
+      <ChatErrorBoundary onReset={onClear}>
+        {networkWarning ? (
+          <div className="mb-4 rounded-xl border border-amber-500/45 bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-800" />
+              <p className="font-medium text-contrast-outline-soft">{networkWarning}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {blockingNotice?.trim() ? (
+          <div className="mb-4 rounded-xl border border-sky-500/40 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-800" aria-hidden />
+              <p className="font-medium text-contrast-outline-soft">{blockingNotice.trim()}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {isRestoring ? (
+          <div
+            className="flex min-h-[28vh] w-full flex-col items-center justify-center gap-2 py-12"
+            aria-busy="true"
+            aria-label="Loading messages"
+          >
+            <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden />
+            <span className="text-xs font-medium text-muted-foreground">Loading conversation…</span>
+          </div>
+        ) : renderedTurns.length === 0 && optimisticMessages.length === 0 && !isLoading && !hasInlineAwaitingAssistant ? (
+          <div className="flex min-h-[45vh] w-full flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-12 text-center">
+            <p className="text-sm font-medium text-foreground">No messages yet</p>
+            <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
+              Add an image for the first turn, then ask the AI. New replies will stay anchored unless you scroll up to review.
+            </p>
+          </div>
+        ) : (
+          <LayoutGroup>
+            <div className="space-y-6">
+              <div className="space-y-5">
+                {renderedTurns.map(
+                  (
+                    {
+                      turn,
+                      reviewerNotes,
+                      studentMessage,
+                      assistantText,
+                      responseKind,
+                      systemNoticeCode: turnSystemNoticeCode,
+                      sequenceNo,
+                    },
+                    idx,
+                  ) => {
+                    const systemNoticeLabel = formatSystemNoticeCodeLabel(turnSystemNoticeCode);
+                    const turnKey = turn.turnId ?? String(turn.turnIndex);
+                    const inlineReviewMarkdown = reviewFeedbackByTargetKey.get(turnKey) ?? null;
+                    const isLastTurn = idx === renderedTurns.length - 1;
+                    const deferLatestNonAnalysisWhileBusy =
+                      isLoading &&
+                      isLastTurn &&
+                      (responseKind === 'clarification' || responseKind === 'refusal');
+                    const provisionalEmptyAnalysis =
+                      isLoading &&
+                      isLastTurn &&
+                      responseKind === 'analysis' &&
+                      !assistantText &&
+                      !turn.awaitingAssistant;
+                    const awaitingAssistant =
+                      deferLatestNonAnalysisWhileBusy ||
+                      provisionalEmptyAnalysis ||
+                      (turn.awaitingAssistant === true &&
+                        !assistantText &&
+                        responseKind === 'analysis');
+                    const turnMenuKey = turn.turnId ?? String(turn.turnIndex);
+                    const assistantKey = turn.assistantMessageId?.trim() ?? '';
+                    const rawSupport = assistantKey ? expertSupportByAssistantId[assistantKey] : undefined;
+                    const expertSupportInline: ExpertSupportInline | null =
+                      rawSupport?.phase === 'awaiting'
+                        ? { kind: 'awaiting' }
+                        : rawSupport?.phase === 'resolved'
+                          ? { kind: 'resolved', tone: rawSupport.tone, text: rawSupport.message }
+                          : null;
+                    return (
+                  <motion.div
+                    key={turn.turnId ?? turn.clientRequestId ?? `${turn.turnIndex}-${turn.createdAt ?? ''}`}
+                    className="w-full rounded-xl text-left"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, ease: 'easeOut' }}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex justify-center">
+                        <span className="rounded-full border border-border/80 bg-muted/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {formatTurnTimestamp(turn.createdAt) ?? `Turn #${sequenceNo}`}
+                        </span>
+                      </div>
+                      {studentMessage ? <StudentMessageBubble content={studentMessage} /> : null}
+
+                      <AiMessageBubble
+                        turn={turn}
+                        assistantText={assistantText}
+                        responseKind={responseKind}
+                        awaitingAssistant={awaitingAssistant}
+                        chatRequestPhase={chatRequestPhase}
+                        systemNoticeLabel={systemNoticeLabel}
+                        inlineReviewFeedbackMarkdown={inlineReviewMarkdown}
+                        canRequestReview={canRequestReview}
+                        requestingExpertSupport={requestingExpertSupport}
+                        activeMenuTurnKey={activeAiMenuKey}
+                        turnMenuKey={turnMenuKey}
+                        onToggleMenu={() =>
+                          setActiveAiMenuKey((prev) => (prev === turnMenuKey ? null : turnMenuKey))
+                        }
+                        onRequestExpertSupport={() => {
+                          setActiveAiMenuKey(null);
+                          onRequestExpertSupport?.(turn);
+                        }}
+                        expertSupportInline={expertSupportInline}
+                      />
+
+                      {responseKind !== 'review_update' && reviewerNotes.length > 0 && !inlineReviewMarkdown ? (
+                          <div className="mt-3 space-y-2 rounded-xl border border-dashed border-border/80 bg-muted/20 px-3 py-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Instructor async feedback notes
+                            </p>
+                            {reviewerNotes.map((message) => {
+                              const isExpertNote = message.role === 'expert';
+                              return (
+                                <div
+                                  key={message.id}
+                                  className={`rounded-xl border px-3 py-2 text-sm leading-relaxed ${
+                                    isExpertNote
+                                      ? 'border-emerald-500/45 bg-emerald-50 text-emerald-950'
+                                      : 'border-orange-500/45 bg-orange-50 text-orange-950'
+                                  }`}
+                                >
+                                  <p
+                                    className={`mb-1 text-xs font-semibold uppercase tracking-wide ${
+                                      isExpertNote ? 'text-emerald-900' : 'text-orange-900'
+                                    }`}
+                                  >
+                                    {isExpertNote ? 'Expert feedback' : 'Lecturer feedback'}
+                                  </p>
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      ...markdownExternalLinkComponents,
+                                      p: ({ children }) => (
+                                        <p className="text-contrast-outline-soft mb-2 last:mb-0 leading-relaxed">
+                                          {children}
+                                        </p>
+                                      ),
+                                    }}
+                                  >
+                                    {message.content}
+                                  </ReactMarkdown>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                    </div>
+                  </motion.div>
+                );
+                })}
+
+                <AnimatePresence initial={false}>
+                  {optimisticMessages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={false}
+                      exit={{ y: -8, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      layout
+                    >
+                      <StudentMessageBubble
+                        content={message.content}
+                        status={message.status}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {showGlobalTyping ? (
+                  <motion.div
+                    key="typing"
+                    className={`flex justify-start ${VISUAL_QA_MESSAGE_IN}`}
+                    initial={false}
+                    exit={{ y: -8, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    layout
+                  >
+                    <div className="inline-flex items-center gap-1.5 rounded-2xl border border-border/70 bg-slate-100 px-4 py-3" aria-hidden>
+                      <span className="messenger-typing-dot" />
+                      <span className="messenger-typing-dot" />
+                      <span className="messenger-typing-dot" />
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+
+              {!isLoading &&
+              !showGlobalTyping &&
+              !hideSessionFooterAsDuplicate &&
+              ((!canAskNext && capabilityReason) || (isError && displayedErrorMessage)) ? (
+                <motion.div
+                  className={`flex justify-start ${VISUAL_QA_MESSAGE_IN}`}
+                  initial={false}
+                  layout
+                >
+                  <div className="max-w-[min(92vw,92%)] rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 shadow-sm sm:max-w-[92%]">
+                    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700">
+                      <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                      System notice
+                    </p>
+                    <p className="mt-2 leading-relaxed">
+                      {displayedErrorMessage || capabilityReason}
+                    </p>
+                    {sessionFooterNoticeLabel ? (
+                      <p className="mt-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                        {sessionFooterNoticeLabel}
+                      </p>
+                    ) : null}
+                    {isError && displayedErrorMessage ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {retryMessage && !isTurnLimitError ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => void onSendMessage(retryMessage)}>
+                            {isInvalidFormatError ? 'Try Resending' : 'Retry'}
+                          </Button>
+                        ) : null}
+                        {isInvalidFormatError ? (
+                          <Button type="button" size="sm" variant="outline" onClick={onClear}>
+                            Ask a simpler question
+                          </Button>
+                        ) : null}
+                        <Button type="button" size="sm" variant="outline" onClick={onClear}>
+                          Clear
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </motion.div>
+              ) : null}
+            </div>
+          </LayoutGroup>
+        )}
+      </ChatErrorBoundary>
+      {!isPinnedToBottom && renderedTurns.length > 0 ? (
+        <div className="sticky bottom-2 z-10 flex w-full justify-center pb-2 pt-1 pointer-events-none">
+          <button
+            type="button"
+            onClick={scrollToLatest}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-md transition-colors hover:bg-muted"
+            aria-label="Scroll to latest messages"
+          >
+            <ArrowDown className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
