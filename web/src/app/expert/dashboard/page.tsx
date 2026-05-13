@@ -11,6 +11,7 @@ import ReviewCard from '@/components/expert/ReviewCard';
 import CaseManagementCard from '@/components/expert/CaseManagementCard';
 import ExpertActivityPanel from '@/components/expert/dashboard/ExpertActivityPanel';
 import ExpertBottomStats from '@/components/expert/dashboard/ExpertBottomStats';
+import ComparativeAnalyticsPanel from '@/components/expert/dashboard/ComparativeAnalyticsPanel';
 import {
   FolderOpen,
   CheckCircle,
@@ -22,6 +23,9 @@ import {
 import {
   EXPERT_DASHBOARD_QUERY_KEY,
   fetchExpertDashboardBundle,
+  fetchExpertPerformanceMetrics,
+  fetchExpertComparativeAnalytics,
+  fetchExpertAiConfidenceInsights,
 } from '@/lib/api/expert-dashboard';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,9 +37,24 @@ export default function ExpertDashboardPage() {
   const toast = useToast();
   const toastedErrorRef = useRef<string | null>(null);
 
-  const { data, error, isPending } = useQuery({
+  const { data: bundle, error, isPending } = useQuery({
     queryKey: EXPERT_DASHBOARD_QUERY_KEY,
     queryFn: fetchExpertDashboardBundle,
+  });
+
+  const { data: performanceMetrics } = useQuery({
+    queryKey: [...EXPERT_DASHBOARD_QUERY_KEY, 'performance'],
+    queryFn: fetchExpertPerformanceMetrics,
+  });
+
+  const { data: comparativeAnalytics } = useQuery({
+    queryKey: [...EXPERT_DASHBOARD_QUERY_KEY, 'analytics'],
+    queryFn: fetchExpertComparativeAnalytics,
+  });
+
+  const { data: aiConfidenceInsights } = useQuery({
+    queryKey: [...EXPERT_DASHBOARD_QUERY_KEY, 'confidence'],
+    queryFn: fetchExpertAiConfidenceInsights,
   });
 
   const errorMessage = error
@@ -54,10 +73,10 @@ export default function ExpertDashboardPage() {
     toast.error(errorMessage);
   }, [errorMessage, toast]);
 
-  const stats = data?.stats ?? null;
-  const pendingReviews = data?.pendingReviews ?? [];
-  const recentCases = data?.recentCases ?? [];
-  const activity = data?.activity ?? null;
+  const stats = bundle?.stats ?? null;
+  const pendingReviews = bundle?.pendingReviews ?? [];
+  const recentCases = bundle?.recentCases ?? [];
+  const activity = bundle?.activity ?? null;
 
   const expertStats = useMemo(() => {
     if (!stats) return [];
@@ -109,7 +128,7 @@ export default function ExpertDashboardPage() {
       <Header title="Expert workbench" subtitle="Reviews, case library, and clinical quality" />
 
       <div className="mx-auto max-w-[1200px] p-6">
-        {isPending && !data ? (
+        {isPending && !bundle ? (
           <PageLoadingSkeleton>
             <div className="space-y-6" aria-hidden>
               <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -261,11 +280,19 @@ export default function ExpertDashboardPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <Skeleton className="mb-4 h-7 w-44" />
+                    <div className="space-y-3">
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                {[0, 1, 2, 3].map((i) => (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+                {[0, 1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="rounded-xl border border-border bg-card p-4 text-center">
                     <Skeleton className="mx-auto mb-2 h-12 w-12 rounded-lg" />
                     <Skeleton className="mx-auto mb-2 h-8 w-14" />
@@ -275,7 +302,7 @@ export default function ExpertDashboardPage() {
               </div>
             </div>
           </PageLoadingSkeleton>
-        ) : errorMessage && !data ? (
+        ) : errorMessage && !bundle ? (
           <div className="rounded-2xl border border-destructive bg-destructive/10 px-6 py-8 text-center">
             <p className="font-medium text-destructive">{errorMessage}</p>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -422,13 +449,18 @@ export default function ExpertDashboardPage() {
                 <ExpertActivityPanel
                   weeklyActivity={activity?.weeklyActivity ?? []}
                   avgDailyReviews={avgDailyReviews}
+                  performanceMetrics={performanceMetrics ?? null}
+                  aiConfidenceInsights={aiConfidenceInsights ?? null}
                 />
+                <ComparativeAnalyticsPanel analytics={comparativeAnalytics ?? null} />
               </div>
             </div>
 
             <ExpertBottomStats
               totalReviews={stats?.totalReviews ?? 0}
               casesApproved={stats?.approvedThisMonth ?? 0}
+              performanceMetrics={performanceMetrics ?? null}
+              aiConfidenceInsights={aiConfidenceInsights ?? null}
             />
           </>
         )}
