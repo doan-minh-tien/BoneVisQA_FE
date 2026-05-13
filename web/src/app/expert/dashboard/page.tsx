@@ -12,6 +12,7 @@ import CaseManagementCard from '@/components/expert/CaseManagementCard';
 import ExpertActivityPanel from '@/components/expert/dashboard/ExpertActivityPanel';
 import ExpertBottomStats from '@/components/expert/dashboard/ExpertBottomStats';
 import ComparativeAnalyticsPanel from '@/components/expert/dashboard/ComparativeAnalyticsPanel';
+import ExpertTeachingObjectives from '@/components/expert/ExpertTeachingObjectives';
 import {
   FolderOpen,
   CheckCircle,
@@ -462,6 +463,11 @@ export default function ExpertDashboardPage() {
               performanceMetrics={performanceMetrics ?? null}
               aiConfidenceInsights={aiConfidenceInsights ?? null}
             />
+
+            {/* Teaching Objectives Section */}
+            <div className="mt-6">
+              <ExpertTeachingObjectives onError={(error) => toast.error(error)} />
+            </div>
           </>
         )}
       </div>
