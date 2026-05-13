@@ -19,6 +19,13 @@ export interface ExpertSpecialtyDto {
   updatedAt: string | null;
 }
 
+export interface ExpertSpecialtyPagedResponse {
+  items: ExpertSpecialtyDto[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
 export interface ExpertSpecialtyCreateDto {
   boneSpecialtyId: string;
   pathologyCategoryId?: string | null;
@@ -91,23 +98,6 @@ export const expertSpecialtyApi = {
       { params: { pageIndex, pageSize } }
     );
     return normalizeExpertSpecialtyPaged(response.data, pageIndex, pageSize);
-  },
-
-  /**
-   * Toàn bộ bản ghi (gọi lặp trang) — dùng khi cần join/filter toàn cục (vd. enrollments).
-   * Danh sách admin có phân trang UI nên gọi `getAllSpecialtiesPaged`.
-   */
-  getAllSpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
-    const pageSize = 100;
-    const all: ExpertSpecialtyDto[] = [];
-    let pageIndex = 1;
-    while (true) {
-      const { items, totalCount } = await expertSpecialtyApi.getAllSpecialtiesPaged(pageIndex, pageSize);
-      all.push(...items);
-      if (all.length >= totalCount || items.length === 0) break;
-      pageIndex += 1;
-    }
-    return all;
   },
 
   // Lấy chi tiết một chuyên môn
