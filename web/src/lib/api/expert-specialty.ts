@@ -19,6 +19,13 @@ export interface ExpertSpecialtyDto {
   updatedAt: string | null;
 }
 
+export interface ExpertSpecialtyPagedResponse {
+  items: ExpertSpecialtyDto[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
 export interface ExpertSpecialtyCreateDto {
   boneSpecialtyId: string;
   pathologyCategoryId?: string | null;
@@ -56,9 +63,20 @@ export const expertSpecialtyApi = {
     return response.data;
   },
 
-  // Lấy tất cả chuyên môn của tất cả Expert (cho Admin)
+  // Lấy tất cả chuyên môn của tất cả Expert (cho Admin) - không phân trang
   getAllSpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
     const response = await http.get<ExpertSpecialtyDto[]>('/api/expert-specialties/all');
+    return response.data;
+  },
+
+  // Lấy tất cả chuyên môn có phân trang (cho Admin)
+  getAllSpecialtiesPaged: async (
+    pageIndex = 1,
+    pageSize = 10
+  ): Promise<ExpertSpecialtyPagedResponse> => {
+    const response = await http.get<ExpertSpecialtyPagedResponse>(
+      `/api/expert-specialties/all?pageIndex=${pageIndex}&pageSize=${pageSize}`
+    );
     return response.data;
   },
 

@@ -568,28 +568,26 @@ export interface ExpertImagePagedResponse {
 
 export async function fetchExpertImages(pageIndex = 1, pageSize = 100, caseId?: string): Promise<ExpertImagePagedResponse> {
   try {
-    let url = `/api/expert/image?pageIndex=${pageIndex}&pageSize=${pageSize}`;
-    if (caseId) url += `&caseId=${caseId}`;
-    const { data } = await http.get<any>(url);
-    const listRaw = data?.items ?? data?.result?.items ?? data;
-    const items = Array.isArray(listRaw) ? listRaw.map((i: any) => ({
     const data = await getExpertListPayload(
       `/api/expert/images?pageIndex=${pageIndex}&pageSize=${pageSize}`,
       `/api/expert/image?pageIndex=${pageIndex}&pageSize=${pageSize}`,
     );
     const listRaw = (data as any)?.items ?? (data as any)?.result?.items ?? data;
     const list = Array.isArray(listRaw) ? listRaw : [];
-    return list.map((i: any) => ({
+    const items = list.map((i: any) => ({
       id: String(i.id ?? i.Id ?? ''),
       caseId: String(i.caseId ?? i.CaseId ?? ''),
       imageUrl: String(i.imageUrl ?? i.ImageUrl ?? ''),
       fileName: String(i.fileName ?? i.FileName ?? 'Unknown File'),
-    })) : [];
+    }));
+    const filteredItems = caseId ? items.filter((i) => i.caseId === caseId) : items;
+    const d = data as Record<string, unknown>;
+    const res = d?.result as Record<string, unknown> | undefined;
     return {
-      items,
-      totalCount: Number(data?.totalCount ?? data?.result?.totalCount ?? items.length),
-      pageIndex: Number(data?.pageIndex ?? data?.result?.pageIndex ?? pageIndex),
-      pageSize: Number(data?.pageSize ?? data?.result?.pageSize ?? pageSize),
+      items: filteredItems,
+      totalCount: Number(d?.totalCount ?? res?.totalCount ?? filteredItems.length),
+      pageIndex: Number(d?.pageIndex ?? res?.pageIndex ?? pageIndex),
+      pageSize: Number(d?.pageSize ?? res?.pageSize ?? pageSize),
     };
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
@@ -613,10 +611,6 @@ export interface ExpertAnnotationPagedResponse {
 
 export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10, imageId?: string): Promise<ExpertAnnotationPagedResponse> {
   try {
-    let url = `/api/expert/annotation?pageIndex=${pageIndex}&pageSize=${pageSize}`;
-    if (imageId) url += `&imageId=${imageId}`;
-    const { data } = await http.get<any>(url);
-    const itemsRaw = data?.items ?? data?.result?.items ?? [];
     const data = await getExpertListPayload(
       `/api/expert/annotations?pageIndex=${pageIndex}&pageSize=${pageSize}`,
       `/api/expert/annotation?pageIndex=${pageIndex}&pageSize=${pageSize}`,
@@ -631,11 +625,12 @@ export async function fetchExpertAnnotations(pageIndex = 1, pageSize = 10, image
           coordinates: String(a.coordinates ?? a.Coordinates ?? '{}'),
         }))
       : [];
+    const filteredItems = imageId ? items.filter((a) => a.imageId === imageId) : items;
     const d = data as Record<string, unknown>;
     const res = d?.result as Record<string, unknown> | undefined;
     return {
-      items,
-      totalCount: Number(d?.totalCount ?? res?.totalCount ?? items.length),
+      items: filteredItems,
+      totalCount: Number(d?.totalCount ?? res?.totalCount ?? filteredItems.length),
       pageIndex: Number(d?.pageIndex ?? res?.pageIndex ?? pageIndex),
       pageSize: Number(d?.pageSize ?? res?.pageSize ?? pageSize),
     };
