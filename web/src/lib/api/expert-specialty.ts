@@ -49,6 +49,31 @@ export interface ExpertSuggestionDto {
   certifications: string | null;
 }
 
+export interface ExpertSpecialtyPagedResult {
+  items: ExpertSpecialtyDto[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
+function normalizeExpertSpecialtyPaged(
+  data: unknown,
+  pageIndex: number,
+  pageSize: number
+): ExpertSpecialtyPagedResult {
+  if (Array.isArray(data)) {
+    return { items: data, totalCount: data.length, pageIndex, pageSize };
+  }
+  const d = data as Partial<ExpertSpecialtyPagedResult> & { Items?: ExpertSpecialtyDto[]; TotalCount?: number };
+  const items = d.items ?? d.Items ?? [];
+  return {
+    items,
+    totalCount: Number(d.totalCount ?? d.TotalCount ?? items.length),
+    pageIndex: Number(d.pageIndex ?? pageIndex),
+    pageSize: Number(d.pageSize ?? pageSize),
+  };
+}
+
 export const expertSpecialtyApi = {
   // Lấy danh sách chuyên môn của Expert hiện tại
   getMySpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
@@ -56,10 +81,33 @@ export const expertSpecialtyApi = {
     return response.data;
   },
 
-  // Lấy tất cả chuyên môn của tất cả Expert (cho Admin)
+  /** Danh sách phân trang (contract BE: `items`, `totalCount`, `pageIndex`, `pageSize`). */
+  getAllSpecialtiesPaged: async (
+    pageIndex = 1,
+    pageSize = 10
+  ): Promise<ExpertSpecialtyPagedResult> => {
+    const response = await http.get<ExpertSpecialtyPagedResult | ExpertSpecialtyDto[]>(
+      '/api/expert-specialties/all',
+      { params: { pageIndex, pageSize } }
+    );
+    return normalizeExpertSpecialtyPaged(response.data, pageIndex, pageSize);
+  },
+
+  /**
+   * Toàn bộ bản ghi (gọi lặp trang) — dùng khi cần join/filter toàn cục (vd. enrollments).
+   * Danh sách admin có phân trang UI nên gọi `getAllSpecialtiesPaged`.
+   */
   getAllSpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
-    const response = await http.get<ExpertSpecialtyDto[]>('/api/expert-specialties/all');
-    return response.data;
+    const pageSize = 100;
+    const all: ExpertSpecialtyDto[] = [];
+    let pageIndex = 1;
+    while (true) {
+      const { items, totalCount } = await expertSpecialtyApi.getAllSpecialtiesPaged(pageIndex, pageSize);
+      all.push(...items);
+      if (all.length >= totalCount || items.length === 0) break;
+      pageIndex += 1;
+    }
+    return all;
   },
 
   // Lấy chi tiết một chuyên môn
