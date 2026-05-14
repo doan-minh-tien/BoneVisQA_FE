@@ -343,6 +343,8 @@ export interface SaveExpertCaseInput {
   suggestedDiagnosis: string;
   reflectiveQuestions: string;
   keyFindings: string;
+  /** When set, replaces tags on the case (same idea as create). */
+  tagIds?: string[] | null;
 }
 
 /** Backend `CreateExpertMedicalCaseJsonRequest` — JSON POST /api/expert/cases (expert from JWT). */
@@ -433,6 +435,7 @@ export async function updateExpertCase(id: string, input: SaveExpertCaseInput): 
       keyFindings: input.keyFindings?.trim() || null,
       isApproved: input.isApproved,
       isActive: input.isActive,
+      tagIds: input.tagIds ?? null,
     };
     await http.request({
       method: 'PUT',

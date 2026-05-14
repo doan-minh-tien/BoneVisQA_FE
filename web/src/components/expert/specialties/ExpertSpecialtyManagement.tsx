@@ -16,11 +16,9 @@ import {
   X,
   ChevronDown,
   Sparkles,
-  BadgeCheck,
-  ArrowLeft,
   AlertTriangle,
-  ShieldOff,
   Stethoscope,
+  Eye,
 } from 'lucide-react';
 
 interface BoneSpecialtyOption {
@@ -68,14 +66,30 @@ const proficiencyConfig: Record<number, { label: string; color: string; bgColor:
   5: { label: 'Master', color: 'text-orange-700', bgColor: 'bg-orange-100' },
 };
 
+function paginateLocal<T>(all: T[], pageIndex: number, pageSize: number): { items: T[]; clampedPage: number } {
+  const total = all.length;
+  if (total === 0) return { items: [], clampedPage: 1 };
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const clampedPage = Math.min(Math.max(1, pageIndex), totalPages);
+  const start = (clampedPage - 1) * pageSize;
+  return { items: all.slice(start, start + pageSize), clampedPage };
+}
+
 export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.activeRole === 'Admin';
   const [specialties, setSpecialties] = useState<ExpertSpecialtyDto[]>([]);
+  /** Expert: full list from GET /my (server paging không dùng ở đây). */
+  const [expertAllSpecialties, setExpertAllSpecialties] = useState<ExpertSpecialtyDto[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyOption[]>([]);
   const [boneSpecLoaded, setBoneSpecLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [viewingSpecialty, setViewingSpecialty] = useState<ExpertSpecialtyDto | null>(null);
+  const [viewLoadingId, setViewLoadingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<ExpertSpecialtyDto | null>(null);
@@ -88,8 +102,20 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
 
   useEffect(() => {
     loadSpecialties();
-    loadBoneSpecialties();
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    const { items, clampedPage } = paginateLocal(expertAllSpecialties, pageIndex, pageSize);
+    setSpecialties(items);
+    if (clampedPage !== pageIndex) {
+      setPageIndex(clampedPage);
+    }
+  }, [isAdmin, expertAllSpecialties, pageIndex, pageSize]);
+
+  useEffect(() => {
+    loadBoneSpecialties();
+  }, []);
 
   useEffect(() => {
     if (editingData && boneSpecLoaded) {
@@ -108,17 +134,22 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
       setLoading(true);
       setLoadError(null);
       
-      let data: ExpertSpecialtyDto[];
       if (isAdmin) {
-        data = await expertSpecialtyApi.getAllSpecialties();
+        const data = await expertSpecialtyApi.getAllSpecialties();
+        setExpertAllSpecialties([]);
+        const uniqueData = data.filter((item, index, self) => 
+          index === self.findIndex((t) => t.id === item.id)
+        );
+        setSpecialties(uniqueData);
+        setTotalCount(uniqueData.length);
       } else {
-        data = await expertSpecialtyApi.getMySpecialties();
+        const data = await expertSpecialtyApi.getMySpecialties();
+        const uniqueData = data.filter((item, index, self) => 
+          index === self.findIndex((t) => t.id === item.id)
+        );
+        setExpertAllSpecialties(uniqueData);
+        setTotalCount(uniqueData.length);
       }
-      
-      const uniqueData = data.filter((item, index, self) => 
-        index === self.findIndex((t) => t.id === item.id)
-      );
-      setSpecialties(uniqueData);
     } catch (error) {
       console.error('Failed to load specialties:', error);
       const errorMsg = getApiErrorMessage(error);
@@ -152,10 +183,12 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
       onSuccess?.();
     } catch (error) {
       console.error('Failed to create specialty:', error);
-      const errorMsg = await handleApiError(error, 'Failed to create specialty.');
-      if (isPermissionError(error)) {
-        setFormError('Permission denied.');
-      }
+      // Lấy message từ BE response nếu có
+      const msg = getApiErrorMessage(error);
+      setFormError(msg || 'Failed to create specialty. Please try again.');
+      // Vẫn toast để thông báo
+      const { toast } = await import('sonner');
+      toast.error(msg || 'Failed to create specialty.');
     }
   };
 
@@ -183,6 +216,19 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
       if (isPermissionError(error)) {
         setFormError('Permission denied.');
       }
+    }
+  };
+
+  const handleViewSpecialty = async (id: string) => {
+    try {
+      setViewLoadingId(id);
+      const data = await expertSpecialtyApi.getById(id);
+      setViewingSpecialty(data);
+    } catch (error) {
+      console.error('Failed to load specialty details:', error);
+      await handleApiError(error, 'Failed to load specialty details.');
+    } finally {
+      setViewLoadingId(null);
     }
   };
 
@@ -254,7 +300,9 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
               {isAdmin ? 'Expert Specialties' : 'My Expertise'}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {specialties.length} specialty {specialties.length === 1 ? 'area' : 'areas'}
+              {isAdmin
+                ? `${specialties.length} specialty ${specialties.length === 1 ? 'area' : 'areas'}`
+                : `${totalCount} specialty ${totalCount === 1 ? 'area' : 'areas'}`}
             </p>
           </div>
         </div>
@@ -280,6 +328,73 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
               <button onClick={() => loadSpecialties()} className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded">Retry</button>
               <button onClick={() => setLoadError(null)} className="px-2 py-1 text-xs border rounded">Dismiss</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* View detail (GET /api/expert-specialties/:id) */}
+      {viewingSpecialty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true">
+          <div className="bg-card border rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-semibold text-sm">Specialty details</h3>
+              <button
+                type="button"
+                onClick={() => setViewingSpecialty(null)}
+                className="p-1.5 hover:bg-muted rounded-lg"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <dl className="space-y-2 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">Bone specialty</dt>
+                <dd className="font-medium">{viewingSpecialty.boneSpecialtyName || '—'}</dd>
+                {viewingSpecialty.boneSpecialtyCode && (
+                  <dd className="text-xs text-muted-foreground">{viewingSpecialty.boneSpecialtyCode}</dd>
+                )}
+              </div>
+              {viewingSpecialty.pathologyCategoryName && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Pathology</dt>
+                  <dd>{viewingSpecialty.pathologyCategoryName}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-xs text-muted-foreground">Proficiency</dt>
+                <dd>
+                  <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${proficiencyConfig[viewingSpecialty.proficiencyLevel]?.bgColor ?? 'bg-muted'} ${proficiencyConfig[viewingSpecialty.proficiencyLevel]?.color ?? ''}`}>
+                    Lv.{viewingSpecialty.proficiencyLevel} — {proficiencyConfig[viewingSpecialty.proficiencyLevel]?.label ?? '—'}
+                  </span>
+                </dd>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Years experience</dt>
+                  <dd>{viewingSpecialty.yearsExperience ?? '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Certifications</dt>
+                  <dd className="truncate">{viewingSpecialty.certifications || '—'}</dd>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 pt-1">
+                <span className="text-xs text-muted-foreground">
+                  Primary: {viewingSpecialty.isPrimary ? 'Yes' : 'No'}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Status: {viewingSpecialty.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </dl>
+            <button
+              type="button"
+              onClick={() => setViewingSpecialty(null)}
+              className="w-full py-2.5 border rounded-lg text-sm hover:bg-muted/50"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -424,7 +539,7 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
       )}
 
       {/* Specialties Grid */}
-      {specialties.length === 0 && !showForm ? (
+      {!isAdmin && totalCount === 0 && specialties.length === 0 && !showForm ? (
         <div className="flex flex-col items-center justify-center py-12 border border-dashed rounded-xl">
           <div className="p-3 rounded-xl bg-muted/50 mb-3">
             <Stethoscope className="w-8 h-8 text-muted-foreground/50" />
@@ -442,6 +557,16 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
               Add First Specialty
             </button>
           )}
+        </div>
+      ) : specialties.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-12 border border-dashed rounded-xl">
+          <div className="p-3 rounded-xl bg-muted/50 mb-3">
+            <Stethoscope className="w-8 h-8 text-muted-foreground/50" />
+          </div>
+          <h3 className="text-sm font-semibold mb-1">No Specialties Yet</h3>
+          <p className="text-xs text-muted-foreground text-center max-w-xs mb-4">
+            No specialties registered in the system.
+          </p>
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -470,7 +595,7 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
                     <p className="text-xs text-muted-foreground truncate">{specialty.pathologyCategoryName}</p>
                   )}
                 </div>
-                <div className={`px-2 py-0.5 rounded-md text-xs font-medium ${proficiencyConfig[specialty.proficiencyLevel].bgColor} ${proficiencyConfig[specialty.proficiencyLevel].color}`}>
+                <div className={`px-2 py-0.5 rounded-md text-xs font-medium ${proficiencyConfig[specialty.proficiencyLevel]?.bgColor ?? 'bg-muted'} ${proficiencyConfig[specialty.proficiencyLevel]?.color ?? 'text-foreground'}`}>
                   Lv.{specialty.proficiencyLevel}
                 </div>
               </div>
@@ -480,7 +605,7 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full"
-                    style={{ width: `${(specialty.proficiencyLevel / 5) * 100}%` }}
+                    style={{ width: `${(Math.min(5, Math.max(1, specialty.proficiencyLevel)) / 5) * 100}%` }}
                   />
                 </div>
               </div>
@@ -511,6 +636,20 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
               {/* Actions */}
               <div className="flex gap-1.5 pt-3 border-t opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
+                  type="button"
+                  onClick={() => handleViewSpecialty(specialty.id)}
+                  disabled={viewLoadingId === specialty.id}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-muted text-foreground rounded-lg hover:bg-muted/80 disabled:opacity-50"
+                >
+                  {viewLoadingId === specialty.id ? (
+                    <span className="w-3 h-3 border-2 border-muted-foreground/30 border-t-foreground rounded-full animate-spin inline-block" />
+                  ) : (
+                    <Eye className="w-3 h-3" />
+                  )}
+                  View
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleEdit(specialty)}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-blue-500/10 text-blue-600 rounded-lg hover:bg-blue-500/20"
                 >
@@ -519,6 +658,7 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
                 </button>
                 {!specialty.isPrimary && (
                   <button
+                    type="button"
                     onClick={() => handleSetPrimary(specialty.id)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20"
                   >
@@ -527,6 +667,7 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => handleDelete(specialty.id)}
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 text-red-600 rounded-lg hover:bg-red-500/20"
                 >
@@ -535,6 +676,49 @@ export default function ExpertSpecialtyManagement({ onSuccess }: Props) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination — expert: client slice of GET /my */}
+      {!isAdmin && totalCount > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t pt-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Items per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPageIndex(1);
+              }}
+              className="p-1.5 border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+              disabled={pageIndex === 1 || loading}
+              className="px-3 py-1.5 border rounded-lg text-sm hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-medium px-2">
+              Page {pageIndex} of {Math.max(1, Math.ceil(totalCount / pageSize))}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPageIndex((p) => p + 1)}
+              disabled={pageIndex >= Math.ceil(totalCount / pageSize) || loading}
+              className="px-3 py-1.5 border rounded-lg text-sm hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

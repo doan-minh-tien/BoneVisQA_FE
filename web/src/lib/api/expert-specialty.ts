@@ -19,12 +19,8 @@ export interface ExpertSpecialtyDto {
   updatedAt: string | null;
 }
 
-export interface ExpertSpecialtyPagedResponse {
-  items: ExpertSpecialtyDto[];
-  totalCount: number;
-  pageIndex: number;
-  pageSize: number;
-}
+// Alias kept for backward-compat (identical shape as ExpertSpecialtyPagedResult)
+export type ExpertSpecialtyPagedResponse = ExpertSpecialtyPagedResult;
 
 export interface ExpertSpecialtyCreateDto {
   boneSpecialtyId: string;
@@ -63,16 +59,80 @@ export interface ExpertSpecialtyPagedResult {
   pageSize: number;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function strOrNull(v: unknown): string | null {
+  if (typeof v === 'string' && v.trim()) return v;
+  return null;
+}
+
+function str(v: unknown, fallback = ''): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' && !Number.isNaN(v)) return String(v);
+  return fallback;
+}
+
+/**
+ * Map one row from BE (camelCase or PascalCase) so `id` is always set for DELETE/PUT by id.
+ */
+export function normalizeExpertSpecialtyDto(raw: unknown): ExpertSpecialtyDto | null {
+  if (!isRecord(raw)) return null;
+  const idVal = raw.id ?? raw.Id;
+  if (typeof idVal !== 'string' || !idVal.trim()) return null;
+
+  let proficiency = Number(raw.proficiencyLevel ?? raw.ProficiencyLevel);
+  if (!Number.isFinite(proficiency) || proficiency < 1) proficiency = 1;
+  if (proficiency > 5) proficiency = 5;
+
+  const yearsRaw = raw.yearsExperience ?? raw.YearsExperience;
+  const yearsNum = yearsRaw === null || yearsRaw === undefined ? NaN : Number(yearsRaw);
+  const yearsExperience = Number.isFinite(yearsNum) ? yearsNum : null;
+
+  return {
+    id: idVal.trim(),
+    expertId: str(raw.expertId ?? raw.ExpertId),
+    expertName: strOrNull(raw.expertName ?? raw.ExpertName),
+    expertEmail: strOrNull(raw.expertEmail ?? raw.ExpertEmail),
+    boneSpecialtyId: str(raw.boneSpecialtyId ?? raw.BoneSpecialtyId),
+    boneSpecialtyName: strOrNull(raw.boneSpecialtyName ?? raw.BoneSpecialtyName),
+    boneSpecialtyCode: strOrNull(raw.boneSpecialtyCode ?? raw.BoneSpecialtyCode),
+    pathologyCategoryId: strOrNull(raw.pathologyCategoryId ?? raw.PathologyCategoryId),
+    pathologyCategoryName: strOrNull(raw.pathologyCategoryName ?? raw.PathologyCategoryName),
+    proficiencyLevel: proficiency,
+    yearsExperience,
+    certifications: strOrNull(raw.certifications ?? raw.Certifications),
+    isPrimary: Boolean(raw.isPrimary ?? raw.IsPrimary),
+    isActive: Boolean(raw.isActive ?? raw.IsActive ?? true),
+    createdAt: strOrNull(raw.createdAt ?? raw.CreatedAt),
+    updatedAt: strOrNull(raw.updatedAt ?? raw.UpdatedAt),
+  };
+}
+
+/** `/my` may return a single object or an array. */
+function normalizeExpertSpecialtyListPayload(data: unknown): ExpertSpecialtyDto[] {
+  if (Array.isArray(data)) {
+    return data.map(normalizeExpertSpecialtyDto).filter((x): x is ExpertSpecialtyDto => x !== null);
+  }
+  const one = normalizeExpertSpecialtyDto(data);
+  return one ? [one] : [];
+}
+
 function normalizeExpertSpecialtyPaged(
   data: unknown,
   pageIndex: number,
   pageSize: number
 ): ExpertSpecialtyPagedResult {
   if (Array.isArray(data)) {
-    return { items: data, totalCount: data.length, pageIndex, pageSize };
+    const items = data.map(normalizeExpertSpecialtyDto).filter((x): x is ExpertSpecialtyDto => x !== null);
+    return { items, totalCount: items.length, pageIndex, pageSize };
   }
-  const d = data as Partial<ExpertSpecialtyPagedResult> & { Items?: ExpertSpecialtyDto[]; TotalCount?: number };
-  const items = d.items ?? d.Items ?? [];
+  const d = data as Partial<ExpertSpecialtyPagedResult> & { Items?: unknown[]; TotalCount?: number };
+  const rawItems = d.items ?? d.Items ?? [];
+  const items = (Array.isArray(rawItems) ? rawItems : [])
+    .map(normalizeExpertSpecialtyDto)
+    .filter((x): x is ExpertSpecialtyDto => x !== null);
   return {
     items,
     totalCount: Number(d.totalCount ?? d.TotalCount ?? items.length),
@@ -82,16 +142,16 @@ function normalizeExpertSpecialtyPaged(
 }
 
 export const expertSpecialtyApi = {
-  // Lấy danh sách chuyên môn của Expert hiện tại
+  // Lấy danh sách chuyên môn của Expert hiện tại (đúng id để update/delete; có thể là 1 object hoặc mảng)
   getMySpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
-    const response = await http.get<ExpertSpecialtyDto[]>('/api/expert-specialties/my');
-    return response.data;
+    const response = await http.get<unknown>('/api/expert-specialties/my');
+    return normalizeExpertSpecialtyListPayload(response.data);
   },
 
   /** Danh sách phân trang (contract BE: `items`, `totalCount`, `pageIndex`, `pageSize`). */
   getAllSpecialtiesPaged: async (
     pageIndex = 1,
-    pageSize = 10
+    pageSize = 5
   ): Promise<ExpertSpecialtyPagedResult> => {
     const response = await http.get<ExpertSpecialtyPagedResult | ExpertSpecialtyDto[]>(
       '/api/expert-specialties/all',
@@ -100,22 +160,41 @@ export const expertSpecialtyApi = {
     return normalizeExpertSpecialtyPaged(response.data, pageIndex, pageSize);
   },
 
+  /**
+   * Lấy TẤT CẢ chuyên môn (không phân trang) – dùng pageSize lớn để lấy hết.
+   * Component cũ dùng hàm này; nếu BE hỗ trợ endpoint riêng hãy thay thế.
+   */
+  getAllSpecialties: async (): Promise<ExpertSpecialtyDto[]> => {
+    const response = await http.get<ExpertSpecialtyPagedResult | ExpertSpecialtyDto[]>(
+      '/api/expert-specialties/all',
+      { params: { pageIndex: 1, pageSize: 1000 } }
+    );
+    const normalized = normalizeExpertSpecialtyPaged(response.data, 1, 1000);
+    return normalized.items;
+  },
+
   // Lấy chi tiết một chuyên môn
   getById: async (id: string): Promise<ExpertSpecialtyDto> => {
-    const response = await http.get<ExpertSpecialtyDto>(`/api/expert-specialties/${id}`);
-    return response.data;
+    const response = await http.get<unknown>(`/api/expert-specialties/${id}`);
+    const n = normalizeExpertSpecialtyDto(response.data);
+    if (!n) throw new Error('Invalid specialty response from server.');
+    return n;
   },
 
   // Tạo chuyên môn mới
   create: async (data: ExpertSpecialtyCreateDto): Promise<ExpertSpecialtyDto> => {
-    const response = await http.post<ExpertSpecialtyDto>('/api/expert-specialties', data);
-    return response.data;
+    const response = await http.post<unknown>('/api/expert-specialties', data);
+    // BE có thể trả về object rỗng hoặc null khi 500 nhưng vẫn resolve
+    const n = normalizeExpertSpecialtyDto(response.data);
+    if (!n) throw new Error('Create succeeded but the response could not be read. Please refresh the list.');
+    return n;
   },
-
   // Cập nhật chuyên môn
   update: async (data: ExpertSpecialtyUpdateDto): Promise<ExpertSpecialtyDto> => {
-    const response = await http.put<ExpertSpecialtyDto>('/api/expert-specialties', data);
-    return response.data;
+    const response = await http.put<unknown>('/api/expert-specialties', data);
+    const n = normalizeExpertSpecialtyDto(response.data);
+    if (!n) throw new Error('Update succeeded but the response could not be read. Please refresh the list.');
+    return n;
   },
 
   // Xóa chuyên môn (soft delete)

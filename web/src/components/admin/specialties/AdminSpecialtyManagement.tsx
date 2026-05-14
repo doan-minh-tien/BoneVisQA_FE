@@ -60,9 +60,13 @@ function flattenBoneSpecialties(items: BoneSpecialtyOption[], result: BoneSpecia
 
 export default function AdminSpecialtyManagement() {
   const [specialties, setSpecialties] = useState<ExpertSpecialtyDto[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyOption[]>([]);
   const [boneSpecLoaded, setBoneSpecLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBoneSpecialty, setFilterBoneSpecialty] = useState('');
@@ -70,11 +74,14 @@ export default function AdminSpecialtyManagement() {
   const [filterProficiency, setFilterProficiency] = useState<number | ''>('');
   const [showOnlyPrimary, setShowOnlyPrimary] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [selectedSpecialty, setSelectedSpecialty] = useState<ExpertSpecialtyDto | null>(null);
 
   useEffect(() => {
     loadSpecialties();
+  }, [pageIndex, pageSize]);
+
+  useEffect(() => {
     loadBoneSpecialties();
   }, []);
 
@@ -82,14 +89,28 @@ export default function AdminSpecialtyManagement() {
     try {
       setLoading(true);
       setLoadError(null);
-      const data = await expertSpecialtyApi.getAllSpecialties();
-      setSpecialties(data);
+      const data = await expertSpecialtyApi.getAllSpecialtiesPaged(pageIndex, pageSize);
+      setSpecialties(data.items);
+      setTotalCount(data.totalCount);
     } catch (error) {
       console.error('Failed to load specialties:', error);
       const errorMsg = getApiErrorMessage(error);
       setLoadError(errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewSpecialty = async (id: string) => {
+    try {
+      setViewingId(id);
+      const data = await expertSpecialtyApi.getById(id);
+      setSelectedSpecialty(data);
+    } catch (error) {
+      console.error('Failed to load specialty details:', error);
+      alert('Failed to load specialty details.');
+    } finally {
+      setViewingId(null);
     }
   };
 
@@ -139,7 +160,7 @@ export default function AdminSpecialtyManagement() {
 
   const stats = useMemo(() => {
     return {
-      total: specialties.length,
+      total: totalCount,
       experts: uniqueExperts.length,
       primary: specialties.filter((s) => s.isPrimary).length,
       avgProficiency:
@@ -147,7 +168,7 @@ export default function AdminSpecialtyManagement() {
           ? (specialties.reduce((sum, s) => sum + s.proficiencyLevel, 0) / specialties.length).toFixed(1)
           : '0',
     };
-  }, [specialties, uniqueExperts]);
+  }, [specialties, uniqueExperts, totalCount]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -410,8 +431,8 @@ export default function AdminSpecialtyManagement() {
       {/* Results Count */}
       <div className="flex items-center justify-between text-sm">
         <p className="text-muted-foreground">
-          Showing <span className="font-medium text-foreground">{filteredSpecialties.length}</span> of{' '}
-          <span className="font-medium text-foreground">{specialties.length}</span>
+          Showing <span className="font-medium text-foreground">{filteredSpecialties.length}</span> (filtered) of{' '}
+          <span className="font-medium text-foreground">{totalCount}</span> total specialties
         </p>
       </div>
 
@@ -424,7 +445,7 @@ export default function AdminSpecialtyManagement() {
               className={`group relative bg-card border rounded-xl p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${
                 specialty.isPrimary ? 'border-primary/30 shadow-sm shadow-primary/10' : 'hover:border-primary/20'
               }`}
-              onClick={() => setSelectedSpecialty(specialty)}
+              onClick={() => handleViewSpecialty(specialty.id)}
             >
               {specialty.isPrimary && (
                 <div className="absolute -top-2 left-3">
@@ -503,6 +524,7 @@ export default function AdminSpecialtyManagement() {
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Experience</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground">Primary</th>
                   <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -512,7 +534,7 @@ export default function AdminSpecialtyManagement() {
                     className={`border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer ${
                       idx % 2 === 0 ? 'bg-card' : 'bg-muted/5'
                     }`}
-                    onClick={() => setSelectedSpecialty(specialty)}
+                    onClick={() => handleViewSpecialty(specialty.id)}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -551,10 +573,68 @@ export default function AdminSpecialtyManagement() {
                         <span className="w-2 h-2 inline-block rounded-full bg-muted-foreground mx-auto" />
                       )}
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewSpecialty(specialty.id);
+                        }}
+                        disabled={viewingId === specialty.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {viewingId === specialty.id ? (
+                          <div className="w-3.5 h-3.5 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalCount > 0 && (
+        <div className="flex items-center justify-between border-t pt-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Items per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPageIndex(1);
+              }}
+              className="p-1.5 border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+              disabled={pageIndex === 1 || loading}
+              className="px-3 py-1.5 border rounded-lg text-sm hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-medium px-2">
+              Page {pageIndex} of {Math.max(1, Math.ceil(totalCount / pageSize))}
+            </span>
+            <button
+              onClick={() => setPageIndex((p) => p + 1)}
+              disabled={pageIndex >= Math.ceil(totalCount / pageSize) || loading}
+              className="px-3 py-1.5 border rounded-lg text-sm hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}
