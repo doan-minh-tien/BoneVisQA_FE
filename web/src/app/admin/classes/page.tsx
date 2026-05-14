@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, BookOpen, Loader2 } from 'lucide-react';
+import { Plus, X, BookOpen, Loader2, Bone } from 'lucide-react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import {
@@ -14,22 +14,41 @@ import {
   type AdminClassModel,
 } from '@/lib/api/admin-classes';
 import { ClassManagementTable } from '@/components/admin/classes/ClassManagementTable';
-import { ClassEnrollmentsDialog } from '@/components/admin/classes/ClassEnrollmentsDialog';
+import { ClassSpecialtyDialog } from '@/components/admin/classes/ClassSpecialtyDialog';
+import classificationApi from '@/lib/api/classification';
+
+const FOCUS_LEVELS = ['Basic', 'Intermediate', 'Advanced'];
+const STUDENT_LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
 
 export default function AdminClassesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  
+
   // State
   const [createOpen, setCreateOpen] = useState(false);
   const [newClassName, setNewClassName] = useState('');
   const [newSemester, setNewSemester] = useState('');
-  const [enrollmentsTarget, setEnrollmentsTarget] = useState<AdminClassModel | null>(null);
+  const [newSpecialtyId, setNewSpecialtyId] = useState<string | null>(null);
+  const [newFocusLevel, setNewFocusLevel] = useState('Basic');
+  const [newStudentLevel, setNewStudentLevel] = useState('Beginner');
+  
   const [editTarget, setEditTarget] = useState<AdminClassModel | null>(null);
   const [editName, setEditName] = useState('');
   const [editSemester, setEditSemester] = useState('');
+  const [editSpecialtyId, setEditSpecialtyId] = useState<string | null>(null);
+  const [editFocusLevel, setEditFocusLevel] = useState('Basic');
+  const [editStudentLevel, setEditStudentLevel] = useState('Beginner');
+  
+  const [specialtyDialogOpen, setSpecialtyDialogOpen] = useState(false);
+  const [specialtyDialogClass, setSpecialtyDialogClass] = useState<AdminClassModel | null>(null);
+  const [filterSpecialtyId, setFilterSpecialtyId] = useState<string | null>(null);
 
-  // Queries
+  // Queries - Fetch bone specialties for dropdown
+  const { data: boneSpecialties = [] } = useQuery({
+    queryKey: ['admin', 'bone-specialties-tree'],
+    queryFn: () => classificationApi.getBoneSpecialtiesTree(),
+  });
+
   const classesQuery = useQuery({
     queryKey: ['admin', 'classes'],
     queryFn: fetchAdminClasses,
@@ -39,14 +58,23 @@ export default function AdminClassesPage() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: async ({ className, semester }: { className: string, semester: string }) => {
-      return createAdminClass({ className, semester });
+    mutationFn: async ({ className, semester, classSpecialtyId, focusLevel, targetStudentLevel }: { 
+      className: string, 
+      semester: string,
+      classSpecialtyId?: string | null,
+      focusLevel?: string | null,
+      targetStudentLevel?: string | null,
+    }) => {
+      return createAdminClass({ className, semester, classSpecialtyId, focusLevel, targetStudentLevel });
     },
     onSuccess: () => {
       toast.success('Class created successfully.');
       setCreateOpen(false);
       setNewClassName('');
       setNewSemester('');
+      setNewSpecialtyId(null);
+      setNewFocusLevel('Basic');
+      setNewStudentLevel('Beginner');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'classes'] });
     },
     onError: (err: Error) => {
@@ -59,12 +87,18 @@ export default function AdminClassesPage() {
       id,
       className,
       semester,
+      classSpecialtyId,
+      focusLevel,
+      targetStudentLevel,
     }: {
       id: string;
       className: string;
       semester: string;
+      classSpecialtyId?: string | null;
+      focusLevel?: string | null;
+      targetStudentLevel?: string | null;
     }) => {
-      return updateAdminClass(id, { className, semester });
+      return updateAdminClass(id, { className, semester, classSpecialtyId, focusLevel, targetStudentLevel });
     },
     onSuccess: () => {
       toast.success('Class updated successfully.');
@@ -96,7 +130,13 @@ export default function AdminClassesPage() {
       toast.error('Please enter both class name and semester.');
       return;
     }
-    createMutation.mutate({ className: newClassName.trim(), semester: newSemester.trim() });
+    createMutation.mutate({ 
+      className: newClassName.trim(), 
+      semester: newSemester.trim(),
+      classSpecialtyId: newSpecialtyId,
+      focusLevel: newFocusLevel,
+      targetStudentLevel: newStudentLevel,
+    });
   };
 
   const handleDelete = (cls: AdminClassModel) => {
@@ -109,6 +149,14 @@ export default function AdminClassesPage() {
     setEditTarget(cls);
     setEditName(cls.className);
     setEditSemester(cls.semester);
+    setEditSpecialtyId(cls.classSpecialtyId || null);
+    setEditFocusLevel(cls.focusLevel || 'Basic');
+    setEditStudentLevel(cls.targetStudentLevel || 'Beginner');
+  };
+
+  const openSpecialtyDialog = (cls: AdminClassModel) => {
+    setSpecialtyDialogClass(cls);
+    setSpecialtyDialogOpen(true);
   };
 
   const handleSaveEdit = () => {
@@ -121,6 +169,9 @@ export default function AdminClassesPage() {
       id: editTarget.id,
       className: editName.trim(),
       semester: editSemester.trim(),
+      classSpecialtyId: editSpecialtyId,
+      focusLevel: editFocusLevel,
+      targetStudentLevel: editStudentLevel,
     });
   };
 
@@ -150,11 +201,21 @@ export default function AdminClassesPage() {
 
         <ClassManagementTable
           classes={classes}
-          onManageEnrollments={(cls) => setEnrollmentsTarget(cls)}
           onEdit={openEdit}
           onDelete={handleDelete}
+          onManageSpecialty={openSpecialtyDialog}
+          showSpecialtyColumn={true}
+          filterSpecialtyId={filterSpecialtyId}
+          onFilterSpecialtyChange={setFilterSpecialtyId}
         />
       </div>
+
+      {/* Specialty Dialog */}
+      <ClassSpecialtyDialog
+        open={specialtyDialogOpen}
+        onOpenChange={setSpecialtyDialogOpen}
+        classData={specialtyDialogClass}
+      />
 
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -164,7 +225,7 @@ export default function AdminClassesPage() {
               if (!saving) setCreateOpen(false);
             }}
           />
-          <div className="relative w-full max-w-md animate-in rounded-2xl bg-white p-6 shadow-2xl duration-200 fade-in zoom-in-95">
+          <div className="relative w-full max-w-lg animate-in rounded-2xl bg-white p-6 shadow-2xl duration-200 fade-in zoom-in-95">
             <button
               type="button"
               onClick={() => {
@@ -193,7 +254,7 @@ export default function AdminClassesPage() {
                   type="text"
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
-                  placeholder="e.g. Radiology 2026-A"
+                  placeholder="e.g. Lower Limb - Beginner 2026"
                   className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -208,6 +269,72 @@ export default function AdminClassesPage() {
                   placeholder="e.g. Fall 2026"
                   className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
+              </div>
+              
+              {/* Bone Specialty Selection */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  <Bone className="inline h-4 w-4 mr-1 text-primary" />
+                  Bone Specialty <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={newSpecialtyId || ''}
+                  onChange={(e) => setNewSpecialtyId(e.target.value || null)}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">-- Select Bone Specialty --</option>
+                  {boneSpecialties.map((spec: { id: string, name: string, code: string }) => (
+                    <option key={spec.id} value={spec.id}>
+                      {spec.name} ({spec.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Focus Level */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Focus Level
+                </label>
+                <div className="flex gap-2">
+                  {FOCUS_LEVELS.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setNewFocusLevel(level)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        newFocusLevel === level
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200 shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Target Student Level */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Target Student Level
+                </label>
+                <div className="flex gap-2">
+                  {STUDENT_LEVELS.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setNewStudentLevel(level)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        newStudentLevel === level
+                          ? 'bg-green-100 text-green-700 border border-green-200 shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -225,7 +352,7 @@ export default function AdminClassesPage() {
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={saving}
+                disabled={saving || !newSpecialtyId}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-sky-600 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-sky-700 disabled:opacity-70"
               >
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -244,7 +371,7 @@ export default function AdminClassesPage() {
               if (!saving) setEditTarget(null);
             }}
           />
-          <div className="relative w-full max-w-md animate-in rounded-2xl bg-white p-6 shadow-2xl duration-200 fade-in zoom-in-95">
+          <div className="relative w-full max-w-lg animate-in rounded-2xl bg-white p-6 shadow-2xl duration-200 fade-in zoom-in-95">
             <button
               type="button"
               onClick={() => {
@@ -286,6 +413,72 @@ export default function AdminClassesPage() {
                   className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
+              
+              {/* Bone Specialty Selection */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  <Bone className="inline h-4 w-4 mr-1 text-primary" />
+                  Bone Specialty <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={editSpecialtyId || ''}
+                  onChange={(e) => setEditSpecialtyId(e.target.value || null)}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm text-slate-800 shadow-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">-- Select Bone Specialty --</option>
+                  {boneSpecialties.map((spec: { id: string, name: string, code: string }) => (
+                    <option key={spec.id} value={spec.id}>
+                      {spec.name} ({spec.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Focus Level */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Focus Level
+                </label>
+                <div className="flex gap-2">
+                  {FOCUS_LEVELS.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setEditFocusLevel(level)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        editFocusLevel === level
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200 shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Target Student Level */}
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Target Student Level
+                </label>
+                <div className="flex gap-2">
+                  {STUDENT_LEVELS.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setEditStudentLevel(level)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        editStudentLevel === level
+                          ? 'bg-green-100 text-green-700 border border-green-200 shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="mt-6 flex gap-3">
               <button
@@ -301,7 +494,7 @@ export default function AdminClassesPage() {
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                disabled={saving}
+                disabled={saving || !editSpecialtyId}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-sky-600 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-sky-700 disabled:opacity-70"
               >
                 {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -310,13 +503,6 @@ export default function AdminClassesPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {enrollmentsTarget && (
-        <ClassEnrollmentsDialog
-          cls={enrollmentsTarget}
-          onCancel={() => setEnrollmentsTarget(null)}
-        />
       )}
     </div>
   );

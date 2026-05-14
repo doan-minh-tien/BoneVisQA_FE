@@ -7,9 +7,18 @@ import Header from '@/components/Header';
 import { StudentCatalogSkeleton } from '@/components/shared/DashboardSkeletons';
 import { CaseCatalogCard } from '@/components/student/CaseCatalogCard';
 import { CatalogFilter } from '@/components/student/CatalogFilter';
-import { fetchCaseCatalog, fetchCaseCatalogFilters } from '@/lib/api/student';
+import {
+  fetchCaseCatalog,
+  fetchCaseCatalogFilters,
+  fetchBoneSpecialtyOptions,
+  fetchPathologyCategoryOptions,
+} from '@/lib/api/student';
 import type { StudentCaseCatalogItem } from '@/lib/api/types';
 import { useToast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 6;
 
 export function CatalogPageClient() {
   const toast = useToast();
@@ -17,16 +26,59 @@ export function CatalogPageClient() {
   const [location, setLocation] = useState('');
   const [lesionType, setLesionType] = useState('');
   const [difficulty, setDifficulty] = useState('');
+  const [boneSpecialtyId, setBoneSpecialtyId] = useState('');
+  const [pathologyCategoryId, setPathologyCategoryId] = useState('');
+  const [severity, setSeverity] = useState('');
+  const [patientAgeGroup, setPatientAgeGroup] = useState('');
   const query = searchParams.get('q')?.trim().toLowerCase() ?? '';
+
+  // Pagination state
+  const [pageIndex, setPageIndex] = useState(1);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPageIndex(1);
+  }, [location, lesionType, difficulty, boneSpecialtyId, pathologyCategoryId, severity, patientAgeGroup, query]);
 
   const filtersQuery = useQuery({
     queryKey: ['student', 'catalog-filters'],
     queryFn: fetchCaseCatalogFilters,
   });
 
+  const boneSpecialtiesQuery = useQuery({
+    queryKey: ['common', 'classifications', 'bone-specialties'],
+    queryFn: fetchBoneSpecialtyOptions,
+  });
+
+  const pathologyCategoriesQuery = useQuery({
+    queryKey: ['common', 'classifications', 'pathology-categories'],
+    queryFn: fetchPathologyCategoryOptions,
+  });
+
   const catalogQuery = useQuery({
-    queryKey: ['student', 'catalog', location, lesionType, difficulty, query],
-    queryFn: () => fetchCaseCatalog({ location, lesionType, difficulty, q: query || undefined }),
+    queryKey: [
+      'student',
+      'catalog',
+      location,
+      lesionType,
+      difficulty,
+      boneSpecialtyId,
+      pathologyCategoryId,
+      severity,
+      patientAgeGroup,
+      query,
+    ],
+    queryFn: () =>
+      fetchCaseCatalog({
+        location,
+        lesionType,
+        difficulty,
+        boneSpecialtyId: boneSpecialtyId || undefined,
+        pathologyCategoryId: pathologyCategoryId || undefined,
+        severity: severity || undefined,
+        patientAgeGroup: patientAgeGroup || undefined,
+        q: query || undefined,
+      }),
     placeholderData: keepPreviousData,
   });
 
@@ -65,6 +117,18 @@ export function CatalogPageClient() {
     ).sort();
   }, [filtersQuery.data?.difficulties, items]);
 
+  const severityOptions = useMemo(() => {
+    const fromApi = filtersQuery.data?.severities;
+    if (fromApi?.length) return fromApi;
+    return ['Mild', 'Moderate', 'Severe'];
+  }, [filtersQuery.data?.severities]);
+
+  const patientAgeGroupOptions = useMemo(() => {
+    const fromApi = filtersQuery.data?.patientAgeGroups;
+    if (fromApi?.length) return fromApi;
+    return ['Pediatric', 'Adult', 'Geriatric'];
+  }, [filtersQuery.data?.patientAgeGroups]);
+
   const visibleItems = useMemo(() => {
     if (!query) return items;
     return items.filter((item) => {
@@ -73,6 +137,14 @@ export function CatalogPageClient() {
       return haystack.includes(query);
     });
   }, [items, query]);
+
+  // Pagination calculations
+  const totalItems = visibleItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const validPage = Math.min(pageIndex, totalPages);
+  const startIndex = (validPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalItems);
+  const pagedItems = visibleItems.slice(startIndex, endIndex);
 
   const catalogLoading = catalogQuery.isPending && !catalogQuery.data;
 
@@ -84,17 +156,29 @@ export function CatalogPageClient() {
       />
 
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-6 sm:px-6">
-        <CatalogFilter
-          location={location}
-          lesionType={lesionType}
-          difficulty={difficulty}
-          locations={locationOptions}
-          lesionTypes={lesionOptions}
-          difficulties={difficultyOptions}
-          onLocationChange={setLocation}
-          onLesionTypeChange={setLesionType}
-          onDifficultyChange={setDifficulty}
-        />
+      <CatalogFilter
+        location={location}
+        lesionType={lesionType}
+        difficulty={difficulty}
+        locations={locationOptions}
+        lesionTypes={lesionOptions}
+        difficulties={difficultyOptions}
+        boneSpecialtyId={boneSpecialtyId}
+        boneSpecialties={boneSpecialtiesQuery.data ?? []}
+        pathologyCategoryId={pathologyCategoryId}
+        pathologyCategories={pathologyCategoriesQuery.data ?? []}
+        severity={severity}
+        severities={severityOptions}
+        patientAgeGroup={patientAgeGroup}
+        patientAgeGroups={patientAgeGroupOptions}
+        onLocationChange={setLocation}
+        onLesionTypeChange={setLesionType}
+        onDifficultyChange={setDifficulty}
+        onBoneSpecialtyChange={setBoneSpecialtyId}
+        onPathologyCategoryChange={setPathologyCategoryId}
+        onSeverityChange={setSeverity}
+        onPatientAgeGroupChange={setPatientAgeGroup}
+      />
 
         {catalogLoading ? (
           <StudentCatalogSkeleton />
@@ -107,12 +191,39 @@ export function CatalogPageClient() {
           </div>
         ) : (
           <>
-            <div className="text-sm text-muted-foreground">
-              Showing <span className="font-medium text-card-foreground">{visibleItems.length}</span> public case
-              {visibleItems.length === 1 ? '' : 's'} from the catalog.
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Showing <span className="font-medium text-card-foreground">{startIndex + 1}-{endIndex}</span> of{' '}
+                <span className="font-medium text-card-foreground">{totalItems}</span> cases
+              </p>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={validPage <= 1}
+                    onClick={() => setPageIndex((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {validPage} / {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={validPage >= totalPages}
+                    onClick={() => setPageIndex((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visibleItems.map((item) => (
+              {pagedItems.map((item) => (
                 <CaseCatalogCard key={item.id} item={item} />
               ))}
             </div>

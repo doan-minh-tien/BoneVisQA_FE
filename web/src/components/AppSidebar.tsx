@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useLogout } from '@/lib/useLogout';
 import { useAuth, type BackendRole } from '@/lib/useAuth';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   BookOpen,
   CheckSquare,
@@ -22,11 +23,18 @@ import {
   FileQuestion,
   BarChart3,
   Megaphone,
+  Award,
 
   Sparkles,
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  Settings,
+  Settings2,
+  FileText,
+  Server,
+  HardDrive,
+  FileBarChart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
@@ -43,11 +51,17 @@ const navByRole: Record<RoleKey, NavItem[]> = {
   admin: [
     { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'User Management', href: '/admin/users', icon: Users },
-    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Class Management', href: '/admin/classes', icon: GraduationCap },
+    { label: 'Medical Student Verification', href: '/admin/verifications', icon: BadgeCheck },
     { label: 'Knowledge Base', href: '/admin/documents', icon: Database },
     { label: 'Flagged chunks', href: '/admin/flagged-chunks', icon: Flag },
     { label: 'Medical Cases', href: '/admin/cases', icon: BookOpen },
+    { label: 'System Logs', href: '/admin/logs', icon: FileText },
+    { label: 'System Configuration', href: '/admin/system-config', icon: Server },
+    { label: 'Classifications', href: '/admin/classifications', icon: Stethoscope },
+    { label: 'Expert Specialties', href: '/admin/specialties', icon: Award },
+    { label: 'Backup & Export', href: '/admin/backup', icon: HardDrive },
+    { label: 'Reports', href: '/admin/reports', icon: FileBarChart },
   ],
   lecturer: [
     { label: 'Dashboard', href: '/lecturer/dashboard', icon: LayoutDashboard },
@@ -64,12 +78,15 @@ const navByRole: Record<RoleKey, NavItem[]> = {
     { label: 'Expert review', href: '/expert/reviews', icon: CheckSquare },
     { label: 'Case Library', href: '/expert/cases', icon: BookOpen },
     { label: 'Quiz Library', href: '/expert/quizzes', icon: FileQuestion },
+    { label: 'Specialties', href: '/expert/specialties', icon: Stethoscope },
+    { label: 'Settings', href: '/expert/settings', icon: Settings },
   ],
   student: [
     { label: 'Dashboard', href: '/student/dashboard', icon: LayoutDashboard },
     { label: 'Case Library', href: '/student/catalog', icon: BookOpen },
     { label: 'Visual QA', href: '/student/qa/image', icon: ScanSearch },
     { label: 'Quizzes', href: '/student/quizzes', icon: HelpCircle },
+    { label: 'Analytics', href: '/student/analytics', icon: BarChart3 },
     { label: 'Class', href: '/student/classes', icon: Users },
   ],
 };
@@ -114,23 +131,21 @@ export function AppSidebar({
     if (!resolvedRole) return { dashboardItem: null, otherItems: [] as NavItem[] };
     const base = navByRole[resolvedRole] ?? [];
     const dashboard = base.find((item) => item.label.toLowerCase() === 'dashboard') ?? null;
-    const rest = base
-      .filter((item) => item.label.toLowerCase() !== 'dashboard')
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    const rest = base.filter((item) => item.label.toLowerCase() !== 'dashboard');
     return { dashboardItem: dashboard, otherItems: rest };
   }, [resolvedRole]);
   const meta = resolvedRole ? roleMeta[resolvedRole] : null;
 
-  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-blue-100 bg-[#f0f7ff] text-[#1e293b] shadow-sm transition-[width] duration-200 ease-out ${
+  const shellClass = `fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-[var(--border-color)] bg-[var(--sidebar)] text-[var(--sidebar-text)] shadow-sm transition-[width] duration-200 ease-out ${
     collapsed ? 'w-[72px]' : 'w-[260px]'
   }`;
 
   if (!hasMounted) {
     return (
       <aside className={shellClass}>
-        <div className="h-14 border-b border-blue-100 px-2" />
+        <div className="h-14 border-b border-[var(--border-color)] px-2" />
         <div className="flex-1 px-2 py-3">
-          <div className="h-9 rounded-lg bg-blue-100/60" />
+          <div className="h-9 rounded-lg bg-[var(--muted)]" />
         </div>
       </aside>
     );
@@ -140,38 +155,39 @@ export function AppSidebar({
     return (
       <aside className={shellClass}>
         <div
-          className={`flex shrink-0 items-center border-b border-blue-100 py-2 ${
+          className={`flex shrink-0 items-center border-b border-[var(--border-color)] py-2 ${
             collapsed ? 'flex-col gap-2 px-1' : 'h-14 justify-between px-2'
           }`}
         >
           <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-white">
-              <Stethoscope className="h-5 w-5 text-[#0055ff]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--surface)]">
+              <Stethoscope className="h-5 w-5 text-[var(--primary)]" />
             </div>
             {!collapsed ? (
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold text-[#1e293b]">BoneVisQA</h1>
-                <p className="truncate text-[11px] text-[#1e293b]/70">Radiology Education</p>
+                <h1 className="truncate text-sm font-semibold text-[var(--sidebar-text)]">BoneVisQA</h1>
+                <p className="truncate text-[11px] text-[var(--sidebar-text-muted)]">Radiology Education</p>
               </div>
             ) : null}
           </div>
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#1e293b]/70 hover:bg-blue-100 hover:text-[#1e293b]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </button>
+          <ThemeToggle />
         </div>
-        <div className="flex-1 px-2 py-4 text-center text-xs text-[#1e293b]/70">
+        <div className="flex-1 px-2 py-4 text-center text-xs text-[var(--sidebar-text-muted)]">
           {!collapsed ? 'No role-based navigation available.' : '—'}
         </div>
-        <div className="border-t border-blue-100 p-2">
+        <div className="border-t border-[var(--border-color)] p-2">
           <Button
             onClick={logout}
             variant="outline"
-            className="w-full justify-center border-blue-200 bg-white text-[#1e293b] hover:bg-blue-100"
+            className="w-full justify-center border-[var(--border-color)] bg-[var(--surface)] text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)]"
           >
             <LogOut className="h-4 w-4" />
             {!collapsed ? <span className="ml-2">Logout</span> : null}
@@ -184,29 +200,30 @@ export function AppSidebar({
   return (
     <aside className={shellClass}>
       <div
-        className={`flex shrink-0 items-center border-b border-blue-100 py-2 ${
+        className={`flex shrink-0 items-center border-b border-[var(--border-color)] py-2 ${
           collapsed ? 'flex-col gap-2 px-1' : 'h-[4.5rem] justify-between gap-1 px-2'
         }`}
       >
         <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'min-w-0 flex-1'}`}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white">
-            <Stethoscope className="h-5 w-5 text-[#0055ff]" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--surface)]">
+            <Stethoscope className="h-5 w-5 text-[var(--primary)]" />
           </div>
           {!collapsed ? (
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold tracking-wide text-[#1e293b]">BoneVisQA</h1>
-              <p className="truncate text-[11px] text-[#1e293b]/70">{meta.label}</p>
+              <h1 className="truncate text-sm font-semibold tracking-wide text-[var(--sidebar-text)]">BoneVisQA</h1>
+              <p className="truncate text-[11px] text-[var(--sidebar-text-muted)]">{meta.label}</p>
             </div>
           ) : null}
         </div>
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#1e293b]/70 hover:bg-blue-100 hover:text-[#1e293b]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
         </button>
+        <ThemeToggle />
       </div>
 
       <nav className="app-scroll-y flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
@@ -220,8 +237,8 @@ export function AppSidebar({
                   collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                 } ${
                   pathname === dashboardItem.href
-                    ? 'bg-[#0055ff] text-white'
-                    : 'text-[#1e293b] hover:bg-blue-100 hover:text-[#1e293b]'
+                    ? 'bg-[var(--sidebar-active)] text-white'
+                    : 'text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]'
                 }`}
               >
                 <dashboardItem.icon className="h-5 w-5 shrink-0" />
@@ -231,7 +248,7 @@ export function AppSidebar({
           ) : null}
           {!collapsed ? (
             <li className="my-2 px-3" aria-hidden>
-              <div className="border-t border-blue-100" />
+              <div className="border-t border-[var(--border-color)]" />
             </li>
           ) : null}
           {otherItems.map((item) => {
@@ -249,8 +266,8 @@ export function AppSidebar({
                     collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                   } ${
                     isActive
-                      ? 'bg-[#0055ff] text-white'
-                      : 'text-[#1e293b] hover:bg-blue-100 hover:text-[#1e293b]'
+                      ? 'bg-[var(--sidebar-active)] text-white'
+                      : 'text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]'
                   }`}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
@@ -262,7 +279,7 @@ export function AppSidebar({
         </ul>
       </nav>
 
-      <div className="border-t border-blue-100 p-2">
+      <div className="border-t border-[var(--border-color)] p-2">
         <Link href={meta.actionHref} className="block" title={collapsed ? meta.actionLabel : undefined}>
           <Button className={`w-full justify-center ${collapsed ? 'px-2' : ''}`}>
             <Plus className="h-4 w-4 shrink-0" />

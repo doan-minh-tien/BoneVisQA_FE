@@ -598,6 +598,8 @@ export interface AssignedQuizItem {
   attemptId?: string | null;
   /** Quiz creation time — used for sorting by newest first */
   createdAt?: string | null;
+  /** True nếu quiz đã đóng HOẶC lecturer đã release đáp án. Sinh viên chỉ xem được đáp án khi field này = true */
+  answersReleased?: boolean;
 }
 
 export interface QuizSessionDto {
@@ -623,6 +625,7 @@ export interface StudentSessionQuestion {
   optionD: string | null;
   imageUrl?: string | null;
   essayAnswer?: string | null; // Model answer for essay questions (from backend)
+  correctAnswer?: string | null; // Correct answer (only available after review/reveal)
 }
 
 export interface StudentSubmitQuestionDto {
@@ -852,6 +855,12 @@ export interface QuizDto {
   timeLimit: number | null;
   passingScore: number | null;
   createdAt: string | null;
+  /** Deep classification - Bone Specialty */
+  boneSpecialtyId?: string | null;
+  boneSpecialtyName?: string | null;
+  /** Deep classification - Pathology Category */
+  pathologyCategoryId?: string | null;
+  pathologyCategoryName?: string | null;
   /** Present when API returns aggregate question count. */
   questionCount?: number | null;
   quizName?: string | null;
@@ -920,6 +929,8 @@ export interface CreateQuizRequest {
   timeLimit?: number;
   passingScore?: number;
   classId: string;
+  boneSpecialtyId?: string;
+  pathologyCategoryId?: string;
 }
 
 export interface QuizQuestionDto {
@@ -958,7 +969,7 @@ export interface CreateQuizQuestionRequest {
   quizId: string;
   caseId?: string;
   questionText: string;
-  type?: string;
+  type: string;
   optionA?: string;
   optionB?: string;
   optionC?: string;

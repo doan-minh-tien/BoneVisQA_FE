@@ -12,6 +12,8 @@ import {
 } from '@/lib/api/lecturer-dashboard';
 import { fetchLecturerClasses, fetchLecturerTriageList } from '@/lib/api/lecturer-triage';
 import type { ClassItem, LecturerDashboardStats, LecturerLeaderboardEntry, LecturerTriageRow } from '@/lib/api/types';
+import TeachingObjectives from '@/components/lecturer/TeachingObjectives';
+import StudentProgress from '@/components/lecturer/StudentProgress';
 import {
   Users,
   GraduationCap,
@@ -83,7 +85,7 @@ function Card({
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-primary" />
           <span className="font-medium text-sm">{title}</span>
-          {showBadge && (
+          {badge !== undefined && Number(badge) > 0 && (
             <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded-full">{badge}</span>
           )}
         </div>
@@ -118,7 +120,7 @@ export default function LecturerDashboardPage() {
   );
   const { data: classesData, error: classesError, isLoading: classesLoading } = useSWR<ClassItem[]>(
     lecturerId ? ['lecturer-classes', lecturerId] : null,
-    (_: string, id: string) => fetchLecturerClasses(id),
+    (_: unknown, id: string) => fetchLecturerClasses(id),
     { revalidateOnFocus: false },
   );
   const { data: analytics, error: analyticsError, isLoading: analyticsLoading } = useSWR<LecturerAnalyticsData>(
@@ -132,14 +134,14 @@ export default function LecturerDashboardPage() {
 
   const { data: leaderboard, error: leaderboardError, isLoading: leaderboardLoading } = useSWR<LecturerLeaderboardEntry[]>(
     selectedClass ? ['lecturer-dashboard-leaderboard', selectedClass] : null,
-    (_: string, classId: string) => fetchLecturerClassLeaderboard(classId),
+    (_: unknown, classId: string) => fetchLecturerClassLeaderboard(classId),
     { revalidateOnFocus: false },
   );
 
   const triageClassId = classes.length > 0 ? (selectedClassId || classes[0]?.id) : '';
   const { data: triageData, error: triageError, isLoading: triageLoading } = useSWR<LecturerTriageRow[]>(
     triageClassId ? ['lecturer-dashboard-triage', triageClassId] : null,
-    (_: string, classId: string) => fetchLecturerTriageList(classId),
+    (_: unknown, classId: string) => fetchLecturerTriageList(classId),
     { revalidateOnFocus: false },
   );
 
@@ -276,6 +278,22 @@ export default function LecturerDashboardPage() {
                 <p className="text-sm text-muted-foreground text-center py-4">No topic data</p>
               )}
             </Card>
+
+            {/* Teaching Objectives */}
+            {selectedClass && (
+              <TeachingObjectives
+                classId={selectedClass}
+                onError={(error) => toast.error(error)}
+              />
+            )}
+
+            {/* Student Progress */}
+            {selectedClass && (
+              <StudentProgress
+                classId={selectedClass}
+                onError={(error) => toast.error(error)}
+              />
+            )}
           </div>
 
           {/* Right Column */}

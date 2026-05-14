@@ -24,6 +24,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Bone,
+  Stethoscope,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QuestionEditorDialog from '@/components/lecturer/quizzes/QuestionEditorDialog';
@@ -37,6 +39,7 @@ import {
 } from '@/lib/api/lecturer-quiz';
 import { getLecturerClasses, getLecturerCases, getClassStats } from '@/lib/api/lecturer';
 import { getStoredUserId } from '@/lib/getStoredUserId';
+import classificationApi, { type BoneSpecialtyTreeDto, type PathologyCategorySimpleDto } from '@/lib/api/classification';
 import type {
   CaseDto,
   ClassItem,
@@ -75,6 +78,18 @@ const DIFFICULTY_OPTIONS = [
   { value: 'Hard', label: 'Hard' },
 ] as const;
 
+// Flatten bone specialties tree for dropdown
+function flattenBoneSpecialties(tree: BoneSpecialtyTreeDto[], level = 0): (BoneSpecialtyTreeDto & { level: number })[] {
+  const result: (BoneSpecialtyTreeDto & { level: number })[] = [];
+  for (const item of tree) {
+    result.push({ ...item, level });
+    if (item.children && item.children.length > 0) {
+      result.push(...flattenBoneSpecialties(item.children, level + 1));
+    }
+  }
+  return result;
+}
+
 export default function CreateQuizPage() {
   const router = useRouter();
   const toast = useToast();
@@ -84,6 +99,12 @@ export default function CreateQuizPage() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [createdQuizId, setCreatedQuizId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionDto[]>([]);
+
+  // Deep classification state
+  const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyTreeDto[]>([]);
+  const [flatBoneSpecialties, setFlatBoneSpecialties] = useState<(BoneSpecialtyTreeDto & { level: number })[]>([]);
+  const [pathologyCategories, setPathologyCategories] = useState<PathologyCategorySimpleDto[]>([]);
+  const [loadingClassifications, setLoadingClassifications] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -97,9 +118,9 @@ export default function CreateQuizPage() {
     passingScore: '80',
   });
 
-  const [classification, setClassification] = useState<(typeof CLASSIFICATION_OPTIONS)[number]>(
-    'Resident Year 1',
-  );
+  const [classification, setClassification] = useState<string>('');
+  const [boneSpecialtyId, setBoneSpecialtyId] = useState<string>('');
+  const [pathologyCategoryId, setPathologyCategoryId] = useState<string>('');
 
   const [referenceCaseIds, setReferenceCaseIds] = useState<string[]>([]);
   const [casePickerOpen, setCasePickerOpen] = useState(false);
@@ -117,6 +138,7 @@ export default function CreateQuizPage() {
   const [createStatsLoading, setCreateStatsLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeStep, setActiveStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [questionCount, setQuestionCount] = useState(5);
@@ -148,7 +170,30 @@ export default function CreateQuizPage() {
 
   useEffect(() => {
     loadClasses();
+    loadClassifications();
   }, []);
+
+  const loadClassifications = async () => {
+    setLoadingClassifications(true);
+    try {
+      const [specialtiesTree, pathologyList] = await Promise.all([
+        classificationApi.getBoneSpecialtiesTree(),
+        classificationApi.getPathologyCategories(),
+      ]);
+      setBoneSpecialties(specialtiesTree);
+      setFlatBoneSpecialties(flattenBoneSpecialties(specialtiesTree));
+      setPathologyCategories(pathologyList);
+    } catch (err) {
+      console.error('Failed to load classifications:', err);
+    } finally {
+      setLoadingClassifications(false);
+    }
+  };
+
+  // Filter pathology categories based on selected bone specialty
+  const filteredPathologyCategories = pathologyCategories.filter(
+    (p) => !boneSpecialtyId || p.boneSpecialtyId === boneSpecialtyId || !p.boneSpecialtyId
+  );
 
   useEffect(() => {
     const id = formData.classId?.trim();
@@ -215,13 +260,15 @@ export default function CreateQuizPage() {
     title: formData.title,
     topic: formData.topic || undefined,
     difficulty: formData.difficulty || undefined,
-    classification: classification,
+    classification: classification || undefined,
     isAiGenerated: false,
     classId: formData.classId || '00000000-0000-0000-0000-000000000000',
     openTime: toUTC(formData.openTime),
     closeTime: toUTC(formData.closeTime),
     timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
     passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
+    boneSpecialtyId: boneSpecialtyId || undefined,
+    pathologyCategoryId: pathologyCategoryId || undefined,
   });
 
   // ========== AI Quiz Handlers ==========
@@ -336,13 +383,15 @@ export default function CreateQuizPage() {
         title: formData.title,
         topic: formData.topic,
         difficulty: formData.difficulty,
-        classification: classification,
+        classification: classification || undefined,
         isAiGenerated: true,
         classId: formData.classId || '00000000-0000-0000-0000-000000000000',
         openTime: formData.openTime || undefined,
         closeTime: formData.closeTime || undefined,
         timeLimit: formData.timeLimit ? parseInt(formData.timeLimit, 10) : undefined,
         passingScore: formData.passingScore ? parseInt(formData.passingScore, 10) : undefined,
+        boneSpecialtyId: boneSpecialtyId || undefined,
+        pathologyCategoryId: pathologyCategoryId || undefined,
       });
 
       const payloads: CreateQuizQuestionRequest[] = aiQuestions.map((q) => ({
@@ -789,33 +838,86 @@ export default function CreateQuizPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Classification</label>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                    <Bone className="h-3 w-3" />
+                    Bone Specialty
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={boneSpecialtyId}
+                      onChange={(e) => {
+                        setBoneSpecialtyId(e.target.value);
+                        // Reset pathology when bone specialty changes
+                        setPathologyCategoryId('');
+                      }}
+                      disabled={loadingClassifications}
+                      className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
+                    >
+                      <option value="">Select specialty…</option>
+                      {flatBoneSpecialties.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {'\u00A0\u00A0'.repeat(s.level)}{s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                    <Stethoscope className="h-3 w-3" />
+                    Pathology Category
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={pathologyCategoryId}
+                      onChange={(e) => setPathologyCategoryId(e.target.value)}
+                      disabled={loadingClassifications}
+                      className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
+                    >
+                      <option value="">Select pathology…</option>
+                      {filteredPathologyCategories.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Classification (Legacy)</label>
+                <div className="relative">
                   <select
                     value={classification}
-                    onChange={(e) => setClassification(e.target.value as (typeof CLASSIFICATION_OPTIONS)[number])}
-                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                    onChange={(e) => setClassification(e.target.value)}
+                    className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-muted/50 px-3 py-2 pr-8 text-xs outline-none transition-all focus:border-primary"
                   >
+                    <option value="">None (use deep classification above)</option>
                     {CLASSIFICATION_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
                       </option>
                     ))}
                   </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
-                  <select
-                    value={formData.difficulty}
-                    onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                    className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
-                  >
-                    {DIFFICULTY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <p className="text-[10px] text-muted-foreground">Optional: for backward compatibility with academic level classification</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Difficulty</label>
+                <select
+                  value={formData.difficulty}
+                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                  className="w-full cursor-pointer rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs outline-none transition-all focus:border-primary"
+                >
+                  {DIFFICULTY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Topic</label>

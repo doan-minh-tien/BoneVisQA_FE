@@ -17,6 +17,15 @@ export interface ExpertQuiz {
   classification: string | null;
   createdAt: string;
   expertName?: string;
+  // Deep classification
+  boneSpecialtyId?: string;
+  boneSpecialtyName?: string;
+  pathologyCategoryId?: string;
+  pathologyCategoryName?: string;
+  // Extended classification
+  teachingPoints?: number;
+  learningObjectives?: string[];
+  targetStudentLevel?: string;
 }
 
 interface ExpertQuizListResponse {
@@ -47,6 +56,12 @@ export interface CreateExpertQuizRequest {
   difficulty: ExpertQuizDifficulty | string;
   classification: string | null;
   createdByExpertId?: string;
+  boneSpecialtyId?: string | null;
+  pathologyCategoryId?: string | null;
+  // Extended classification
+  teachingPoints?: number;
+  learningObjectives?: string[];
+  targetStudentLevel?: string;
 }
 
 export type UpdateExpertQuizRequest = Partial<CreateExpertQuizRequest>;
@@ -86,13 +101,49 @@ function mapExpertQuiz(row: unknown, fallbackId?: string): ExpertQuiz | null {
           : null,
     createdAt: String(r.createdAt ?? r.CreatedAt ?? ''),
     expertName: r.expertName != null ? String(r.expertName) : r.ExpertName != null ? String(r.ExpertName) : undefined,
+    // Deep classification
+    boneSpecialtyId: r.boneSpecialtyId != null ? String(r.boneSpecialtyId) : r.BoneSpecialtyId != null ? String(r.BoneSpecialtyId) : undefined,
+    boneSpecialtyName: r.boneSpecialtyName != null ? String(r.boneSpecialtyName) : r.BoneSpecialtyName != null ? String(r.BoneSpecialtyName) : undefined,
+    pathologyCategoryId: r.pathologyCategoryId != null ? String(r.pathologyCategoryId) : r.PathologyCategoryId != null ? String(r.PathologyCategoryId) : undefined,
+    pathologyCategoryName: r.pathologyCategoryName != null ? String(r.pathologyCategoryName) : r.PathologyCategoryName != null ? String(r.PathologyCategoryName) : undefined,
+    // Extended classification
+    teachingPoints: r.teachingPoints != null ? Number(r.teachingPoints) : r.TeachingPoints != null ? Number(r.TeachingPoints) : undefined,
+    learningObjectives: parseLearningObjectives(r.learningObjectives ?? r.LearningObjectives),
+    targetStudentLevel: r.targetStudentLevel != null ? String(r.targetStudentLevel) : r.TargetStudentLevel != null ? String(r.TargetStudentLevel) : undefined,
   };
+}
+
+function parseLearningObjectives(raw: unknown): string[] | undefined {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 export async function fetchExpertQuizzes(pageIndex = 1, pageSize = 100): Promise<ExpertQuiz[]> {
   try {
     const res = await fetchExpertQuizzesPaged(pageIndex, pageSize);
     return res.items;
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function getExpertQuiz(id: string): Promise<ExpertQuiz> {
+  try {
+    // Use the library endpoint that exists in backend
+    const { data } = await http.get<any>(`/api/expert/library/quizzes/${id}`);
+    const row = data?.result ?? data;
+    const mapped = mapExpertQuiz(row, id);
+    if (!mapped) throw new Error('Quiz not found');
+    return mapped;
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -124,11 +175,23 @@ export async function fetchExpertQuizzesPaged(pageIndex = 1, pageSize = 100): Pr
   }
 }
 
+/** Convert camelCase to PascalCase for C# backend DTOs */
+function toPascalCase(input: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const pascal = key.charAt(0).toUpperCase() + key.slice(1);
+    result[pascal] = value;
+  }
+  return result;
+}
+
 export async function createExpertQuiz(input: CreateExpertQuizRequest): Promise<ExpertQuiz> {
   try {
+    // Convert camelCase to PascalCase for C# backend
+    const pascalInput = toPascalCase(input as unknown as Record<string, unknown>);
     const { data } = await http.post<ExpertQuizListResponse | { result?: unknown; message?: string }>(
       '/api/expert/quizzes',
-      input,
+      pascalInput,
     );
 
     // BE thường trả: { message, result: { ... } }
@@ -147,7 +210,9 @@ export async function createExpertQuiz(input: CreateExpertQuizRequest): Promise<
 
 export async function updateExpertQuiz(id: string, input: UpdateExpertQuizRequest): Promise<ExpertQuiz> {
   // BE C# thường bind DTO.Id, nên gửi cả `Id` và `id` để chắc chắn.
-  const bodyWithId = { Id: id, id, ...(input ?? {}) };
+  // Also convert camelCase to PascalCase
+  const pascalInput = toPascalCase(input as unknown as Record<string, unknown>);
+  const bodyWithId = { Id: id, id, ...pascalInput };
   try {
     // Theo BE của bạn: update chạy ở PUT /api/expert/quizzes (id nằm trong body)
     const { data } = await http.put<{ result?: unknown; message?: string }>(
@@ -498,15 +563,18 @@ export async function fetchExpertQuizLibrary(
     if (difficulty) params.append('difficulty', difficulty);
     if (classification) params.append('classification', classification);
 
-    const { data } = await http.get<ExpertQuizLibraryResponse>(`/api/expert/library/quizzes?${params.toString()}`);
+    const { data } = await http.get<any>(`/api/expert/library/quizzes?${params.toString()}`);
 
-    const itemsRaw = data?.items;
-    const totalCount = Number(data?.totalCount ?? 0);
-    const pageIndexOut = Number(data?.pageIndex ?? pageIndex);
-    const pageSizeOut = Number(data?.pageSize ?? pageSize);
+    // Handle both direct response and wrapped response { result: {...} }
+    const response = (data as any)?.result ?? data ?? {};
+
+    const itemsRaw = response.items ?? response.Items ?? [];
+    const totalCount = Number(response.totalCount ?? response.TotalCount ?? 0);
+    const pageIndexOut = Number(response.pageIndex ?? response.PageIndex ?? pageIndex);
+    const pageSizeOut = Number(response.pageSize ?? response.PageSize ?? pageSize);
 
     const items = Array.isArray(itemsRaw)
-      ? itemsRaw.map((row) => mapExpertQuizLibraryItem(row)).filter((q): q is ExpertQuizLibraryItem => q !== null)
+      ? itemsRaw.map((row: unknown) => mapExpertQuizLibraryItem(row)).filter((q): q is ExpertQuizLibraryItem => q !== null)
       : [];
 
     return { items, totalCount, pageIndex: pageIndexOut, pageSize: pageSizeOut };
@@ -559,6 +627,80 @@ export async function assignExpertQuizFromLibrary(
     const { data } = await http.post<unknown>(`/api/expert/classes/${classId}/library-quizzes/${quizId}`, payload);
     const row = (data as any)?.result ?? data;
     return mapAssignQuizResult(row);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+// ========== Quiz Questions ==========
+
+export interface QuizQuestionDto {
+  id: string;
+  quizId: string;
+  quizTitle: string | null;
+  caseId: string | null;
+  caseTitle: string | null;
+  questionText: string;
+  type: string;
+  optionA: string | null;
+  optionB: string | null;
+  optionC: string | null;
+  optionD: string | null;
+  correctAnswer: string | null;
+  imageUrl: string | null;
+}
+
+export interface CreateQuizQuestionRequest {
+  quizId: string;
+  questionText: string;
+  type: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer?: string;
+  essayAnswer?: string;
+  imageUrl?: string;
+  caseId?: string;
+}
+
+export async function getQuizQuestions(quizId: string): Promise<QuizQuestionDto[]> {
+  try {
+    const { data } = await http.get<any>(`/api/expert/quizzes/${quizId}/questions`);
+    const rawQuestions = data?.questions ?? data?.result ?? data?.items ?? [];
+    const list = Array.isArray(rawQuestions) ? rawQuestions : [];
+    return list.map((q: any): QuizQuestionDto => ({
+      id: String(q.id ?? q.Id ?? q.questionId ?? q.QuestionId ?? ''),
+      quizId: String(q.quizId ?? q.QuizId ?? quizId),
+      quizTitle: q.quizTitle ?? q.QuizTitle ?? null,
+      caseId: q.caseId ?? q.CaseId ?? null,
+      caseTitle: q.caseTitle ?? q.CaseTitle ?? null,
+      questionText: String(q.questionText ?? q.QuestionText ?? ''),
+      type: String(q.type ?? q.Type ?? 'MultipleChoice'),
+      optionA: q.optionA ?? q.OptionA ?? null,
+      optionB: q.optionB ?? q.OptionB ?? null,
+      optionC: q.optionC ?? q.OptionC ?? null,
+      optionD: q.optionD ?? q.OptionD ?? null,
+      correctAnswer: q.correctAnswer ?? q.CorrectAnswer ?? null,
+      imageUrl: q.imageUrl ?? q.ImageUrl ?? null,
+    }));
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+export async function addQuizQuestionsBatched(
+  quizId: string,
+  questions: CreateQuizQuestionRequest[],
+): Promise<void> {
+  try {
+    // Backend expects POST to /api/expert/quizzes/{quizId}/questions for each question
+    // Convert camelCase to PascalCase for C# backend
+    await Promise.all(
+      questions.map((q) =>
+        http.post(`/api/expert/quizzes/${quizId}/questions`, toPascalCase(q as unknown as Record<string, unknown>))
+      )
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }

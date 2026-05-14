@@ -6,7 +6,15 @@ import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { fetchStudentPracticeQuiz, submitStudentQuiz, generateAIPracticeQuiz } from '@/lib/api/student';
+import { 
+  fetchStudentPracticeQuiz, 
+  submitStudentQuiz, 
+  generateAIPracticeQuiz,
+  fetchBoneSpecialtyOptions,
+  fetchPathologyCategoryOptions,
+  type BoneSpecialtyOption,
+  type PathologyCategoryOption
+} from '@/lib/api/student';
 import { resolveApiAssetUrl } from '@/lib/api/client';
 import type { StudentPracticeQuiz, StudentQuizSubmissionResult } from '@/lib/api/types';
 import { useLocalStorageState } from '@/lib/useLocalStorageState';
@@ -25,16 +33,45 @@ import {
   BookOpen,
   Sparkles,
   Image as ImageIcon,
+  ChevronDown,
+  X,
+  Layers,
+  Target,
+  BrainCircuit,
+  Stethoscope,
 } from 'lucide-react';
 
-const topicSuggestions = [
-  'Long Bone Fractures',
-  'Spine Lesions',
-  'Joint Diseases',
-  'Bone Tumors',
-  'Upper Extremity',
-  'Lower Extremity',
-];
+// Organized topic structure with categories
+const topicCategories = {
+  'Fractures': [
+    'Long Bone Fractures',
+    'Spine Fractures',
+    'Pelvis & Hip Fractures',
+    'Hand & Foot Fractures',
+    'Stress Fractures',
+  ],
+  'Lesions & Diseases': [
+    'Spine Lesions',
+    'Joint Diseases',
+    'Bone Tumors',
+    'Metabolic Bone Diseases',
+    'Infectious Bone Diseases',
+  ],
+  'Anatomical Regions': [
+    'Upper Extremity',
+    'Lower Extremity',
+    'Skull & Face',
+    'Thorax & Ribs',
+  ],
+  'General Topics': [
+    'Pediatric Bone Conditions',
+    'Degenerative Conditions',
+    'Vascular Bone Disorders',
+  ],
+};
+
+// Flat list of all topics for backward compatibility
+const allTopics = Object.values(topicCategories).flat();
 
 const difficultyOptions = [
   { value: '', label: 'Any difficulty' },
@@ -50,15 +87,19 @@ type StudentQuizDraft = {
   searchTerm: string;
   page: number;
   questionCount: number;
+  boneSpecialtyId: string;
+  pathologyCategoryId: string;
 };
 
 const EMPTY_QUIZ_DRAFT: StudentQuizDraft = {
-  topic: topicSuggestions[0],
+  topic: allTopics[0],
   difficulty: '',
   answers: {},
   searchTerm: '',
   page: 1,
   questionCount: 5,
+  boneSpecialtyId: '',
+  pathologyCategoryId: '',
 };
 
 export function StudentPracticeQuizContent({ embedded = false }: { embedded?: boolean }) {
@@ -68,16 +109,29 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
     'student-quiz-draft',
     EMPTY_QUIZ_DRAFT,
   );
-  const [topic, setTopic] = useState(quizDraft.topic || topicSuggestions[0]);
+  
+  // Basic filters
+  const [topic, setTopic] = useState(quizDraft.topic || allTopics[0]);
   const [difficulty, setDifficulty] = useState(quizDraft.difficulty || '');
+  const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
+  const [page, setPage] = useState(quizDraft.page || 1);
+  const [questionCount, setQuestionCount] = useState(quizDraft.questionCount || 5);
+  
+  // Deep classification filters
+  const [boneSpecialties, setBoneSpecialties] = useState<BoneSpecialtyOption[]>([]);
+  const [pathologyCategories, setPathologyCategories] = useState<PathologyCategoryOption[]>([]);
+  const [selectedBoneSpecialty, setSelectedBoneSpecialty] = useState(quizDraft.boneSpecialtyId || '');
+  const [selectedPathologyCategory, setSelectedPathologyCategory] = useState(quizDraft.pathologyCategoryId || '');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [loadingFilters, setLoadingFilters] = useState(false);
+  
+  // Quiz state
   const [quiz, setQuiz] = useState<StudentPracticeQuiz | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>(quizDraft.answers || {});
   const [result, setResult] = useState<StudentQuizSubmissionResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState(quizDraft.searchTerm || '');
-  const [page, setPage] = useState(quizDraft.page || 1);
-
+  
   // AI Quiz state
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<Array<{
@@ -91,7 +145,87 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
     caseId?: string;
     caseTitle?: string;
   }>>([]);
-  const [questionCount, setQuestionCount] = useState(quizDraft.questionCount || 5);
+
+  // Load classification options
+  useEffect(() => {
+    const loadFilters = async () => {
+      setLoadingFilters(true);
+      try {
+        const [specialties, pathologies] = await Promise.all([
+          fetchBoneSpecialtyOptions(),
+          fetchPathologyCategoryOptions(),
+        ]);
+        setBoneSpecialties(specialties);
+        setPathologyCategories(pathologies);
+      } catch (error) {
+        console.error('Error loading classification filters:', error);
+        // Use empty arrays - filters will just show "All" option
+      } finally {
+        setLoadingFilters(false);
+      }
+    };
+    loadFilters();
+  }, []);
+
+  // Filter topics based on search
+  const filteredTopics = useMemo(() => {
+    if (!searchTerm.trim()) return allTopics;
+    const search = searchTerm.toLowerCase();
+    
+    const matchingTopics = allTopics.filter(t => 
+      t.toLowerCase().includes(search)
+    );
+    
+    // Also search in category names
+    const matchingCategories = Object.entries(topicCategories)
+      .filter(([cat]) => cat.toLowerCase().includes(search))
+      .flatMap(([, topics]) => topics);
+    
+    // Combine and dedupe
+    const combined = [...matchingTopics, ...matchingCategories];
+    return [...new Set(combined)];
+  }, [searchTerm]);
+
+  // Group filtered topics by category
+  const filteredTopicCategories = useMemo(() => {
+    if (searchTerm.trim()) {
+      // When searching, show flat list grouped by search results
+      return { 'Search Results': filteredTopics };
+    }
+    
+    // Filter categories based on selected classifications
+    let result: Record<string, string[]> = {};
+    
+    for (const [category, topics] of Object.entries(topicCategories)) {
+      if (selectedBoneSpecialty || selectedPathologyCategory) {
+        // Filter topics based on bone specialty or pathology category
+        const matchingTopics = topics.filter(t => {
+          // Check if topic matches selected bone specialty
+          if (selectedBoneSpecialty) {
+            const specialty = boneSpecialties.find(s => s.id === selectedBoneSpecialty);
+            if (specialty && t.toLowerCase().includes(specialty.name.toLowerCase())) {
+              return true;
+            }
+          }
+          // Check if topic matches selected pathology category
+          if (selectedPathologyCategory) {
+            const pathology = pathologyCategories.find(p => p.id === selectedPathologyCategory);
+            if (pathology && t.toLowerCase().includes(pathology.name.toLowerCase())) {
+              return true;
+            }
+          }
+          return false;
+        });
+        if (matchingTopics.length > 0 || !selectedBoneSpecialty && !selectedPathologyCategory) {
+          result[category] = !selectedBoneSpecialty && !selectedPathologyCategory ? topics : matchingTopics;
+        }
+      } else {
+        result[category] = topics;
+      }
+    }
+    
+    return result;
+  }, [searchTerm, filteredTopics, selectedBoneSpecialty, selectedPathologyCategory, boneSpecialties, pathologyCategories]);
 
   const completion = useMemo(() => {
     if (!quiz) return 0;
@@ -206,8 +340,10 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
       searchTerm,
       page,
       questionCount,
+      boneSpecialtyId: selectedBoneSpecialty,
+      pathologyCategoryId: selectedPathologyCategory,
     });
-  }, [answers, difficulty, page, questionCount, searchTerm, setQuizDraft, topic]);
+  }, [answers, difficulty, page, questionCount, searchTerm, setQuizDraft, topic, selectedBoneSpecialty, selectedPathologyCategory]);
 
   return (
     <div className={embedded ? '' : 'min-h-screen'}>
@@ -229,12 +365,127 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
               className="rounded-full pl-10 pr-4"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              showAdvancedFilters || selectedBoneSpecialty || selectedPathologyCategory
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border bg-background text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            Deep Classification
+            <ChevronDown className={`h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
           <select className="h-10 appearance-none rounded-lg border border-border bg-background px-4 pr-10 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
             <option>Sort by: Recent</option>
             <option>Sort by: Name</option>
             <option>Sort by: Difficulty</option>
           </select>
         </div>
+
+        {/* Advanced Classification Filters */}
+        {showAdvancedFilters && (
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-card-foreground">Deep Classification Filters</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBoneSpecialty('');
+                  setSelectedPathologyCategory('');
+                  setShowAdvancedFilters(false);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear all
+              </button>
+            </div>
+            
+            {loadingFilters ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading classification options...
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Bone Specialty Filter */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                    <Stethoscope className="mr-2 inline h-4 w-4" />
+                    Bone Specialty
+                  </label>
+                  <select
+                    value={selectedBoneSpecialty}
+                    onChange={(e) => setSelectedBoneSpecialty(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">All Bone Specialties</option>
+                    {boneSpecialties.map((specialty) => (
+                      <option key={specialty.id} value={specialty.id}>
+                        {specialty.name} {specialty.parentName ? `(${specialty.parentName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {/* Pathology Category Filter */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                    <BrainCircuit className="mr-2 inline h-4 w-4" />
+                    Pathology Category
+                  </label>
+                  <select
+                    value={selectedPathologyCategory}
+                    onChange={(e) => setSelectedPathologyCategory(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">All Pathology Categories</option>
+                    {pathologyCategories.map((pathology) => (
+                      <option key={pathology.id} value={pathology.id}>
+                        {pathology.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            
+            {/* Active filters display */}
+            {(selectedBoneSpecialty || selectedPathologyCategory) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedBoneSpecialty && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    {boneSpecialties.find(s => s.id === selectedBoneSpecialty)?.name}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBoneSpecialty('')}
+                      className="ml-1 hover:text-primary/70"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {selectedPathologyCategory && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary/20 px-3 py-1 text-xs font-medium text-secondary">
+                    {pathologyCategories.find(p => p.id === selectedPathologyCategory)?.name}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPathologyCategory('')}
+                      className="ml-1 hover:text-secondary/70"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Bento Grid */}
       <div className="grid grid-cols-12 gap-6">
@@ -332,8 +583,10 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
               Choose a clinical topic to generate a personalized practice quiz instantly.
             </p>
           </div>
+          
+          {/* Quick topic buttons */}
           <div className="mt-4 space-y-2">
-            {topicSuggestions.slice(0, 4).map((t) => (
+            {allTopics.slice(0, 4).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -347,6 +600,13 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                 {t}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilters(true)}
+              className="w-full rounded-xl border border-dashed border-border px-4 py-2.5 text-left text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              + More topics...
+            </button>
           </div>
 
           {/* AI Generate Section */}
@@ -372,6 +632,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                   <option value={3}>3 questions</option>
                   <option value={5}>5 questions</option>
                   <option value={10}>10 questions</option>
+                  <option value={15}>15 questions</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
@@ -402,6 +663,50 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
           </div>
         </div>
       </div>
+
+      {/* Topic Browser Section */}
+      {!quiz && aiQuestions.length === 0 && (
+        <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border bg-muted/30 p-6">
+            <h3 className="font-['Manrope',sans-serif] text-xl font-bold text-card-foreground">
+              Browse Topics by Category
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Select a topic to start your practice session
+            </p>
+          </div>
+          <div className="p-6">
+            {Object.entries(filteredTopicCategories).map(([category, topics]) => (
+              <div key={category} className="mb-6 last:mb-0">
+                <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                  <Layers className="h-4 w-4" />
+                  {category}
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {topics.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setTopic(t);
+                        handleLoadQuiz();
+                      }}
+                      disabled={loading}
+                      className={`rounded-lg border px-3 py-1.5 text-sm transition-all ${
+                        topic === t
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-border bg-background text-muted-foreground hover:border-primary hover:text-primary'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Practice Quiz Builder / Results */}
       <div className="overflow-hidden rounded-3xl border border-border/40 bg-card shadow-sm">
@@ -444,7 +749,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
                 Ready to practice?
               </h2>
               <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Select a topic from the card on the left and click &quot;Start practice&quot; to load a quiz,
+                Select a topic from the card on the left or browse the categories below, then click &quot;Start practice&quot; to load a quiz,
                 or use AI Quiz Generator for instant questions.
               </p>
             </div>
@@ -714,6 +1019,38 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
               </p>
             </div>
           </div>
+          
+          {/* Action buttons after submission */}
+          <div className="border-t border-border p-6">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                onClick={() => {
+                  setResult(null);
+                  handleReset();
+                }}
+                className="rounded-xl bg-gradient-to-r from-primary to-[#007BFF] px-6 py-2 text-sm font-medium text-white"
+              >
+                Practice More
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                className="rounded-xl px-6 py-2 text-sm font-medium"
+              >
+                <a href="/student/review">Review Flashcards</a>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                className="rounded-xl px-6 py-2 text-sm font-medium"
+              >
+                <a href="/student/quiz/history">View History</a>
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -735,7 +1072,7 @@ export function StudentPracticeQuizContent({ embedded = false }: { embedded?: bo
           <div className="h-10 w-px bg-border" />
           <div className="text-right">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Topics covered</p>
-            <p className="text-2xl font-black text-secondary">{topicSuggestions.length}</p>
+            <p className="text-2xl font-black text-secondary">{allTopics.length}</p>
           </div>
         </div>
       </div>
