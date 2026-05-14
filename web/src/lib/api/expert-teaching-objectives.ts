@@ -27,6 +27,7 @@ interface TeachingObjectiveItem {
 export interface TeachingObjectiveSuggestionDto {
   id: string;
   classId: string;
+  className?: string;
   expertId: string;
   expertName?: string;
   topic: string;
@@ -57,7 +58,7 @@ export async function fetchExpertClassObjectives(classId: string): Promise<Exper
 export async function fetchAllExpertClassObjectives(): Promise<ExpertTeachingObjectivesDto[]> {
   try {
     const { data } = await http.get<unknown[]>('/api/expert/class/objectives/all');
-    return (data as unknown[]).map(mapExpertTeachingObjectives);
+    return (data as unknown[]).map((item) => mapExpertTeachingObjectives(item as Record<string, unknown>));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -75,7 +76,7 @@ export async function suggestObjective(request: SuggestObjectiveRequestDto): Pro
 export async function fetchMyPendingSuggestions(): Promise<TeachingObjectiveSuggestionDto[]> {
   try {
     const { data } = await http.get<unknown[]>('/api/expert/class/objectives/my-suggestions');
-    return (data as unknown[]).map(mapSuggestion);
+    return (data as unknown[]).map((item) => mapSuggestion(item as Record<string, unknown>));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -86,7 +87,7 @@ function mapExpertTeachingObjectives(raw: Record<string, unknown>): ExpertTeachi
     ? (raw.currentObjectives as unknown[]).map(mapObjectiveItem)
     : [];
   const myPendingSuggestions = Array.isArray(raw.myPendingSuggestions ?? raw.MyPendingSuggestions)
-    ? (raw.myPendingSuggestions as unknown[]).map(mapSuggestion)
+    ? (raw.myPendingSuggestions as unknown[]).map((item) => mapSuggestion(item as Record<string, unknown>))
     : [];
 
   return {

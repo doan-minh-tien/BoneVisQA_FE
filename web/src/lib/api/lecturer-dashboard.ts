@@ -508,7 +508,7 @@ export async function updateTeachingObjectives(
 export async function fetchExpertSuggestions(classId: string): Promise<TeachingObjectiveSuggestionDto[]> {
   try {
     const { data } = await http.get<unknown[]>(`/api/lecturer/classes/${classId}/objectives/suggestions`);
-    return (data as unknown[]).map(mapSuggestion);
+    return (data as unknown[]).map((item) => mapSuggestion(item as Record<string, unknown>));
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
@@ -728,6 +728,7 @@ export interface StrongTopicDto {
 export interface RecentActivityDto {
   activityId: string;
   activityType: string;
+  type?: string;
   description?: string;
   timestamp: string;
   score?: number;
