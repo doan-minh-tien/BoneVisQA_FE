@@ -24,7 +24,7 @@ interface TeachingObjectiveItem {
   updatedAt?: string;
 }
 
-interface TeachingObjectiveSuggestionDto {
+export interface TeachingObjectiveSuggestionDto {
   id: string;
   classId: string;
   expertId: string;
@@ -38,7 +38,7 @@ interface TeachingObjectiveSuggestionDto {
   reviewedAt?: string;
 }
 
-interface SuggestObjectiveRequestDto {
+export interface SuggestObjectiveRequestDto {
   classId: string;
   topic: string;
   objective: string;
