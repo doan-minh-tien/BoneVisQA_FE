@@ -15,6 +15,7 @@ import {
   Plus,
   ShieldAlert,
   Stethoscope,
+  TrendingUp,
   Users,
 } from 'lucide-react';
 import { ClassDetailCover } from '@/components/student/ClassDetailVisuals';
@@ -402,12 +403,13 @@ export default function LecturerClassDetailPage({
                   />
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border">
-                    <table className="w-full min-w-[520px]">
+                    <table className="w-full min-w-[600px]">
                       <thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                         <tr>
                           <th className="px-4 py-3">Student</th>
                           <th className="px-4 py-3">Code</th>
                           <th className="px-4 py-3">Email</th>
+                          <th className="px-4 py-3">Progress</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -421,13 +423,25 @@ export default function LecturerClassDetailPage({
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-primary">
                                   {initials(student.studentName || '?')}
                                 </div>
-                                <span className="text-sm font-medium text-card-foreground">
+                                <Link
+                                  href={`/lecturer/classes/${classId}/students/${student.studentId}/progress`}
+                                  className="text-sm font-medium text-primary hover:underline"
+                                >
                                   {student.studentName || 'Unknown student'}
-                                </span>
+                                </Link>
                               </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentCode || '—'}</td>
                             <td className="px-4 py-3 text-sm text-muted-foreground">{student.studentEmail || '—'}</td>
+                            <td className="px-4 py-3">
+                              <Link
+                                href={`/lecturer/classes/${classId}/students/${student.studentId}/progress`}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-primary/30 hover:text-primary"
+                              >
+                                <TrendingUp className="h-3.5 w-3.5" />
+                                View Progress
+                              </Link>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
