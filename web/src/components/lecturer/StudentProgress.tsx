@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   ChevronDown,
@@ -19,13 +20,9 @@ import {
 } from 'lucide-react';
 import {
   fetchStudentProgressSummary,
-  fetchStudentProgressDetail,
   type StudentProgressSummaryDto,
   type StudentProgressItemDto,
-  type StudentProgressDetailDto,
-  type ClassCompetencyOverviewDto,
 } from '@/lib/api/lecturer-dashboard';
-import StudentProgressDetail from './StudentProgressDetail';
 
 interface StudentProgressProps {
   classId?: string;
@@ -34,18 +31,13 @@ interface StudentProgressProps {
 }
 
 export default function StudentProgress({ classId, onSelectStudent, onError }: StudentProgressProps) {
+  const router = useRouter();
   const [progress, setProgress] = useState<StudentProgressSummaryDto | null>(null);
-  const [competencyOverview, setCompetencyOverview] = useState<ClassCompetencyOverviewDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<'progress' | 'competency'>('progress');
   const [sortBy, setSortBy] = useState<'name' | 'score' | 'progress'>('score');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  
-  // Detail modal state
-  const [showDetail, setShowDetail] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<StudentProgressDetailDto | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
     if (classId) {
@@ -135,20 +127,10 @@ export default function StudentProgress({ classId, onSelectStudent, onError }: S
     );
   };
 
-  // Handle view student detail
-  const handleViewStudent = async (studentId: string) => {
+  // Handle view student detail - navigate to dedicated page
+  const handleViewStudent = (studentId: string) => {
     if (!classId) return;
-    setLoadingDetail(true);
-    setShowDetail(true);
-    try {
-      const detail = await fetchStudentProgressDetail(classId, studentId);
-      setSelectedStudent(detail);
-    } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Failed to load student details');
-      setShowDetail(false);
-    } finally {
-      setLoadingDetail(false);
-    }
+    router.push(`/lecturer/classes/${classId}/students/${studentId}/progress`);
   };
 
   return (
@@ -396,16 +378,6 @@ export default function StudentProgress({ classId, onSelectStudent, onError }: S
           </div>
         </div>
       )}
-
-      {/* Student Detail Modal */}
-      <StudentProgressDetail
-        student={selectedStudent}
-        isOpen={showDetail}
-        onClose={() => {
-          setShowDetail(false);
-          setSelectedStudent(null);
-        }}
-      />
     </div>
   );
 }
