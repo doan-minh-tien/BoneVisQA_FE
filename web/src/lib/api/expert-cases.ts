@@ -425,7 +425,7 @@ export async function updateExpertCase(id: string, input: SaveExpertCaseInput): 
     const trimmedId = String(id).trim();
     if (!trimmedId) throw new Error('Missing case id.');
     /** Match `UpdateMedicalCaseDTORequest` — route is PUT `api/expert/cases/{id:guid}` (no duplicate id in path). */
-    const body = {
+    const body: Record<string, unknown> = {
       title: input.title,
       description: input.description,
       difficulty: input.difficulty,
@@ -435,8 +435,10 @@ export async function updateExpertCase(id: string, input: SaveExpertCaseInput): 
       keyFindings: input.keyFindings?.trim() || null,
       isApproved: input.isApproved,
       isActive: input.isActive,
-      tagIds: input.tagIds ?? null,
     };
+    if (input.tagIds !== undefined) {
+      body.tagIds = input.tagIds;
+    }
     await http.request({
       method: 'PUT',
       url: `/api/expert/cases/${encodeURIComponent(trimmedId)}`,
@@ -528,6 +530,20 @@ export async function createExpertAnnotation(payload: {
 export async function createExpertCaseTag(payload: { medicalCaseId: string; tagId: string }): Promise<void> {
   try {
     await http.post('/api/expert/case-tag', payload);
+  } catch (e) {
+    throw new Error(getApiErrorMessage(e));
+  }
+}
+
+/** Removes a tag from a case (`DELETE /api/expert/tags?caseId=&tagId=`). */
+export async function deleteExpertCaseTag(payload: { caseId: string; tagId: string }): Promise<void> {
+  const caseId = String(payload.caseId).trim();
+  const tagId = String(payload.tagId).trim();
+  if (!caseId || !tagId) throw new Error('Missing case id or tag id.');
+  try {
+    await http.delete(
+      `/api/expert/tags?caseId=${encodeURIComponent(caseId)}&tagId=${encodeURIComponent(tagId)}`,
+    );
   } catch (e) {
     throw new Error(getApiErrorMessage(e));
   }
