@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { http, getApiErrorMessage } from './client';
 
 export interface ExpertDashboardStats {
@@ -24,6 +23,7 @@ export interface ExpertPendingReview {
 export interface ExpertRecentCase {
   id: string;
   title: string;
+  boneLocation: string;
   lesionType: string;
   difficulty: 'basic' | 'intermediate' | 'advanced';
   status: 'approved' | 'pending' | 'draft';
@@ -117,6 +117,7 @@ function pickRecentCaseThumbnailUrl(item: Record<string, unknown>): string | nul
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function mapRecentCase(row: unknown): ExpertRecentCase | null {
   if (!row || typeof row !== 'object') return null;
   const item = row as Record<string, unknown>;
@@ -139,14 +140,6 @@ function mapRecentCase(row: unknown): ExpertRecentCase | null {
 
   return {
     id,
-    title: String(item.title ?? 'Untitled'),
-    lesionType: String(item.lesionType ?? '—'),
-    difficulty: String(item.difficulty ?? '—'),
-    status: String(item.status ?? '—'),
-    addedBy: String(item.addedBy ?? 'Unknown'),
-    addedDate: String(item.addedDate ?? ''),
-    viewCount: Number(item.viewCount ?? 0),
-    usageCount: Number(item.usageCount ?? 0),
     title: pickDisplayStr(item.title ?? item.Title, 'Untitled'),
     boneLocation,
     lesionType: pickDisplayStr(
@@ -212,7 +205,6 @@ export async function fetchExpertPendingReviews(): Promise<ExpertPendingReview[]
     throw new Error(getApiErrorMessage(e));
   }
 }
-
 export async function fetchExpertRecentCases(): Promise<ExpertRecentCase[]> {
   try {
     const { data } = await http.get<unknown>('/api/expert/dashboard/recent-cases', {
@@ -222,10 +214,10 @@ export async function fetchExpertRecentCases(): Promise<ExpertRecentCase[]> {
       .map(mapRecentCase)
       .filter((item): item is ExpertRecentCase => item !== null);
   } catch (e) {
-    if (axios.isAxiosError(e)) throw e;
     throw new Error(getApiErrorMessage(e));
   }
 }
+
 
 export async function fetchExpertActivity(): Promise<ExpertActivity> {
   try {
